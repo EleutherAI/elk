@@ -1,0 +1,27 @@
+{"dataset_list" : ["imdb", "amazon-polarity", "ag-news", "dbpedia-14",
+                "copa",  "rte",  "boolq",  "qnli",  "piqa",  "story-cloze"],
+"registered_models" : [
+    "t5-11b",
+    "unifiedqa-t5-11b", 
+    "T0pp", 
+    "gpt-j-6B",
+    "roberta-large-mnli",
+    "deberta-v2-xxlarge-mnli"],
+"registered_prefix" : ["normal", "confusion", "confusion2", "confusion3", "confusion4", "confusion6", "confusion7", "iamincorrect", "dadnotrust", "dadisincorrect", "teachernoimitate"],
+"models_layer_num": {
+    "t5-11b": 25,
+    "unifiedqa-t5-11b": 25, 
+    "T0pp": 25,
+    "gpt-j-6B": 29,
+    "roberta-large-mnli": 25,
+    "deberta-v2-xxlarge-mnli": 49
+},
+"name_map" : {
+    "unifiedqa-t5-11b": "UQA",
+    "T0pp": "T0",
+    "deberta-v2-xxlarge-mnli": "DeBERTa",
+    "gpt-j-6B": "GPT-J",
+    "t5-11b": "T5",
+    "roberta-large-mnli": "RoBERTa"
+}
+}
