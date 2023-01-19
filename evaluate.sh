@@ -1,1 +1,1 @@
-python extraction_main.py --model deberta-v2-xxlarge-mnli --prefix confusion  --datasets boolq
+python extraction_main.py --model deberta-v2-xxlarge-mnli --prefix confusion  --datasets boolq --zero "results" 
