@@ -23,7 +23,7 @@ models_layer_num = global_dict["models_layer_num"]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type = str, choices=registered_models)
-parser.add_argument("--prefix", nargs="+", detault = ["normal"], choices = registered_prefix)
+parser.add_argument("--prefix", nargs="+", default = ["normal"], choices = registered_prefix)
 parser.add_argument("--datasets", nargs="+", default = registered_dataset_list)
 parser.add_argument("--test", type = str, default = "testall", choices = ["testone", "testall"])
 parser.add_argument("--data_num", type = int, default = 1000)
