@@ -229,29 +229,43 @@ def setup_dataset_names_and_prompt_idx(swipe=False, prompt_idxs=None, dataset_na
 
     return dataset_names, prompt_idxs
 
+def align_datapoints_amount(num_data, dataset_names):
+    """
+    This function will check the length of `num_data` and make it the same as `dataset_names`.
+
+    Args:  
+        num_data: list of int, the number of data points that will be used for each dataset.
+        dataset_names: list of str, the dataset names that will be used.
+    
+    Returns:
+        num_data: list of int, the number of data points that will be used for each dataset.
+    """
+    # deal with the length of `num_data`
+    # end up making num_data and set_list with the same length
+    assert len(num_data) == 1 or len(num_data) == len(dataset_names), "The length of `num_data` should either be one or be the same as `datasets`!"
+    
+    if len(num_data) == 1:
+        num_data = [num_data[0] for _ in dataset_names]
+
+    print(f"Processing {num_data} data points in total.")
+    return num_data
+
 def load_datasets(args, tokenizer):
     '''
         This fnction will return the datasets, their corresponding name (with prompt suffix, confusion suffix, etc), which should be used to save the hidden states
     '''
     print("-------- datasets --------")
     base_dir = args.data_base_dir
-    set_list = args.datasets
+    dataset_names = args.datasets
     num_data = [int(w) for w in args.num_data]
-    confusion = args.prefix
+    confusion_prefix = args.prefix
     reload = args.reload_data
-    prompt_idx_list = [int(w) for w in args.prompt_idx]
+    prompt_idxs = [int(w) for w in args.prompt_idx]
     
 
-    set_list, prompt_idx_list = setup_dataset_names_and_prompt_idx(args.swipe, prompt_idx_list, set_list)
+    dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(args.swipe, prompt_idxs, dataset_names)
 
-    # deal with the length of `num_data`
-    # end up making num_data and set_list with the same length
-    assert len(num_data) == 1 or len(num_data) == len(
-        set_list), "The length of `num_data` should either be one or be the same as `datasets`!"
-    if len(num_data) == 1:
-        num_data = [num_data[0] for _ in set_list]
-
-    print("Processing {} data points in total.".format(sum(num_data)))
+    num_data = align_datapoints_amount(num_data, dataset_names)
 
     # create the directory if needed
     if not os.path.exists(base_dir):
@@ -263,7 +277,7 @@ def load_datasets(args, tokenizer):
 
     frame_dict = {}
     reload_set_name = ""    # Only reload if this is the first prompt of a dataset
-    for (set_name, prompt_idx, max_num) in zip(set_list, prompt_idx_list, num_data):
+    for (set_name, prompt_idx, max_num) in zip(dataset_names, prompt_idxs, num_data):
         path = os.path.join(
             base_dir, "rawdata_{}_{}.csv".format(set_name, max_num))
 
@@ -301,7 +315,7 @@ def load_datasets(args, tokenizer):
             # now start formatting
             # construct the examples according to prompt_ids and so on
             frame = constructPrompt(set_name=set_name, frame=raw_data,
-                                    prompt_idx=prompt_idx, mdl_name=args.model, tokenizer=tokenizer, max_num = max_num, confusion = confusion)
+                                    prompt_idx=prompt_idx, mdl_name=args.model, tokenizer=tokenizer, max_num = max_num, confusion = confusion_prefix)
 
             frame_dict[dataset_name_w_num] = frame
 
