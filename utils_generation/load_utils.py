@@ -250,6 +250,19 @@ def align_datapoints_amount(num_data, dataset_names):
     print(f"Processing {num_data} data points in total.")
     return num_data
 
+def create_directory(name):
+    """
+    This function will create a directory if it does not exist.
+
+    Args:
+        name: str, the name of the directory.
+    
+    Returns:
+        None
+    """
+    if not os.path.exists(name):
+        os.makedirs(name)
+
 def load_datasets(args, tokenizer):
     '''
         This fnction will return the datasets, their corresponding name (with prompt suffix, confusion suffix, etc), which should be used to save the hidden states
@@ -268,12 +281,11 @@ def load_datasets(args, tokenizer):
     num_data = align_datapoints_amount(num_data, dataset_names)
 
     # create the directory if needed
-    if not os.path.exists(base_dir):
-        os.makedirs(base_dir)
+    create_directory(base_dir)
 
     cache_dir = os.path.join(base_dir, "cache")
-    if not os.path.exists(cache_dir):
-        os.makedirs(cache_dir)
+    create_directory(cache_dir)
+
 
     frame_dict = {}
     reload_set_name = ""    # Only reload if this is the first prompt of a dataset
@@ -320,17 +332,14 @@ def load_datasets(args, tokenizer):
             frame_dict[dataset_name_w_num] = frame
 
             # save this frame
-            if not os.path.exists(args.save_base_dir):
-                os.mkdir(args.save_base_dir)
-            if not os.path.exists(complete_path):
-                os.mkdir(complete_path)
-            frame.to_csv(os.path.join(complete_path, "frame.csv"), index = False)
+            create_directory(args.save_base_dir)
+            create_directory(complete_path)
+            complete_frame_csv_path = os.path.join(complete_path, "frame.csv")
+            frame.to_csv(complete_frame_csv_path, index = False)
 
 
         # print an example
         if args.print_more:
             print("[example]:\n{}".format(frame.loc[0, "null"]))
 
-
-    print("-------- datasets --------")
     return frame_dict
