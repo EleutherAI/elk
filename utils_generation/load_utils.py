@@ -128,6 +128,7 @@ def load_tokenizer(mdl_name, cache_dir):
 
 def get_sample_data(set_name, data_list, total_num):
     '''
+
         set_name:   the name of the dataset, some datasets have special token name.
         data_list:  a list of dataframe, with order queals to token_list
         max_num:    number of data point that wants to take, default is twice as final size, considering that some examples are too long and could be dropped.
@@ -199,15 +200,27 @@ def loadFromDatasets(set_name, cache_dir, max_num):
     return raw_data
 
 def setup_dataset_names_and_prompt_idx(swipe=False, prompt_idxs=None, dataset_names=None):
-    # deal with the length of prompt_idx_list, and extend
-    # end up making prompt_idx_list and set_list with the same length
+    """
+    This function will setup the dataset_names and prompt_idxs.
+    If swipe is True, then will use all the prompts for each dataset.
+    If swipe is False, then will use the prompt_idxs for each dataset.
+    
+    Args:
+        swipe: bool, if True, will use all the prompts for each dataset.
+        prompt_idxs: list of int, the prompt idxs that will be used.
+        dataset_names: list of str, the dataset names that will be used.
+    
+    Returns:
+        dataset_names: list of str, the dataset names that will be used.
+        prompt_idxs: list of int, the prompt idxs that will be used.
+    """
+
     if not swipe:
         print(f"Consider datasets: {dataset_names} and prompt idx: {prompt_idxs}.")
         set_num = len(dataset_names)
         dataset_names = [w for w in dataset_names for _ in range(len(prompt_idxs))]
         prompt_idxs = [j for _ in range(set_num) for j in prompt_idxs]
     else:
-        # swipe: for each dataset, will use all the prompts
         prompt_idxs = MyPrompts.getGlobalPromptsNum(dataset_names)
         print("Consider datasets {} with {} prompts each.".format(dataset_names, prompt_idxs))
         dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, prompt_idxs)]
