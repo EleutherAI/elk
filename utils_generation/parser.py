@@ -28,6 +28,9 @@ def getArgs():
                         help="Whether to parallelize models in multiple gpus. Please notice that at least one gpu must be provided by `CUDA_VISIBLE_DEVICES` or `os.environ`. Using this args will help split the model equally in all gpus you provide.")
     parser.add_argument("--cache_dir", type=str, default="models",
                         help="The path to save and load pretrained model.")
+    parser.add_argument("--model_device", type=str, default="cuda",
+                        help="What device to load the model onto: CPU or GPU or MPS.")
+    
 
     # datasets processing
     parser.add_argument("--prefix", type = str, nargs="+", default = ["normal"],

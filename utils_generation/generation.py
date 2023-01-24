@@ -23,7 +23,7 @@ def calZeroAndHiddenStates(model, tokenizer, frame_dict, args):
     } for key in frame_dict.keys()]
 
     mdl_name = args.model
-    tokenize = functools.partial(getToken, tokenizer=tokenizer)
+    tokenize = functools.partial(getToken, tokenizer=tokenizer, device=args.model_device)
     with torch.no_grad():
         pad_answer = tokenize("")
         for key, record in zip(frame_dict.keys(), records):
@@ -193,8 +193,8 @@ def getStatesToken(hidden_state, method):
             "Only support `token_place` in `first`, `last` and `average`!")
 
 
-def getToken(s, tokenizer):
-    return tokenizer(s, return_tensors='pt').input_ids.to("cuda")
+def getToken(s, tokenizer, device):
+    return tokenizer(s, return_tensors='pt').input_ids.to(device)
 
 
 def getLogProbs(logits, ans_token, mdl_name):

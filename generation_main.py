@@ -13,7 +13,7 @@ if __name__ == "__main__":
 
     # load models, stored in GPU
     model, tokenizer = loadModel(
-        mdl_name=args.model, cache_dir=args.cache_dir, parallelize=args.parallelize)
+        mdl_name=args.model, cache_dir=args.cache_dir, parallelize=args.parallelize, device=args.model_device)
 
     prefix_list = args.prefix
     for prefix in prefix_list:

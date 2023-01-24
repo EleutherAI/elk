@@ -276,11 +276,12 @@ class ConsistencyMethod(object):
 
 
 class myClassifyModel(LogisticRegression):
-    def __init__(self, method, print_more = False):
+    def __init__(self, method, print_more = False, device='cuda'):
         assert method in ['TPC', 'LR', 'BSS', 'KMeans'], "currently only support method to be `TPC`, `LR`, 'KMeans` and `BSS`!"
         self.method = method
         super(myClassifyModel, self).__init__(max_iter = 10000, n_jobs = 1, C = 0.1)
         self.print_more = print_more
+        self.device = device
 
     def set_params(self, coef, bias):
         self.classes_ = np.array([0,1])
@@ -291,7 +292,7 @@ class myClassifyModel(LogisticRegression):
         assert self.method == "BSS", NotImplementedError("`get_train_loss` supported only when method is `BSS`.")
         return self.loss
 
-    def fit(self, data, label, times = 20, use_scheduler = False, weights = None, lr = 1e-1, epochs = 20, device = "cuda"):
+    def fit(self, data, label, times = 20, use_scheduler = False, weights = None, lr = 1e-1, epochs = 20, device = 'cuda'):
         if self.method == "LR":
             super().fit(data, label)
             if self.print_more:
@@ -318,7 +319,7 @@ class myClassifyModel(LogisticRegression):
         elif self.method == "BSS":    # in this case, `data` will be a list
             assert type(data) == list, "When using BSS mode, data should be a list instead of {}".format(type(data))
             
-            x = [torch.tensor(w, device=device) for w in data]
+            x = [torch.tensor(w, device=self.device) for w in data]
             dim = data[0].shape[1]  # hidden dimension
 
             if weights == None:
@@ -336,7 +337,7 @@ class myClassifyModel(LogisticRegression):
                 init_theta = np.random.randn(dim).reshape(1, -1)
                 init_theta /= np.linalg.norm(init_theta)
 
-                theta = torch.tensor(init_theta, dtype=torch.float, requires_grad=True, device=device)
+                theta = torch.tensor(init_theta, dtype=torch.float, requires_grad=True, device=self.device)
                 optimizer = torch.optim.AdamW([theta], lr=lr)
                 if use_scheduler:
                     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor = 0.5, verbose = self.print_more, min_lr = 1e-6)
@@ -464,7 +465,8 @@ def mainResults(
     projection_only = False,
     classification_method = "BSS",                 # can be LR, TPC and BSS
     print_more = False,
-    learn_dict = {}
+    learn_dict = {},
+    device = 'cuda'
 ):
 
     start = time.time()
@@ -504,11 +506,11 @@ def mainResults(
         
         weights = [1/len(l) for l in projection_dict.values() for _ in l]
         
-        classify_model = myClassifyModel(method = classification_method, print_more = print_more)
-        classify_model.fit([w[0] for w in lis], [w[1] for w in lis], weights = weights, **learn_dict)
+        classify_model = myClassifyModel(method = classification_method, device=device, print_more = print_more)
+        classify_model.fit([w[0] for w in lis], [w[1] for w in lis], weights = weights,device=device, **learn_dict)
 
     else:
-        classify_model = myClassifyModel(method = classification_method, print_more = print_more)
+        classify_model = myClassifyModel(method = classification_method, device=device, print_more = print_more)
         classify_model.fit(*getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict))
     
 

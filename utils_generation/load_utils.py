@@ -14,13 +14,14 @@ from transformers import (
     AutoModelForSequenceClassification
 )
 import os
+import torch
 import pandas as pd
 from datasets import load_dataset
 from utils_generation.construct_prompts import constructPrompt, MyPrompts
 from utils_generation.save_utils import saveFrame, getDir
 
 
-def loadModel(mdl_name, cache_dir, parallelize):
+def loadModel(mdl_name, cache_dir, parallelize, device = "cuda"):
     print("-------- model and tokenizer --------")
     print("loading model and tokenizer. model name = {}, cache_dir = {}".format(
         mdl_name, cache_dir))
@@ -59,10 +60,28 @@ def loadModel(mdl_name, cache_dir, parallelize):
 
     print("finish loading model to memory. Now start loading to gpu. parallelize = {}".format(
         parallelize == True))
-    if parallelize:
+    if device == "mps":
+        # Check that MPS is available
+        if not torch.backends.mps.is_available():
+            if not torch.backends.mps.is_built():
+                print("MPS not available because the current PyTorch install was not "
+                    "built with MPS enabled.")
+            else:
+                print("MPS not available because the current MacOS version is not 12.3+ "
+                    "and/or you do not have an MPS-enabled device on this machine.")
+        else:
+            mps_device = torch.device("mps")
+            model.to(mps_device)
+    elif parallelize == True:
         model.parallelize()
+    elif device == 'cuda':
+        if not torch.cuda.is_available():
+            print("CUDA not available, using CPU instead.")
+            model.to('cuda')
     else:
-        model = model.to("cuda")
+        model.to("cpu")
+    
+    
 
     print("{} loaded.".format(mdl_name))
     
@@ -182,11 +201,11 @@ def loadDatasets(args, tokenizer):
 
     # create the directory if needed
     if not os.path.exists(base_dir):
-        os.mkdir(base_dir)
+        os.makedirs(base_dir)
 
     cache_dir = os.path.join(base_dir, "cache")
     if not os.path.exists(cache_dir):
-        os.mkdir(cache_dir)
+        os.makedirs(cache_dir)
 
     frame_dict = {}
     reload_set_name = ""    # Only reload if this is the first prompt of a dataset
