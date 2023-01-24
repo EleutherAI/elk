@@ -198,6 +198,23 @@ def loadFromDatasets(set_name, cache_dir, max_num):
 
     return raw_data
 
+def setup_dataset_names_and_prompt_idx(swipe=False, prompt_idxs=None, dataset_names=None):
+    # deal with the length of prompt_idx_list, and extend
+    # end up making prompt_idx_list and set_list with the same length
+    if not swipe:
+        print(f"Consider datasets: {dataset_names} and prompt idx: {prompt_idxs}.")
+        set_num = len(dataset_names)
+        dataset_names = [w for w in dataset_names for _ in range(len(prompt_idxs))]
+        prompt_idxs = [j for _ in range(set_num) for j in prompt_idxs]
+    else:
+        # swipe: for each dataset, will use all the prompts
+        prompt_idxs = MyPrompts.getGlobalPromptsNum(dataset_names)
+        print("Consider datasets {} with {} prompts each.".format(dataset_names, prompt_idxs))
+        dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, prompt_idxs)]
+        prompt_idxs = [[w for w in range(times)] for times in prompt_idxs]
+        dataset_names, prompt_idxs = [w for j in dataset_names for w in j], [w for j in prompt_idxs for w in j]
+
+    return dataset_names, prompt_idxs
 
 def loadDatasets(args, tokenizer):
     '''
@@ -210,21 +227,9 @@ def loadDatasets(args, tokenizer):
     confusion = args.prefix
     reload = args.reload_data
     prompt_idx_list = [int(w) for w in args.prompt_idx]
+    
 
-    # deal with the length of prompt_idx_list, and extend
-    # end up making prompt_idx_list and set_list with the same length
-    if not args.swipe:
-        print("Consider datasets {} and prompt idx {}.".format(set_list, prompt_idx_list))
-        set_num = len(set_list)
-        set_list = [w for w in set_list for _ in range(len(prompt_idx_list))]
-        prompt_idx_list = [j for _ in range(set_num) for j in prompt_idx_list]
-    else:
-        # swipe: for each dataset, will use all the prompts
-        prompt_idx_list = MyPrompts.getGlobalPromptsNum(set_list)
-        print("Consider datasets {} with {} prompts each.".format(set_list, prompt_idx_list))
-        set_list = [[w for _ in range(times)] for w, times in zip(set_list, prompt_idx_list)]
-        prompt_idx_list = [[w for w in range(times)] for times in prompt_idx_list]
-        set_list, prompt_idx_list = [w for j in set_list for w in j], [w for j in prompt_idx_list for w in j]
+    set_list, prompt_idx_list = setup_dataset_names_and_prompt_idx(args.swipe, prompt_idx_list, set_list)
 
     # deal with the length of `num_data`
     # end up making num_data and set_list with the same length
