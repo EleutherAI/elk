@@ -263,16 +263,79 @@ def create_directory(name):
     if not os.path.exists(name):
         os.makedirs(name)
 
+
+
+def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, reload_data=False, print_more=False):
+    """
+    This function will create a dictionary of dataframes, where the key is the dataset name and the value is the dataframe.
+
+    Args:
+
+    Returns:
+    """
+    create_directory(data_base_dir)
+    frame_dict = {}
+    reload_set_name = ""    # Only reload if this is the first prompt of a dataset
+    for (dataset, prompt_idx, max_num) in zip(dataset_names, prompt_idxs, num_data):
+        path = os.path.join(data_base_dir, f"rawdata_{dataset}_{max_num}.csv")
+      
+        # load datasets
+        # if complete dataset exists and reload == False, will directly load this dataset
+        # Otherwise, load existing raw dataset or reload / load new raw sets
+        # notice that this is just the `raw data`, which is a dict or whatever
+        dataset_name_with_num = f"{dataset}_{max_num}_prompt{prompt_idx}"
+        complete_path = getDir(dataset_name_with_num, args)
+        dataframe_path = os.path.join(complete_path, "frame.csv")
+        
+        if reload_data is False and os.path.exists(dataframe_path):
+            frame = pd.read_csv(dataframe_path, converters={"selection": eval})
+            frame_dict[dataset_name_with_num] = frame
+            if print_more:
+                print(f"load post-processing {dataset_name_with_num} from {complete_path}, length = {max_num}")
+
+        else:   # either reload, or this specific model / confusion args has not been saved yet.
+            if (reload_data is False or reload_set_name == dataset) and os.path.exists(path):
+                raw_data = pd.read_csv(path)
+                if print_more:
+                    print(f"load raw {dataset} from {path}, length = {max_num}")
+            else:
+                if print_more:
+                    print(f"load raw dataset {dataset} from module.")
+                
+                cache_dir = os.path.join(data_base_dir, "cache")
+                create_directory(cache_dir)
+                raw_data = loadFromDatasets(dataset, cache_dir, max_num)
+                raw_data.to_csv(path, index=False)
+                
+                if print_more:
+                    print(f"save raw set to {path}")
+
+            # now start formatting
+            # construct the examples according to prompt_ids and so on
+            frame = constructPrompt(set_name=dataset, frame=raw_data,
+                                    prompt_idx=prompt_idx, mdl_name=args.model, 
+                                    tokenizer=tokenizer, max_num = max_num, 
+                                    confusion = confusion_prefix)
+
+            frame_dict[dataset_name_with_num] = frame
+
+            # save this frame
+            create_directory(args.save_base_dir)
+            create_directory(complete_path)
+            complete_frame_csv_path = os.path.join(complete_path, "frame.csv")
+            frame.to_csv(complete_frame_csv_path, index = False)
+    
+    return frame_dict
+
 def load_datasets(args, tokenizer):
     '''
         This fnction will return the datasets, their corresponding name (with prompt suffix, confusion suffix, etc), which should be used to save the hidden states
     '''
-    print("-------- datasets --------")
-    base_dir = args.data_base_dir
+    data_base_dir = args.data_base_dir
     dataset_names = args.datasets
     num_data = [int(w) for w in args.num_data]
     confusion_prefix = args.prefix
-    reload = args.reload_data
+    reload_data = args.reload_data
     prompt_idxs = [int(w) for w in args.prompt_idx]
     
 
@@ -280,18 +343,15 @@ def load_datasets(args, tokenizer):
 
     num_data = align_datapoints_amount(num_data, dataset_names)
 
+
+    # TODO: MAKE create_dataframe_dict FUNCTION
     # create the directory if needed
-    create_directory(base_dir)
-
-    cache_dir = os.path.join(base_dir, "cache")
-    create_directory(cache_dir)
-
-
+    create_directory(data_base_dir)
     frame_dict = {}
     reload_set_name = ""    # Only reload if this is the first prompt of a dataset
     for (set_name, prompt_idx, max_num) in zip(dataset_names, prompt_idxs, num_data):
         path = os.path.join(
-            base_dir, "rawdata_{}_{}.csv".format(set_name, max_num))
+            data_base_dir, "rawdata_{}_{}.csv".format(set_name, max_num))
 
                 
         # load datasets
@@ -301,7 +361,7 @@ def load_datasets(args, tokenizer):
         dataset_name_w_num = "{}_{}_prompt{}".format(set_name, max_num, prompt_idx)
         complete_path = getDir(dataset_name_w_num, args)
         
-        if reload == False and os.path.exists(os.path.join(complete_path, "frame.csv")):
+        if reload_data == False and os.path.exists(os.path.join(complete_path, "frame.csv")):
             frame = pd.read_csv(os.path.join(complete_path, "frame.csv"), converters={"selection": eval})
             frame_dict[dataset_name_w_num] = frame
             if args.print_more:
@@ -309,7 +369,7 @@ def load_datasets(args, tokenizer):
                     dataset_name_w_num, complete_path, max_num))
 
         else:   # either reload, or this specific model / confusion args has not been saved yet.
-            if (reload == False or reload_set_name == set_name) and os.path.exists(path):
+            if (reload_data == False or reload_set_name == set_name) and os.path.exists(path):
                 raw_data = pd.read_csv(path)
                 if args.print_more:
                     print("load raw {} from {}, length = {}".format(
@@ -317,6 +377,9 @@ def load_datasets(args, tokenizer):
             else:
                 if args.print_more:
                     print("load raw dataset {} from module.".format(set_name))
+                
+                cache_dir = os.path.join(data_base_dir, "cache")
+                create_directory(cache_dir)
                 raw_data = loadFromDatasets(set_name, cache_dir, max_num)
                 # save to base_dir, with name `set`+`length`
                 # This is only the raw dataset. Saving is just to avoid shuffling every time.
