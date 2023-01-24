@@ -1,6 +1,6 @@
 import time
 from utils_generation.parser import getArgs
-from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, loadDatasets
+from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
 from utils_generation.generation import calZeroAndHiddenStates
 
 if __name__ == "__main__":
@@ -26,7 +26,7 @@ if __name__ == "__main__":
     for prefix in prefix_list:
         args.prefix = prefix
         # load datasets and save if possible
-        frame_dict = loadDatasets(args, tokenizer)
+        frame_dict = load_datasets(args, tokenizer)
 
         # for each frame, calculate the zero-shot accuracy and generate the hidden states if needed
         # the zero-shot accuracy will be stored in records

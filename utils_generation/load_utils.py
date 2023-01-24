@@ -229,7 +229,7 @@ def setup_dataset_names_and_prompt_idx(swipe=False, prompt_idxs=None, dataset_na
 
     return dataset_names, prompt_idxs
 
-def loadDatasets(args, tokenizer):
+def load_datasets(args, tokenizer):
     '''
         This fnction will return the datasets, their corresponding name (with prompt suffix, confusion suffix, etc), which should be used to save the hidden states
     '''
