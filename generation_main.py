@@ -1,6 +1,6 @@
 import time
 from utils_generation.parser import getArgs
-from utils_generation.load_utils import loadModel, loadDatasets
+from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, loadDatasets
 from utils_generation.generation import calZeroAndHiddenStates
 
 if __name__ == "__main__":
@@ -11,9 +11,16 @@ if __name__ == "__main__":
     # get args
     args = getArgs()
 
-    # load models, stored in GPU
-    model, tokenizer = loadModel(
-        mdl_name=args.model, cache_dir=args.cache_dir, parallelize=args.parallelize, device=args.model_device)
+    # load model and tokenizer (put model on hardware accelearator if possible)
+    print("-------- Setting up model and tokenizer --------")
+    print(f"loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
+    model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
+    
+    print(f"finish loading model to memory. Now start loading to accelerator (gpu or mps). parallelize = {args.parallelize == True}")
+    model = put_model_on_device(model, parallelize=args.parallelize, device = args.model_device)
+    
+    print(f"loading tokenizer for: model name = {args.model} at cache_dir = {args.cache_dir}")
+    tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
 
     prefix_list = args.prefix
     for prefix in prefix_list:

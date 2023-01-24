@@ -21,45 +21,53 @@ from utils_generation.construct_prompts import constructPrompt, MyPrompts
 from utils_generation.save_utils import saveFrame, getDir
 
 
-def loadModel(mdl_name, cache_dir, parallelize, device = "cuda"):
-    print("-------- model and tokenizer --------")
-    print("loading model and tokenizer. model name = {}, cache_dir = {}".format(
-        mdl_name, cache_dir))
+def load_model(mdl_name, cache_dir):
+    """
+    Load model from cache_dir or from HuggingFace model hub.
+
+    Args:
+        mdl_name (str): name of the model
+        cache_dir (str): path to the cache directory
+    
+    Returns:
+        model (torch.nn.Module): model
+    """
     if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
         model = AutoModelForCausalLM.from_pretrained("EleutherAI/{}".format(
             mdl_name), cache_dir = cache_dir)
-        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/{}".format(
-            mdl_name), cache_dir = cache_dir)
     elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         model = GPT2LMHeadModel.from_pretrained(mdl_name, cache_dir=cache_dir)
-        tokenizer = GPT2Tokenizer.from_pretrained(
-            mdl_name, cache_dir=cache_dir)
     elif "T0" in mdl_name:
         model = AutoModelForSeq2SeqLM.from_pretrained(
-            "bigscience/{}".format(mdl_name), cache_dir=cache_dir)
-        tokenizer = AutoTokenizer.from_pretrained(
             "bigscience/{}".format(mdl_name), cache_dir=cache_dir)
     elif "unifiedqa" in mdl_name:
         model = T5ForConditionalGeneration.from_pretrained(
             "allenai/" + mdl_name, cache_dir=cache_dir)
-        tokenizer = AutoTokenizer.from_pretrained(
-            "allenai/" + mdl_name, cache_dir=cache_dir)
     elif "deberta" in mdl_name:
         model = AutoModelForSequenceClassification.from_pretrained(
             "microsoft/{}".format(mdl_name), cache_dir=cache_dir)
-        tokenizer = AutoTokenizer.from_pretrained(
-            "microsoft/" + mdl_name, cache_dir=cache_dir)
     elif "roberta" in mdl_name:
         model = AutoModelForSequenceClassification.from_pretrained(mdl_name, cache_dir = cache_dir)
-        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
     elif "t5" in mdl_name:
         model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
-        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-
+    
+    # We only use the models for inference, so we don't need to train them and hence don't need to track gradients
     model.eval()
+    
+    return model
 
-    print("finish loading model to memory. Now start loading to gpu. parallelize = {}".format(
-        parallelize == True))
+def put_model_on_device(model, parallelize, device = "cuda"):
+    """
+    Put model on device.
+    
+    Args:
+        model (torch.nn.Module): model to put on device
+        parallelize (bool): whether to parallelize the model
+        device (str): device to put the model on
+        
+    Returns:
+        model (torch.nn.Module): model on device
+    """
     if device == "mps":
         # Check that MPS is available
         if not torch.backends.mps.is_available():
@@ -77,18 +85,46 @@ def loadModel(mdl_name, cache_dir, parallelize, device = "cuda"):
     elif device == 'cuda':
         if not torch.cuda.is_available():
             print("CUDA not available, using CPU instead.")
+        else:
             model.to('cuda')
     else:
         model.to("cpu")
-    
-    
 
-    print("{} loaded.".format(mdl_name))
+    return model
+
+def load_tokenizer(mdl_name, cache_dir):
+    """
+    Load tokenizer for the model.
     
-    print("-------- model and tokenizer --------")
+    Args:
+        mdl_name (str): name of the model
+        cache_dir (str): path to the cache directory
+    
+    Returns:
+        tokenizer: tokenizer for the model
+    """
 
-    return model, tokenizer
+    if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
+        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/{}".format(
+            mdl_name), cache_dir = cache_dir)
+    elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
+        tokenizer = GPT2Tokenizer.from_pretrained(
+            mdl_name, cache_dir=cache_dir)
+    elif "T0" in mdl_name:
+        tokenizer = AutoTokenizer.from_pretrained(
+            "bigscience/{}".format(mdl_name), cache_dir=cache_dir)
+    elif "unifiedqa" in mdl_name:
+        tokenizer = AutoTokenizer.from_pretrained(
+            "allenai/" + mdl_name, cache_dir=cache_dir)
+    elif "deberta" in mdl_name:
+        tokenizer = AutoTokenizer.from_pretrained(
+            "microsoft/" + mdl_name, cache_dir=cache_dir)
+    elif "roberta" in mdl_name:
+        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
+    elif "t5" in mdl_name:
+        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
 
+    return tokenizer
 
 def get_sample_data(set_name, data_list, total_num):
     '''
