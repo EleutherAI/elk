@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import functools
-from utils_generation.save_utils import saveArray, saveRecords
+from utils_generation.save_utils import saveArray
 import time
 
 def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
@@ -108,12 +108,11 @@ def calculate_zero_shot_performance(model, tokenize, frame, mdl_name, args):
 
     return log_probs_list, logits_list  
 
-def calZeroAndHiddenStates(model, tokenizer, frame_dict, args):
+def create_dataset_zeroshot_hiddenstates_records(model, tokenizer, frame_dict, args):
     '''
         This function will calculate the zeroshot accuracy for each dataset and properly store
     '''
 
-    print("-------- zero-shot & generation --------")
     # create records, will save as csv in the end
     records = [{
         "model": args.model,
@@ -139,64 +138,17 @@ def calZeroAndHiddenStates(model, tokenizer, frame_dict, args):
             # This part corresponds to zero-shot accuracy calculation
             # as well as the logits calculation
             if args.cal_zeroshot or args.cal_logits:
-
-                # log_probs_list = []
-                # logits_list = []
-
-                # # Loop over data points
-                # for idx in range(len(frame)):
-                #     if "gpt" in mdl_name or "bert" in mdl_name:
-                #         ans_list = getDataPoint(frame, idx, "selection")
-                #         ans_token = [tokenize(w) for w in ans_list]
-
-                #         # get the input_ids
-                #         ids_paired = [tokenize(getDataPoint(
-                #             frame, idx, w)) for w in ["0", "1"]]
-                #         logits = [model(w)["logits"] for w in ids_paired]
-
-                #         logit_token = ids_paired
-
-                #     elif "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
-                #     # for idx in range(len(frame)):
-
-                #         ans_list = getDataPoint(frame, idx, "selection")
-                #         ans_token = [tokenize(w) for w in ans_list]
-                #         # get the input_ids for candidates
-                #         input_ids = tokenize(getDataPoint(frame, idx, 'null'))
-
-                #         # calculate the logits
-                #         logits = [
-                #             model(input_ids, labels=w)["logits"] for w in ans_token]
-                        
-                #         logit_token = ans_token
-
-                #     else:
-                #         raise NotImplementedError(
-                #             "model {} is not supported!".format(mdl_name))
-
-
-                #     if args.cal_zeroshot:
-                #         # calculate the logits
-                #         probs = getLogProbs(logits, ans_token, mdl_name)
-                #         log_probs_list.append(toNP(probs))
-                #     if args.cal_logits:
-                        
-                #         logits_list.append(toNP(getLogits(logits, logit_token, mdl_name)))
-
                 logits_list, log_probs_list = calculate_zero_shot_performance(model, tokenize, frame, mdl_name, args)
 
                 # Essemble and save
                 if args.cal_zeroshot:
                     # add to the records
-                    labels = getDataPoint(
-                        frame, [0, len(frame)], "label").to_list()
-                    record["log_probs"] = sum(
-                        [int(w[0] < w[1]) == l for w, l in zip(log_probs_list, labels)]) / len(frame)
+                    labels = getDataPoint(frame, [0, len(frame)], "label").to_list()
+                    record["log_probs"] = sum([int(w[0] < w[1]) == l for w, l in zip(log_probs_list, labels)]) / len(frame)
                     record["calibrated"] = getCalibrated(log_probs_list, labels)
 
                     if args.print_more:
-                        print(
-                            "Finish calculating the zero-shot accuracy for {} data in {}.".format(len(frame), key))
+                        print(f"Finish calculating the zero-shot accuracy for {len(frame)} data in {key}.")
                 
                 # save logits
                 if args.cal_logits:
@@ -206,8 +158,7 @@ def calZeroAndHiddenStates(model, tokenizer, frame_dict, args):
                     saveArray([logits], ["logits"], key, args)
 
                     if args.print_more:
-                        print(
-                            "Finish generating logits for {} data in {}. Shape of logits is {}.".format(len(frame), key, logits.shape))
+                        print(f"Finish generating logits for {len(frame)} data in {key}. Shape of logits is {logits.shape}.")
                 
 
             # This part corresponds to hidden states generation
@@ -220,10 +171,7 @@ def calZeroAndHiddenStates(model, tokenizer, frame_dict, args):
 
             print(f"{round((time.time() -start) / record['population'], 2)} s/data. {record}")
 
-    # save records
-    saveRecords(records, args)
-    print("-------- zero-shot & generation --------")
-
+    return records
 
 def getDataPoint(frame, idx, key):
     if type(idx) == list:
