@@ -1,7 +1,8 @@
 import time
 from utils_generation.parser import getArgs
 from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
-from utils_generation.generation import calZeroAndHiddenStates
+from utils_generation.generation import create_dataset_zeroshot_hiddenstates_records
+from utils_generation.save_utils import save_records_to_csv
 
 if __name__ == "__main__":
     print("\n\n-------------------------------- Starting Program --------------------------------\n\n")
@@ -16,7 +17,7 @@ if __name__ == "__main__":
     print(f"loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
     model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
     
-    print(f"finish loading model to memory. Now start loading to accelerator (gpu or mps). parallelize = {args.parallelize == True}")
+    print(f"finish loading model to memory. Now start loading to accelerator (gpu or mps). parallelize = {args.parallelize is True}")
     model = put_model_on_device(model, parallelize=args.parallelize, device = args.model_device)
     
     print(f"loading tokenizer for: model name = {args.model} at cache_dir = {args.cache_dir}")
@@ -27,18 +28,23 @@ if __name__ == "__main__":
     for prefix in prefix_list:
         args.prefix = prefix
         # load datasets and save if possible
-        frame_dict = load_datasets(args, tokenizer)
+        name_to_dataframe = load_datasets(args, tokenizer)
 
         # for each frame, calculate the zero-shot accuracy and generate the hidden states if needed
         # the zero-shot accuracy will be stored in records
         # the hidden states will be saved to directories
-        calZeroAndHiddenStates(model, tokenizer, frame_dict, args)
+        print("-------- zero-shot & generation --------")
+
+        records = create_dataset_zeroshot_hiddenstates_records(model, tokenizer, name_to_dataframe, args)
+        save_records_to_csv(records)
 
         end = time.time()
         print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-        print(f"Consider prefix {}, {} datasets, {} samples in total, and took {} minutes. Generation: {}, Hidden States: {}".format(
-            prefix, len(frame_dict), sum([len(w) for w in frame_dict.values()]), round(
-                (end - start) / 60, 1),  args.cal_zeroshot == True, args.cal_hiddenstates == True
-        ))
-        print("---------------------------------------\n\n")
+        total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
+        elapsed_minutes = round((end - start) / 60, 1)
+        print(f"""
+            Consider prefix {prefix}, {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes. 
+            Generation: {args.cal_zeroshot is True}, Hidden States: {args.cal_hiddenstates is True}
+            """)
+        print("\n\n---------------------------------------\n\n")
     print("-------------------------------- Finishing Program --------------------------------")

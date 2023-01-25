@@ -305,10 +305,10 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
         print_more: bool, if True, will print more information.
 
     Returns:
-        frame_dict: dict, the dictionary of dataframes.
+        name_to_dataframe: dict, the dictionary of dataframes.
     """
     create_directory(data_base_dir)
-    frame_dict = {}
+    name_to_dataframe = {}
     reload_set_name = ""    # Only reload if this is the first prompt of a dataset
     for (dataset, prompt_idx, max_num) in zip(dataset_names, prompt_idxs, num_data):
         path = os.path.join(data_base_dir, f"rawdata_{dataset}_{max_num}.csv")
@@ -323,7 +323,7 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
         
         if args.reload_data is False and os.path.exists(dataframe_path):
             frame = pd.read_csv(dataframe_path, converters={"selection": eval})
-            frame_dict[dataset_name_with_num] = frame
+            name_to_dataframe[dataset_name_with_num] = frame
             if print_more:
                 print(f"load post-processing {dataset_name_with_num} from {complete_path}, length = {max_num}")
 
@@ -346,13 +346,13 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
             
             prompt_dataframe = create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path)
             
-            frame_dict[dataset_name_with_num] = prompt_dataframe
+            name_to_dataframe[dataset_name_with_num] = prompt_dataframe
         
         # print an example
         if args.print_more:
             print(f'[example]:\n {frame.loc[0, "null"]}')
 
-    return frame_dict
+    return name_to_dataframe
 
 def load_datasets(args, tokenizer):
     '''

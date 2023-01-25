@@ -44,7 +44,7 @@ def saveArray(array_list, typ_list, key, args):
 
 
 		
-def saveRecords(records, args):
+def save_records_to_csv(records, args):
 	f = os.path.join(args.save_base_dir, "{}.csv".format(args.save_csv_name))
 	if not os.path.exists(f):
 		csv = pd.DataFrame(columns = ["time", "model", "dataset", "prompt_idx", "num_data", "population", "prefix", "cal_zeroshot", "cal_hiddenstates", "log_probs", "calibrated", "tag"])
