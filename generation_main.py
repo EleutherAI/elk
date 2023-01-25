@@ -6,7 +6,7 @@ from utils_generation.generation import calZeroAndHiddenStates
 if __name__ == "__main__":
     print("\n\n-------------------------------- Starting Program --------------------------------\n\n")
     start = time.time()
-    print("Time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+    print(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
     # get args
     args = getArgs()
@@ -35,8 +35,8 @@ if __name__ == "__main__":
         calZeroAndHiddenStates(model, tokenizer, frame_dict, args)
 
         end = time.time()
-        print("Time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
-        print("Consider prefix {}, {} datasets, {} samples in total, and took {} minutes. Generation: {}, Hidden States: {}".format(
+        print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+        print(f"Consider prefix {}, {} datasets, {} samples in total, and took {} minutes. Generation: {}, Hidden States: {}".format(
             prefix, len(frame_dict), sum([len(w) for w in frame_dict.values()]), round(
                 (end - start) / 60, 1),  args.cal_zeroshot == True, args.cal_hiddenstates == True
         ))
