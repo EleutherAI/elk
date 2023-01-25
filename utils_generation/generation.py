@@ -4,6 +4,109 @@ import functools
 from utils_generation.save_utils import saveArray, saveRecords
 import time
 
+def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
+    
+    tokenize = functools.partial(getToken, tokenizer=tokenizer, device=args.model_device)
+
+    hidden_states = [[], []]
+    pad_answer = tokenize("")
+
+    if args.print_more:
+        print("Generating {} hidden states for {}. Layer = {}".format(
+            args.states_location, mdl_name, args.states_index
+        ))
+    if args.states_location == "decoder":  # In suce case, the program should generate decoder hidden states
+        assert "T0" in mdl_name or "t5" in mdl_name or "gpt" in mdl_name, NotImplementedError(
+            "BERT does not have decoder. Relevant args: model={}, states_location={}.".format(
+                mdl_name, args.states_location
+        )) 
+    if args.states_location == "encoder":
+        assert "gpt" not in mdl_name, NotImplementedError(
+            "GPT model does not have encoder. Relevant args: model={}, states_location={}.".format(
+                mdl_name, args.states_location
+        ))
+    for idx in range(len(frame)):
+        # calculate the hidden states
+        if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
+            if args.states_location == "encoder":
+                ids_paired = [tokenize(getDataPoint(frame, idx, w)) for w in ["0", "1"]]
+                hidden_states_paired = [
+                    model(ids, labels=pad_answer, output_hidden_states=True).encoder_hidden_states for ids in ids_paired]
+            else:
+                ans_token = [tokenize(w) for w in getDataPoint(frame, idx, "selection")]
+                # get the input_ids for candidates
+                input_ids = tokenize(getDataPoint(frame, idx, 'null'))
+
+                # calculate the hidden states and take the layer `state_idx`
+                hidden_states_paired = [
+                    model(input_ids, labels=ans, output_hidden_states=True).decoder_hidden_states for ans in ans_token]
+        elif "gpt" in mdl_name or "bert" in mdl_name:
+            appender = " " + str(tokenizer.eos_token) if "gpt" in mdl_name else ""
+            ids_paired = [tokenize(getDataPoint(frame, idx, w) + appender) for w in ["0", "1"]]
+            # Notice that since gpt and bert only have either decoder or encoder, we don't need to specify which one to use.
+            hidden_states_paired = [
+                model(ids, output_hidden_states=True).hidden_states for ids in ids_paired]
+        else:
+            raise NotImplementedError(f"model {mdl_name} is not supported!")
+
+        # extract the corresponding token
+        for i in range(2):
+            # shape (layer * hid_dim)
+            hidden_states[i].append(np.stack([toNP(getStatesToken(
+                w, args.token_place)) for w in hidden_states_paired[i]], axis=0))
+
+    # For each list in hidden_states, it's a list with `len(frame)` arrays, and each array has shape `layer * hid_dim`
+    # for each list, stack them to `num_data * layer * hid_dim`
+    hidden_states = [np.stack(w, axis=0) for w in hidden_states]
+
+    return hidden_states 
+
+
+def calculate_zero_shot_performance(model, tokenize, frame, mdl_name, args):
+    log_probs_list = []
+    logits_list = []
+
+    # Loop over data points
+    for idx in range(len(frame)):
+        if "gpt" in mdl_name or "bert" in mdl_name:
+            ans_list = getDataPoint(frame, idx, "selection")
+            ans_token = [tokenize(w) for w in ans_list]
+
+            # get the input_ids
+            ids_paired = [tokenize(getDataPoint(
+                frame, idx, w)) for w in ["0", "1"]]
+            logits = [model(w)["logits"] for w in ids_paired]
+
+            logit_token = ids_paired
+
+        elif "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
+        # for idx in range(len(frame)):
+
+            ans_list = getDataPoint(frame, idx, "selection")
+            ans_token = [tokenize(w) for w in ans_list]
+            # get the input_ids for candidates
+            input_ids = tokenize(getDataPoint(frame, idx, 'null'))
+
+            # calculate the logits
+            logits = [
+                model(input_ids, labels=w)["logits"] for w in ans_token]
+            
+            logit_token = ans_token
+
+        else:
+            raise NotImplementedError(
+                "model {} is not supported!".format(mdl_name))
+
+
+        if args.cal_zeroshot:
+            # calculate the logits
+            probs = getLogProbs(logits, ans_token, mdl_name)
+            log_probs_list.append(toNP(probs))
+        if args.cal_logits:
+            
+            logits_list.append(toNP(getLogits(logits, logit_token, mdl_name)))  
+
+    return log_probs_list, logits_list  
 
 def calZeroAndHiddenStates(model, tokenizer, frame_dict, args):
     '''
@@ -25,60 +128,62 @@ def calZeroAndHiddenStates(model, tokenizer, frame_dict, args):
     mdl_name = args.model
     tokenize = functools.partial(getToken, tokenizer=tokenizer, device=args.model_device)
     with torch.no_grad():
-        pad_answer = tokenize("")
         for key, record in zip(frame_dict.keys(), records):
             start = time.time()
             frame = frame_dict[key]
 
             record["population"] = len(frame)
             if args.print_more:
-                print("Start {}, length = {}".format(key, len(frame)))
+                print(f"Start {key}, length = {len(frame)}")
 
             # This part corresponds to zero-shot accuracy calculation
             # as well as the logits calculation
             if args.cal_zeroshot or args.cal_logits:
-                log_probs_list = []
-                logits_list = []
 
-                # Loop over data points
-                for idx in range(len(frame)):
-                    if "gpt" in mdl_name or "bert" in mdl_name:
-                        ans_list = getDataPoint(frame, idx, "selection")
-                        ans_token = [tokenize(w) for w in ans_list]
+                # log_probs_list = []
+                # logits_list = []
 
-                        # get the input_ids
-                        ids_paired = [tokenize(getDataPoint(
-                            frame, idx, w)) for w in ["0", "1"]]
-                        logits = [model(w)["logits"] for w in ids_paired]
+                # # Loop over data points
+                # for idx in range(len(frame)):
+                #     if "gpt" in mdl_name or "bert" in mdl_name:
+                #         ans_list = getDataPoint(frame, idx, "selection")
+                #         ans_token = [tokenize(w) for w in ans_list]
 
-                        logit_token = ids_paired
+                #         # get the input_ids
+                #         ids_paired = [tokenize(getDataPoint(
+                #             frame, idx, w)) for w in ["0", "1"]]
+                #         logits = [model(w)["logits"] for w in ids_paired]
 
-                    elif "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
-                    # for idx in range(len(frame)):
+                #         logit_token = ids_paired
 
-                        ans_list = getDataPoint(frame, idx, "selection")
-                        ans_token = [tokenize(w) for w in ans_list]
-                        # get the input_ids for candidates
-                        input_ids = tokenize(getDataPoint(frame, idx, 'null'))
+                #     elif "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
+                #     # for idx in range(len(frame)):
 
-                        # calculate the logits
-                        logits = [
-                            model(input_ids, labels=w)["logits"] for w in ans_token]
+                #         ans_list = getDataPoint(frame, idx, "selection")
+                #         ans_token = [tokenize(w) for w in ans_list]
+                #         # get the input_ids for candidates
+                #         input_ids = tokenize(getDataPoint(frame, idx, 'null'))
+
+                #         # calculate the logits
+                #         logits = [
+                #             model(input_ids, labels=w)["logits"] for w in ans_token]
                         
-                        logit_token = ans_token
+                #         logit_token = ans_token
 
-                    else:
-                        raise NotImplementedError(
-                            "model {} is not supported!".format(mdl_name))
+                #     else:
+                #         raise NotImplementedError(
+                #             "model {} is not supported!".format(mdl_name))
 
 
-                    if args.cal_zeroshot:
-                        # calculate the logits
-                        probs = getLogProbs(logits, ans_token, mdl_name)
-                        log_probs_list.append(toNP(probs))
-                    if args.cal_logits:
+                #     if args.cal_zeroshot:
+                #         # calculate the logits
+                #         probs = getLogProbs(logits, ans_token, mdl_name)
+                #         log_probs_list.append(toNP(probs))
+                #     if args.cal_logits:
                         
-                        logits_list.append(toNP(getLogits(logits, logit_token, mdl_name)))
+                #         logits_list.append(toNP(getLogits(logits, logit_token, mdl_name)))
+
+                logits_list, log_probs_list = calculate_zero_shot_performance(model, tokenize, frame, mdl_name, args)
 
                 # Essemble and save
                 if args.cal_zeroshot:
@@ -107,66 +212,13 @@ def calZeroAndHiddenStates(model, tokenizer, frame_dict, args):
 
             # This part corresponds to hidden states generation
             if args.cal_hiddenstates:
-                hidden_states = [[], []]
-                if args.print_more:
-                    print("Generating {} hidden states for {}. Layer = {}".format(
-                        args.states_location, mdl_name, args.states_index
-                    ))
-                if args.states_location == "decoder":  # In suce case, the program should generate decoder hidden states
-                    assert "T0" in mdl_name or "t5" in mdl_name or "gpt" in mdl_name, NotImplementedError(
-                        "BERT does not have decoder. Relevant args: model={}, states_location={}.".format(
-                            mdl_name, args.states_location
-                    )) 
-                if args.states_location == "encoder":
-                    assert "gpt" not in mdl_name, NotImplementedError(
-                        "GPT model does not have encoder. Relevant args: model={}, states_location={}.".format(
-                            mdl_name, args.states_location
-                    ))
-                for idx in range(len(frame)):
-                    # calculate the hidden states
-                    if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
-                        if args.states_location == "encoder":
-                            ids_paired = [tokenize(getDataPoint(
-                                frame, idx, w)) for w in ["0", "1"]]
-                            hidden_states_paired = [
-                                model(ids, labels=pad_answer, output_hidden_states=True).encoder_hidden_states for ids in ids_paired]
-                        else:
-                            ans_token = [tokenize(w) for w in getDataPoint(frame, idx, "selection")]
-                            # get the input_ids for candidates
-                            input_ids = tokenize(getDataPoint(frame, idx, 'null'))
-
-                            # calculate the hidden states and take the layer `state_idx`
-                            hidden_states_paired = [
-                                model(input_ids, labels=ans, output_hidden_states=True).decoder_hidden_states for ans in ans_token]
-                    elif "gpt" in mdl_name or "bert" in mdl_name:
-                        appender = " " + str(tokenizer.eos_token) if "gpt" in mdl_name else ""
-                        ids_paired = [tokenize(getDataPoint(
-                            frame, idx, w) + appender) for w in ["0", "1"]]
-                        # Notice that since gpt and bert only have either decoder or encoder, we don't need to specify which one to use.
-                        hidden_states_paired = [
-                            model(ids, output_hidden_states=True).hidden_states for ids in ids_paired]
-                    else:
-                        raise NotImplementedError(
-                            "model {} is not supported!".format(mdl_name))
-
-                    # extract the corresponding token
-                    for i in range(2):
-                        # shape (layer * hid_dim)
-                        hidden_states[i].append(np.stack([toNP(getStatesToken(
-                            w, args.token_place)) for w in hidden_states_paired[i]], axis=0))
-
-                # For each list in hidden_states, it's a list with `len(frame)` arrays, and each array has shape `layer * hid_dim`
-                # for each list, stack them to `num_data * layer * hid_dim`
-                hidden_states = [np.stack(w, axis=0) for w in hidden_states]
-
+                hidden_states = calculate_hidden_state(args, model, tokenizer, frame, mdl_name)
                 saveArray(hidden_states, ["0", "1"], key, args)
 
                 if args.print_more:
-                    print("Finish generating hidden states for {} data in {}.".format(
-                        len(frame), key))
+                    print(f"Finish generating hidden states for {len(frame)} data in {key}.")
 
-            print("{} s/data. {}".format(round((time.time() -
-                  start) / record["population"], 2), record))
+            print(f"{round((time.time() -start) / record['population'], 2)} s/data. {record}")
 
     # save records
     saveRecords(records, args)
@@ -189,8 +241,7 @@ def getStatesToken(hidden_state, method):
     elif method == "average":
         return torch.mean(hidden_state, dim=0)
     else:
-        raise NotImplementedError(
-            "Only support `token_place` in `first`, `last` and `average`!")
+        raise NotImplementedError("Only support `token_place` in `first`, `last` and `average`!")
 
 
 def getToken(s, tokenizer, device):
