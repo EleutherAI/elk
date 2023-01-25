@@ -4,7 +4,7 @@ from utils_generation.load_utils import load_model, put_model_on_device, load_to
 from utils_generation.generation import calZeroAndHiddenStates
 
 if __name__ == "__main__":
-    print("---------------- Program Begin ----------------")
+    print("\n\n-------------------------------- Starting Program --------------------------------\n\n")
     start = time.time()
     print("Time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
 
@@ -12,7 +12,7 @@ if __name__ == "__main__":
     args = getArgs()
 
     # load model and tokenizer (put model on hardware accelearator if possible)
-    print("-------- Setting up model and tokenizer --------")
+    print("\n\n--------------------------------  Setting up model and tokenizer --------------------------------\n\n")
     print(f"loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
     model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
     
@@ -22,6 +22,7 @@ if __name__ == "__main__":
     print(f"loading tokenizer for: model name = {args.model} at cache_dir = {args.cache_dir}")
     tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
 
+    print("\n\n-------------------------------- Loading datasets and calculating hidden states --------------------------------\n\n")
     prefix_list = args.prefix
     for prefix in prefix_list:
         args.prefix = prefix
@@ -40,4 +41,4 @@ if __name__ == "__main__":
                 (end - start) / 60, 1),  args.cal_zeroshot == True, args.cal_hiddenstates == True
         ))
         print("---------------------------------------\n\n")
-    print("---------------- Program Finish ----------------")
+    print("-------------------------------- Finishing Program --------------------------------")
