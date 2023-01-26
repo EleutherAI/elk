@@ -94,9 +94,9 @@ if __name__ == "__main__":
 
                 acc, std, loss = getAvg(res), np.mean([np.std(lis) for lis in res.values()]), np.mean([np.mean(lis) for lis in lss.values()])
                 print(f"""
-                method = {method}, 
-                prompt_level = {'all'}, train_set = {:train_set}, avgacc is {100 * acc}, std is {100 * std}, loss is {loss}
-                """)
+                    method = {method}, 
+                    prompt_level = {'all'}, train_set = {train_set}, avgacc is {100 * acc}, std is {100 * std}, loss is {loss}
+                    """)
 
                 for key in dataset_list:
                     if args.prompt_save_level == "all":
@@ -117,6 +117,6 @@ if __name__ == "__main__":
                                         loss = lss[key][idx] if method in ["Prob", "BSS"] else ""
                                         )
 
-        save_csv(args, csv, global_prefix, "After finish {method}")
+        save_csv(args, csv, global_prefix, f"After finish {method}")
 
     
