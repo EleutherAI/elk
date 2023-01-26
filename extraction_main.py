@@ -6,6 +6,7 @@ from utils_extraction.load_utils import getDic, set_load_dir, get_zeros_acc
 from utils_extraction.method_utils import mainResults
 from utils_extraction.func_utils import getAvg, adder
 from utils_extraction.parser import get_extraction_args
+from utils_extraction.save_utils import save_csv, save_params
 
 import pandas as pd
 import random 
@@ -23,16 +24,6 @@ print("-------- args --------")
 
 
 
-
-def saveParams(name, coef, intercept):
-    path = os.path.join(args.save_dir, "params")
-    np.save(os.path.join(path, "coef_{}.npy".format(name)), coef)
-    np.save(os.path.join(path, "intercept_{}.npy".format(name)), intercept)
-
-def saveCsv(csv, prefix, str = ""):
-    dir = os.path.join(args.save_dir, "{}_{}_{}.csv".format(args.model, prefix, args.seed))
-    csv.to_csv(dir, index = False)
-    print("{} Saving to {} at {}".format(str, dir, time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
 
 
 
@@ -87,7 +78,7 @@ if __name__ == "__main__":
                                     std = "", location = "", layer = "", loss = "")
 
 
-            saveCsv(csv, global_prefix, "After calculating zeroshot performance.")
+            save_csv(args, csv, global_prefix, "After calculating zeroshot performance.")
 
         for method in args.method_list:
             if method == "0-shot":
@@ -133,9 +124,7 @@ if __name__ == "__main__":
                 # save params except for KMeans
                 if method in ["TPC", "BSS"]: 
                     coef, bias = cmodel.coef_ @ pmodel.getDirection(), cmodel.intercept_
-                    saveParams("{}_{}_{}_{}_{}_{}".format(
-                        model, global_prefix, method, "all", train_set, args.seed
-                    ), coef, bias)
+                    save_params(args, f"{model}_{global_prefix}_{method}_{'all'}_{train_set}_{args.seed}", coef, bias)
 
                 acc, std, loss = getAvg(res), np.mean([np.std(lis) for lis in res.values()]), np.mean([np.mean(lis) for lis in lss.values()])
                 print("method = {:8}, prompt_level = {:8}, train_set = {:20}, avgacc is {:.2f}, std is {:.2f}, loss is {:.4f}".format(
@@ -160,6 +149,6 @@ if __name__ == "__main__":
                                         loss = lss[key][idx] if method in ["Prob", "BSS"] else ""
                                         )
 
-        saveCsv(csv, global_prefix, "After finish {}".format(method))
+        save_csv(args, csv, global_prefix, "After finish {method}")
 
     
