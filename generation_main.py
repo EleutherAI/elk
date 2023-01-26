@@ -1,7 +1,7 @@
 import time
 from utils_generation.parser import getArgs
 from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
-from utils_generation.generation import create_dataset_zeroshot_hiddenstates_records
+from utils_generation.generation import create_dataset_hiddenstates_records
 from utils_generation.save_utils import save_records_to_csv
 
 if __name__ == "__main__":
@@ -30,21 +30,16 @@ if __name__ == "__main__":
         # load datasets and save if possible
         name_to_dataframe = load_datasets(args, tokenizer)
 
-        # for each frame, calculate the zero-shot accuracy and generate the hidden states if needed
-        # the zero-shot accuracy will be stored in records
-        # the hidden states will be saved to directories
-        print("-------- zero-shot & generation --------")
+        # For each frame, generate the hidden states and save to directories
+        print("-------- Generation hidden states --------")
 
-        records = create_dataset_zeroshot_hiddenstates_records(model, tokenizer, name_to_dataframe, args)
-        save_records_to_csv(records)
-
+        records = create_dataset_hiddenstates_records(model, tokenizer, name_to_dataframe, args)
+        save_records_to_csv(records, args)
+        
         end = time.time()
         print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
         total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
         elapsed_minutes = round((end - start) / 60, 1)
-        print(f"""
-            Consider prefix {prefix}, {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes. 
-            Generation: {args.cal_zeroshot is True}, Hidden States: {args.cal_hiddenstates is True}
-            """)
+        print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
         print("\n\n---------------------------------------\n\n")
     print("-------------------------------- Finishing Program --------------------------------")
