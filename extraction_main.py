@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import time
-from utils_extraction.load_utils import getDic, set_load_dir, get_zeros_acc
+from utils_extraction.load_utils import getDic, set_load_dir
 from utils_extraction.method_utils import mainResults
 from utils_extraction.func_utils import getAvg, adder
 from utils_extraction.parser import get_extraction_args
@@ -22,11 +22,6 @@ for key in list(vars(args).keys()):
     print("{}: {}".format(key, vars(args)[key]))
 print("-------- args --------")
 
-
-
-
-
-
 if __name__ == "__main__":
     # check the os existence
     if not os.path.exists(args.save_dir):
@@ -44,7 +39,7 @@ if __name__ == "__main__":
 
         # shorten the name
         model = args.model
-        data_num = args.data_num
+        num_data = args.num_data
     
         # Start calculate numbers
         # std is over all prompts within this dataset
@@ -55,41 +50,14 @@ if __name__ == "__main__":
             csv = pd.read_csv(dir)
             print("Loaded {} at {}".format(dir, time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
 
-        if "0-shot" in args.method_list:
-            # load zero-shot performance
-            rawzeros = pd.read_csv(os.path.join(args.load_dir, "{}.csv".format(args.zero)))
-            # Get the global zero acc dict (setname, [acc])
-            zeros_acc = get_zeros_acc(
-                csv_name = args.zero,
-                mdl_name = model,
-                dataset_list = dataset_list,
-                prefix = global_prefix,
-            )
-            for setname in dataset_list:
-                if args.prompt_save_level == "all":
-                    csv = adder(csv, model, global_prefix, "0-shot", "", "", setname, 
-                            np.mean(zeros_acc[setname]),
-                            np.std(zeros_acc[setname]),"","","")
-                else:   # For each prompt, save one line
-                    for idx in range(len(zeros_acc[setname])):
-                        csv = adder(csv, model, global_prefix, "0-shot", 
-                                    prompt_level= idx, train= "", test = setname,
-                                    accuracy = zeros_acc[setname][idx],
-                                    std = "", location = "", layer = "", loss = "")
-
-
-            save_csv(args, csv, global_prefix, "After calculating zeroshot performance.")
-
         for method in args.method_list:
-            if method == "0-shot":
-                continue
             print("-------- method = {} --------".format(method))
 
             mode = args.mode if args.mode != "auto" else (
                 "minus" if method != "Prob" else "concat"
             )
             # load the data_dict and permutation_dict
-            print(data_num)
+            print(num_data)
             data_dict, permutation_dict = getDic(
                 mdl_name= model, 
                 dataset_list=dataset_list,
@@ -97,7 +65,7 @@ if __name__ == "__main__":
                 location = args.location,
                 layer = args.layer,
                 mode = mode,
-                data_num = data_num
+                num_data = num_data
             )
 
             test_dict = {key: range(len(data_dict[key])) for key in dataset_list}
