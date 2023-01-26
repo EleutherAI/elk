@@ -470,13 +470,6 @@ def mainResults(
         projection_model: Model used for projection. Can be used to transform new data.  
         classify_model: Model used for classification. Can be used to predict new data.
     """
-
-    start = time.time()
-    if print_more:
-        print("Projection method: {} (n_con = {}) in {}\nClassification method: {} in: {}".format(
-            projection_method, n_components, projection_dict, 
-            classification_method, test_dict))
-
     # use all data (not split) to do the PCA
     proj_states = getConcat([getConcat([data_dict[key][w][0]
                             for w in lis]) for key, lis in projection_dict.items()])
@@ -517,9 +510,6 @@ def mainResults(
             dataset_to_accurary_per_prompt[key].append(acc)
             dataset_to_loss_per_prompt[key].append(loss)
 
-    duration = time.time() - start
-    if print_more:
-        print("mainResults finished, duration: {}s".format(duration))
     return dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt, projection_model, classification_model
 
 
