@@ -446,7 +446,6 @@ def mainResults(
     # When set to true, will immediate return after we train the projection_model. res and classify_model will be None.
     projection_method = "PCA",
     n_components = 2,           # The dimension you want to reduce to. -1 means no projection will be implemented.
-    projection_only = False,
     classification_method = "LR",                 # can be LR, TPC and BSS
     print_more = False,
     learn_dict = {},
@@ -459,7 +458,6 @@ def mainResults(
         test_dict: Test indexs, results in this list will be return.
         projection_method: The method you use to do projection. Can be `PCA` or `UMAP`.
         n_components: The dimension you want to reduce to. -1 means no projection will be implemented.
-        projection_only: Default is false. When set to true, will directly return the `projection_model`, and `res`, `classify_model` will be None.
         classification_method: Method used to predict, including LR, TPC and BSS. Default is BSS.
         print_more: Whether to print more.
         learn_dict: A dict to specify the learning parameters for torch. See class `classify_model` for details.
@@ -475,11 +473,6 @@ def mainResults(
                             for w in lis]) for key, lis in projection_dict.items()])
     projection_model = myReduction(method = projection_method, n_components=n_components, print_more = print_more)
     projection_model.fit(proj_states)
-
-    if projection_only:
-        return None, projection_model, None
-
-    # pairFunc = partial(getPair, data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model)
 
     if classification_method == "Prob":
         classification_model = ConsistencyMethod(verbose=print_more)
@@ -521,7 +514,6 @@ def printAcc(input_dic, verbose = 1):
 
     Return:
         global_acc: Global level accuracy
-"
     """
     
     if type(input_dic) != dict:
