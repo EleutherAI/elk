@@ -16,7 +16,7 @@ def get_extraction_args(json_dir = "./registration"):
     parser.add_argument("--prefix", nargs="+", default = ["normal"], choices = registered_prefix)
     parser.add_argument("--datasets", nargs="+", default = registered_dataset_list)
     parser.add_argument("--test", type = str, default = "testall", choices = ["testone", "testall"])
-    parser.add_argument("--data_num", type = int, default = 10) # default = 1000
+    parser.add_argument("--num_data", type = int, default = 10) # default = 1000
     parser.add_argument("--method_list", nargs="+", default = ["0-shot", "TPC", "KMeans", "LR"]) #, "BSS", "Prob"
     parser.add_argument("--mode", type = str, default = "auto", choices = ["auto", "minus", "concat"], help = "How you combine h^+ and h^-.")
     parser.add_argument("--save_dir", type = str, default = "extraction_results", help = "where the csv and params are saved")
