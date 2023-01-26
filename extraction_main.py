@@ -23,7 +23,6 @@ for key in list(vars(args).keys()):
 print("-------- args --------")
 
 if __name__ == "__main__":
-    # check the os existence
     if not os.path.exists(args.save_dir):
         os.mkdir(args.save_dir)
     if not os.path.exists(os.path.join(args.save_dir, "params")):
@@ -32,7 +31,7 @@ if __name__ == "__main__":
 
     # each loop will generate a csv file
     for global_prefix in args.prefix:
-        print("---------------- model = {}, prefix = {} ----------------".format(args.model, global_prefix) )
+        print(f"---------------- model = {args.model}, prefix = {global_prefix} ----------------")
         # Set the random seed, in which case the permutation_dict will be the same
         random.seed(args.seed)
         np.random.seed(args.seed)
@@ -46,18 +45,17 @@ if __name__ == "__main__":
         if not args.append:
             csv = pd.DataFrame(columns = ["model", "prefix", "method", "prompt_level", "train", "test", "accuracy", "std"])
         else:
-            dir = os.path.join(args.save_dir, "{}_{}_{}.csv".format(args.model, global_prefix, args.seed))
+            dir = os.path.join(args.save_dir, f"{args.model}_{global_prefix}_{args.seed}.csv")
             csv = pd.read_csv(dir)
-            print("Loaded {} at {}".format(dir, time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+            print(f"Loaded {dir} at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
         for method in args.method_list:
-            print("-------- method = {} --------".format(method))
+            print("-------- method = {method} --------")
 
             mode = args.mode if args.mode != "auto" else (
                 "minus" if method != "Prob" else "concat"
             )
             # load the data_dict and permutation_dict
-            print(num_data)
             data_dict, permutation_dict = getDic(
                 mdl_name= model, 
                 dataset_list=dataset_list,
@@ -95,8 +93,10 @@ if __name__ == "__main__":
                     save_params(args, f"{model}_{global_prefix}_{method}_{'all'}_{train_set}_{args.seed}", coef, bias)
 
                 acc, std, loss = getAvg(res), np.mean([np.std(lis) for lis in res.values()]), np.mean([np.mean(lis) for lis in lss.values()])
-                print("method = {:8}, prompt_level = {:8}, train_set = {:20}, avgacc is {:.2f}, std is {:.2f}, loss is {:.4f}".format(
-                    method, "all", train_set, 100 * acc, 100 * std, loss))
+                print(f"""
+                method = {method}, 
+                prompt_level = {'all'}, train_set = {:train_set}, avgacc is {100 * acc}, std is {100 * std}, loss is {loss}
+                """)
 
                 for key in dataset_list:
                     if args.prompt_save_level == "all":
