@@ -4,11 +4,11 @@ import time
 
 def save_params(args, name, coef, intercept):
     path = os.path.join(args.save_dir, "params")
-    np.save(os.path.join(path, "coef_{}.npy".format(name)), coef)
-    np.save(os.path.join(path, "intercept_{}.npy".format(name)), intercept)
+    np.save(os.path.join(path, f"coef_{name}.npy"), coef)
+    np.save(os.path.join(path, f"intercept_{name}.npy"), intercept)
 
 def save_df_to_csv(args, df, prefix, str = ""):
-    dir = os.path.join(args.save_dir, "{}_{}_{}.csv".format(args.model, prefix, args.seed))
+    dir = os.path.join(args.save_dir, f"{args.model}_{prefix}_{args.seed}.csv")
     df.to_csv(dir, index = False)
-    print("{} Saving to {} at {}".format(str, dir, time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+    print(f"{str} Saving to {dir} at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
