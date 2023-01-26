@@ -25,9 +25,9 @@ def set_load_dir(path):
     global load_dir
     load_dir = path
 
-def getDirList(mdl, set_name, load_dir, data_num, confusion, place, prompt_idx):
+def getDirList(mdl, set_name, load_dir, num_data, confusion, place, prompt_idx):
     length = len(mdl)
-    filter = [w for w in os.listdir(load_dir) if (mdl == w[:length] and mdl + "_" in w and set_name + "_" in w and str(data_num) + "_" in w and confusion + "_" in w and place in w)]
+    filter = [w for w in os.listdir(load_dir) if (mdl == w[:length] and mdl + "_" in w and set_name + "_" in w and str(num_data) + "_" in w and confusion + "_" in w and place in w)]
     if prompt_idx is not None:     
         filter = [w for w in filter if int(w.split("_")[3][6:]) in prompt_idx]
     return [os.path.join(load_dir, w) for w in filter]
@@ -54,7 +54,7 @@ def normalize(data, scale =True, demean = True):
     avgnorm = np.mean(norm)
     return data / avgnorm * np.sqrt(data.shape[1])
 
-def loadHiddenStates(mdl, set_name, load_dir, promtpt_idx, location = "encoder", layer = -1, data_num = 1000, confusion = "normal", place = "last", scale = True, demean = True, mode = "minus", verbose = True):
+def loadHiddenStates(mdl, set_name, load_dir, promtpt_idx, location = "encoder", layer = -1, num_data = 1000, confusion = "normal", place = "last", scale = True, demean = True, mode = "minus", verbose = True):
     '''
         Load generated hidden states, return a dict where key is the dataset name and values is a list. Each tuple in the list is the (x,y) pair of one prompt.
         if mode == minus, then get h - h'
@@ -62,7 +62,7 @@ def loadHiddenStates(mdl, set_name, load_dir, promtpt_idx, location = "encoder",
         elif mode == 0 or 1, then get h or h'
     '''
 
-    dir_list = getDirList(mdl, set_name, load_dir, data_num, confusion, place, promtpt_idx)
+    dir_list = getDirList(mdl, set_name, load_dir, num_data, confusion, place, promtpt_idx)
     append_list = ["_" + location + str(layer) for _ in dir_list]
     
     hidden_states = [
@@ -95,7 +95,7 @@ print("------ Func: getDic ------\n\
     location: Either 'encoder' or 'decoder'. Determine which hidden states to load.\n\
     layer: An index representing which layer in `location` should we load the hidden state from.\n\
     prompt_dict: dict of prompts to consider. Default is taking all prompts (empty dict). Key is the set name and value is an index list. Only return hiiden states from corresponding prompts.\n\
-    data_num: population of the dataset. Default is 1000, and it depends on generation process.\n\
+    num_data: population of the dataset. Default is 1000, and it depends on generation process.\n\
     scale: whether to rescale the whole dataset\n\
     demean: whether to subtract the mean\n\
     mode: how to generate hidden states from h and h'\n\
@@ -104,7 +104,7 @@ print("------ Func: getDic ------\n\
     data_dict: a dict with key equals to set name, and value is a list. Each element in the list is a tuple (state, label). state has shape (#data * #dim), and label has shape (#data).\n\
     permutation_dict: [train_idx, test_idx], where train_idx is the subset of [#data] that corresponds to the training set, and test_idx is the subset that corresponds to the test set.\n\
 ")
-def getDic(mdl_name, dataset_list, prefix = "normal", location="auto", layer=-1, prompt_dict = None, data_num = 1000, scale = True, demean = True, mode = "minus", verbose = True):
+def getDic(mdl_name, dataset_list, prefix = "normal", location="auto", layer=-1, prompt_dict = None, num_data = 1000, scale = True, demean = True, mode = "minus", verbose = True):
     global load_dir
     if location == "auto":
         location = "decoder" if "gpt" in mdl_name else "encoder"
@@ -112,7 +112,7 @@ def getDic(mdl_name, dataset_list, prefix = "normal", location="auto", layer=-1,
         layer += models_layer_num[mdl_name]
     print("start loading {} hidden states {} for {} with {} prefix. Prompt_dict: {}, Scale: {}, Demean: {}, Mode: {}".format(location, layer, mdl_name, prefix, prompt_dict if prompt_dict is not None else "ALL", scale, demean, mode))
     prompt_dict = prompt_dict if prompt_dict is not None else {key: None for key in dataset_list}
-    data_dict = {set_name: loadHiddenStates(mdl_name, set_name, load_dir, prompt_dict[set_name], location, layer, data_num = data_num, confusion = prefix, scale = scale, demean = demean, mode = mode, verbose = verbose) for set_name in dataset_list}
+    data_dict = {set_name: loadHiddenStates(mdl_name, set_name, load_dir, prompt_dict[set_name], location, layer, num_data = num_data, confusion = prefix, scale = scale, demean = demean, mode = mode, verbose = verbose) for set_name in dataset_list}
     permutation_dict = {set_name: getPermutation(data_dict[set_name]) for set_name in dataset_list}
     return data_dict, permutation_dict
 
