@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
                 # return a dict with the same shape as test_dict
                 # for each key test_dict[key] is a unitary list
-                res, lss, pmodel, cmodel = mainResults(
+                dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt, projection_model, classification_model = mainResults(
                     data_dict = dataset_to_hiddenstates, 
                     permutation_dict = permutation_dict, 
                     projection_dict = projection_dict,
@@ -86,29 +86,32 @@ if __name__ == "__main__":
                     classification_method = method,
                     device = args.model_device)
 
-                acc, std, loss = getAvg(res), np.mean([np.std(lis) for lis in res.values()]), np.mean([np.mean(lis) for lis in lss.values()])
+                avg_accuracy = np.mean([np.mean(accuracies) for accuracies in dataset_to_accurary_per_prompt.values()]) 
+                avg_accuracy_std = np.mean([np.std(accuracies) for accuracies in dataset_to_accurary_per_prompt.values()]), 
+                avg_loss = np.mean([np.mean(losses) for losses in dataset_to_loss_per_prompt.values()])
+                
                 print(f"""
                     method = {method}, 
-                    prompt_level = {'all'}, train_set = {train_set}, avgacc is {100 * acc}, std is {100 * std}, loss is {loss}
+                    prompt_level = {'all'}, train_set = {train_set}, avgacc is {100 * avg_accuracy}, std is {100 * avg_accuracy_std}, loss is {avg_loss}
                     """)
 
                 for key in dataset_list:
                     if args.prompt_save_level == "all":
                         csv = adder(csv, model, prefix, method, "all", train_set, key,
-                                    accuracy = np.mean(res[key]),
-                                    std = np.std(res[key]),
+                                    accuracy = np.mean(dataset_to_accurary_per_prompt[key]),
+                                    std = np.std(dataset_to_accurary_per_prompt[key]),
                                     location = args.location,
                                     layer = args.layer,
-                                    loss = np.mean(lss[key]) if method in ["Prob", "BSS"] else ""
+                                    loss = np.mean(dataset_to_loss_per_prompt[key]) if method in ["Prob", "BSS"] else ""
                                     )
                     else:
-                        for idx in range(len(res[key])):
+                        for idx in range(len(dataset_to_accurary_per_prompt[key])):
                             csv = adder(csv, model, prefix, method, idx, train_set, key,
-                                        accuracy = res[key][idx],
+                                        accuracy = dataset_to_accurary_per_prompt[key][idx],
                                         std = "",
                                         location = args.location,
                                         layer = args.layer,
-                                        loss = lss[key][idx] if method in ["Prob", "BSS"] else ""
+                                        loss = dataset_to_loss_per_prompt[key][idx] if method in ["Prob", "BSS"] else ""
                                         )
 
         save_csv(args, csv, prefix, f"After finish {method}")

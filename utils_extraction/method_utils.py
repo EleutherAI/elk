@@ -487,22 +487,22 @@ def mainResults(
     # pairFunc = partial(getPair, data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model)
 
     if classification_method == "Prob":
-        classify_model = ConsistencyMethod(verbose=print_more)
+        classification_model = ConsistencyMethod(verbose=print_more)
         datas, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict)
         assert len(datas.shape) == 2
         data = [datas[:,:datas.shape[1]//2], datas[:,datas.shape[1]//2:]]
-        classify_model.fit(data = data, label=label, device = device, **learn_dict)
+        classification_model.fit(data = data, label=label, device = device, **learn_dict)
 
 
     else:
-        classify_model = myClassifyModel(method = classification_method, device=device, print_more = print_more)
-        classify_model.fit(*getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict))
+        classification_model = myClassifyModel(method = classification_method, device=device, print_more = print_more)
+        classification_model.fit(*getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict))
     
 
 
-    res, lss = {}, {}
+    dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt = {}, {}
     for key, lis in test_dict.items():
-        res[key], lss[key] = [], []
+        dataset_to_accurary_per_prompt[key], dataset_to_loss_per_prompt[key] = [], []
         for prompt_idx in lis:
             dic = {key: [prompt_idx]}
             # if train_on_test and method != "BSS":
@@ -511,14 +511,14 @@ def mainResults(
             data, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = dic, split = "test")
             if classification_method == "Prob":
                 data = [data[:,:data.shape[1]//2], data[:,data.shape[1]//2:]]
-            acc, loss = classify_model.score(data, label, getloss = True)
-            res[key].append(acc)
-            lss[key].append(loss)
+            acc, loss = classification_model.score(data, label, getloss = True)
+            dataset_to_accurary_per_prompt[key].append(acc)
+            dataset_to_loss_per_prompt[key].append(loss)
 
     duration = time.time() - start
     if print_more:
         print("mainResults finished, duration: {}s".format(duration))
-    return res, lss, projection_model, classify_model
+    return dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt, projection_model, classification_model
 
 print("\
 ------ Func: printAcc ------\n\
