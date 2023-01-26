@@ -6,10 +6,11 @@ import time
 
 def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
     
-    tokenize = functools.partial(getToken, tokenizer=tokenizer, device=args.model_device)
+    apply_tokenizer = functools.partial(getToken, tokenizer=tokenizer, device=args.model_device)
 
     hidden_states = [[], []]
-    pad_answer = tokenize("")
+    pad_answer = apply_tokenizer("")
+
 
     if args.print_more:
         print("Generating {} hidden states for {}. Layer = {}".format(
@@ -29,20 +30,20 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
         # calculate the hidden states
         if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
             if args.states_location == "encoder":
-                ids_paired = [tokenize(getDataPoint(frame, idx, w)) for w in ["0", "1"]]
+                ids_paired = [apply_tokenizer(getDataPoint(frame, idx, w)) for w in ["0", "1"]]
                 hidden_states_paired = [
                     model(ids, labels=pad_answer, output_hidden_states=True).encoder_hidden_states for ids in ids_paired]
             else:
-                ans_token = [tokenize(w) for w in getDataPoint(frame, idx, "selection")]
+                ans_token = [apply_tokenizer(w) for w in getDataPoint(frame, idx, "selection")]
                 # get the input_ids for candidates
-                input_ids = tokenize(getDataPoint(frame, idx, 'null'))
+                input_ids = apply_tokenizer(getDataPoint(frame, idx, 'null'))
 
                 # calculate the hidden states and take the layer `state_idx`
                 hidden_states_paired = [
                     model(input_ids, labels=ans, output_hidden_states=True).decoder_hidden_states for ans in ans_token]
         elif "gpt" in mdl_name or "bert" in mdl_name:
             appender = " " + str(tokenizer.eos_token) if "gpt" in mdl_name else ""
-            ids_paired = [tokenize(getDataPoint(frame, idx, w) + appender) for w in ["0", "1"]]
+            ids_paired = [apply_tokenizer(getDataPoint(frame, idx, w) + appender) for w in ["0", "1"]]
             # Notice that since gpt and bert only have either decoder or encoder, we don't need to specify which one to use.
             hidden_states_paired = [
                 model(ids, output_hidden_states=True).hidden_states for ids in ids_paired]
@@ -62,53 +63,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
     return hidden_states 
 
 
-def calculate_zero_shot_performance(model, tokenize, frame, mdl_name, args):
-    log_probs_list = []
-    logits_list = []
-
-    # Loop over data points
-    for idx in range(len(frame)):
-        if "gpt" in mdl_name or "bert" in mdl_name:
-            ans_list = getDataPoint(frame, idx, "selection")
-            ans_token = [tokenize(w) for w in ans_list]
-
-            # get the input_ids
-            ids_paired = [tokenize(getDataPoint(
-                frame, idx, w)) for w in ["0", "1"]]
-            logits = [model(w)["logits"] for w in ids_paired]
-
-            logit_token = ids_paired
-
-        elif "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
-        # for idx in range(len(frame)):
-
-            ans_list = getDataPoint(frame, idx, "selection")
-            ans_token = [tokenize(w) for w in ans_list]
-            # get the input_ids for candidates
-            input_ids = tokenize(getDataPoint(frame, idx, 'null'))
-
-            # calculate the logits
-            logits = [
-                model(input_ids, labels=w)["logits"] for w in ans_token]
-            
-            logit_token = ans_token
-
-        else:
-            raise NotImplementedError(
-                "model {} is not supported!".format(mdl_name))
-
-
-        if args.cal_zeroshot:
-            # calculate the logits
-            probs = getLogProbs(logits, ans_token, mdl_name)
-            log_probs_list.append(toNP(probs))
-        if args.cal_logits:
-            
-            logits_list.append(toNP(getLogits(logits, logit_token, mdl_name)))  
-
-    return log_probs_list, logits_list  
-
-def create_dataset_zeroshot_hiddenstates_records(model, tokenizer, frame_dict, args):
+def create_dataset_hiddenstates_records(model, tokenizer, name_to_dataframe, args):
     '''
         This function will calculate the zeroshot accuracy for each dataset and properly store
     '''
@@ -119,59 +74,24 @@ def create_dataset_zeroshot_hiddenstates_records(model, tokenizer, frame_dict, a
         "dataset": key,
         "prefix": args.prefix,
         "tag": args.tag,
-        "cal_zeroshot": bool(args.cal_zeroshot),
         "cal_hiddenstates": bool(args.cal_hiddenstates),
 
-    } for key in frame_dict.keys()]
+    } for key in name_to_dataframe.keys()]
 
     mdl_name = args.model
-    tokenize = functools.partial(getToken, tokenizer=tokenizer, device=args.model_device)
     with torch.no_grad():
-        for key, record in zip(frame_dict.keys(), records):
-            start = time.time()
-            frame = frame_dict[key]
+        for name, record in zip(name_to_dataframe.keys(), records):
+            dataframe = name_to_dataframe[name]
 
-            record["population"] = len(frame)
-            if args.print_more:
-                print(f"Start {key}, length = {len(frame)}")
+            record["population"] = len(dataframe)
 
-            # This part corresponds to zero-shot accuracy calculation
-            # as well as the logits calculation
-            if args.cal_zeroshot or args.cal_logits:
-                logits_list, log_probs_list = calculate_zero_shot_performance(model, tokenize, frame, mdl_name, args)
-
-                # Essemble and save
-                if args.cal_zeroshot:
-                    # add to the records
-                    labels = getDataPoint(frame, [0, len(frame)], "label").to_list()
-                    record["log_probs"] = sum([int(w[0] < w[1]) == l for w, l in zip(log_probs_list, labels)]) / len(frame)
-                    record["calibrated"] = getCalibrated(log_probs_list, labels)
-
-                    if args.print_more:
-                        print(f"Finish calculating the zero-shot accuracy for {len(frame)} data in {key}.")
-                
-                # save logits
-                if args.cal_logits:
-                    # notice that logits should be num_data * vocab_size!!! 
-                    logits = np.stack(logits_list, axis = 0)
-
-                    saveArray([logits], ["logits"], key, args)
-
-                    if args.print_more:
-                        print(f"Finish generating logits for {len(frame)} data in {key}. Shape of logits is {logits.shape}.")
-                
 
             # This part corresponds to hidden states generation
-            if args.cal_hiddenstates:
-                hidden_states = calculate_hidden_state(args, model, tokenizer, frame, mdl_name)
-                saveArray(hidden_states, ["0", "1"], key, args)
-
-                if args.print_more:
-                    print(f"Finish generating hidden states for {len(frame)} data in {key}.")
-
-            print(f"{round((time.time() -start) / record['population'], 2)} s/data. {record}")
+            hidden_states = calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name)
+            saveArray(hidden_states, ["0", "1"], name, args)
 
     return records
+
 
 def getDataPoint(frame, idx, key):
     if type(idx) == list:
@@ -222,6 +142,8 @@ def getLogProbs(logits, ans_token, mdl_name):
                 for logit, ans in zip(logits, ans_token)]
     elif "bert" in mdl_name:
         # each element has shape 1 * 3, and doing softmax will return probs
+        
+        # BUG: WHY IS THIS TMP VARIABLE NOT USED? 
         tmp = [w.softmax(-1) for w in logits]
         # entailment - contradiction, representing how this is likely to be the answer
         return [w[0,-1] - w[0,0] for w in logits]
