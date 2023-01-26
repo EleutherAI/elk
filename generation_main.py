@@ -32,14 +32,14 @@ if __name__ == "__main__":
 
         # For each frame, generate the hidden states and save to directories
         print("-------- Generating hidden states --------")
-
         records = create_dataset_hiddenstates_records(model, tokenizer, name_to_dataframe, args)
         save_records_to_csv(records, args)
         
-        end = time.time()
-        print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
         total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
+        end = time.time()
         elapsed_minutes = round((end - start) / 60, 1)
+        print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
         print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
         print("\n\n---------------------------------------\n\n")
+    
     print("-------------------------------- Finishing Program --------------------------------")
