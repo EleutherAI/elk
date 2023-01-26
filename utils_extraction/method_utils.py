@@ -474,17 +474,16 @@ def mainResults(
     projection_model = myReduction(method = projection_method, n_components=n_components, print_more = print_more)
     projection_model.fit(proj_states)
 
+    datas, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict)
+    assert len(datas.shape) == 2
+
     if classification_method == "Prob":
-        classification_model = ConsistencyMethod(verbose=print_more)
-        datas, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict)
-        assert len(datas.shape) == 2
+        classification_model = ConsistencyMethod(verbose=print_more)    
         data = [datas[:,:datas.shape[1]//2], datas[:,datas.shape[1]//2:]]
-        classification_model.fit(data = data, label=label, device = device, **learn_dict)
-
-
+        classification_model.fit(data = data, label=label, device = device, **learn_dict)   
     else:
         classification_model = myClassifyModel(method = classification_method, device=device, print_more = print_more)
-        classification_model.fit(*getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict))
+        classification_model.fit(datas, label)
     
 
 
