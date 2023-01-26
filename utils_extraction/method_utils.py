@@ -492,9 +492,6 @@ def mainResults(
         dataset_to_accurary_per_prompt[key], dataset_to_loss_per_prompt[key] = [], []
         for prompt_idx in lis:
             dic = {key: [prompt_idx]}
-            # if train_on_test and method != "BSS":
-            #     classify_model = myClassifyModel(method = method, print_more = print_more)
-            #     classify_model.fit(*getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = dic))
             data, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = dic, split = "test")
             if classification_method == "Prob":
                 data = [data[:,:data.shape[1]//2], data[:,data.shape[1]//2:]]
