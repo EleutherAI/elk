@@ -17,11 +17,6 @@ dataset_names = args.datasets
 set_load_dir(args.load_dir)
 
 
-print("-------- args --------")
-for dataset in list(vars(args).keys()):
-    print("{}: {}".format(dataset, vars(args)[dataset]))
-print("-------- args --------")
-
 if __name__ == "__main__":
     if not os.path.exists(args.save_dir):
         os.mkdir(args.save_dir)
@@ -47,7 +42,6 @@ if __name__ == "__main__":
         else:
             dir = os.path.join(args.save_dir, f"{args.model}_{prefix}_{args.seed}.csv")
             stats_df = pd.read_csv(dir)
-            print(f"Loaded {dir} at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
         for method in args.method_list:
             print("-------- method = {method} --------")
@@ -55,6 +49,8 @@ if __name__ == "__main__":
             mode = args.mode if args.mode != "auto" else (
                 "minus" if method != "Prob" else "concat"
             )
+
+            #TODO: UNDERSTAND AND RENAME PERMUTATION DICT
             dataset_to_hiddenstates, permutation_dict = get_hiddenstates_and_permutations(
                 mdl_name= model, 
                 all_datasets=dataset_names,
@@ -64,8 +60,9 @@ if __name__ == "__main__":
                 mode = mode,
                 num_data = num_data
             )
-
-            test_dict = {key: range(len(dataset_to_hiddenstates[key])) for key in dataset_names}
+            
+            # TODO: WHY IS THE CONSTRUCTED LIKE THIS AND WHAT IS IT USED FOR?
+            test_dict = {dataset: range(len(dataset_to_hiddenstates[dataset])) for dataset in dataset_names}
 
             for train_set in ["all"] + dataset_names:
 
@@ -75,6 +72,7 @@ if __name__ == "__main__":
 
                 # return a dict with the same shape as test_dict
                 # for each key test_dict[key] is a unitary list
+                # TODO: REFACTOR THIS FUNCTION
                 dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt, projection_model, classification_model = mainResults(
                     data_dict = dataset_to_hiddenstates, 
                     permutation_dict = permutation_dict, 
