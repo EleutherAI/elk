@@ -12,12 +12,12 @@ import pandas as pd
 import random 
 
 
-args = get_extraction_args(json_dir = "./registration")
-dataset_names = args.datasets
-set_load_dir(args.load_dir)
-
-
 if __name__ == "__main__":
+
+    args = get_extraction_args(json_dir = "./registration")
+    dataset_names = args.datasets
+    # TODO: REMOVE GLOBAL VARIABLE SETTING IN set_load_dir 
+    set_load_dir(args.load_dir)
     if not os.path.exists(args.save_dir):
         os.mkdir(args.save_dir)
     if not os.path.exists(os.path.join(args.save_dir, "params")):
@@ -46,6 +46,7 @@ if __name__ == "__main__":
         for method in args.method_list:
             print("-------- method = {method} --------")
 
+            # TODO: Write this more elegantly
             mode = args.mode if args.mode != "auto" else (
                 "minus" if method != "Prob" else "concat"
             )
