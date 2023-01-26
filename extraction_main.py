@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import time
 from utils_extraction.load_utils import get_hiddenstates_and_permutations, set_load_dir
-from utils_extraction.method_utils import mainResults
+from utils_extraction.method_utils import get_main_results
 from utils_extraction.func_utils import getAvg, populate_stats_df
 from utils_extraction.parser import get_extraction_args
 from utils_extraction.save_utils import save_df_to_csv, save_params
@@ -73,7 +73,7 @@ if __name__ == "__main__":
                 # return a dict with the same shape as test_dict
                 # for each key test_dict[key] is a unitary list
                 # TODO: REFACTOR THIS FUNCTION
-                dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt, projection_model, classification_model = mainResults(
+                dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt = get_main_results(
                     data_dict = dataset_to_hiddenstates, 
                     permutation_dict = permutation_dict, 
                     projection_dict = projection_dict,

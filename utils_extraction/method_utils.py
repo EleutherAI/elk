@@ -435,7 +435,7 @@ def getPair(target_dict, data_dict, permutation_dict, projection_model, split = 
     return data, label
 
 
-def mainResults(
+def get_main_results(
     # dict of hidden states, key is set_name, each value is a list with len = #promp_idx
     data_dict,
     # dict of permutation, key is set_name, contain 2 array indicating train and test split
@@ -464,9 +464,7 @@ def mainResults(
     
     Returns: 
         dataset_to_accurary_per_prompt:
-        dataset_to_loss_per_prompt: 
-        projection_model: Model used for projection. Can be used to transform new data.  
-        classify_model: Model used for classification. Can be used to predict new data.
+        dataset_to_loss_per_prompt:
     """
     # use all data (not split) to do the PCA
     proj_states = getConcat([getConcat([data_dict[key][w][0]
@@ -474,32 +472,31 @@ def mainResults(
     projection_model = myReduction(method = projection_method, n_components=n_components, print_more = print_more)
     projection_model.fit(proj_states)
 
-    datas, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict)
-    assert len(datas.shape) == 2
+    # TODO: UNDERSTAND getPair FUNCTION
+    data, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict)
+    assert len(data.shape) == 2
 
     if classification_method == "Prob":
         classification_model = ConsistencyMethod(verbose=print_more)    
-        data = [datas[:,:datas.shape[1]//2], datas[:,datas.shape[1]//2:]]
+        data = [data[:,:data.shape[1]//2], data[:,data.shape[1]//2:]]
         classification_model.fit(data = data, label=label, device = device, **learn_dict)   
     else:
         classification_model = myClassifyModel(method = classification_method, device=device, print_more = print_more)
-        classification_model.fit(datas, label)
+        classification_model.fit(data, label)
     
-
-
     dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt = {}, {}
-    for key, lis in test_dict.items():
-        dataset_to_accurary_per_prompt[key], dataset_to_loss_per_prompt[key] = [], []
-        for prompt_idx in lis:
-            dic = {key: [prompt_idx]}
+    for dataset_name, prompt_indices in test_dict.items():
+        dataset_to_accurary_per_prompt[dataset_name], dataset_to_loss_per_prompt[dataset_name] = [], []
+        for prompt_idx in prompt_indices:
+            dic = {dataset_name: [prompt_idx]}
             data, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = dic, split = "test")
             if classification_method == "Prob":
                 data = [data[:,:data.shape[1]//2], data[:,data.shape[1]//2:]]
             acc, loss = classification_model.score(data, label, getloss = True)
-            dataset_to_accurary_per_prompt[key].append(acc)
-            dataset_to_loss_per_prompt[key].append(loss)
+            dataset_to_accurary_per_prompt[dataset_name].append(acc)
+            dataset_to_loss_per_prompt[dataset_name].append(loss)
 
-    return dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt, projection_model, classification_model
+    return dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt
 
 
 def printAcc(input_dic, verbose = 1):
