@@ -88,7 +88,7 @@ if __name__ == "__main__":
                 avg_accuracy_std = np.mean([np.std(accuracies) for accuracies in dataset_to_accurary_per_prompt.values()]), 
                 avg_loss = np.mean([np.mean(losses) for losses in dataset_to_loss_per_prompt.values()])
 
-                stats_df = populate_stats_df(stats_df, model, prefix, method, "all", train_set, avg_accuracy, avg_accuracy_std, avg_loss)
+                stats_df = populate_stats_df(dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt, stats_df, model, prefix, method, args, train_set, dataset_names)
 
             save_df_to_csv(args, stats_df, prefix, f"After finish {method}")
 
