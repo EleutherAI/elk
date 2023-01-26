@@ -4,22 +4,22 @@ import numpy as np
 import time
 from utils_extraction.load_utils import get_hiddenstates_and_permutations, set_load_dir
 from utils_extraction.method_utils import mainResults
-from utils_extraction.func_utils import getAvg, adder
+from utils_extraction.func_utils import getAvg, populate_stats_df
 from utils_extraction.parser import get_extraction_args
-from utils_extraction.save_utils import save_csv, save_params
+from utils_extraction.save_utils import save_df_to_csv, save_params
 
 import pandas as pd
 import random 
 
 
 args = get_extraction_args(json_dir = "./registration")
-dataset_list = args.datasets
+dataset_names = args.datasets
 set_load_dir(args.load_dir)
 
 
 print("-------- args --------")
-for key in list(vars(args).keys()):
-    print("{}: {}".format(key, vars(args)[key]))
+for dataset in list(vars(args).keys()):
+    print("{}: {}".format(dataset, vars(args)[dataset]))
 print("-------- args --------")
 
 if __name__ == "__main__":
@@ -43,10 +43,10 @@ if __name__ == "__main__":
         # Start calculate numbers
         # std is over all prompts within this dataset
         if not args.append:
-            csv = pd.DataFrame(columns = ["model", "prefix", "method", "prompt_level", "train", "test", "accuracy", "std"])
+            stats_df = pd.DataFrame(columns = ["model", "prefix", "method", "prompt_level", "train", "test", "accuracy", "std"])
         else:
             dir = os.path.join(args.save_dir, f"{args.model}_{prefix}_{args.seed}.csv")
-            csv = pd.read_csv(dir)
+            stats_df = pd.read_csv(dir)
             print(f"Loaded {dir} at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
         for method in args.method_list:
@@ -57,7 +57,7 @@ if __name__ == "__main__":
             )
             dataset_to_hiddenstates, permutation_dict = get_hiddenstates_and_permutations(
                 mdl_name= model, 
-                all_datasets=dataset_list,
+                all_datasets=dataset_names,
                 prefix = prefix,
                 location = args.location,
                 layer = args.layer,
@@ -65,14 +65,13 @@ if __name__ == "__main__":
                 num_data = num_data
             )
 
-            test_dict = {key: range(len(dataset_to_hiddenstates[key])) for key in dataset_list}
+            test_dict = {key: range(len(dataset_to_hiddenstates[key])) for key in dataset_names}
 
-            for train_set in ["all"] + dataset_list:
+            for train_set in ["all"] + dataset_names:
 
-                train_list = dataset_list if train_set == "all" else [train_set]
-                projection_dict = {key: range(len(dataset_to_hiddenstates[key])) for key in train_list}
-
-                n_components = -1
+                dataset_names_train = dataset_names if train_set == "all" else [train_set]
+                #TODO: WHY IS THIS CALLED PROJECTION DICT?
+                projection_dict = {dataset: range(len(dataset_to_hiddenstates[dataset])) for dataset in dataset_names_train}
 
                 # return a dict with the same shape as test_dict
                 # for each key test_dict[key] is a unitary list
@@ -81,7 +80,7 @@ if __name__ == "__main__":
                     permutation_dict = permutation_dict, 
                     projection_dict = projection_dict,
                     test_dict = test_dict, 
-                    n_components = n_components, 
+                    n_components = -1, 
                     projection_method = "PCA",
                     classification_method = method,
                     device = args.model_device)
@@ -89,31 +88,9 @@ if __name__ == "__main__":
                 avg_accuracy = np.mean([np.mean(accuracies) for accuracies in dataset_to_accurary_per_prompt.values()]) 
                 avg_accuracy_std = np.mean([np.std(accuracies) for accuracies in dataset_to_accurary_per_prompt.values()]), 
                 avg_loss = np.mean([np.mean(losses) for losses in dataset_to_loss_per_prompt.values()])
-                
-                print(f"""
-                    method = {method}, 
-                    prompt_level = {'all'}, train_set = {train_set}, avgacc is {100 * avg_accuracy}, std is {100 * avg_accuracy_std}, loss is {avg_loss}
-                    """)
 
-                for key in dataset_list:
-                    if args.prompt_save_level == "all":
-                        csv = adder(csv, model, prefix, method, "all", train_set, key,
-                                    accuracy = np.mean(dataset_to_accurary_per_prompt[key]),
-                                    std = np.std(dataset_to_accurary_per_prompt[key]),
-                                    location = args.location,
-                                    layer = args.layer,
-                                    loss = np.mean(dataset_to_loss_per_prompt[key]) if method in ["Prob", "BSS"] else ""
-                                    )
-                    else:
-                        for idx in range(len(dataset_to_accurary_per_prompt[key])):
-                            csv = adder(csv, model, prefix, method, idx, train_set, key,
-                                        accuracy = dataset_to_accurary_per_prompt[key][idx],
-                                        std = "",
-                                        location = args.location,
-                                        layer = args.layer,
-                                        loss = dataset_to_loss_per_prompt[key][idx] if method in ["Prob", "BSS"] else ""
-                                        )
+                stats_df = populate_stats_df(stats_df, model, prefix, method, "all", train_set, avg_accuracy, avg_accuracy_std, avg_loss)
 
-        save_csv(args, csv, prefix, f"After finish {method}")
+            save_df_to_csv(args, stats_df, prefix, f"After finish {method}")
 
     
