@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import functools
 from utils_generation.save_utils import saveArray
-import time
+from utils_generation.save_utils import save_records_to_csv
 
 def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
     
@@ -55,8 +55,17 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
 
     return hidden_states 
 
-
-def create_dataset_hiddenstates_records(model, tokenizer, name_to_dataframe, args):
+def create_hiddenstates(model, tokenizer, name_to_dataframe, args):
+    '''
+        This function will calculate the zeroshot accuracy for each dataset and properly store
+    '''
+    with torch.no_grad():
+        for name, dataframe in name_to_dataframe.items():
+            # This part corresponds to hidden states generation
+            hidden_states = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
+            saveArray(hidden_states, ["0", "1"], name, args)
+    
+def create_records(model, tokenizer, name_to_dataframe, args):
     '''
         This function will calculate the zeroshot accuracy for each dataset and properly store
     '''
@@ -71,19 +80,12 @@ def create_dataset_hiddenstates_records(model, tokenizer, name_to_dataframe, arg
 
     } for key in name_to_dataframe.keys()]
 
-    mdl_name = args.model
     with torch.no_grad():
         for name, record in zip(name_to_dataframe.keys(), records):
             dataframe = name_to_dataframe[name]
-
             record["population"] = len(dataframe)
 
-
-            # This part corresponds to hidden states generation
-            hidden_states = calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name)
-            saveArray(hidden_states, ["0", "1"], name, args)
-
-    return records
+    save_records_to_csv(records, args)
 
 
 def getDataPoint(frame, idx, key):
