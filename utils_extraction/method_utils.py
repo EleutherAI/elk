@@ -491,23 +491,8 @@ def mainResults(
         datas, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict)
         assert len(datas.shape) == 2
         data = [datas[:,:datas.shape[1]//2], datas[:,datas.shape[1]//2:]]
-        classify_model.fit(data = data, label=label, **learn_dict)
+        classify_model.fit(data = data, label=label, device = device, **learn_dict)
 
-        # testdata, testlabel = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = test_dict, split="test")
-        # testdata = [testdata[:,:testdata.shape[1]//2],
-        #             testdata[:,testdata.shape[1]//2:]]
-        # acc, lss = classify_model.score(testdata, testlabel, getloss = True)
-        # print("On test dict, acc = {:.2f}, loss = {:.4f}".format(
-        #     acc * 100, lss
-        # ))
-
-    elif classification_method == "BSS": 
-        lis = [getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = {key: [idx]}) for key, l in projection_dict.items() for idx in l]
-        
-        weights = [1/len(l) for l in projection_dict.values() for _ in l]
-        
-        classify_model = myClassifyModel(method = classification_method, device=device, print_more = print_more)
-        classify_model.fit([w[0] for w in lis], [w[1] for w in lis], weights = weights,device=device, **learn_dict)
 
     else:
         classify_model = myClassifyModel(method = classification_method, device=device, print_more = print_more)
