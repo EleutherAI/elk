@@ -24,14 +24,14 @@ if __name__ == "__main__":
     tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
 
     print("\n\n-------------------------------- Loading datasets and calculating hidden states --------------------------------\n\n")
-    prefix_list = args.prefix
-    for prefix in prefix_list:
+    all_prefixes = args.prefix
+    for prefix in all_prefixes:
         args.prefix = prefix
         # load datasets and save if possible
         name_to_dataframe = load_datasets(args, tokenizer)
 
         # For each frame, generate the hidden states and save to directories
-        print("-------- Generation hidden states --------")
+        print("-------- Generating hidden states --------")
 
         records = create_dataset_hiddenstates_records(model, tokenizer, name_to_dataframe, args)
         save_records_to_csv(records, args)
