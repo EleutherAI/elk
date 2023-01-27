@@ -323,6 +323,28 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
 
     return name_to_dataframe
 
+def align_datapoints_amount(num_data, dataset_names):
+    """
+    This function will check the length of `num_data` and make it the same as `dataset_names`.
+    TODO: This function gives us a list of num_data_points for each prompt template e.g.
+    [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000] ... 13 prompts each 1000 datapoints
+    Args:  
+        num_data: list of int, the number of data points that will be used for each dataset.
+        dataset_names: list of str, the dataset names that will be used.
+    
+    Returns:
+        num_data: list of int, the number of data points that will be used for each dataset.
+    """
+    # deal with the length of `num_data`
+    # end up making num_data and set_list with the same length
+    assert len(num_data) == 1 or len(num_data) == len(dataset_names), "The length of `num_data` should either be one or be the same as `datasets`!"
+    
+    if len(num_data) == 1:
+        num_data = [num_data[0] for _ in dataset_names]
+
+    print(f"Processing {num_data} data points in total.")
+    return num_data
+
 def load_datasets(args, tokenizer):
     '''
     This function will return the datasets. 
@@ -342,6 +364,8 @@ def load_datasets(args, tokenizer):
     prompt_idxs = [int(w) for w in args.prompt_idx]
     
     dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, dataset_names)
+
+    num_data = align_datapoints_amount(num_data, dataset_names)
 
     frame_dict = create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer, print_more=True)
     
