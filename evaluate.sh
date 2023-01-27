@@ -1,1 +1,3 @@
-python extraction_main.py --model deberta-v2-xxlarge-mnli --prefix confusion  --datasets boolq --zero "results" 
+#!/bin/bash
+
+python extraction_main.py --model deberta-v2-xxlarge-mnli --prefix confusion  --datasets imdb  --num_data 1000
