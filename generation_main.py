@@ -10,6 +10,7 @@ if __name__ == "__main__":
 
     # get args
     args = getArgs()
+    print("args: ", args)
 
     # load model and tokenizer (put model on hardware accelearator if possible)
     print("\n\n--------------------------------  Setting up model and tokenizer --------------------------------\n\n")
