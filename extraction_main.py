@@ -4,9 +4,9 @@ import numpy as np
 import time
 from utils_extraction.load_utils import get_hiddenstates_and_permutations, set_load_dir
 from utils_extraction.method_utils import get_main_results
-from utils_extraction.func_utils import getAvg, populate_stats_df
+from utils_extraction.func_utils import populate_stats_df
 from utils_extraction.parser import get_extraction_args
-from utils_extraction.save_utils import save_df_to_csv, save_params
+from utils_extraction.save_utils import save_df_to_csv
 
 import pandas as pd
 import random 
@@ -22,7 +22,6 @@ if __name__ == "__main__":
         os.mkdir(args.save_dir)
     if not os.path.exists(os.path.join(args.save_dir, "params")):
         os.mkdir(os.path.join(args.save_dir, "params"))
-
 
     # each loop will generate a csv file
     for prefix in args.prefix:
