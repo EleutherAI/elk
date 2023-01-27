@@ -21,7 +21,7 @@ def get_extraction_args(json_dir = "./registration"):
     parser.add_argument("--mode", type = str, default = "auto", choices = ["auto", "minus", "concat"], help = "How you combine h^+ and h^-.")
     parser.add_argument("--save_dir", type = str, default = "extraction_results", help = "where the csv and params are saved")
     parser.add_argument("--append", action="store_true", help = "Whether to append content in frame rather than rewrite.")
-    parser.add_argument("--load_dir", type = str, default = "generation_results", help = "Where the hidden states and zero-shot accuracy are loaded.")
+    parser.add_argument("--load_dir", type = str, default = "./generation_results", help = "Where the hidden states and zero-shot accuracy are loaded.")
     parser.add_argument("--location", type = str, default = "auto")
     parser.add_argument("--layer", type = int, default = -1)
     parser.add_argument("--zero", type = str, default = "results")
