@@ -105,9 +105,8 @@ def getArgs():
         
 
         
-    print("-------- args --------")
+    print("\n\n-------------------------------- Args --------------------------------\n\n")
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))
-    print("-------- args --------")
 
     return args
