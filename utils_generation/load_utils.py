@@ -196,7 +196,7 @@ def loadFromDatasets(set_name, cache_dir, max_num):
 
     return raw_data
 
-def setup_dataset_names_and_prompt_idx(swipe=False, prompt_idxs=None, dataset_names=None):
+def setup_dataset_names_and_prompt_idx(prompt_idxs=None, dataset_names=None):
     """
     This function will setup the dataset_names and prompt_idxs.
     If swipe is True, then will use all the prompts for each dataset.
@@ -212,40 +212,15 @@ def setup_dataset_names_and_prompt_idx(swipe=False, prompt_idxs=None, dataset_na
         prompt_idxs: list of int, the prompt idxs that will be used.
     """
 
-    if not swipe:
-        print(f"Consider datasets: {dataset_names} and prompt idx: {prompt_idxs}.")
-        set_num = len(dataset_names)
-        dataset_names = [w for w in dataset_names for _ in range(len(prompt_idxs))]
-        prompt_idxs = [j for _ in range(set_num) for j in prompt_idxs]
-    else:
-        prompt_idxs = MyPrompts.getGlobalPromptsNum(dataset_names)
-        print("Consider datasets {} with {} prompts each.".format(dataset_names, prompt_idxs))
-        dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, prompt_idxs)]
-        prompt_idxs = [[w for w in range(times)] for times in prompt_idxs]
-        dataset_names, prompt_idxs = [w for j in dataset_names for w in j], [w for j in prompt_idxs for w in j]
+    prompt_idxs = MyPrompts.getGlobalPromptsNum(dataset_names)
+
+    print("Consider datasets {} with {} prompts each.".format(dataset_names, prompt_idxs))
+    dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, prompt_idxs)]
+    prompt_idxs = [[w for w in range(times)] for times in prompt_idxs]
+    dataset_names, prompt_idxs = [w for j in dataset_names for w in j], [w for j in prompt_idxs for w in j]
 
     return dataset_names, prompt_idxs
 
-def align_datapoints_amount(num_data, dataset_names):
-    """
-    This function will check the length of `num_data` and make it the same as `dataset_names`.
-
-    Args:  
-        num_data: list of int, the number of data points that will be used for each dataset.
-        dataset_names: list of str, the dataset names that will be used.
-    
-    Returns:
-        num_data: list of int, the number of data points that will be used for each dataset.
-    """
-    # deal with the length of `num_data`
-    # end up making num_data and set_list with the same length
-    assert len(num_data) == 1 or len(num_data) == len(dataset_names), "The length of `num_data` should either be one or be the same as `datasets`!"
-    
-    if len(num_data) == 1:
-        num_data = [num_data[0] for _ in dataset_names]
-
-    print(f"Processing {num_data} data points in total.")
-    return num_data
 
 def create_directory(name):
     """
@@ -366,9 +341,7 @@ def load_datasets(args, tokenizer):
     num_data = [int(w) for w in args.num_data]
     prompt_idxs = [int(w) for w in args.prompt_idx]
     
-    dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(args.swipe, prompt_idxs, dataset_names)
-
-    num_data = align_datapoints_amount(num_data, dataset_names)
+    dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, dataset_names)
 
     frame_dict = create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer, print_more=True)
     

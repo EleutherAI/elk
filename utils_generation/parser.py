@@ -39,8 +39,6 @@ def getArgs():
                         default=[1000], help="number of data points you want to use in each datasets. If one integer is provide, if will be extended to a list with the same length as `datasets`. If the size of datasets are no enough, will use all the data points.")
     parser.add_argument("--reload_data", action="store_true",
                         help="Whether to use the old version of datasets if there exists one. Using `reload_data` will let the program reselect data points from the datasets.")
-    parser.add_argument("--swipe", action="store_true",
-                        help="Whether to swipe all prompts. If this is true, then `prompt_idx` will be ignored, and for each dataset in `datasets`, all prompts will be executed.")
     parser.add_argument("--prompt_idx", nargs="+", default=[
                         0], help="The indexs of prompt you want to use.")
 
