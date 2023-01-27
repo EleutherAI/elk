@@ -2,6 +2,8 @@ import os
 import pandas as pd
 import numpy as np
 import time
+from tqdm import tqdm
+
 from utils_extraction.load_utils import get_hiddenstates_and_permutations
 from utils_extraction.method_utils import get_main_results
 from utils_extraction.func_utils import populate_stats_df
@@ -22,7 +24,7 @@ if __name__ == "__main__":
         os.mkdir(os.path.join(args.save_dir, "params"))
 
     # each loop will generate a csv file
-    for prefix in args.prefix:
+    for prefix in tqdm(args.prefix, desc='Iterating over prefixes:', position=0):
         print(f"---------------- model = {args.model}, prefix = {prefix} ----------------")
         # Set the random seed, in which case the permutation_dict will be the same
         random.seed(args.seed)
@@ -40,7 +42,7 @@ if __name__ == "__main__":
             dir = os.path.join(args.save_dir, f"{args.model}_{prefix}_{args.seed}.csv")
             stats_df = pd.read_csv(dir)
 
-        for method in args.method_list:
+        for method in tqdm(args.method_list, desc='Iterating over classification methods:', position=1, leave=False):
             print("-------- method = {method} --------")
 
             # TODO: Write this more elegantly
@@ -63,7 +65,7 @@ if __name__ == "__main__":
             # TODO: WHY IS THE CONSTRUCTED LIKE THIS AND WHAT IS IT USED FOR?
             test_dict = {dataset: range(len(dataset_to_hiddenstates[dataset])) for dataset in dataset_names}
 
-            for train_set in ["all"] + dataset_names:
+            for train_set in tqdm(["all"] + dataset_names, desc='Iterating over train sets:', position=2, leave=False):
 
                 dataset_names_train = dataset_names if train_set == "all" else [train_set]
                 #TODO: WHY IS THIS CALLED PROJECTION DICT?

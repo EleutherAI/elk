@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import functools
+from tqdm import tqdm
 from utils_generation.save_utils import saveArray
 from utils_generation.save_utils import save_records_to_csv
 
@@ -81,7 +82,7 @@ def create_records(model, tokenizer, name_to_dataframe, args):
     } for key in name_to_dataframe.keys()]
 
     with torch.no_grad():
-        for name, record in zip(name_to_dataframe.keys(), records):
+        for name, record in tqdm(zip(name_to_dataframe.keys(), records), desc='Iterating over datasets:', position=1, leave=False):
             dataframe = name_to_dataframe[name]
             record["population"] = len(dataframe)
 

@@ -2,6 +2,7 @@ import time
 from utils_generation.parser import getArgs
 from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
 from utils_generation.generation import create_records, create_hiddenstates
+from tqdm import tqdm 
 
 if __name__ == "__main__":
     print("\n\n-------------------------------- Starting Program --------------------------------\n\n")
@@ -10,7 +11,6 @@ if __name__ == "__main__":
 
     # get args
     args = getArgs()
-    print("args: ", args)
 
     # load model and tokenizer (put model on hardware accelearator if possible)
     print("\n\n--------------------------------  Setting up model and tokenizer --------------------------------\n\n")
@@ -25,13 +25,13 @@ if __name__ == "__main__":
 
     print("\n\n-------------------------------- Loading datasets and calculating hidden states --------------------------------\n\n")
     all_prefixes = args.prefix
-    for prefix in all_prefixes:
+    for prefix in tqdm(all_prefixes, desc='Iterating over prefixes:', position=0):
         args.prefix = prefix
         # load datasets and save if possible
         name_to_dataframe = load_datasets(args, tokenizer)
 
         # For each frame, generate the hidden states and save to directories
-        print("-------- Generating hidden states --------")
+        print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
         create_hiddenstates(model, tokenizer, name_to_dataframe, args)
         create_records(model, tokenizer, name_to_dataframe, args)
         
