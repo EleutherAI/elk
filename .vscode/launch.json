@@ -4,9 +4,6 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
-
-
         {
             "name": "Python: Current File",
             "type": "python",
@@ -15,11 +12,41 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "roberta-large-mnli", 
+                "--model", "deberta-v2-xxlarge-mnli", 
                 "--datasets","imdb",  
                 "--prefix", "confusion",
-                "--model_device", "mps",
-                "--num_data", "10"
+                "--model_device", "cuda",
+                "--num_data", "1000"
+            ]
+        },
+        {
+            "name": "Python: Generation Cuda",
+            "type": "python",
+            "request": "launch",
+            "program": "generation_main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args" : [
+                "--model", "deberta-v2-xxlarge-mnli", 
+                "--datasets","imdb",  
+                "--prefix", "confusion",
+                "--model_device", "cuda",
+                "--num_data", "1000"
+            ]
+        },
+        {
+            "name": "Python: Evaluation Cuda",
+            "type": "python",
+            "request": "launch",
+            "program": "extraction_main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args" : [
+                "--model", "deberta-v2-xxlarge-mnli", 
+                "--datasets","imdb",  
+                "--prefix", "confusion",
+                "--model_device", "cuda",
+                "--num_data", "1000"
             ]
         }
     ]
