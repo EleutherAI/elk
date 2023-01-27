@@ -14,17 +14,6 @@ registered_prefix = global_dict["registered_prefix"]
 models_layer_num = global_dict["models_layer_num"]
 
 
-
-load_dir = "./generation_results"
-print("------ Func: set_load_dir ------\n\
-## Input = (path) ##\n\
-    path: set the dir that loads hidden states to path.\n\
-[ATTENTION]: Only load the first 4 prompts for speed.\n\
-")
-def set_load_dir(path):
-    global load_dir
-    load_dir = path
-
 def getDirList(mdl, set_name, load_dir, num_data, confusion, place, prompt_idx):
     length = len(mdl)
     filter = [w for w in os.listdir(load_dir) if (mdl == w[:length] and mdl + "_" in w and set_name + "_" in w and str(num_data) + "_" in w and confusion + "_" in w and place in w)]
@@ -89,7 +78,7 @@ def getPermutation(data_list, rate = 0.6):
     return [permutation[: int(length * rate)], permutation[int(length * rate):]]
 
 
-def get_hiddenstates_and_permutations(mdl_name, all_datasets, prefix = "normal", location="auto", layer=-1, dataset_to_prompt_idx = None, num_data = 1000, scale = True, demean = True, mode = "minus", verbose = True):
+def get_hiddenstates_and_permutations(load_dir, mdl_name, all_datasets, prefix = "normal", location="auto", layer=-1, dataset_to_prompt_idx = None, num_data = 1000, scale = True, demean = True, mode = "minus", verbose = True):
     """
     Args:
         mdl_name (str): name of the model
@@ -108,8 +97,6 @@ def get_hiddenstates_and_permutations(mdl_name, all_datasets, prefix = "normal",
         dataset_to_hiddenstates: a dict with key equals to dataset name, and value is a list. Each element in the list is a tuple (state, label). state has shape (#data * #dim), and label has shape (#data).
         permutation_dict: [train_idx, test_idx], where train_idx is the subset of [#data] that corresponds to the training set, and test_idx is the subset that corresponds to the test set.
     """
-    
-    global load_dir
     if location == "auto":
         location = "decoder" if "gpt" in mdl_name else "encoder"
     if location == "decoder" and layer < 0:

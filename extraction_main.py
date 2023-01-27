@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import time
-from utils_extraction.load_utils import get_hiddenstates_and_permutations, set_load_dir
+from utils_extraction.load_utils import get_hiddenstates_and_permutations
 from utils_extraction.method_utils import get_main_results
 from utils_extraction.func_utils import populate_stats_df
 from utils_extraction.parser import get_extraction_args
@@ -16,8 +16,6 @@ if __name__ == "__main__":
 
     args = get_extraction_args(json_dir = "./registration")
     dataset_names = args.datasets
-    # TODO: REMOVE GLOBAL VARIABLE SETTING IN set_load_dir 
-    set_load_dir(args.load_dir)
     if not os.path.exists(args.save_dir):
         os.mkdir(args.save_dir)
     if not os.path.exists(os.path.join(args.save_dir, "params")):
@@ -52,6 +50,7 @@ if __name__ == "__main__":
 
             #TODO: UNDERSTAND AND RENAME PERMUTATION DICT
             dataset_to_hiddenstates, permutation_dict = get_hiddenstates_and_permutations(
+                load_dir=args.load_dir,
                 mdl_name= model, 
                 all_datasets=dataset_names,
                 prefix = prefix,
