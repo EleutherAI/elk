@@ -4,6 +4,9 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
+
+
         {
             "name": "Python: Current File",
             "type": "python",
@@ -12,11 +15,11 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "deberta-v2-xxlarge-mnli", 
-                "--datasets","boolq", 
-                "--swipe", 
-                "--print_more", 
-                "--prefix", "confusion"
+                "--model", "roberta-large-mnli", 
+                "--datasets","imdb",  
+                "--prefix", "confusion",
+                "--model_device", "mps",
+                "--num_data", "10"
             ]
         }
     ]
