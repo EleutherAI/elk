@@ -3,13 +3,9 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     T5ForConditionalGeneration,
-    GPTNeoForCausalLM,
-    AutoConfig,
     GPT2LMHeadModel,
     GPT2Tokenizer,
-    AutoModel,
     AutoModelForSeq2SeqLM,
-    AutoModelForMaskedLM,
     AutoModelWithLMHead,
     AutoModelForSequenceClassification
 )
@@ -19,6 +15,7 @@ import pandas as pd
 from datasets import load_dataset
 from utils_generation.construct_prompts import constructPrompt, MyPrompts
 from utils_generation.save_utils import saveFrame, getDir
+from utils_generation.save_utils import save_records_to_csv
 
 
 def load_model(mdl_name, cache_dir):
@@ -282,7 +279,7 @@ def create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num
     prompt_dataframe = constructPrompt(set_name=dataset, frame=raw_data,
                             prompt_idx=prompt_idx, mdl_name=args.model, 
                             tokenizer=tokenizer, max_num = max_num, 
-                            confusion = args.confusion_prefix)
+                            confusion = args.prefix)
 
     create_directory(args.save_base_dir)
     create_directory(complete_path)
@@ -326,7 +323,7 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
             name_to_dataframe[dataset_name_with_num] = frame
             if print_more:
                 print(f"load post-processing {dataset_name_with_num} from {complete_path}, length = {max_num}")
-
+                    # print an example
         else:   # either reload, or this specific model / confusion args has not been saved yet.
             if (args.reload_data is False or reload_set_name == dataset) and os.path.exists(path):
                 raw_data = pd.read_csv(path)
@@ -347,10 +344,7 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
             prompt_dataframe = create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path)
             
             name_to_dataframe[dataset_name_with_num] = prompt_dataframe
-        
-        # print an example
-        if args.print_more:
-            print(f'[example]:\n {frame.loc[0, "null"]}')
+    
 
     return name_to_dataframe
 

@@ -1,8 +1,7 @@
 import time
 from utils_generation.parser import getArgs
 from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
-from utils_generation.generation import create_dataset_hiddenstates_records
-from utils_generation.save_utils import save_records_to_csv
+from utils_generation.generation import create_records, create_hiddenstates
 
 if __name__ == "__main__":
     print("\n\n-------------------------------- Starting Program --------------------------------\n\n")
@@ -32,8 +31,8 @@ if __name__ == "__main__":
 
         # For each frame, generate the hidden states and save to directories
         print("-------- Generating hidden states --------")
-        records = create_dataset_hiddenstates_records(model, tokenizer, name_to_dataframe, args)
-        save_records_to_csv(records, args)
+        create_hiddenstates(model, tokenizer, name_to_dataframe, args)
+        create_records(model, tokenizer, name_to_dataframe, args)
         
         total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
         end = time.time()
