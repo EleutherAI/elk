@@ -323,27 +323,27 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
 
     return name_to_dataframe
 
-def align_datapoints_amount(num_data, dataset_names):
+def align_datapoints_amount(num_examples, dataset_names):
     """
-    This function will check the length of `num_data` and make it the same as `dataset_names`.
-    TODO: This function gives us a list of num_data_points for each prompt template e.g.
-    [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000] ... 13 prompts each 1000 datapoints
+    This function will check the length of `num_examples` and make it the same as `dataset_names`.
+    This function gives us a list of num_examples for each prompt template e.g.
+    [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000] ... so, for 13 prompts we obtain 1000 datapoints
     Args:  
-        num_data: list of int, the number of data points that will be used for each dataset.
-        dataset_names: list of str, the dataset names that will be used.
+        num_examples: list of ints, the number of data points that will be used for each dataset.
+        dataset_names: list of strings, the dataset names that will be used.
     
     Returns:
-        num_data: list of int, the number of data points that will be used for each dataset.
+        num_examples: list of int, the number of data points that will be used for each dataset.
     """
-    # deal with the length of `num_data`
-    # end up making num_data and set_list with the same length
-    assert len(num_data) == 1 or len(num_data) == len(dataset_names), "The length of `num_data` should either be one or be the same as `datasets`!"
+    # deal with the length of `num_examples`
+    # end up making num_examples and set_list with the same length
+    assert len(num_examples) == 1 or len(num_examples) == len(dataset_names), "The length of `num_examples` should either be one or be the same as `datasets`!"
     
-    if len(num_data) == 1:
-        num_data = [num_data[0] for _ in dataset_names]
+    if len(num_examples) == 1:
+        num_examples = [num_examples[0] for _ in dataset_names]
 
-    print(f"Processing {num_data} data points in total.")
-    return num_data
+    print(f"Processing {num_examples} data points in total.")
+    return num_examples
 
 def load_datasets(args, tokenizer):
     '''

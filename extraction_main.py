@@ -4,7 +4,7 @@ import numpy as np
 import time
 from tqdm import tqdm
 
-from utils_extraction.load_utils import get_hiddenstates_and_permutations
+from utils_extraction.load_utils import load_hidden_states, getPermutation
 from utils_extraction.method_utils import get_main_results
 from utils_extraction.func_utils import populate_stats_df
 from utils_extraction.parser import get_extraction_args
@@ -47,10 +47,10 @@ if __name__ == "__main__":
                 # overwrite mode if set to auto
                 mode = "concat" if method == "Prob" else "minus"
 
-            #TODO: UNDERSTAND AND RENAME PERMUTATION DICT
-            dataset_to_hiddenstates, permutation_dict = get_hiddenstates_and_permutations(
+            dataset_to_hiddenstates = load_hidden_states(
+                dataset_to_prompt_idx = None,
                 load_dir=args.load_dir,
-                mdl_name= args.model, 
+                model_name= args.model, 
                 all_datasets=args.datasets,
                 prefix = prefix,
                 location = args.location,
@@ -58,7 +58,9 @@ if __name__ == "__main__":
                 mode = mode,
                 num_data = args.num_data
             )
-            
+
+            permutation_dict = {set_name: getPermutation(dataset_to_hiddenstates[set_name]) for set_name in args.datasets}
+
             # TODO: WHY IS THE CONSTRUCTED LIKE THIS AND WHAT IS IT USED FOR?
             test_dict = {dataset: range(len(dataset_to_hiddenstates[dataset])) for dataset in args.datasets}
 

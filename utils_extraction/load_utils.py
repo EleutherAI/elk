@@ -77,37 +77,21 @@ def getPermutation(data_list, rate = 0.6):
     permutation = np.random.permutation(range(length)).reshape(-1)
     return [permutation[: int(length * rate)], permutation[int(length * rate):]]
 
-
-def get_hiddenstates_and_permutations(load_dir, mdl_name, all_datasets, prefix = "normal", location="auto", layer=-1, dataset_to_prompt_idx = None, num_data = 1000, scale = True, demean = True, mode = "minus", verbose = True):
-    """
-    Args:
-        mdl_name (str): name of the model
-        all_datasets (list): list of all datasets
-        prefix (str, optional): the prefix used for the hidden states. Defaults to "normal".
-        location (str, optional): Either 'encoder' or 'decoder'. Determine which hidden states to load. Defaults to "auto".
-        layer (int, optional): An index representing which layer in `location` we should load the hidden state from. Defaults to -1.
-        dataset_to_prompt_idx (dict, optional): dict of prompts to consider. Key is the set name and value is an index list. Default is taking all prompts (empty dict). Defaults to None.
-        num_data (int, optional): population of the dataset. Depends on generation process. Defaults to 1000.
-        scale (bool, optional): whether to rescale the whole dataset. Defaults to True.
-        demean (bool, optional): whether to subtract the mean. Defaults to True.
-        mode (str, optional): how to generate hidden states from h and h'. Defaults to "minus".
-        verbose (bool, optional): Whether to print more. Defaults to True.
-
-    Returns:
-        dataset_to_hiddenstates: a dict with key equals to dataset name, and value is a list. Each element in the list is a tuple (state, label). state has shape (#data * #dim), and label has shape (#data).
-        permutation_dict: [train_idx, test_idx], where train_idx is the subset of [#data] that corresponds to the training set, and test_idx is the subset that corresponds to the test set.
-    """
+def load_hidden_states(load_dir, model_name, all_datasets, prefix = "normal", location="auto", layer=-1, dataset_to_prompt_idx = None, num_data = 1000, scale = True, demean = True, mode = "minus", verbose = True):
     if location == "auto":
-        location = "decoder" if "gpt" in mdl_name else "encoder"
+        location = "decoder" if "gpt" in model_name else "encoder"
     if location == "decoder" and layer < 0:
-        layer += models_layer_num[mdl_name]
-    
-    print("start loading {} hidden states {} for {} with {} prefix. Prompt_dict: {}, Scale: {}, Demean: {}, Mode: {}".format(location, layer, mdl_name, prefix, dataset_to_prompt_idx if dataset_to_prompt_idx is not None else "ALL", scale, demean, mode))
-    dataset_to_prompt_idx = dataset_to_prompt_idx if dataset_to_prompt_idx is not None else {key: None for key in all_datasets}
-    dataset_to_hiddenstates = {set_name: loadHiddenStates(mdl_name, set_name, load_dir, dataset_to_prompt_idx[set_name], location, layer, num_data = num_data, confusion = prefix, scale = scale, demean = demean, mode = mode, verbose = verbose) for set_name in all_datasets}
-    permutation_dict = {set_name: getPermutation(dataset_to_hiddenstates[set_name]) for set_name in all_datasets}
-    
-    return dataset_to_hiddenstates, permutation_dict
+        layer += models_layer_num[model_name]
+
+    prompt_dict = "ALL" if dataset_to_prompt_idx is None else dataset_to_prompt_idx
+    print(f'start loading {location} hidden states {layer} for {model_name} with {prefix} prefix. Prompt_dict: {prompt_dict}, Scale: {scale}, Demean: {demean}, Mode: {mode}')
+
+    if dataset_to_prompt_idx == None:
+        # Create a new dictionary where keys are from all_datasets and value is None # WHY None?
+        dataset_to_prompt_idx = {key: None for key in all_datasets}
+
+    dataset_to_hiddenstates = {set_name: loadHiddenStates(model_name, set_name, load_dir, dataset_to_prompt_idx[set_name], location, layer, num_data = num_data, confusion = prefix, scale = scale, demean = demean, mode = mode, verbose = verbose) for set_name in all_datasets}
+    return dataset_to_hiddenstates
 
 def get_zeros_acc(csv_name, mdl_name, dataset_list, prefix, prompt_dict = None, avg = False):
     """
