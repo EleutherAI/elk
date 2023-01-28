@@ -13,17 +13,16 @@ from utils_extraction.save_utils import save_df_to_csv
 import pandas as pd
 import random 
 
+def create_results_dirs(save_dir):
+    path=os.path.join(save_dir, "params")
+    os.makedirs(path, exist_ok=True)
+    print(f"created directories for saving results: {path}.")
 
 if __name__ == "__main__":
     args = get_extraction_args(json_dir = "./registration")
     print(f"-------- args = {args} --------")
 
-    dataset_names = args.datasets
-    
-    if not os.path.exists(args.save_dir):
-        os.mkdir(args.save_dir)
-    if not os.path.exists(os.path.join(args.save_dir, "params")):
-        os.mkdir(os.path.join(args.save_dir, "params"))
+    create_results_dirs(save_dir=args.save_dir)
 
     # each loop will generate a csv file
     for prefix in tqdm(args.prefix, desc='Iterating over prefixes:', position=0):
@@ -52,7 +51,7 @@ if __name__ == "__main__":
             dataset_to_hiddenstates, permutation_dict = get_hiddenstates_and_permutations(
                 load_dir=args.load_dir,
                 mdl_name= args.model, 
-                all_datasets=dataset_names,
+                all_datasets=args.datasets,
                 prefix = prefix,
                 location = args.location,
                 layer = args.layer,
@@ -61,11 +60,11 @@ if __name__ == "__main__":
             )
             
             # TODO: WHY IS THE CONSTRUCTED LIKE THIS AND WHAT IS IT USED FOR?
-            test_dict = {dataset: range(len(dataset_to_hiddenstates[dataset])) for dataset in dataset_names}
+            test_dict = {dataset: range(len(dataset_to_hiddenstates[dataset])) for dataset in args.datasets}
 
-            for train_set in tqdm(["all"] + dataset_names, desc='Iterating over train sets:', position=2, leave=False):
+            for train_set in tqdm(["all"] + args.datasets, desc='Iterating over train sets:', position=2, leave=False):
 
-                dataset_names_train = dataset_names if train_set == "all" else [train_set]
+                dataset_names_train = args.datasets if train_set == "all" else [train_set]
                 #TODO: WHY IS THIS CALLED PROJECTION DICT?
                 projection_dict = {dataset: range(len(dataset_to_hiddenstates[dataset])) for dataset in dataset_names_train}
 
