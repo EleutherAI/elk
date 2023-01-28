@@ -77,9 +77,7 @@ def getPermutation(data_list, rate = 0.6):
     permutation = np.random.permutation(range(length)).reshape(-1)
     return [permutation[: int(length * rate)], permutation[int(length * rate):]]
 
-def load_hidden_states(load_dir, model_name, all_datasets, prefix = "normal", location="auto", layer=-1, dataset_to_prompt_idx = None, num_data = 1000, scale = True, demean = True, mode = "minus", verbose = True):
-    if location == "auto":
-        location = "decoder" if "gpt" in model_name else "encoder"
+def load_hidden_states(load_dir, model_name, all_datasets, prefix = "normal", location="encoder", layer=-1, dataset_to_prompt_idx = None, num_data = 1000, scale = True, demean = True, mode = "minus", verbose = True):
     if location == "decoder" and layer < 0:
         layer += models_layer_num[model_name]
 
