@@ -1,20 +1,20 @@
 import argparse
 import json
 
-def get_extraction_args(json_dir = "./registration"):
+def get_extraction_args(config_path = "config.json"):
 
-    with open(f"{json_dir}.json", "r") as f:
-        global_dict = json.load(f)
-    registered_dataset_list = global_dict["dataset_list"]
-    registered_models = global_dict["registered_models"]
-    registered_prefix = global_dict["registered_prefix"]
-    models_layer_num = global_dict["models_layer_num"]
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    datasets = config["datasets"]
+    models = config["models"]
+    prefix = config["prefix"]
+    models_layer_num = config["models_layer_num"]
 
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type = str, choices=registered_models)
-    parser.add_argument("--prefix", nargs="+", default = ["normal"], choices = registered_prefix)
-    parser.add_argument("--datasets", nargs="+", default = registered_dataset_list)
+    parser.add_argument("--model", type = str, choices=models)
+    parser.add_argument("--prefix", nargs="+", default = ["normal"], choices = prefix)
+    parser.add_argument("--datasets", nargs="+", default = datasets)
     parser.add_argument("--test", type = str, default = "testall", choices = ["testone", "testall"])
     parser.add_argument("--num_data", type = int, default = 10) # default = 1000
     parser.add_argument("--method_list", nargs="+", default = ["LR", "Prob"])

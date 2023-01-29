@@ -19,7 +19,7 @@ def create_results_dirs(save_dir):
     print(f"created directories for saving results: {path}.")
 
 if __name__ == "__main__":
-    args = get_extraction_args(json_dir = "./registration")
+    args = get_extraction_args(config_path = "config.json")
     print(f"-------- args = {args} --------")
 
     create_results_dirs(save_dir=args.save_dir)

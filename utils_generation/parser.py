@@ -2,15 +2,15 @@ import argparse
 import json
 from utils_generation.construct_prompts import confusion_prefix
 
-######## JSON Load ########
-json_dir = "./registration"
+######## Load Config ########
+config_path = "config.json"
 
-with open("{}.json".format(json_dir), "r") as f:
-    global_dict = json.load(f)
-dataset_list = global_dict["dataset_list"]
-registered_models = global_dict["registered_models"]
-registered_prefix = global_dict["registered_prefix"]
-models_layer_num = global_dict["models_layer_num"]
+with open(config_path, "r") as f:
+    config = json.load(f)
+datasets = config["datasets"]
+models = config["models"]
+prefix = config["prefix"]
+models_layer_num = config["models_layer_num"]
 
 def getArgs():
     parser = argparse.ArgumentParser()
@@ -66,11 +66,11 @@ def getArgs():
     args = parser.parse_args()
 
     if args.datasets == ["all"]:
-        args.datasets = dataset_list
+        args.datasets = datasets
     else:
         for w in args.datasets:
-            assert w in dataset_list, NotImplementedError(
-                "Dataset {} not registered in {}.json. Please check the name of the dataset!".format(w, json_dir))
+            assert w in datasets, NotImplementedError(
+                "Dataset {} not  in {}. Please check the name of the dataset!".format(w, config_path))
 
     # if (args.cal_zeroshot or args.cal_logits) and "bert" in args.model:
     # Add features. Only forbid cal_logits for bert type model now
@@ -78,13 +78,13 @@ def getArgs():
         raise NotImplementedError(
             "You use {}, but bert type models do not have standard logits. Please set cal_logits to 0.".format(args.model)) 
 
-    assert args.model in registered_models, NotImplementedError(
-        "You use model {}, but it's not registered. For any new model, please make sure you implement the code in `load_utils` and `generation`, and then register it in `parser.py`".format(args.model))
+    assert args.model in models, NotImplementedError(
+        "You use model {}, but it's not . For any new model, please make sure you implement the code in `load_utils` and `generation`, and then  it in `parser.py`".format(args.model))
 
     for prefix in args.prefix:
-        assert prefix in registered_prefix, NotImplementedError(
-            "Invalid prefix name {}. Please check your prefix name. To add new prefix, please mofidy `utils_generation/prompts.json` and register new prefix in {}.json.".format(
-                prefix, json_dir
+        assert prefix in prefix, NotImplementedError(
+            "Invalid prefix name {}. Please check your prefix name. To add new prefix, please mofidy `utils_generation/prompts.json` and  new prefix in {}.json.".format(
+                prefix, config_path
             ))
 
     # Set default states_location according to model type
