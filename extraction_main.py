@@ -24,20 +24,14 @@ if __name__ == "__main__":
 
     create_results_dirs(save_dir=args.save_dir)
 
-    # each loop will generate a csv file
     for prefix in tqdm(args.prefix, desc='Iterating over prefixes:', position=0):
         print(f"---------------- model = {args.model}, prefix = {prefix} ----------------")
         # Set the random seed, in which case the permutation_dict will be the same
         random.seed(args.seed)
         np.random.seed(args.seed)
 
-        # Start calculate numbers
-        # std is over all prompts within this dataset
-        if not args.append:
-            stats_df = pd.DataFrame(columns = ["model", "prefix", "method", "prompt_level", "train", "test", "accuracy", "std"])
-        else:
-            dir = os.path.join(args.save_dir, f"{args.model}_{prefix}_{args.seed}.csv")
-            stats_df = pd.read_csv(dir)
+        dir = os.path.join(args.save_dir, f"{args.model}_{prefix}_{args.seed}.csv")
+        stats_df = pd.read_csv(dir)
 
         for method in tqdm(args.method_list, desc='Iterating over classification methods:', position=1, leave=False):
             print(f"-------- method = {method} --------")

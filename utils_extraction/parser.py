@@ -19,7 +19,6 @@ def get_args(default_config_path = "default_config.json"):
     parser.add_argument("--method_list", nargs="+", default = ["LR", "Prob"])
     parser.add_argument("--mode", type = str, default = "auto", choices = ["auto", "minus", "concat"], help = "How you combine h^+ and h^-.")
     parser.add_argument("--save_dir", type = str, default = "extraction_results", help = "where the csv and params are saved")
-    parser.add_argument("--append", action="store_true", help = "Whether to append content in frame rather than rewrite.")
     parser.add_argument("--hidden_states_directory", type = str, default = "./generation_results", help = "Where the hidden states and zero-shot accuracy are loaded.")
     parser.add_argument("--language_model_type", type = str, default = "encoder")
     parser.add_argument("--layer", type = int, default = -1)
