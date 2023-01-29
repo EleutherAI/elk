@@ -49,11 +49,11 @@ if __name__ == "__main__":
 
             dataset_to_hiddenstates = load_hidden_states(
                 dataset_to_prompt_idx = None,
-                load_dir=args.load_dir,
+                hidden_states_directory=args.hidden_states_directory,
                 model_name= args.model, 
                 all_datasets=args.datasets,
                 prefix = prefix,
-                location = args.location,
+                language_model_type = args.language_model_type,
                 layer = args.layer,
                 mode = mode,
                 num_data = args.num_data

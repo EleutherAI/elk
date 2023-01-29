@@ -21,8 +21,8 @@ def get_extraction_args(json_dir = "./registration"):
     parser.add_argument("--mode", type = str, default = "auto", choices = ["auto", "minus", "concat"], help = "How you combine h^+ and h^-.")
     parser.add_argument("--save_dir", type = str, default = "extraction_results", help = "where the csv and params are saved")
     parser.add_argument("--append", action="store_true", help = "Whether to append content in frame rather than rewrite.")
-    parser.add_argument("--load_dir", type = str, default = "./generation_results", help = "Where the hidden states and zero-shot accuracy are loaded.")
-    parser.add_argument("--location", type = str, default = "encoder")
+    parser.add_argument("--hidden_states_directory", type = str, default = "./generation_results", help = "Where the hidden states and zero-shot accuracy are loaded.")
+    parser.add_argument("--language_model_type", type = str, default = "encoder")
     parser.add_argument("--layer", type = int, default = -1)
     parser.add_argument("--zero", type = str, default = "results")
     parser.add_argument("--seed", type = int, default = 0)
@@ -32,9 +32,7 @@ def get_extraction_args(json_dir = "./registration"):
 
     assert args.test != "testone", NotImplementedError("Current extraction program does not support applying method on prompt-specific level.")
 
-    if args.location == "auto":
-        args.location = "decoder" if "gpt" in args.model else "encoder"
-    if args.location == "decoder" and args.layer < 0:
-        args.layer += models_layer_num[args.model]
+    if args.language_model_type == "decoder" and args.layer < 0:
+        args.language_model_type += models_layer_num[args.model]
 
     return args
