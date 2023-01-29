@@ -30,8 +30,7 @@ if __name__ == "__main__":
         random.seed(args.seed)
         np.random.seed(args.seed)
 
-        dir = os.path.join(args.save_dir, f"{args.model}_{prefix}_{args.seed}.csv")
-        stats_df = pd.read_csv(dir)
+        stats_df = pd.DataFrame(columns = ["model", "prefix", "method", "prompt_level", "train", "test", "accuracy", "std"])
 
         for method in tqdm(args.method_list, desc='Iterating over classification methods:', position=1, leave=False):
             print(f"-------- method = {method} --------")
