@@ -2,15 +2,15 @@ import argparse
 import json
 from utils_generation.construct_prompts import confusion_prefix
 
-######## Load Config ########
-config_path = "config.json"
+######## Load default_config ########
+default_config_path = "default_config.json"
 
-with open(config_path, "r") as f:
-    config = json.load(f)
-datasets = config["datasets"]
-models = config["models"]
-prefix = config["prefix"]
-models_layer_num = config["models_layer_num"]
+with open(default_config_path, "r") as f:
+    default_config = json.load(f)
+datasets = default_config["datasets"]
+models = default_config["models"]
+prefix = default_config["prefix"]
+models_layer_num = default_config["models_layer_num"]
 
 def getArgs():
     parser = argparse.ArgumentParser()
@@ -70,7 +70,7 @@ def getArgs():
     else:
         for w in args.datasets:
             assert w in datasets, NotImplementedError(
-                "Dataset {} not  in {}. Please check the name of the dataset!".format(w, config_path))
+                "Dataset {} not  in {}. Please check the name of the dataset!".format(w, default_config_path))
 
     # if (args.cal_zeroshot or args.cal_logits) and "bert" in args.model:
     # Add features. Only forbid cal_logits for bert type model now
@@ -84,7 +84,7 @@ def getArgs():
     for prefix in args.prefix:
         assert prefix in prefix, NotImplementedError(
             "Invalid prefix name {}. Please check your prefix name. To add new prefix, please mofidy `utils_generation/prompts.json` and  new prefix in {}.json.".format(
-                prefix, config_path
+                prefix, default_config_path
             ))
 
     # Set default states_location according to model type

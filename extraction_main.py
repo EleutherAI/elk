@@ -7,7 +7,7 @@ from tqdm import tqdm
 from utils_extraction.load_utils import load_hidden_states, getPermutation
 from utils_extraction.method_utils import get_main_results
 from utils_extraction.func_utils import populate_stats_df
-from utils_extraction.parser import get_extraction_args
+from utils_extraction.parser import get_args
 from utils_extraction.save_utils import save_df_to_csv
 
 import pandas as pd
@@ -16,10 +16,10 @@ import random
 def create_results_dirs(save_dir):
     path=os.path.join(save_dir, "params")
     os.makedirs(path, exist_ok=True)
-    print(f"created directories for saving results: {path}.")
+    print(f"created directories for saving evaluation results: {path}.")
 
 if __name__ == "__main__":
-    args = get_extraction_args(config_path = "config.json")
+    args = get_args(default_config_path = "default_config.json")
     print(f"-------- args = {args} --------")
 
     create_results_dirs(save_dir=args.save_dir)

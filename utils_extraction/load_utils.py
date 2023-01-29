@@ -3,15 +3,15 @@ import numpy as np
 import pandas as pd
 import json
 
-######## Load Config ########
-config_path = "config.json"
+######## Load default_config ########
+default_config_path = "default_config.json"
 
-with open(config_path, "r") as f:
-    config = json.load(f)
-datasets = config["datasets"]
-models = config["models"]
-prefix = config["prefix"]
-models_layer_num = config["models_layer_num"]
+with open(default_config_path, "r") as f:
+    default_config = json.load(f)
+datasets = default_config["datasets"]
+models = default_config["models"]
+prefix = default_config["prefix"]
+models_layer_num = default_config["models_layer_num"]
 
 def get_filtered_filenames(directory, model_name, dataset_name, num_data, confusion, place, prompt_idx=None):
     """
