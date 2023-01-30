@@ -13,7 +13,7 @@ def get_args(default_config_path = "default_config.json"):
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type = str, choices=models)
     parser.add_argument("--prefix", nargs="+", default = ["normal"], choices = prefix)
-    parser.add_argument("--datasets", nargs="+", default = datasets)
+    parser.add_argument("--dataset", default = datasets[0])
     parser.add_argument("--test", type = str, default = "testall", choices = ["testone", "testall"])
     parser.add_argument("--num_data", type = int, default = 10) # default = 1000
     parser.add_argument("--methods", nargs="+", default = ["LR", "Prob"])

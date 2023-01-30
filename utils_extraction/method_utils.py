@@ -73,11 +73,11 @@ def getLoss(z, weights, verbose = False):
     # weighted loss according to `weights`
     return sum([u * getSingleLoss(x, verbose) for u, x in zip(weights, z)])
 
-def get_all_data(data_dict):
+def get_all_data(data):
     all_data, all_labels = [], []
-    for dataset in data_dict.keys():
-        raw_data = np.concatenate([w[0] for w in data_dict[dataset]],axis=0)
-        label = np.concatenate([w[1] for w in data_dict[dataset]])
+    for dataset in data.keys():
+        raw_data = np.concatenate([w[0] for w in data[dataset]],axis=0)
+        label = np.concatenate([w[1] for w in data[dataset]])
         
         all_data.append(raw_data)
         all_labels.append(label)
@@ -87,7 +87,7 @@ def get_all_data(data_dict):
     
     return hs0, hs1, all_labels
 
-class ConsistencyMethod(object):
+class CCS(object):
     def __init__(self, verbose=False, include_bias=True):
         self.includa_bias = include_bias
         self.verbose = verbose
@@ -414,95 +414,93 @@ class myClassifyModel(LogisticRegression):
                 return acc, loss
             return acc
 
-def getConcat(data_list, axis=0):
-    sub_list = [w for w in data_list if w is not None]
-    if sub_list == []:
-        return None
-    return np.concatenate(sub_list, axis=axis)
-
-def getPair(target_dict, data_dict, permutation_dict, projection_model, split = "train"):
+def apply_projection(hidden_states, permutation, projection_model, prompts, split = "train"):
     split_idx = 0 if split == "train" else 1
-    lis = []
-    for key, prompt_lis in target_dict.items():
-        for idx in prompt_lis:
-            lis.append([
-                projection_model.transform(data_dict[key][idx][0][permutation_dict[key][split_idx]]),
-                data_dict[key][idx][1][permutation_dict[key][split_idx]]
-            ]) # each is a data & label paird, selecting the corresponding split
+    split = []
+    for prompt_idx in prompts:
+        labels = hidden_states[prompt_idx][1]
+        split.append([
+            projection_model.transform(hidden_states[prompt_idx][0][permutation[split_idx]]),
+            labels[permutation[split_idx]]
+        ])
     
-    data, label = getConcat([w[0] for w in lis]),  getConcat([w[1] for w in lis])
+    hidden_states = np.concatenate([w[0] for w in split], axis=0)
+    labels = np.concatenate([w[1] for w in split], axis=0)
 
-    return data, label
+    return hidden_states, labels
 
 
 def get_main_results(
-    # dict of hidden states, key is set_name, each value is a list with len = #promp_idx
-    data_dict,
-    # dict of permutation, key is set_name, contain 2 array indicating train and test split
-    permutation_dict,
-    # projection dict, key is set_name, each value is a list of prompt_idx being used to do projection
-    projection_dict,
-    test_dict,              # test indexs, results in this list will be return
-    # When set to true, will immediate return after we train the projection_model. res and classify_model will be None.
+    hidden_states,
+    permutation,
+    test,
     projection_method = "PCA",
-    n_components = 2,           # The dimension you want to reduce to. -1 means no projection will be implemented.
-    classification_method = "LR",                 # can be LR, TPC and BSS
-    print_more = False,
-    learn_dict = {},
+    n_components = 2, 
+    classification_method = "LR",
+    verbose = False,
+    learn = {},
     device = 'cuda'):
     """
     Args:
-        data_dict: Dict of hidden states loaded from `get_hiddenstates_and_permutations()`.
-        permutation_dict: Dict of permutation loaded from `get_hiddenstates_and_permutations()`
-        projection_dict: Key is set_name, each value is a list of prompt_idx that is used to do projection.
-        test_dict: Test indexs, results in this list will be return.
+        hidden_states:
+        permutation:
+        test: Test indexs, results in this list will be return.
         projection_method: The method you use to do projection. Can be `PCA` or `UMAP`.
         n_components: The dimension you want to reduce to. -1 means no projection will be implemented.
         classification_method: Method used to predict, including LR, TPC and BSS. Default is BSS.
         print_more: Whether to print more.
-        learn_dict: A dict to specify the learning parameters for torch. See class `classify_model` for details.
+        learn: A dict to specify the learning parameters for torch. See class `classify_model` for details.
     
     Returns: 
         dataset_to_accurary_per_prompt:
         dataset_to_loss_per_prompt:
     """
-    # use all data (not split) to do the PCA
-    proj_states = getConcat([getConcat([data_dict[key][w][0]
-                            for w in lis]) for key, lis in projection_dict.items()])
-    projection_model = myReduction(method = projection_method, n_components=n_components, print_more = print_more)
-    projection_model.fit(proj_states)
+    # concatenate all hidden_states for each prompt to train PCA
+    concatenated_hidden_states = np.concatenate([hidden_states[w][0] for w in range(len(hidden_states))])
 
-    # TODO: UNDERSTAND getPair FUNCTION
-    data, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = projection_dict)
+    # Train projection model
+    projection_model = myReduction(method = projection_method, n_components=n_components, print_more = verbose)
+    projection_model.fit(concatenated_hidden_states)
+    
+    data, labels = apply_projection(hidden_states, permutation, projection_model, prompts=range(len(hidden_states)))
     assert len(data.shape) == 2
 
-    if classification_method == "Prob":
-        classification_model = ConsistencyMethod(verbose=print_more)    
-        data = [data[:,:data.shape[1]//2], data[:,data.shape[1]//2:]]
-        classification_model.fit(data = data, label=label, device = device, **learn_dict)   
-    else:
-        classification_model = myClassifyModel(method = classification_method, device=device, print_more = print_more)
-        classification_model.fit(data, label)
-    
-    dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt = {}, {}
-    for dataset_name, prompt_indices in test_dict.items():
-        dataset_to_accurary_per_prompt[dataset_name], dataset_to_loss_per_prompt[dataset_name] = [], []
-        for prompt_idx in prompt_indices:
-            dic = {dataset_name: [prompt_idx]}
-            data, label = getPair(data_dict = data_dict, permutation_dict = permutation_dict, projection_model = projection_model, target_dict = dic, split = "test")
-            if classification_method == "Prob":
-                data = [data[:,:data.shape[1]//2], data[:,data.shape[1]//2:]]
-            acc, loss = classification_model.score(data, label, getloss = True)
-            dataset_to_accurary_per_prompt[dataset_name].append(acc)
-            dataset_to_loss_per_prompt[dataset_name].append(loss)
+    # Train classification model
+    print("train classification model")
+    classification_model = myClassifyModel(method = "LR", device=device, print_more = verbose)
+    classification_model.fit(data, labels)
+    print("done training classification model")
 
-    return dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt
+    # Train ccs model
+    print("train ccs model")
+    ccs = CCS(verbose=verbose)    
+    data = [data[:,:data.shape[1]//2], data[:,data.shape[1]//2:]]
+    ccs.fit(data = data, label=labels, device = device, **learn) 
+    print("done training ccs model") 
+    
+    accurary_per_prompt = []
+    loss_per_prompt = []
+    for prompt_idx in test:
+        data, labels = apply_projection(hidden_states=hidden_states, permutation=permutation, projection_model=projection_model, prompts=[prompt_idx], split="test")
+
+        # evaluate classification model
+        #acc, loss = classification_model.score(data, labels, getloss = True)
+        #accurary_per_prompt[dataset_name].append(acc)
+        #loss_per_prompt[dataset_name].append(loss)
+
+        # evaluate ccs model
+        data = [data[:,:data.shape[1]//2], data[:,data.shape[1]//2:]]
+        acc, loss = ccs.score(data, labels, getloss = True)
+        accurary_per_prompt.append(acc)
+        loss_per_prompt.append(loss)       
+
+    return accurary_per_prompt, loss_per_prompt
 
 
 def printAcc(input_dic, verbose = 1):
     """
     Args: 
-        input_dict: The dict generated by `mainResults`.
+        input: The dict generated by `mainResults`.
         verbose: Whether to print dataset level accuracy.
 
     Return:
