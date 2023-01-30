@@ -13,7 +13,7 @@ models = default_config["models"]
 prefix = default_config["prefix"]
 models_layer_num = default_config["models_layer_num"]
 
-def get_filtered_filenames(directory, model_name, dataset_name, num_data, confusion, place, prompt_idx=None):
+def get_filtered_filenames(directory, model_name, dataset_name, num_data, prefix, place):
     """
     Returns a list of filenames in the given directory that match the specified filter_criteria.
 
@@ -23,19 +23,16 @@ def get_filtered_filenames(directory, model_name, dataset_name, num_data, confus
     :param num_data: number of data
     :param confusion: the confusion
     :param place: the place where the data is from
-    :param prompt_idx: a list of prompt indices (optional)
     """
     files = os.listdir(directory)
     filter_criteria = (
         lambda file_name: file_name.startswith(model_name) and
                   f"_{dataset_name}_" in file_name and
                   f"_{num_data}_" in file_name and
-                  f"_{confusion}_" in file_name and
+                  f"_{prefix}_" in file_name and
                   place in file_name
     )
     filtered_files = filter(filter_criteria, files)
-    if prompt_idx is not None:     
-        filtered_files = [file for file in filtered_files if int(f.split("_")[3][6:]) in prompt_idx]
     return [os.path.join(directory, f) for f in filtered_files]
 
 def organizeStates(lis, mode):
@@ -60,15 +57,19 @@ def normalize(data, scale =True, demean = True):
     avgnorm = np.mean(norm)
     return data / avgnorm * np.sqrt(data.shape[1])
 
-def loadHiddenStates(model_name, dataset_name, hidden_states_directory, promtpt_idx, language_model_type = "encoder", layer = -1, num_data = 1000, confusion = "normal", place = "last", scale = True, demean = True, mode = "minus", verbose = True):
-    '''
-        Load generated hidden states, return a dict where key is the dataset name and values is a list. Each tuple in the list is the (x,y) pair of one prompt.
-        if mode == minus, then get h - h'
-        if mode == concat, then get np.concatenate([h,h'])
-        elif mode == 0 or 1, then get h or h'
-    '''
+def get_permutation(hidden_states, rate = 0.6):
+    labels = hidden_states[0][1] # TODO: Are these really labels?
+    labels_length = len(labels)
+    permutation = np.random.permutation(range(labels_length)).reshape(-1)
+    return [permutation[:int(labels_length * rate)], permutation[int(labels_length * rate):]]
 
-    filtered_filenames = get_filtered_filenames(hidden_states_directory, model_name, dataset_name, num_data, confusion, place, promtpt_idx)
+def load_hidden_states(hidden_states_directory, model_name, dataset_name, prefix = "normal", language_model_type="encoder", layer=-1, num_data = 1000, scale = True, demean = True, mode = "minus", place = "last"):
+    if language_model_type == "decoder" and layer < 0:
+        layer += models_layer_num[model_name]
+
+    print(f'start loading {language_model_type} hidden states {layer} for {model_name} with {prefix} prefix. Scale: {scale}, Demean: {demean}, Mode: {mode}')
+
+    filtered_filenames = get_filtered_filenames(hidden_states_directory, model_name, dataset_name, num_data, prefix, place)
     print("filtered_filenames", filtered_filenames)
     
     append_list = ["_" + language_model_type + str(layer) for _ in filtered_filenames]
@@ -81,30 +82,9 @@ def loadHiddenStates(model_name, dataset_name, hidden_states_directory, promtpt_
         hidden_states.append(organized_states)
 
     # normalize
-    hidden_states = [normalize(w, scale, demean) for w in hidden_states]
-    if verbose:        
-        print("{} prompts for {}, with shape {}".format(len(hidden_states), dataset_name, hidden_states[0].shape))
+    normalized_hidden_states = [normalize(w, scale, demean) for w in hidden_states]
+    print(f"{len(normalized_hidden_states)} prompts for {dataset_name}, with shape {normalized_hidden_states[0].shape}")
     labels = [np.array(pd.read_csv(os.path.join(w, "frame.csv"))["label"].to_list()) for w in filtered_filenames]
 
-    return [(u,v) for u,v in zip(hidden_states, labels)]
-
-
-#TODO: UNDESTSTAND THIS 
-def getPermutation(data_list, rate = 0.6):
-    length = len(data_list[0][1])
-    permutation = np.random.permutation(range(length)).reshape(-1)
-    return [permutation[: int(length * rate)], permutation[int(length * rate):]]
-
-def load_hidden_states(hidden_states_directory, model_name, all_datasets, prefix = "normal", language_model_type="encoder", layer=-1, dataset_to_prompt_idx = None, num_data = 1000, scale = True, demean = True, mode = "minus", verbose = True):
-    if language_model_type == "decoder" and layer < 0:
-        layer += models_layer_num[model_name]
-
-    prompt_dict = "ALL" if dataset_to_prompt_idx is None else dataset_to_prompt_idx
-    print(f'start loading {language_model_type} hidden states {layer} for {model_name} with {prefix} prefix. Prompt_dict: {prompt_dict}, Scale: {scale}, Demean: {demean}, Mode: {mode}')
-
-    if dataset_to_prompt_idx == None:
-        # Create a new dictionary where keys are from all_datasets and value is None # WHY None?
-        dataset_to_prompt_idx = {key: None for key in all_datasets}
-
-    dataset_to_hiddenstates = {dataset_name: loadHiddenStates(model_name, dataset_name, hidden_states_directory, dataset_to_prompt_idx[dataset_name], language_model_type, layer, num_data = num_data, confusion = prefix, scale = scale, demean = demean, mode = mode, verbose = verbose) for dataset_name in all_datasets}
-    return dataset_to_hiddenstates
+    return [(u,v) for u,v in zip(normalized_hidden_states, labels)]
+        

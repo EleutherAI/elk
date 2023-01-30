@@ -4,9 +4,9 @@ import numpy as np
 import time
 from tqdm import tqdm
 
-from utils_extraction.load_utils import load_hidden_states, getPermutation
+from utils_extraction.load_utils import load_hidden_states, get_permutation
 from utils_extraction.method_utils import get_main_results
-from utils_extraction.func_utils import populate_stats_df
+from utils_extraction.func_utils import populate_evaluation_results
 from utils_extraction.parser import get_args
 from utils_extraction.save_utils import save_df_to_csv
 
@@ -23,6 +23,7 @@ if __name__ == "__main__":
     print(f"-------- args = {args} --------")
 
     create_results_dirs(save_dir=args.save_dir)
+    stats_df = pd.DataFrame(columns = ["model", "prefix", "method", "prompt_level", "train", "test", "accuracy", "std"])
 
     for prefix in tqdm(args.prefix, desc='Iterating over prefixes:', position=0):
         print(f"---------------- model = {args.model}, prefix = {prefix} ----------------")
@@ -32,7 +33,7 @@ if __name__ == "__main__":
 
         stats_df = pd.DataFrame(columns = ["model", "prefix", "method", "prompt_level", "train", "test", "accuracy", "std"])
 
-        for method in tqdm(args.method_list, desc='Iterating over classification methods:', position=1, leave=False):
+        for method in tqdm(args.methods, desc='Iterating over classification methods:', position=1, leave=False):
             print(f"-------- method = {method} --------")
 
             mode = args.mode
@@ -40,11 +41,10 @@ if __name__ == "__main__":
                 # overwrite mode if set to auto
                 mode = "concat" if method == "Prob" else "minus"
 
-            dataset_to_hiddenstates = load_hidden_states(
-                dataset_to_prompt_idx = None,
+            hidden_states = load_hidden_states(
                 hidden_states_directory=args.hidden_states_directory,
                 model_name= args.model, 
-                all_datasets=args.datasets,
+                dataset_name=args.datasets[0],
                 prefix = prefix,
                 language_model_type = args.language_model_type,
                 layer = args.layer,
@@ -52,7 +52,10 @@ if __name__ == "__main__":
                 num_data = args.num_data
             )
 
-            permutation_dict = {set_name: getPermutation(dataset_to_hiddenstates[set_name]) for set_name in args.datasets}
+            dataset_to_hiddenstates = {}
+            dataset_to_hiddenstates[args.datasets[0]] = hidden_states
+
+            permutation_dict = {set_name: get_permutation(dataset_to_hiddenstates[set_name]) for set_name in args.datasets}
 
             # TODO: WHY IS THE CONSTRUCTED LIKE THIS AND WHAT IS IT USED FOR?
             test_dict = {dataset: range(len(dataset_to_hiddenstates[dataset])) for dataset in args.datasets}
@@ -80,7 +83,7 @@ if __name__ == "__main__":
                 avg_accuracy_std = np.mean([np.std(accuracies) for accuracies in dataset_to_accurary_per_prompt.values()]), 
                 avg_loss = np.mean([np.mean(losses) for losses in dataset_to_loss_per_prompt.values()])
 
-                stats_df = populate_stats_df(dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt, stats_df, args.model, prefix, method, args, train_set, args.datasets)
+                stats_df = populate_evaluation_results(dataset_to_accurary_per_prompt, dataset_to_loss_per_prompt, stats_df, args.model, prefix, method, args, train_set, args.datasets)
 
             save_df_to_csv(args, stats_df, prefix, f"After finish {method}")
 

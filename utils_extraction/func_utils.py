@@ -20,7 +20,7 @@ def append_data_to_df(df, model, prefix, method, prompt_level, train, test, accu
             }, ignore_index=True)
 
 
-def populate_stats_df(dataset_to_accurary_per_prompt, 
+def populate_evaluation_results(dataset_to_accurary_per_prompt, 
                     dataset_to_loss_per_prompt, 
                     stats_df, 
                     model, 
