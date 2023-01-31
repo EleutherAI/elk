@@ -1,4 +1,3 @@
-from numpy import longdouble
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -29,28 +28,22 @@ def load_model(mdl_name, cache_dir):
         model (torch.nn.Module): model
     """
     if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
-        model = AutoModelForCausalLM.from_pretrained("EleutherAI/{}".format(
-            mdl_name), cache_dir = cache_dir)
+        model = AutoModelForCausalLM.from_pretrained(f"EleutherAI/{mdl_name}", cache_dir = cache_dir)
     elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         model = GPT2LMHeadModel.from_pretrained(mdl_name, cache_dir=cache_dir)
     elif "T0" in mdl_name:
-        model = AutoModelForSeq2SeqLM.from_pretrained(
-            "bigscience/{}".format(mdl_name), cache_dir=cache_dir)
+        model = AutoModelForSeq2SeqLM.from_pretrained(f"bigscience/{mdl_name}", cache_dir=cache_dir)
     elif "unifiedqa" in mdl_name:
-        model = T5ForConditionalGeneration.from_pretrained(
-            "allenai/" + mdl_name, cache_dir=cache_dir)
+        model = T5ForConditionalGeneration.from_pretrained(f"allenai/{mdl_name}", cache_dir=cache_dir)
     elif "deberta" in mdl_name:
-        model = AutoModelForSequenceClassification.from_pretrained(
-            "microsoft/{}".format(mdl_name), cache_dir=cache_dir)
+        model = AutoModelForSequenceClassification.from_pretrained(f"microsoft/{mdl_name}", cache_dir=cache_dir)
     elif "roberta" in mdl_name:
         model = AutoModelForSequenceClassification.from_pretrained(mdl_name, cache_dir = cache_dir)
     elif "t5" in mdl_name:
         model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
     
     # We only use the models for inference, so we don't need to train them and hence don't need to track gradients
-    model.eval()
-    
-    return model
+    return model.eval()
 
 def put_model_on_device(model, parallelize, device = "cuda"):
     """
@@ -68,11 +61,9 @@ def put_model_on_device(model, parallelize, device = "cuda"):
         # Check that MPS is available
         if not torch.backends.mps.is_available():
             if not torch.backends.mps.is_built():
-                print("MPS not available because the current PyTorch install was not "
-                    "built with MPS enabled.")
+                print("MPS not available because the current PyTorch install was not built with MPS enabled.")
             else:
-                print("MPS not available because the current MacOS version is not 12.3+ "
-                    "and/or you do not have an MPS-enabled device on this machine.")
+                print("MPS not available because the current MacOS version is not 12.3+ and/or you do not have an MPS-enabled device on this machine.")
         else:
             mps_device = torch.device("mps")
             model.to(mps_device)
@@ -99,22 +90,16 @@ def load_tokenizer(mdl_name, cache_dir):
     Returns:
         tokenizer: tokenizer for the model
     """
-
     if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
-        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/{}".format(
-            mdl_name), cache_dir = cache_dir)
+        tokenizer = AutoTokenizer.from_pretrained(f"EleutherAI/{mdl_name}", cache_dir = cache_dir)
     elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
-        tokenizer = GPT2Tokenizer.from_pretrained(
-            mdl_name, cache_dir=cache_dir)
+        tokenizer = GPT2Tokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
     elif "T0" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "bigscience/{}".format(mdl_name), cache_dir=cache_dir)
+        tokenizer = AutoTokenizer.from_pretrained(f"bigscience/{mdl_name}", cache_dir=cache_dir)
     elif "unifiedqa" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "allenai/" + mdl_name, cache_dir=cache_dir)
+        tokenizer = AutoTokenizer.from_pretrained(f"allenai/{mdl_name}", cache_dir=cache_dir)
     elif "deberta" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "microsoft/" + mdl_name, cache_dir=cache_dir)
+        tokenizer = AutoTokenizer.from_pretrained(f"microsoft/{mdl_name}", cache_dir=cache_dir)
     elif "roberta" in mdl_name:
         tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
     elif "t5" in mdl_name:
@@ -122,8 +107,35 @@ def load_tokenizer(mdl_name, cache_dir):
 
     return tokenizer
 
+def load_datasets(args, tokenizer):
+    '''
+    This function will return the datasets. 
+    Their corresponding name will include the prompt suffix, confusion suffix, etc. 
+    These should be used to create the hidden states.
+
+    Args:
+        args: argparse, the arguments.
+        tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
+
+    Returns:
+        frame_dict: dict, the dictionary of dataframes.
+    '''
+    data_base_dir = args.data_base_dir
+    dataset_names = args.datasets
+    num_data = [int(w) for w in args.num_data]
+    prompt_idxs = [int(w) for w in args.prompt_idx]
+    
+    dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, dataset_names)
+
+    num_data = align_datapoints_amount(num_data, dataset_names)
+
+    frame_dict = create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer, print_more=True)
+    
+    return frame_dict
+
 def get_sample_data(set_name, data_list, total_num):
     '''
+    Args:
 
         set_name:   the name of the dataset, some datasets have special token name.
         data_list:  a list of dataframe, with order queals to token_list
@@ -344,28 +356,4 @@ def align_datapoints_amount(num_data, dataset_names):
     print(f"Processing {num_data} data points in total.")
     return num_data
 
-def load_datasets(args, tokenizer):
-    '''
-    This function will return the datasets. 
-    Their corresponding name will include the prompt suffix, confusion suffix, etc. 
-    These should be used to save the hidden states.
 
-    Args:
-        args: argparse, the arguments.
-        tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
-
-    Returns:
-        frame_dict: dict, the dictionary of dataframes.
-    '''
-    data_base_dir = args.data_base_dir
-    dataset_names = args.datasets
-    num_data = [int(w) for w in args.num_data]
-    prompt_idxs = [int(w) for w in args.prompt_idx]
-    
-    dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, dataset_names)
-
-    num_data = align_datapoints_amount(num_data, dataset_names)
-
-    frame_dict = create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer, print_more=True)
-    
-    return frame_dict
