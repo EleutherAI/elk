@@ -14,8 +14,7 @@ import torch
 import pandas as pd
 from datasets import load_dataset
 from utils_generation.construct_prompts import constructPrompt, MyPrompts
-from utils_generation.save_utils import saveFrame, get_directory
-from utils_generation.save_utils import save_records_to_csv
+from utils_generation.save_utils import get_directory
 
 
 def load_model(mdl_name, cache_dir):
