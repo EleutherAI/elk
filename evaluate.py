@@ -53,10 +53,6 @@ if __name__ == "__main__":
 
     create_results_dirs(save_dir=args.save_dir)
 
-    # Set the random seed, in which case the permutation will be the same
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-
     hidden_states = get_hidden_states(
         hidden_states_directory=args.hidden_states_directory,
         model_name=args.model,
@@ -68,9 +64,11 @@ if __name__ == "__main__":
         num_data=args.num_data
     )
 
+    # Set the random seed for the permutation
+    random.seed(args.seed)
+    np.random.seed(args.seed)
     permutation = get_permutation(hidden_states)
     print("permutation", permutation)
-
     data, labels = split(hidden_states, permutation, prompts=range(len(hidden_states)), split="test")
     assert len(data.shape) == 2
 
