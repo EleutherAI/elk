@@ -4,6 +4,16 @@ import numpy as np
 import time
 
 def get_directory(dataset_name_w_num, args):
+	"""
+	Create a directory name given a model, dataset, number of data points and prefix.
+
+	Args:
+		dataset_name_w_num (str): the name of the dataset with the number of data points
+		args (argparse.Namespace): the arguments
+	
+	Returns:
+		directory (str): the directory name	
+	"""
 	directory = f"{args.save_base_dir}/{args.model}_{dataset_name_w_num}_{args.prefix}_{args.token_place}"
 
 	if args.tag != "":
@@ -13,7 +23,18 @@ def get_directory(dataset_name_w_num, args):
 
 	
 def save_hidden_state_to_np_array(hidden_state, dataset_name_w_num, type_list, args):
-	
+	"""
+	Save the hidden states to a numpy array at the directory created by `get_directory`.
+
+	Args:
+		hidden_state (list): a list of hidden state arrays
+		dataset_name_w_num (str): the name of the dataset with the number of data points
+		type_list (list): a list of strings that describe the type of hidden state
+		args (argparse.Namespace): the arguments
+
+	Returns:
+		None
+	"""
 	directory = get_directory(dataset_name_w_num, args)
 	if not os.path.exists(directory):
 		os.mkdir(directory)
@@ -30,6 +51,16 @@ def save_hidden_state_to_np_array(hidden_state, dataset_name_w_num, type_list, a
 
 
 def save_records_to_csv(records, args):
+	"""
+	Save the records to a csv file at the base directory + save csv name.
+
+	Args:
+		records (list): a list of dictionaries that contains metadata about the experiment
+		args (argparse.Namespace): the arguments
+	
+	Returns:
+		None
+	"""
 	file_path = os.path.join(args.save_base_dir, f"{args.save_csv_name}.csv")
 	if not os.path.exists(file_path):
 		all_results = pd.DataFrame(columns = ["time", "model", "dataset", "prompt_idx", "num_data", "population", "prefix", "cal_zeroshot", "cal_hiddenstates", "log_probs", "calibrated", "tag"])
@@ -49,9 +80,20 @@ def save_records_to_csv(records, args):
 
 
 def print_elapsed_time(start, prefix, name_to_dataframe):
-    total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
-    end = time.time()
-    elapsed_minutes = round((end - start) / 60, 1)
-    print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-    print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
-    print("\n\n---------------------------------------\n\n")
+	"""
+	Print information about the prefix used, the number of data points in a dataset, and the time elapsed.
+
+	Args:
+		start (float): the start time
+		prefix (str): the prefix used
+		name_to_dataframe (dict): a dictionary that maps dataset name to the dataframe
+	
+	Returns:
+		None
+	"""
+	total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
+	end = time.time()
+	elapsed_minutes = round((end - start) / 60, 1)
+	print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+	print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
+	print("\n\n---------------------------------------\n\n")
