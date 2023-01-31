@@ -63,7 +63,7 @@ def get_permutation(hidden_states, rate = 0.6):
     permutation = np.random.permutation(range(labels_length)).reshape(-1)
     return [permutation[:int(labels_length * rate)], permutation[int(labels_length * rate):]]
 
-def load_hidden_states(hidden_states_directory, model_name, dataset_name, prefix = "normal", language_model_type="encoder", layer=-1, num_data = 1000, scale = True, demean = True, mode = "minus", place = "last"):
+def get_hidden_states(hidden_states_directory, model_name, dataset_name, prefix = "normal", language_model_type="encoder", layer=-1, num_data = 1000, scale = True, demean = True, mode = "minus", place = "last"):
     if language_model_type == "decoder" and layer < 0:
         layer += models_layer_num[model_name]
 
