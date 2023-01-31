@@ -3,21 +3,25 @@ import os
 import numpy as np
 import time
 
-def get_directory(dataset_name_w_num, args):
+def get_directory(save_base_dir, model_name, dataset_name_w_num, prefix, token_place, tags):
 	"""
 	Create a directory name given a model, dataset, number of data points and prefix.
 
 	Args:
+		save_base_dir (str): the base directory to save the hidden states
+		model_name (str): the name of the model
 		dataset_name_w_num (str): the name of the dataset with the number of data points
-		args (argparse.Namespace): the arguments
+		prefix (str): the prefix
+		token_place (str): Determine which token's hidden states will be generated. Can be `first` or `last` or `average`
 	
 	Returns:
 		directory (str): the directory name	
 	"""
-	directory = f"{args.save_base_dir}/{args.model}_{dataset_name_w_num}_{args.prefix}_{args.token_place}"
+	directory = f"{save_base_dir}/{model_name}_{dataset_name_w_num}_{prefix}_{token_place}"
 
-	if args.tag != "":
-		directory += "_{}".format(args.tag)
+	if tags != "":
+		for tag in tags:
+			directory += f"_{tag}"
 
 	return directory
 
@@ -35,7 +39,7 @@ def save_hidden_state_to_np_array(hidden_state, dataset_name_w_num, type_list, a
 	Returns:
 		None
 	"""
-	directory = get_directory(dataset_name_w_num, args)
+	directory = get_directory(args.save_base_dir, args.model, dataset_name_w_num, args.prefix, args.token_place, args.tags)
 	if not os.path.exists(directory):
 		os.mkdir(directory)
 

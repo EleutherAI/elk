@@ -32,7 +32,7 @@ if __name__ == "__main__":
     for prefix in tqdm(all_prefixes, desc='Iterating over prefixes:', position=0):
         args.prefix = prefix
         # load datasets and save if possible
-        # TODO: CLEAN THIUS UP?
+        # TODO: CLEAN THIS UP?
         name_to_dataframe = load_datasets(args, tokenizer)
 
         # For each frame, generate the hidden states and save to directories

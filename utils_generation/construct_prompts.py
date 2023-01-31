@@ -4,6 +4,7 @@ import random
 from promptsource.templates import DatasetTemplates
 from copy import deepcopy
 from functools import partial
+from utils_generation.load_utils import get_hugging_face_load_name
 
 
 filter_length = 500
@@ -265,11 +266,9 @@ class MyPrompts():
             self.module = None
         else:
             self.nomodule = False
-            from utils_generation.load_utils import get_hugging_face_load_name
             self.module = DatasetTemplates(*get_hugging_face_load_name(set_name))
 
-    def getGlobalPromptsNum(set_name_list):
-        from utils_generation.load_utils import get_hugging_face_load_name
+    def getGlobalPromptsNum(self, set_name_list):
         res = []
         for set_name in set_name_list:
             num = 0

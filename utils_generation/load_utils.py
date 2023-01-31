@@ -155,7 +155,7 @@ def setup_dataset_names_and_prompt_idx(prompt_idxs=None, dataset_names=None):
 
     return dataset_names, prompt_idxs
 
-def get_sample_data(set_name, data_list, total_num):
+def get_sample_data(dataset_name, data_list, total_num):
     '''
     Args:
 
@@ -164,7 +164,7 @@ def get_sample_data(set_name, data_list, total_num):
         max_num:    number of data point that wants to take, default is twice as final size, considering that some examples are too long and could be dropped.
     '''
 
-    lbl_tag = "label" if set_name != "story-cloze" else "answer_right_ending"
+    lbl_tag = "label" if dataset_name != "story-cloze" else "answer_right_ending"
     
     label_set = set(data_list[0][lbl_tag].to_list())
     label_num = len(label_set)
@@ -172,7 +172,7 @@ def get_sample_data(set_name, data_list, total_num):
         total_num=total_num, lis_len=label_num)
 
     # randomized
-    data_list = [w.sample(frac=1).reset_index(drop=True) for w in data_list]
+    data_list = [dataframe.sample(frac=1).reset_index(drop=True) for dataframe in data_list]
 
     tmp_lis = []
     prior = data_list[0]
@@ -219,22 +219,21 @@ def loadFromDatasets(set_name, cache_dir, max_num):
         This DataFrame can be used to construct the example
     '''
     if set_name != "story-cloze":
-        raw_set = load_dataset(*get_hugging_face_load_name(set_name))
+        raw_set = load_dataset(*get_hugging_face_load_name(set_name), cache_dir=cache_dir)
     else:
-        raw_set = load_dataset(*get_hugging_face_load_name(set_name), data_dir="./datasets/rawdata")
+        raw_set = load_dataset(*get_hugging_face_load_name(set_name),cache_dir=cache_dir, data_dir="./datasets/rawdata")
 
     if set_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14"]:
-        token_list = ["test", "train"]
+        dataset_split_name = ["test", "train"]
     elif set_name in ["copa", "rte", "boolq", "piqa", "qnli"]:
-        token_list = ["validation", "train"]
+        dataset_split_name = ["validation", "train"]
     elif set_name in ["story-cloze"]:
-        token_list = ["test", "validation"]
+        dataset_split_name = ["test", "validation"]
 
     # This is a dataframe with random order data
     # Can just take enough data from scratch and then stop as needed
     # the length of raw_data will be 2 times as the intended length
-    raw_data = get_sample_data(set_name, [raw_set[w].to_pandas()
-                               for w in token_list], 2 * max_num)
+    raw_data = get_sample_data(set_name, [raw_set[split_name].to_pandas() for split_name in dataset_split_name], 2 * max_num)
 
     return raw_data
 
@@ -296,7 +295,7 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
         # Otherwise, load existing raw dataset or reload / load new raw sets
         # notice that this is just the `raw data`, which is a dict or whatever
         dataset_name_with_num = f"{dataset}_{max_num}_prompt{prompt_idx}"
-        complete_path = get_directory(dataset_name_with_num, args)
+        complete_path = get_directory(args.save_base_dir, args.model, dataset_name_with_num, args.prefix, args.token_place, args.tags)
         dataframe_path = os.path.join(complete_path, "frame.csv")
         
         if args.reload_data is False and os.path.exists(dataframe_path):

@@ -9,7 +9,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
     hidden_states = [[], []]
     pad_answer = apply_tokenizer("")
 
-    if args.states_location == "decoder":  # In suce case, the program should generate decoder hidden states
+    if args.states_location == "decoder":  # In such a case, the program should generate decoder hidden states
         assert "T0" in mdl_name or "t5" in mdl_name or "gpt" in mdl_name, NotImplementedError(
             f"BERT does not have decoder. Relevant args: model={mdl_name}, states_location={args.states_location}.") 
 
