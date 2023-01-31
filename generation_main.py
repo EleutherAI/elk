@@ -1,8 +1,10 @@
 import time
 from utils_generation.parser import getArgs
 from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
-from utils_generation.generation import create_records, create_hiddenstates
+from utils_generation.generation import create_records, calculate_hidden_state
+from utils_generation.save_utils import save_to_np_array
 from tqdm import tqdm 
+import torch
 
 if __name__ == "__main__":
     print("\n\n-------------------------------- Starting Program --------------------------------\n\n")
@@ -25,6 +27,7 @@ if __name__ == "__main__":
 
     print("\n\n-------------------------------- Loading datasets and calculating hidden states --------------------------------\n\n")
     all_prefixes = args.prefix
+
     for prefix in tqdm(all_prefixes, desc='Iterating over prefixes:', position=0):
         args.prefix = prefix
         # load datasets and save if possible
@@ -32,7 +35,11 @@ if __name__ == "__main__":
 
         # For each frame, generate the hidden states and save to directories
         print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
-        create_hiddenstates(model, tokenizer, name_to_dataframe, args)
+        with torch.no_grad():
+            for name, dataframe in name_to_dataframe.items():
+                hidden_state = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
+                save_to_np_array(hidden_state, ["0", "1"], name, args)
+        
         create_records(model, tokenizer, name_to_dataframe, args)
         
         total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])

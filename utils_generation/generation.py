@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import functools
 from tqdm import tqdm
-from utils_generation.save_utils import saveArray
+from utils_generation.save_utils import save_to_np_array
 from utils_generation.save_utils import save_records_to_csv
 
 def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
@@ -47,7 +47,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
         # extract the corresponding token
         for i in range(2):
             # shape (layer * hid_dim)
-            hidden_states[i].append(np.stack([toNP(getStatesToken(
+            hidden_states[i].append(np.stack([torch_to_cpu_np(getStatesToken(
                 w, args.token_place)) for w in hidden_states_paired[i]], axis=0))
 
     # For each list in hidden_states, it's a list with `len(frame)` arrays, and each array has shape `layer * hid_dim`
@@ -56,16 +56,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
 
     return hidden_states 
 
-def create_hiddenstates(model, tokenizer, name_to_dataframe, args):
-    '''
-        This function will calculate the zeroshot accuracy for each dataset and properly store
-    '''
-    with torch.no_grad():
-        for name, dataframe in name_to_dataframe.items():
-            # This part corresponds to hidden states generation
-            hidden_states = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
-            saveArray(hidden_states, ["0", "1"], name, args)
-    
+
 def create_records(model, tokenizer, name_to_dataframe, args):
     '''
         This function will calculate the zeroshot accuracy for each dataset and properly store
@@ -112,7 +103,7 @@ def getToken(s, tokenizer, device):
     return tokenizer(s, return_tensors='pt').input_ids.to(device)
 
 
-def toNP(x):
+def torch_to_cpu_np(x):
     if type(x) == list:
         return [w.cpu().numpy() for w in x]
     return x.cpu().numpy()
