@@ -35,16 +35,16 @@ def get_filtered_filenames(directory, model_name, dataset_name, num_data, prefix
     filtered_files = filter(filter_criteria, files)
     return [os.path.join(directory, f) for f in filtered_files]
 
-def organizeStates(lis, mode):
+def organize(hidden_states, mode):
     '''
         Whether to do minus, to concat or do nothing
     '''
     if mode in ["0", "1"]:
-        return lis[int(mode)]
+        return hidden_states[int(mode)]
     elif mode == "minus":
-        return lis[0] - lis[1]
+        return hidden_states[0] - hidden_states[1]
     elif mode == "concat":
-        return np.concatenate(lis, axis = -1)
+        return np.concatenate(hidden_states, axis = -1)
     
     raise NotImplementedError("This mode is not supported.")
 
@@ -75,10 +75,10 @@ def get_hidden_states(hidden_states_directory, model_name, dataset_name, prefix 
     append_list = ["_" + language_model_type + str(layer) for _ in filtered_filenames]
 
     hidden_states = []
-    for filename, app in zip(filtered_filenames, append_list):
-        negative_states = np.load(os.path.join(filename, f"0{app}.npy"))
-        positive_states = np.load(os.path.join(filename, f"1{app}.npy"))
-        organized_states = organizeStates([negative_states, positive_states], mode = mode)
+    for filename, append in zip(filtered_filenames, append_list):
+        negative_states = np.load(os.path.join(filename, f"0{append}.npy"))
+        positive_states = np.load(os.path.join(filename, f"1{append}.npy"))
+        organized_states = organize([negative_states, positive_states], mode = mode)
         hidden_states.append(organized_states)
 
     # normalize
