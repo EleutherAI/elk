@@ -5,12 +5,12 @@ import matplotlib.pyplot as plt
 
 class CCS(object):
     def __init__(self, verbose=False, include_bias=True):
-        self.includa_bias = include_bias
+        self.include_bias = include_bias
         self.verbose = verbose
 
 
     def add_ones_dimension(self, h):
-        if self.includa_bias:
+        if self.include_bias:
             return np.concatenate([h, np.ones(h.shape[0])[:, None]], axis=-1)
         else:
             return h
