@@ -1,6 +1,5 @@
 import argparse
 import json
-from utils_generation.construct_prompts import confusion_prefix
 
 ######## JSON Load ########
 json_dir = "./registration"
@@ -12,7 +11,7 @@ registered_models = global_dict["registered_models"]
 registered_prefix = global_dict["registered_prefix"]
 models_layer_num = global_dict["models_layer_num"]
 
-def getArgs():
+def get_args():
     parser = argparse.ArgumentParser()
 
     # datasets loading
@@ -95,6 +94,7 @@ def getArgs():
         assert "gpt" not in args.model, ValueError("GPT type model does not have encoder. Please set `states_location` to `decoder`.")
     if args.states_location == "decoder" and args.cal_hiddenstates:
         assert "bert" not in args.model, ValueError("BERT type model does not have decoder. Please set `states_location` to `encoder`.")
+    
     # Set index into int.
     for i in range(len(args.states_index)):
         pos_index = int(args.states_index[i]) % models_layer_num[args.model]
@@ -102,9 +102,7 @@ def getArgs():
         # For encoder, the index lies in [-layer_num, -1]
         args.states_index[i] = pos_index if args.states_location == "decoder" \
                                         else pos_index - models_layer_num[args.model]
-        
-
-        
+          
     print("\n\n-------------------------------- Args --------------------------------\n\n")
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))

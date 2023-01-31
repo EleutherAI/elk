@@ -1,5 +1,5 @@
 import time
-from utils_generation.parser import getArgs
+from utils_generation.parser import get_args
 from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
 from utils_generation.generation import calculate_hidden_state
 from utils_generation.save_utils import save_hidden_state_to_np_array, save_records_to_csv, print_elapsed_time
@@ -13,7 +13,7 @@ if __name__ == "__main__":
     print(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
     # get args
-    args = getArgs()
+    args = get_args()
 
     # load model and tokenizer (put model on hardware accelearator if possible)
     print("\n\n--------------------------------  Setting up model and tokenizer --------------------------------\n\n")
