@@ -120,18 +120,40 @@ def load_datasets(args, tokenizer):
     Returns:
         frame_dict: dict, the dictionary of dataframes.
     '''
-    data_base_dir = args.data_base_dir
-    dataset_names = args.datasets
-    num_data = [int(w) for w in args.num_data]
+    num_data_per_dataset = [int(num_datapoints) for num_datapoints in args.num_data]
     prompt_idxs = [int(w) for w in args.prompt_idx]
     
-    dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, dataset_names)
+    dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, args.datasets)
 
-    num_data = align_datapoints_amount(num_data, dataset_names)
+    num_data_per_dataset = align_datapoints_amount(num_data_per_dataset, dataset_names)
 
-    frame_dict = create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer, print_more=True)
+    frame_dict = create_dataframe_dict(args, args.data_base_dir, dataset_names, prompt_idxs, num_data_per_dataset, tokenizer, print_more=True)
     
     return frame_dict
+
+
+def setup_dataset_names_and_prompt_idx(prompt_idxs=None, dataset_names=None):
+    """
+    This function will setup the dataset_names and prompt_idxs.
+    It will use all the relevant prompts for each dataset.
+    
+    Args:
+        prompt_idxs: list of int, the prompt idxs that will be used.
+        dataset_names: list of str, the dataset names that will be used.
+    
+    Returns:
+        dataset_names: list of str, the dataset names that will be used.
+        prompt_idxs: list of int, the prompt idxs that will be used.
+    """
+
+    prompt_idxs = MyPrompts.getGlobalPromptsNum(dataset_names)
+
+    print(f"Consider datasets {dataset_names} with {prompt_idxs} prompts each.")
+    dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, prompt_idxs)]
+    prompt_idxs = [[w for w in range(times)] for times in prompt_idxs]
+    dataset_names, prompt_idxs = [w for j in dataset_names for w in j], [w for j in prompt_idxs for w in j]
+
+    return dataset_names, prompt_idxs
 
 def get_sample_data(set_name, data_list, total_num):
     '''
@@ -172,14 +194,23 @@ def get_balanced_num(total_num, lis_len):
     more = total_num - tmp * lis_len
     return [tmp if i < lis_len - more else tmp + 1 for i in range(lis_len)]
 
-def getLoadName(set_name):
-    if set_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14", "piqa"]:
-        return [set_name.replace("-", "_")]
-    elif set_name in ["copa", "rte", "boolq"]:
-        return ["super_glue", set_name.replace("-", "_")]
-    elif set_name in ["qnli"]:
-        return ["glue", set_name.replace("-", "_")]
-    elif set_name == "story-cloze":
+def get_hugging_face_load_name(dataset_name):
+    """
+    Get the name of the dataset in the right format for the huggingface datasets library.
+    
+    Args:
+        dataset_name: str, the name of the dataset.
+    
+    Returns:
+        list of str, the name of the dataset in the right format for the huggingface datasets library.
+    """
+    if dataset_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14", "piqa"]:
+        return [dataset_name.replace("-", "_")]
+    elif dataset_name in ["copa", "rte", "boolq"]:
+        return ["super_glue", dataset_name.replace("-", "_")]
+    elif dataset_name in ["qnli"]:
+        return ["glue", dataset_name.replace("-", "_")]
+    elif dataset_name == "story-cloze":
         return ["story_cloze", "2016"]
 
 def loadFromDatasets(set_name, cache_dir, max_num):
@@ -188,9 +219,9 @@ def loadFromDatasets(set_name, cache_dir, max_num):
         This DataFrame can be used to construct the example
     '''
     if set_name != "story-cloze":
-        raw_set = load_dataset(*getLoadName(set_name))
+        raw_set = load_dataset(*get_hugging_face_load_name(set_name))
     else:
-        raw_set = load_dataset(*getLoadName(set_name), data_dir="./datasets/rawdata")
+        raw_set = load_dataset(*get_hugging_face_load_name(set_name), data_dir="./datasets/rawdata")
 
     if set_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14"]:
         token_list = ["test", "train"]
@@ -207,44 +238,8 @@ def loadFromDatasets(set_name, cache_dir, max_num):
 
     return raw_data
 
-def setup_dataset_names_and_prompt_idx(prompt_idxs=None, dataset_names=None):
-    """
-    This function will setup the dataset_names and prompt_idxs.
-    If swipe is True, then will use all the prompts for each dataset.
-    If swipe is False, then will use the prompt_idxs for each dataset.
-    
-    Args:
-        swipe: bool, if True, will use all the prompts for each dataset.
-        prompt_idxs: list of int, the prompt idxs that will be used.
-        dataset_names: list of str, the dataset names that will be used.
-    
-    Returns:
-        dataset_names: list of str, the dataset names that will be used.
-        prompt_idxs: list of int, the prompt idxs that will be used.
-    """
-
-    prompt_idxs = MyPrompts.getGlobalPromptsNum(dataset_names)
-
-    print("Consider datasets {} with {} prompts each.".format(dataset_names, prompt_idxs))
-    dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, prompt_idxs)]
-    prompt_idxs = [[w for w in range(times)] for times in prompt_idxs]
-    dataset_names, prompt_idxs = [w for j in dataset_names for w in j], [w for j in prompt_idxs for w in j]
-
-    return dataset_names, prompt_idxs
 
 
-def create_directory(name):
-    """
-    This function will create a directory if it does not exist.
-
-    Args:
-        name: str, the name of the directory.
-    
-    Returns:
-        None
-    """
-    if not os.path.exists(name):
-        os.makedirs(name)
 
 def create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path):
     """
@@ -334,6 +329,7 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
 
     return name_to_dataframe
 
+
 def align_datapoints_amount(num_data, dataset_names):
     """
     This function will check the length of `num_data` and make it the same as `dataset_names`.
@@ -357,3 +353,15 @@ def align_datapoints_amount(num_data, dataset_names):
     return num_data
 
 
+def create_directory(name):
+    """
+    This function will create a directory if it does not exist.
+
+    Args:
+        name: str, the name of the directory.
+    
+    Returns:
+        None
+    """
+    if not os.path.exists(name):
+        os.makedirs(name)

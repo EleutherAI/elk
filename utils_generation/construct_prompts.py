@@ -265,18 +265,18 @@ class MyPrompts():
             self.module = None
         else:
             self.nomodule = False
-            from utils_generation.load_utils import getLoadName
-            self.module = DatasetTemplates(*getLoadName(set_name))
+            from utils_generation.load_utils import get_hugging_face_load_name
+            self.module = DatasetTemplates(*get_hugging_face_load_name(set_name))
 
     def getGlobalPromptsNum(set_name_list):
-        from utils_generation.load_utils import getLoadName
+        from utils_generation.load_utils import get_hugging_face_load_name
         res = []
         for set_name in set_name_list:
             num = 0
             if set_name in prompt_dict.keys():
                 num += len(prompt_dict[set_name])
             if set_name not in ["ag-news", "dbpedia-14"]:
-                num += len(DatasetTemplates(*getLoadName(set_name)
+                num += len(DatasetTemplates(*get_hugging_face_load_name(set_name)
                                             ).all_template_names)
             if set_name == "copa":
                 num -= 4  # do not use the last four prompts
