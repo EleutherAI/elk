@@ -2,17 +2,9 @@ import time
 from utils_generation.parser import getArgs
 from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
 from utils_generation.generation import calculate_hidden_state
-from utils_generation.save_utils import save_to_np_array, save_records_to_csv
+from utils_generation.save_utils import save_hidden_state_to_np_array, save_records_to_csv, print_elapsed_time
 from tqdm import tqdm 
 import torch
-
-def print_elapsed_time(start, prefix, name_to_dataframe):
-    total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
-    end = time.time()
-    elapsed_minutes = round((end - start) / 60, 1)
-    print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-    print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
-    print("\n\n---------------------------------------\n\n")
 
 
 if __name__ == "__main__":
@@ -40,15 +32,17 @@ if __name__ == "__main__":
     for prefix in tqdm(all_prefixes, desc='Iterating over prefixes:', position=0):
         args.prefix = prefix
         # load datasets and save if possible
+        # TODO: CLEAN THIUS UP?
         name_to_dataframe = load_datasets(args, tokenizer)
 
         # For each frame, generate the hidden states and save to directories
         print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
         with torch.no_grad():
-            for name, dataframe in name_to_dataframe.items():
+            for dataset_name, dataframe in name_to_dataframe.items():
                 hidden_state = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
-                save_to_np_array(hidden_state, ["0", "1"], name, args)
-
+                #TODO: clean up this ['0','1'] thing
+                save_hidden_state_to_np_array(hidden_state, dataset_name, ['0','1'], args)
+            
             records = []
             for dataset_name, dataframe in name_to_dataframe.items():
                 records.append({
@@ -63,5 +57,4 @@ if __name__ == "__main__":
                         
         print_elapsed_time(start, prefix, name_to_dataframe)
         
-    
     print("-------------------------------- Finishing Program --------------------------------")
