@@ -13,7 +13,7 @@
             "justMyCode": true,
             "args" : [
                 "--model", "deberta-v2-xxlarge-mnli", 
-                "--datasets","imdb",  
+                "--dataset","imdb",  
                 "--prefix", "confusion",
                 "--model_device", "cuda",
                 "--num_data", "1000"
@@ -28,7 +28,7 @@
             "justMyCode": true,
             "args" : [
                 "--model", "deberta-v2-xxlarge-mnli", 
-                "--datasets","imdb",  
+                "--dataset","imdb",  
                 "--prefix", "confusion",
                 "--model_device", "cuda",
                 "--num_data", "1000"
@@ -43,7 +43,7 @@
             "justMyCode": true,
             "args" : [
                 "--model", "deberta-v2-xxlarge-mnli", 
-                "--datasets","imdb",  
+                "--dataset","imdb",  
                 "--prefix", "confusion",
                 "--model_device", "cuda",
                 "--num_data", "1000"
