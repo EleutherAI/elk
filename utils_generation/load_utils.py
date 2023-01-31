@@ -14,7 +14,7 @@ import torch
 import pandas as pd
 from datasets import load_dataset
 from utils_generation.construct_prompts import constructPrompt, MyPrompts
-from utils_generation.save_utils import saveFrame, getDir
+from utils_generation.save_utils import saveFrame, get_directory
 from utils_generation.save_utils import save_records_to_csv
 
 
@@ -290,7 +290,7 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
         # Otherwise, load existing raw dataset or reload / load new raw sets
         # notice that this is just the `raw data`, which is a dict or whatever
         dataset_name_with_num = f"{dataset}_{max_num}_prompt{prompt_idx}"
-        complete_path = getDir(dataset_name_with_num, args)
+        complete_path = get_directory(dataset_name_with_num, args)
         dataframe_path = os.path.join(complete_path, "frame.csv")
         
         if args.reload_data is False and os.path.exists(dataframe_path):

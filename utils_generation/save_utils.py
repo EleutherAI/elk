@@ -3,12 +3,13 @@ import os
 import numpy as np
 import time
 
-def getDir(dataset_name_w_num, args):
-	d = "{}_{}_{}_{}".format(args.model, dataset_name_w_num, args.prefix, args.token_place)
-	if args.tag != "":
-		d += "_{}".format(args.tag)
+def get_directory(dataset_name_w_num, args):
+	directory = f"{args.save_base_dir}/{args.model}_{dataset_name_w_num}_{args.prefix}_{args.token_place}"
 
-	return os.path.join(args.save_base_dir, d)
+	if args.tag != "":
+		directory += "_{}".format(args.tag)
+
+	return directory
 
 
 def saveFrame(frame_dict, args):
@@ -16,7 +17,7 @@ def saveFrame(frame_dict, args):
 		os.mkdir(args.save_base_dir)
 	for key, frame in frame_dict.items():
 		
-		directory = getDir(key, args)
+		directory = get_directory(key, args)
 		if not os.path.exists(directory):
 			os.mkdir(directory)
 		
@@ -25,14 +26,16 @@ def saveFrame(frame_dict, args):
 	print("Successfully saving datasets to each directory.")
 
 	
-def save_to_np_array(array_list, typ_list, key, args):
-	directory = getDir(key, args)
+def save_to_np_array(array_list, dataset_name_w_num, args):
+	
+	directory = get_directory(dataset_name_w_num, args)
 	if not os.path.exists(directory):
 		os.mkdir(directory)
 
 	# hidden states is num_data * layers * dim
 	# logits is num_data * vocab_size
-	for (typ, array) in zip(typ_list, array_list):
+	type_list = ["0", "1"]
+	for (typ, array) in zip(type_list, array_list):
 		if args.save_all_layers or "logits" in typ:
 			np.save(os.path.join(directory, "{}.npy".format(typ)), array)
 		else:
