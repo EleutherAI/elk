@@ -1,10 +1,19 @@
 import time
 from utils_generation.parser import getArgs
 from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
-from utils_generation.generation import create_records, calculate_hidden_state
-from utils_generation.save_utils import save_to_np_array
+from utils_generation.generation import calculate_hidden_state
+from utils_generation.save_utils import save_to_np_array, save_records_to_csv
 from tqdm import tqdm 
 import torch
+
+def print_elapsed_time(start, prefix, name_to_dataframe):
+    total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
+    end = time.time()
+    elapsed_minutes = round((end - start) / 60, 1)
+    print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+    print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
+    print("\n\n---------------------------------------\n\n")
+
 
 if __name__ == "__main__":
     print("\n\n-------------------------------- Starting Program --------------------------------\n\n")
@@ -39,14 +48,20 @@ if __name__ == "__main__":
             for name, dataframe in name_to_dataframe.items():
                 hidden_state = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
                 save_to_np_array(hidden_state, ["0", "1"], name, args)
+
+            records = []
+            for dataset_name, dataframe in name_to_dataframe.items():
+                records.append({
+                    "model": args.model,
+                    "dataset": dataset_name,
+                    "prefix": args.prefix,
+                    "tag": args.tag,
+                    "cal_hiddenstates": bool(args.cal_hiddenstates),
+                    "population": len(dataframe)
+                    })
+            save_records_to_csv(records, args)
+                        
+        print_elapsed_time(start, prefix, name_to_dataframe)
         
-        create_records(model, tokenizer, name_to_dataframe, args)
-        
-        total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
-        end = time.time()
-        elapsed_minutes = round((end - start) / 60, 1)
-        print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-        print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
-        print("\n\n---------------------------------------\n\n")
     
     print("-------------------------------- Finishing Program --------------------------------")

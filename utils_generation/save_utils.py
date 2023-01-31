@@ -25,7 +25,7 @@ def saveFrame(frame_dict, args):
 	print("Successfully saving datasets to each directory.")
 
 	
-def saveArray(array_list, typ_list, key, args):
+def save_to_np_array(array_list, typ_list, key, args):
 	directory = getDir(key, args)
 	if not os.path.exists(directory):
 		os.mkdir(directory)

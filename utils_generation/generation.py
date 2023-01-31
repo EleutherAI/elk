@@ -55,30 +55,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
     hidden_states = [np.stack(w, axis=0) for w in hidden_states]
 
     return hidden_states 
-
-
-def create_records(model, tokenizer, name_to_dataframe, args):
-    '''
-        This function will calculate the zeroshot accuracy for each dataset and properly store
-    '''
-
-    # create records, will save as csv in the end
-    records = [{
-        "model": args.model,
-        "dataset": key,
-        "prefix": args.prefix,
-        "tag": args.tag,
-        "cal_hiddenstates": bool(args.cal_hiddenstates),
-
-    } for key in name_to_dataframe.keys()]
-
-    with torch.no_grad():
-        for name, record in tqdm(zip(name_to_dataframe.keys(), records), desc='Iterating over datasets:', position=1, leave=False):
-            dataframe = name_to_dataframe[name]
-            record["population"] = len(dataframe)
-
-    save_records_to_csv(records, args)
-
+    
 
 def getDataPoint(frame, idx, key):
     if type(idx) == list:
