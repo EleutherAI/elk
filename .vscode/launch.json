@@ -29,7 +29,7 @@
             "args" : [
                 "--model", "deberta-v2-xxlarge-mnli", 
                 "--dataset","imdb",  
-                "--prefix", "confusion",
+                "--prefix", "normal",
                 "--model_device", "cuda",
                 "--num_data", "1000"
             ]
@@ -38,13 +38,13 @@
             "name": "Python: Evaluation Cuda",
             "type": "python",
             "request": "launch",
-            "program": "extraction_main.py",
+            "program": "evaluate.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
                 "--model", "deberta-v2-xxlarge-mnli", 
                 "--dataset","imdb",  
-                "--prefix", "confusion",
+                "--prefix", "normal",
                 "--model_device", "cuda",
                 "--num_data", "1000"
             ]
