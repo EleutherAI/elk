@@ -12,10 +12,12 @@ if __name__ == "__main__":
     start = time.time()
     print(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
-    # get args
+    print("\n\n-------------------------------- Args --------------------------------\n\n")
     args = get_args()
+    for key in list(vars(args).keys()):
+        print(f"{key}: {vars(args)[key]}")
+    
 
-    # load model and tokenizer (put model on hardware accelearator if possible)
     print("\n\n--------------------------------  Setting up model and tokenizer --------------------------------\n\n")
     print(f"Loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
     model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
@@ -27,16 +29,13 @@ if __name__ == "__main__":
     tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
 
     print("\n\n-------------------------------- Loading datasets and calculating hidden states --------------------------------\n\n")
-
-    # load datasets and save if possible
     num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
     name_to_dataframe = create_dataframe_dict(args.data_base_dir, args.datasets, num_templates_per_dataset, args.num_data, 
                                               tokenizer, args.save_base_dir, args.model, args.prefix, args.token_place, args.reload_data)
     
-    # For each frame, generate the hidden states and save to directories
     print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
     with torch.no_grad():
-        for dataset_name, dataframe in tqdm(name_to_dataframe.items(), desc='Iterating over datasets'):
+        for dataset_name, dataframe in tqdm(name_to_dataframe.items(), desc='Iterating over dataset-prompt combinations:'):
             hidden_state = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
             #TODO: clean up this ['0','1'] thing
             save_hidden_state_to_np_array(hidden_state, dataset_name, ['0','1'], args)

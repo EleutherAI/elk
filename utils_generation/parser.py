@@ -100,9 +100,5 @@ def get_args():
         # For encoder, the index lies in [-layer_num, -1]
         args.states_index[i] = pos_index if args.states_location == "decoder" \
                                         else pos_index - models_layer_num[args.model]
-          
-    print("\n\n-------------------------------- Args --------------------------------\n\n")
-    for key in list(vars(args).keys()):
-        print("{}: {}".format(key, vars(args)[key]))
 
     return args
