@@ -4,16 +4,46 @@ from sklearn.linear_model import LogisticRegression
 import matplotlib.pyplot as plt
 
 class CCS(object):
-    def __init__(self, verbose=False, include_bias=True):
+    def __init__(self, verbose=False, include_bias=True, num_epochs=1000, num_tries=10, learning_rate=1e-2, device="cuda"):
         self.include_bias = include_bias
         self.verbose = verbose
+        self.num_epochs = num_epochs
+        self.num_tries = num_tries
+        self.learning_rate = learning_rate
+        self.device = device
 
 
-    def add_ones_dimension(self, h):
+    def init_parameters(self):
+        """
+        Initializes the parameters of the model.
+
+        Returns:
+            numpy.ndarray: The initialized parameters of the model.
+        """
+        init_theta = np.random.randn(self.d).reshape(1, -1)
+        init_theta = init_theta / np.linalg.norm(init_theta)
+        return init_theta
+
+    def add_ones_dimension(self, x):
+        """
+        Adds an additional dimension of ones to the input x, 
+        if include_bias is True, else returns the original input x.
+
+        Parameters:
+            x (numpy.ndarray): The input array.
+
+        Returns:
+            numpy.ndarray: The input array x with an additional dimension of ones,
+            if include_bias is True. Otherwise, returns the original input x.
+            otherwise it simply returns the original input x without any modifications.
+        """
         if self.include_bias:
-            return np.concatenate([h, np.ones(h.shape[0])[:, None]], axis=-1)
+            # by adding a dimension of ones to the input array, 
+            # the bias term can be easily included in the calculation without having to modify the input data
+            ones = np.ones(x.shape[0])[:, None]
+            return np.concatenate([x, ones], axis=-1)
         else:
-            return h
+            return x
 
     def get_confidence_loss(self, p0, p1):
         """
@@ -23,10 +53,8 @@ class CCS(object):
         """
         min_p = torch.min(p0, p1)
         return (min_p**2).mean(0)
-        #return (min_p).mean(0)**2  # seems a bit worse
     
-    
-    def get_similarity_loss(self, p0, p1):
+    def get_consistency_loss(self, p0, p1):
         """
         Assumes p0 and p1 are each a tensor of probabilities of shape (n,1) or (n,)
         Encourages p0 to be close to 1-p1 and vice versa
@@ -39,22 +67,26 @@ class CCS(object):
         Returns the ConsistencyModel loss for two probabilities each of shape (n,1) or (n,)
         p0 and p1 correspond to the probabilities
         """
-        similarity_loss = self.get_similarity_loss(p0, p1)
+        consistency_loss = self.get_consistency_loss(p0, p1)
         confidence_loss = self.get_confidence_loss(p0, p1)
         
-        return similarity_loss + confidence_loss
+        return consistency_loss + confidence_loss
     
     # return the probability tuple (p0, p1)
+
     def transform(self, data: list, theta_np = None):
         if theta_np is None:
             theta_np = self.best_theta
-        z0, z1 = torch.tensor(self.add_ones_dimension(data[0]).dot(theta_np.T)), torch.tensor(self.add_ones_dimension(data[1]).dot(theta_np.T))
-        p0, p1 = torch.sigmoid(z0).numpy(), torch.sigmoid(z1).numpy()
+        z0 = torch.tensor(self.add_ones_dimension(data[0]).dot(theta_np.T))
+        z1 = torch.tensor(self.add_ones_dimension(data[1]).dot(theta_np.T))
+
+        p0 = torch.sigmoid(z0).numpy()
+        p1 =torch.sigmoid(z1).numpy()
 
         return p0, p1
 
     # Return the accuracy of (data, label)
-    def get_acc(self, theta_np, data: list, label, getloss):
+    def get_accuracy(self, theta_np, data: list, label, getloss):
         """
         Computes the accuracy of a given direction theta_np represented as a numpy array
         """
@@ -70,33 +102,26 @@ class CCS(object):
         return max(acc, 1 - acc)
     
         
-    def train(self):
+    def single_train(self):
         """
-        Does a single training run of nepochs epochs
+        Does a single training run of num_epochs epochs
         """
 
-        # convert to tensors
         x0 = torch.tensor(self.x0, dtype=torch.float, requires_grad=False, device=self.device)
         x1 = torch.tensor(self.x1, dtype=torch.float, requires_grad=False, device=self.device)
         
-        # initialize parameters
-        if self.init_theta is None:
-            init_theta = np.random.randn(self.d).reshape(1, -1)
-            init_theta = init_theta / np.linalg.norm(init_theta)
-        else:
-            init_theta = self.init_theta
-        theta = torch.tensor(init_theta, dtype=torch.float, requires_grad=True, device=self.device)
+        theta = self.init_parameters()
+        theta = torch.tensor(theta, dtype=torch.float, requires_grad=True, device=self.device)
         
-        # set up optimizer
-        optimizer = torch.optim.AdamW([theta], lr=self.lr)
+        optimizer = torch.optim.AdamW([theta], lr=self.learning_rate)
 
         # Start training (full batch)
-        for _ in range(self.nepochs):
+        for _ in range(self.num_epochs):
             
             # project onto theta
             z0, z1 = x0.mm(theta.T), x1.mm(theta.T)
 
-            # sigmoide to get probability            
+            # sigmoid to get probability            
             p0, p1 = torch.sigmoid(z0), torch.sigmoid(z1)
 
             # get the corresponding loss
@@ -130,31 +155,15 @@ class CCS(object):
 
     # seems 50, 20 can significantly reduce overfitting than 1000, 10
     # switch back to 1000 + 10
-    def fit(self, data: list, label, nepochs=1000, ntries=10, lr=1e-2, init_theta=None, device="cuda"):
-        """
-        Does ntries attempts at training, with different random initializations
-        """
-
-        self.nepochs = nepochs
-        self.ntries = ntries
-        self.lr = lr
-        
-        self.device = device
-        
-        self.init_theta = init_theta
-        if self.init_theta is not None:
-            self.ntries = 1
-    
+    def fit(self, data: list, label):
         if self.verbose:
-            print("String fiting data with Prob. nepochs: {}, ntries: {}, lr: {}".format(
-                nepochs, ntries, lr
-            ))
+            print(f"String fiting data with Prob. num_epochs: {self.num_epochs}, num_tries: {self.num_tries}, learning_rate: {self.learning_rate}")
         # set up the best loss and best theta found so far
         self.best_loss = np.inf
-        self.best_theta = self.init_theta
+        self.best_theta = None
 
         best_acc = 0.5
-        losses, accs = [], []
+        losses, accuracies = [], []
         self.validate_data(data)
 
         self.x0 = self.add_ones_dimension(data[0])
@@ -162,31 +171,27 @@ class CCS(object):
         self.y = label.reshape(-1)       
         self.d = self.x0.shape[-1]
 
-        for _ in range(self.ntries):
-            # train
-            theta_np, loss = self.train()
+        for _ in range(self.num_tries):
+            theta_np, loss = self.single_train()
             
-            # evaluate
-            acc = self.get_acc(theta_np, data, label, getloss = False)
+            accuracy = self.get_accuracy(theta_np, data, label, getloss = False)
             
-            # save
             losses.append(loss)
-            accs.append(acc)
+            accuracies.append(accuracy)
             
-            # see if it's the best run so far
             if loss < self.best_loss:
                 if self.verbose:
-                    print("Found a new best theta. New loss: {:.4f}, new acc: {:.4f}".format(loss, acc))
+                    print("Found a new best theta. New loss: {:.4f}, new acc: {:.4f}".format(loss, accuracy))
                 self.best_theta = theta_np
                 self.best_loss = loss
-                best_acc = acc
+                best_acc = accuracy
                 
         if self.verbose:
-            self.visualize(losses, accs)
+            self.visualize(losses, accuracies)
         
         return self.best_theta, self.best_loss, best_acc
 
     def score(self, data: list, label, getloss = False):
         self.validate_data(data)
-        return self.get_acc(self.best_theta, data, label, getloss)
+        return self.get_accuracy(self.best_theta, data, label, getloss)
 

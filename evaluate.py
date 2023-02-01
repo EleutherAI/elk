@@ -82,7 +82,7 @@ if __name__ == "__main__":
     print("train ccs model")
     ccs = CCS(verbose=True)    
     data = [data[:,:data.shape[1]//2], data[:,data.shape[1]//2:]]
-    ccs.fit(data = data, label=labels, device=args.model_device) 
+    ccs.fit(data = data, label=labels) 
     print("done training ccs model") 
     
     accuracies_ccs = []
