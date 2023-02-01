@@ -2,6 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 import json
+import time
+
+# TODO: Refactor file
 
 ######## Load default_config ########
 default_config_path = "default_config.json"
@@ -83,8 +86,43 @@ def get_hidden_states(hidden_states_directory, model_name, dataset_name, prefix 
 
     # normalize
     normalized_hidden_states = [normalize(w, scale, demean) for w in hidden_states]
+
     print(f"{len(normalized_hidden_states)} prompts for {dataset_name}, with shape {normalized_hidden_states[0].shape}")
     labels = [np.array(pd.read_csv(os.path.join(w, "frame.csv"))["label"].to_list()) for w in filtered_filenames]
 
     return [(u,v) for u,v in zip(normalized_hidden_states, labels)]
-        
+
+def split(hidden_states, permutation, prompts, split = "train"):
+    split_idx = 0 if split == "train" else 1
+    split = []
+    for prompt_idx in prompts:
+        labels = hidden_states[prompt_idx][1]
+        split.append([
+            hidden_states[prompt_idx][0][permutation[split_idx]],
+            labels[permutation[split_idx]]
+        ])
+    
+    hidden_states = np.concatenate([w[0] for w in split], axis=0)
+    labels = np.concatenate([w[1] for w in split], axis=0)
+
+    return hidden_states, labels
+
+def save_df_to_csv(args, df, prefix, str = ""):
+    dir = os.path.join(args.save_dir, f"{args.model}_{prefix}_{args.seed}.csv")
+    df.to_csv(dir, index = False)
+    print(f"{str} Saving to {dir} at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
+
+def append_stats(stats_df, args, method, avg_accuracy, avg_accuracy_std, avg_loss):
+    return stats_df.append({
+        "model": args.model, 
+        "method": method,
+        "prefix": args.prefix,
+        "prompt_level": "all", 
+        "train": args.dataset, # for now we train and test on the same dataset (with a split of course) 
+        "test": args.dataset, 
+        "accuracy": avg_accuracy,
+        "std": avg_accuracy_std,
+        "language_model_type": args.language_model_type, 
+        "layer": args.layer,
+        "loss": avg_loss
+    }, ignore_index=True)

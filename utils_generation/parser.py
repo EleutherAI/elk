@@ -12,7 +12,7 @@ models = default_config["models"]
 prefix = default_config["prefix"]
 models_layer_num = default_config["models_layer_num"]
 
-def getArgs():
+def get_args():
     parser = argparse.ArgumentParser()
 
     # datasets loading
@@ -30,7 +30,8 @@ def getArgs():
                         help="The path to save and load pretrained model.")
     parser.add_argument("--model_device", type=str, default="cuda",
                         help="What device to load the model onto: CPU or GPU or MPS.")
-    
+    parser.add_argument("--trained_models_path", type=str, default="trained",
+                        help="Where to save the ccs model and logisitc regression model.")
 
     # datasets processing
     parser.add_argument("--prefix", type = str, nargs="+", default = ["normal"],

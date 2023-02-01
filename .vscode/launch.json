@@ -48,6 +48,21 @@
                 "--model_device", "cuda",
                 "--num_data", "1000"
             ]
+        },
+        {
+            "name": "Python: Training Cuda",
+            "type": "python",
+            "request": "launch",
+            "program": "train.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args" : [
+                "--model", "deberta-v2-xxlarge-mnli", 
+                "--dataset","imdb",  
+                "--prefix", "normal",
+                "--model_device", "cuda",
+                "--num_data", "1000"
+            ]
         }
     ]
 }
