@@ -109,7 +109,6 @@ def load_tokenizer(mdl_name, cache_dir):
 
     return tokenizer
 
-# TODO: UNDEERSTAND THIS FUNCTION
 def get_sample_data(dataset_name, split_dataframes, sample_amount):
     '''
     Args:
@@ -119,30 +118,36 @@ def get_sample_data(dataset_name, split_dataframes, sample_amount):
         num_data:    number of data point we want to sample, default is twice as final size, considering that some examples are too long and could be dropped.
     '''
 
-    label_tag = "label" if dataset_name != "story-cloze" else "answer_right_ending"
-    
-    all_label_names = set(split_dataframes[0][label_tag].to_list())
+    label_column_name = "label" if dataset_name != "story-cloze" else "answer_right_ending"
+    all_label_names = set(split_dataframes[0][label_column_name].to_list())
     num_labels = len(all_label_names)
+    balanced_sample_num = get_balanced_sample_num(sample_amount, num_labels)
 
-    # TODO: UNDEERSTAND THIS FUNCTION
-    data_num_lis = get_balanced_sample_num(sample_amount, num_labels)
-
+    # TODO: Do we need to shuffle the data twice?
     # randomize data frac=1 means that we take the return 100% of the dataset
     shuffled_split_dataframes = [dataframe.sample(frac=1).reset_index(drop=True) for dataframe in split_dataframes]
 
-    tmp_lis = []
-    prior = shuffled_split_dataframes[0]
-
-    for i, lbl in enumerate(all_label_names):
-        # the length of data_list is at most 2
-        prior_size = len(prior[prior[label_tag] == lbl])
-        if prior_size < data_num_lis[i]:
-            tmp_lis.append(pd.concat(
-                [prior[prior[label_tag] == lbl], shuffled_split_dataframes[1][shuffled_split_dataframes[1][label_tag] == lbl][: data_num_lis[i] - prior_size]], ignore_index=True))
+    tmp_dataframes = []
+    # These splits do not necessarily correspond to train and test, they could also be train and eval or something else 
+    # (It depends on the dataset splits that the dataset offers through HuggingFace)
+    train_split = shuffled_split_dataframes[0]
+    test_split = shuffled_split_dataframes[1]
+    for label_idx, label in enumerate(all_label_names):
+        label_subset = test_split[label_column_name] == label
+        train_subset = train_split[label_subset] 
+        train_split_size = len(train_subset)
+        if train_split_size < balanced_sample_num[label_idx]:
+            # Sample only until train_split_size, because we don't want to sample more than we have
+            test_subset = test_split[label_subset][: balanced_sample_num[label_idx] - train_split_size]
+            tmp_dataframes.append(pd.concat([train_subset, test_subset], ignore_index=True))
         else:
-            tmp_lis.append(prior[prior[label_tag] == lbl].sample(data_num_lis[i]).reset_index(drop=True))
+            sample_amount = balanced_sample_num[label_idx]
+            tmp_dataframes.append(train_subset.sample(sample_amount).reset_index(drop=True))
 
-    return pd.concat(tmp_lis).sample(frac=1).reset_index(drop=True)
+    full_dataframe = pd.concat(tmp_dataframes)
+    # TODO: Do we need to shuffle the data twice?
+    shuffled_dataframe = full_dataframe.sample(frac=1).reset_index(drop=True)
+    return shuffled_dataframe
 
 
 def get_balanced_sample_num(sample_amount, num_labels):
@@ -278,6 +283,7 @@ def create_name_to_dataframe(data_base_dir, all_dataset_names, num_prompts_per_d
                 raw_data = get_sample_data(dataset_name, split_dataframes, 2 * num_data)
                 raw_data.to_csv(path, index=False)
 
+                # TODO: REFACTOR THIS
                 prompt_dataframe, complete_frame_csv_path = create_promt_dataframe(dataset_name, idx, raw_data, num_data, tokenizer, 
                                                                    complete_path, model, prefix, save_base_dir) 
                 name_to_dataframe[dataset_name_with_num] = prompt_dataframe
