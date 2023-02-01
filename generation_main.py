@@ -1,6 +1,6 @@
 import time
 from utils_generation.parser import get_args
-from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, create_dataframe_dict, get_num_templates_per_dataset
+from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, create_name_to_dataframe, get_num_templates_per_dataset
 from utils_generation.generation import calculate_hidden_state
 from utils_generation.save_utils import save_hidden_state_to_np_array, save_records_to_csv, print_elapsed_time
 from tqdm import tqdm 
@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     print("\n\n-------------------------------- Loading datasets and calculating hidden states --------------------------------\n\n")
     num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
-    name_to_dataframe = create_dataframe_dict(args.data_base_dir, args.datasets, num_templates_per_dataset, args.num_data, 
+    name_to_dataframe = create_name_to_dataframe(args.data_base_dir, args.datasets, num_templates_per_dataset, args.num_data, 
                                               tokenizer, args.save_base_dir, args.model, args.prefix, args.token_place, args.reload_data)
     
     print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
