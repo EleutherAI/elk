@@ -1,36 +1,45 @@
 import time
 from utils_generation.parser import getArgs
-from utils_generation.load_utils import loadModel, loadDatasets
-from utils_generation.generation import calZeroAndHiddenStates
+from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
+from utils_generation.generation import create_records, create_hiddenstates
+from tqdm import tqdm 
 
 if __name__ == "__main__":
-    print("---------------- Program Begin ----------------")
+    print("\n\n-------------------------------- Starting Program --------------------------------\n\n")
     start = time.time()
-    print("Time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+    print(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
     # get args
     args = getArgs()
 
-    # load models, stored in GPU
-    model, tokenizer = loadModel(
-        mdl_name=args.model, cache_dir=args.cache_dir, parallelize=args.parallelize)
+    # load model and tokenizer (put model on hardware accelearator if possible)
+    print("\n\n--------------------------------  Setting up model and tokenizer --------------------------------\n\n")
+    print(f"loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
+    model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
+    
+    print(f"finish loading model to memory. Now start loading to accelerator (gpu or mps). parallelize = {args.parallelize is True}")
+    model = put_model_on_device(model, parallelize=args.parallelize, device = args.model_device)
+    
+    print(f"loading tokenizer for: model name = {args.model} at cache_dir = {args.cache_dir}")
+    tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
 
-    prefix_list = args.prefix
-    for prefix in prefix_list:
+    print("\n\n-------------------------------- Loading datasets and calculating hidden states --------------------------------\n\n")
+    all_prefixes = args.prefix
+    for prefix in tqdm(all_prefixes, desc='Iterating over prefixes:', position=0):
         args.prefix = prefix
         # load datasets and save if possible
-        frame_dict = loadDatasets(args, tokenizer)
+        name_to_dataframe = load_datasets(args, tokenizer)
 
-        # for each frame, calculate the zero-shot accuracy and generate the hidden states if needed
-        # the zero-shot accuracy will be stored in records
-        # the hidden states will be saved to directories
-        calZeroAndHiddenStates(model, tokenizer, frame_dict, args)
-
+        # For each frame, generate the hidden states and save to directories
+        print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
+        create_hiddenstates(model, tokenizer, name_to_dataframe, args)
+        create_records(model, tokenizer, name_to_dataframe, args)
+        
+        total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
         end = time.time()
-        print("Time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
-        print("Consider prefix {}, {} datasets, {} samples in total, and took {} minutes. Generation: {}, Hidden States: {}".format(
-            prefix, len(frame_dict), sum([len(w) for w in frame_dict.values()]), round(
-                (end - start) / 60, 1),  args.cal_zeroshot == True, args.cal_hiddenstates == True
-        ))
-        print("---------------------------------------\n\n")
-    print("---------------- Program Finish ----------------")
+        elapsed_minutes = round((end - start) / 60, 1)
+        print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+        print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
+        print("\n\n---------------------------------------\n\n")
+    
+    print("-------------------------------- Finishing Program --------------------------------")

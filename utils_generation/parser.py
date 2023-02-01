@@ -2,15 +2,15 @@ import argparse
 import json
 from utils_generation.construct_prompts import confusion_prefix
 
-######## JSON Load ########
-json_dir = "./registration"
+######## Load default_config ########
+default_config_path = "default_config.json"
 
-with open("{}.json".format(json_dir), "r") as f:
-    global_dict = json.load(f)
-dataset_list = global_dict["dataset_list"]
-registered_models = global_dict["registered_models"]
-registered_prefix = global_dict["registered_prefix"]
-models_layer_num = global_dict["models_layer_num"]
+with open(default_config_path, "r") as f:
+    default_config = json.load(f)
+datasets = default_config["datasets"]
+models = default_config["models"]
+prefix = default_config["prefix"]
+models_layer_num = default_config["models_layer_num"]
 
 def getArgs():
     parser = argparse.ArgumentParser()
@@ -28,6 +28,9 @@ def getArgs():
                         help="Whether to parallelize models in multiple gpus. Please notice that at least one gpu must be provided by `CUDA_VISIBLE_DEVICES` or `os.environ`. Using this args will help split the model equally in all gpus you provide.")
     parser.add_argument("--cache_dir", type=str, default="models",
                         help="The path to save and load pretrained model.")
+    parser.add_argument("--model_device", type=str, default="cuda",
+                        help="What device to load the model onto: CPU or GPU or MPS.")
+    
 
     # datasets processing
     parser.add_argument("--prefix", type = str, nargs="+", default = ["normal"],
@@ -36,8 +39,6 @@ def getArgs():
                         default=[1000], help="number of data points you want to use in each datasets. If one integer is provide, if will be extended to a list with the same length as `datasets`. If the size of datasets are no enough, will use all the data points.")
     parser.add_argument("--reload_data", action="store_true",
                         help="Whether to use the old version of datasets if there exists one. Using `reload_data` will let the program reselect data points from the datasets.")
-    parser.add_argument("--swipe", action="store_true",
-                        help="Whether to swipe all prompts. If this is true, then `prompt_idx` will be ignored, and for each dataset in `datasets`, all prompts will be executed.")
     parser.add_argument("--prompt_idx", nargs="+", default=[
                         0], help="The indexs of prompt you want to use.")
 
@@ -65,11 +66,11 @@ def getArgs():
     args = parser.parse_args()
 
     if args.datasets == ["all"]:
-        args.datasets = dataset_list
+        args.datasets = datasets
     else:
         for w in args.datasets:
-            assert w in dataset_list, NotImplementedError(
-                "Dataset {} not registered in {}.json. Please check the name of the dataset!".format(w, json_dir))
+            assert w in datasets, NotImplementedError(
+                "Dataset {} not  in {}. Please check the name of the dataset!".format(w, default_config_path))
 
     # if (args.cal_zeroshot or args.cal_logits) and "bert" in args.model:
     # Add features. Only forbid cal_logits for bert type model now
@@ -77,13 +78,13 @@ def getArgs():
         raise NotImplementedError(
             "You use {}, but bert type models do not have standard logits. Please set cal_logits to 0.".format(args.model)) 
 
-    assert args.model in registered_models, NotImplementedError(
-        "You use model {}, but it's not registered. For any new model, please make sure you implement the code in `load_utils` and `generation`, and then register it in `parser.py`".format(args.model))
+    assert args.model in models, NotImplementedError(
+        "You use model {}, but it's not . For any new model, please make sure you implement the code in `load_utils` and `generation`, and then  it in `parser.py`".format(args.model))
 
     for prefix in args.prefix:
-        assert prefix in registered_prefix, NotImplementedError(
-            "Invalid prefix name {}. Please check your prefix name. To add new prefix, please mofidy `utils_generation/prompts.json` and register new prefix in {}.json.".format(
-                prefix, json_dir
+        assert prefix in prefix, NotImplementedError(
+            "Invalid prefix name {}. Please check your prefix name. To add new prefix, please mofidy `utils_generation/prompts.json` and  new prefix in {}.json.".format(
+                prefix, default_config_path
             ))
 
     # Set default states_location according to model type
@@ -104,9 +105,8 @@ def getArgs():
         
 
         
-    print("-------- args --------")
+    print("\n\n-------------------------------- Args --------------------------------\n\n")
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))
-    print("-------- args --------")
 
     return args

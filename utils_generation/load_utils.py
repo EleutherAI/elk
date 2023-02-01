@@ -3,76 +3,129 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     T5ForConditionalGeneration,
-    GPTNeoForCausalLM,
-    AutoConfig,
     GPT2LMHeadModel,
     GPT2Tokenizer,
-    AutoModel,
     AutoModelForSeq2SeqLM,
-    AutoModelForMaskedLM,
     AutoModelWithLMHead,
     AutoModelForSequenceClassification
 )
 import os
+import torch
 import pandas as pd
 from datasets import load_dataset
 from utils_generation.construct_prompts import constructPrompt, MyPrompts
 from utils_generation.save_utils import saveFrame, getDir
+from utils_generation.save_utils import save_records_to_csv
 
 
-def loadModel(mdl_name, cache_dir, parallelize):
-    print("-------- model and tokenizer --------")
-    print("loading model and tokenizer. model name = {}, cache_dir = {}".format(
-        mdl_name, cache_dir))
+def load_model(mdl_name, cache_dir):
+    """
+    Load model from cache_dir or from HuggingFace model hub.
+
+    Args:
+        mdl_name (str): name of the model
+        cache_dir (str): path to the cache directory
+    
+    Returns:
+        model (torch.nn.Module): model
+    """
     if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
         model = AutoModelForCausalLM.from_pretrained("EleutherAI/{}".format(
             mdl_name), cache_dir = cache_dir)
-        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/{}".format(
-            mdl_name), cache_dir = cache_dir)
     elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
         model = GPT2LMHeadModel.from_pretrained(mdl_name, cache_dir=cache_dir)
-        tokenizer = GPT2Tokenizer.from_pretrained(
-            mdl_name, cache_dir=cache_dir)
     elif "T0" in mdl_name:
         model = AutoModelForSeq2SeqLM.from_pretrained(
-            "bigscience/{}".format(mdl_name), cache_dir=cache_dir)
-        tokenizer = AutoTokenizer.from_pretrained(
             "bigscience/{}".format(mdl_name), cache_dir=cache_dir)
     elif "unifiedqa" in mdl_name:
         model = T5ForConditionalGeneration.from_pretrained(
             "allenai/" + mdl_name, cache_dir=cache_dir)
-        tokenizer = AutoTokenizer.from_pretrained(
-            "allenai/" + mdl_name, cache_dir=cache_dir)
     elif "deberta" in mdl_name:
         model = AutoModelForSequenceClassification.from_pretrained(
             "microsoft/{}".format(mdl_name), cache_dir=cache_dir)
+    elif "roberta" in mdl_name:
+        model = AutoModelForSequenceClassification.from_pretrained(mdl_name, cache_dir = cache_dir)
+    elif "t5" in mdl_name:
+        model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
+    
+    # We only use the models for inference, so we don't need to train them and hence don't need to track gradients
+    model.eval()
+    
+    return model
+
+def put_model_on_device(model, parallelize, device = "cuda"):
+    """
+    Put model on device.
+    
+    Args:
+        model (torch.nn.Module): model to put on device
+        parallelize (bool): whether to parallelize the model
+        device (str): device to put the model on
+        
+    Returns:
+        model (torch.nn.Module): model on device
+    """
+    if device == "mps":
+        # Check that MPS is available
+        if not torch.backends.mps.is_available():
+            if not torch.backends.mps.is_built():
+                print("MPS not available because the current PyTorch install was not "
+                    "built with MPS enabled.")
+            else:
+                print("MPS not available because the current MacOS version is not 12.3+ "
+                    "and/or you do not have an MPS-enabled device on this machine.")
+        else:
+            mps_device = torch.device("mps")
+            model.to(mps_device)
+    elif parallelize == True:
+        model.parallelize()
+    elif device == 'cuda':
+        if not torch.cuda.is_available():
+            print("CUDA not available, using CPU instead.")
+        else:
+            model.to('cuda')
+    else:
+        model.to("cpu")
+
+    return model
+
+def load_tokenizer(mdl_name, cache_dir):
+    """
+    Load tokenizer for the model.
+    
+    Args:
+        mdl_name (str): name of the model
+        cache_dir (str): path to the cache directory
+    
+    Returns:
+        tokenizer: tokenizer for the model
+    """
+
+    if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
+        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/{}".format(
+            mdl_name), cache_dir = cache_dir)
+    elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
+        tokenizer = GPT2Tokenizer.from_pretrained(
+            mdl_name, cache_dir=cache_dir)
+    elif "T0" in mdl_name:
+        tokenizer = AutoTokenizer.from_pretrained(
+            "bigscience/{}".format(mdl_name), cache_dir=cache_dir)
+    elif "unifiedqa" in mdl_name:
+        tokenizer = AutoTokenizer.from_pretrained(
+            "allenai/" + mdl_name, cache_dir=cache_dir)
+    elif "deberta" in mdl_name:
         tokenizer = AutoTokenizer.from_pretrained(
             "microsoft/" + mdl_name, cache_dir=cache_dir)
     elif "roberta" in mdl_name:
-        model = AutoModelForSequenceClassification.from_pretrained(mdl_name, cache_dir = cache_dir)
         tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
     elif "t5" in mdl_name:
-        model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
         tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
 
-    model.eval()
-
-    print("finish loading model to memory. Now start loading to gpu. parallelize = {}".format(
-        parallelize == True))
-    if parallelize:
-        model.parallelize()
-    else:
-        model = model.to("cuda")
-
-    print("{} loaded.".format(mdl_name))
-    
-    print("-------- model and tokenizer --------")
-
-    return model, tokenizer
-
+    return tokenizer
 
 def get_sample_data(set_name, data_list, total_num):
     '''
+
         set_name:   the name of the dataset, some datasets have special token name.
         data_list:  a list of dataframe, with order queals to token_list
         max_num:    number of data point that wants to take, default is twice as final size, considering that some examples are too long and could be dropped.
@@ -143,107 +196,177 @@ def loadFromDatasets(set_name, cache_dir, max_num):
 
     return raw_data
 
+def setup_dataset_names_and_prompt_idx(prompt_idxs=None, dataset_names=None):
+    """
+    This function will setup the dataset_names and prompt_idxs.
+    If swipe is True, then will use all the prompts for each dataset.
+    If swipe is False, then will use the prompt_idxs for each dataset.
+    
+    Args:
+        swipe: bool, if True, will use all the prompts for each dataset.
+        prompt_idxs: list of int, the prompt idxs that will be used.
+        dataset_names: list of str, the dataset names that will be used.
+    
+    Returns:
+        dataset_names: list of str, the dataset names that will be used.
+        prompt_idxs: list of int, the prompt idxs that will be used.
+    """
 
-def loadDatasets(args, tokenizer):
-    '''
-        This fnction will return the datasets, their corresponding name (with prompt suffix, confusion suffix, etc), which should be used to save the hidden states
-    '''
-    print("-------- datasets --------")
-    base_dir = args.data_base_dir
-    set_list = args.datasets
-    num_data = [int(w) for w in args.num_data]
-    confusion = args.prefix
-    reload = args.reload_data
-    prompt_idx_list = [int(w) for w in args.prompt_idx]
+    prompt_idxs = MyPrompts.getGlobalPromptsNum(dataset_names)
 
-    # deal with the length of prompt_idx_list, and extend
-    # end up making prompt_idx_list and set_list with the same length
-    if not args.swipe:
-        print("Consider datasets {} and prompt idx {}.".format(set_list, prompt_idx_list))
-        set_num = len(set_list)
-        set_list = [w for w in set_list for _ in range(len(prompt_idx_list))]
-        prompt_idx_list = [j for _ in range(set_num) for j in prompt_idx_list]
-    else:
-        # swipe: for each dataset, will use all the prompts
-        prompt_idx_list = MyPrompts.getGlobalPromptsNum(set_list)
-        print("Consider datasets {} with {} prompts each.".format(set_list, prompt_idx_list))
-        set_list = [[w for _ in range(times)] for w, times in zip(set_list, prompt_idx_list)]
-        prompt_idx_list = [[w for w in range(times)] for times in prompt_idx_list]
-        set_list, prompt_idx_list = [w for j in set_list for w in j], [w for j in prompt_idx_list for w in j]
+    print("Consider datasets {} with {} prompts each.".format(dataset_names, prompt_idxs))
+    dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, prompt_idxs)]
+    prompt_idxs = [[w for w in range(times)] for times in prompt_idxs]
+    dataset_names, prompt_idxs = [w for j in dataset_names for w in j], [w for j in prompt_idxs for w in j]
 
-    # deal with the length of `num_data`
-    # end up making num_data and set_list with the same length
-    assert len(num_data) == 1 or len(num_data) == len(
-        set_list), "The length of `num_data` should either be one or be the same as `datasets`!"
-    if len(num_data) == 1:
-        num_data = [num_data[0] for _ in set_list]
+    return dataset_names, prompt_idxs
 
-    print("Processing {} data points in total.".format(sum(num_data)))
 
-    # create the directory if needed
-    if not os.path.exists(base_dir):
-        os.mkdir(base_dir)
+def create_directory(name):
+    """
+    This function will create a directory if it does not exist.
 
-    cache_dir = os.path.join(base_dir, "cache")
-    if not os.path.exists(cache_dir):
-        os.mkdir(cache_dir)
+    Args:
+        name: str, the name of the directory.
+    
+    Returns:
+        None
+    """
+    if not os.path.exists(name):
+        os.makedirs(name)
 
-    frame_dict = {}
+def create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path):
+    """
+    This function will create a prompt dataframe and saves it.
+
+    Args:
+        args: argparse, the arguments.
+        dataset: str, the name of the dataset.
+        prompt_idx: int, the prompt idx.
+        raw_data: pd.DataFrame, the raw data.
+        max_num: int, the number of data points that will be used for each dataset.
+        tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
+        complete_path: str, the path to save the prompt dataframe.
+    
+    Returns:
+        prompt_dataframe: pd.DataFrame, the prompt dataframe.
+    """
+    prompt_dataframe = constructPrompt(set_name=dataset, frame=raw_data,
+                            prompt_idx=prompt_idx, mdl_name=args.model, 
+                            tokenizer=tokenizer, max_num = max_num, 
+                            confusion = args.prefix)
+
+    create_directory(args.save_base_dir)
+    create_directory(complete_path)
+    complete_frame_csv_path = os.path.join(complete_path, "frame.csv")
+    prompt_dataframe.to_csv(complete_frame_csv_path, index = False)
+    
+    return prompt_dataframe
+
+def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer, print_more=False):
+    """
+    This function will create a dictionary of dataframes, where the key is the dataset name and the value is the dataframe.
+
+    Args:
+        args: argparse, the arguments.
+        data_base_dir: str, the directory of the data.
+        dataset_names: list of str, the dataset names that will be used.
+        prompt_idxs: list of int, the prompt idxs that will be used.
+        num_data: list of int, the number of data points that will be used for each dataset.
+        tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
+        print_more: bool, if True, will print more information.
+
+    Returns:
+        name_to_dataframe: dict, the dictionary of dataframes.
+    """
+    create_directory(data_base_dir)
+    name_to_dataframe = {}
     reload_set_name = ""    # Only reload if this is the first prompt of a dataset
-    for (set_name, prompt_idx, max_num) in zip(set_list, prompt_idx_list, num_data):
-        path = os.path.join(
-            base_dir, "rawdata_{}_{}.csv".format(set_name, max_num))
-
-                
+    for (dataset, prompt_idx, max_num) in zip(dataset_names, prompt_idxs, num_data):
+        path = os.path.join(data_base_dir, f"rawdata_{dataset}_{max_num}.csv")
+      
         # load datasets
         # if complete dataset exists and reload == False, will directly load this dataset
         # Otherwise, load existing raw dataset or reload / load new raw sets
         # notice that this is just the `raw data`, which is a dict or whatever
-        dataset_name_w_num = "{}_{}_prompt{}".format(set_name, max_num, prompt_idx)
-        complete_path = getDir(dataset_name_w_num, args)
+        dataset_name_with_num = f"{dataset}_{max_num}_prompt{prompt_idx}"
+        complete_path = getDir(dataset_name_with_num, args)
+        dataframe_path = os.path.join(complete_path, "frame.csv")
         
-        if reload == False and os.path.exists(os.path.join(complete_path, "frame.csv")):
-            frame = pd.read_csv(os.path.join(complete_path, "frame.csv"), converters={"selection": eval})
-            frame_dict[dataset_name_w_num] = frame
-            if args.print_more:
-                print("load post-processing {} from {}, length = {}".format(
-                    dataset_name_w_num, complete_path, max_num))
-
+        if args.reload_data is False and os.path.exists(dataframe_path):
+            frame = pd.read_csv(dataframe_path, converters={"selection": eval})
+            name_to_dataframe[dataset_name_with_num] = frame
+            if print_more:
+                print(f"load post-processing {dataset_name_with_num} from {complete_path}, length = {max_num}")
+                    # print an example
         else:   # either reload, or this specific model / confusion args has not been saved yet.
-            if (reload == False or reload_set_name == set_name) and os.path.exists(path):
+            if (args.reload_data is False or reload_set_name == dataset) and os.path.exists(path):
                 raw_data = pd.read_csv(path)
-                if args.print_more:
-                    print("load raw {} from {}, length = {}".format(
-                        set_name, path, max_num))
+                if print_more:
+                    print(f"load raw {dataset} from {path}, length = {max_num}")
             else:
-                if args.print_more:
-                    print("load raw dataset {} from module.".format(set_name))
-                raw_data = loadFromDatasets(set_name, cache_dir, max_num)
-                # save to base_dir, with name `set`+`length`
-                # This is only the raw dataset. Saving is just to avoid shuffling every time.
+                if print_more:
+                    print(f"load raw dataset {dataset} from module.")
+                
+                cache_dir = os.path.join(data_base_dir, "cache")
+                create_directory(cache_dir)
+                raw_data = loadFromDatasets(dataset, cache_dir, max_num)
                 raw_data.to_csv(path, index=False)
-                if args.print_more:
-                    print("save raw set to {}".format(path))
+                
+                if print_more:
+                    print(f"save raw set to {path}")
+            
+            prompt_dataframe = create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path)
+            
+            name_to_dataframe[dataset_name_with_num] = prompt_dataframe
+    
 
-            # now start formatting
-            # construct the examples according to prompt_ids and so on
-            frame = constructPrompt(set_name=set_name, frame=raw_data,
-                                    prompt_idx=prompt_idx, mdl_name=args.model, tokenizer=tokenizer, max_num = max_num, confusion = confusion)
+    return name_to_dataframe
 
-            frame_dict[dataset_name_w_num] = frame
+def align_datapoints_amount(num_examples, dataset_names):
+    """
+    This function will check the length of `num_examples` and make it the same as `dataset_names`.
+    This function gives us a list of num_examples for each prompt template e.g.
+    [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000] ... so, for 13 prompts we obtain 1000 datapoints
+    Args:  
+        num_examples: list of ints, the number of data points that will be used for each dataset.
+        dataset_names: list of strings, the dataset names that will be used.
+    
+    Returns:
+        num_examples: list of int, the number of data points that will be used for each dataset.
+    """
+    # deal with the length of `num_examples`
+    # end up making num_examples and set_list with the same length
+    assert len(num_examples) == 1 or len(num_examples) == len(dataset_names), "The length of `num_examples` should either be one or be the same as `datasets`!"
+    
+    if len(num_examples) == 1:
+        num_examples = [num_examples[0] for _ in dataset_names]
 
-            # save this frame
-            if not os.path.exists(args.save_base_dir):
-                os.mkdir(args.save_base_dir)
-            if not os.path.exists(complete_path):
-                os.mkdir(complete_path)
-            frame.to_csv(os.path.join(complete_path, "frame.csv"), index = False)
+    print(f"Processing {num_examples} data points in total.")
+    return num_examples
 
+def load_datasets(args, tokenizer):
+    '''
+    This function will return the datasets. 
+    Their corresponding name will include the prompt suffix, confusion suffix, etc. 
+    These should be used to save the hidden states.
 
-        # print an example
-        if args.print_more:
-            print("[example]:\n{}".format(frame.loc[0, "null"]))
+    Args:
+        args: argparse, the arguments.
+        tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
 
+    Returns:
+        frame_dict: dict, the dictionary of dataframes.
+    '''
+    data_base_dir = args.data_base_dir
+    dataset_names = args.datasets
+    num_data = [int(w) for w in args.num_data]
+    prompt_idxs = [int(w) for w in args.prompt_idx]
+    
+    dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, dataset_names)
 
-    print("-------- datasets --------")
+    num_data = align_datapoints_amount(num_data, dataset_names)
+
+    frame_dict = create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer, print_more=True)
+    
     return frame_dict

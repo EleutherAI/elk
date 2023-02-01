@@ -262,7 +262,7 @@ class MyPrompts():
 
         if set_name in ["ag-news", "dbpedia-14"]:
             self.nomodule = True
-            self.moudle = None
+            self.module = None
         else:
             self.nomodule = False
             from utils_generation.load_utils import getLoadName
