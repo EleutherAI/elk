@@ -27,7 +27,7 @@ def load_model(mdl_name, cache_dir):
         cache_dir (str): path to the cache directory
     
     Returns:
-        model (torch.nn.Module): model
+        model (torch.nn.Module): model in evaluation mode
     """
     if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
         model = AutoModelForCausalLM.from_pretrained(f"EleutherAI/{mdl_name}", cache_dir = cache_dir)
@@ -49,7 +49,7 @@ def load_model(mdl_name, cache_dir):
 
 def put_model_on_device(model, parallelize, device = "cuda"):
     """
-    Put model on device.
+    Put model on device (hardware accelearator like "cuda", "mps" or simply "cpu").
     
     Args:
         model (torch.nn.Module): model to put on device
@@ -111,11 +111,14 @@ def load_tokenizer(mdl_name, cache_dir):
 
 def get_sample_data(dataset_name, split_dataframes, sample_amount):
     '''
+    Get shuffled sample data from the dataset.
     Args:
-
         dataset_name:   the name of the dataset, some datasets have special token name.
         split_dataframes:  a list of dataframes corresponding to the split of the dataset (train, test, eval etc.)
         num_data:    number of data point we want to sample, default is twice as final size, considering that some examples are too long and could be dropped.
+   
+    Returns:
+        shuffled_dataframe: a dataframe containing the sample data
     '''
 
     label_column_name = "label" if dataset_name != "story-cloze" else "answer_right_ending"
@@ -144,6 +147,7 @@ def get_sample_data(dataset_name, split_dataframes, sample_amount):
             sample_amount = balanced_sample_num[label_idx]
             tmp_dataframes.append(train_subset.sample(sample_amount).reset_index(drop=True))
 
+    # TODO: WHY ARE WE CONCATENATING THE Train and Test split data?
     full_dataframe = pd.concat(tmp_dataframes)
     # TODO: Do we need to shuffle the data twice?
     shuffled_dataframe = full_dataframe.sample(frac=1).reset_index(drop=True)
@@ -196,6 +200,13 @@ def get_raw_dataset(dataset_name, cache_dir):
     '''
     This function will load datasets from module or raw csv, and then return a pd DataFrame.
     This DataFrame can be used to construct the example.
+
+    Args:
+        dataset_name:   the name of the dataset
+        cache_dir:  the directory where the dataset might have been cached in the past
+
+    Returns:
+        raw_dataset:   A `DatasetDict` object containing the raw dataset
     '''
     if dataset_name != "story-cloze":
         raw_dataset = load_dataset(*get_hugging_face_load_name(dataset_name), cache_dir=cache_dir)
@@ -212,25 +223,29 @@ def get_raw_dataset(dataset_name, cache_dir):
     return raw_dataset, dataset_split_names
 
 
-def create_promt_dataframe(dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path, model, prefix, save_base_dir):
+def create_promt_dataframe(dataset, prompt_idx, raw_data, num_data, tokenizer, complete_path, model, prefix, save_base_dir):
     """
     This function will create a prompt dataframe and saves it.
 
     Args:
-        args: argparse, the arguments.
         dataset: str, the name of the dataset.
         prompt_idx: int, the prompt idx.
         raw_data: pd.DataFrame, the raw data.
-        max_num: int, the number of data points that will be used for each dataset.
+        num_data: int, the number of data points that will be used for each dataset.
         tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
         complete_path: str, the path to save the prompt dataframe.
+        model: str, name of the model used to construct a prompt
+        prefix: str, prefix to append to the prompt
+        save_base_dir: str, directory to save the results in
     
     Returns:
-        prompt_dataframe: pd.DataFrame, the prompt dataframe.
+        prompt_dataframe: pd.DataFrame, the prompt dataframe.       
     """
+
+    # TODO: Simplify constructPrompt function
     prompt_dataframe = constructPrompt(set_name=dataset, frame=raw_data,
                             prompt_idx=prompt_idx, mdl_name=model, 
-                            tokenizer=tokenizer, max_num = max_num, 
+                            tokenizer=tokenizer, max_num = num_data, 
                             confusion = prefix)
 
     create_directory(save_base_dir)
@@ -239,13 +254,13 @@ def create_promt_dataframe(dataset, prompt_idx, raw_data, max_num, tokenizer, co
     
     return prompt_dataframe, complete_frame_csv_path
 
-def create_name_to_dataframe(data_base_dir, all_dataset_names, num_prompts_per_dataset, num_data, tokenizer, save_base_dir, model, prefix, token_place, reload_data):
+def create_name_to_dataframe(data_base_dir, all_dataset_names, num_prompts_per_dataset, num_data, tokenizer, save_base_dir, model, prefix, token_place):
     """
     This function will create a dictionary of dataframes, where the key is the dataset name and the value is the dataframe.
 
     Args:
         data_base_dir: str, the directory to save the raw data csv files.
-        dataset_names: list of str, the names of the datasets.
+        all_dataset_names: list of str, the names of the datasets.
         num_prompts_per_dataset: list of int, the number of prompts per dataset.
         num_data: int, the number of data points that will be used for each dataset.
         tokenizer: transformers.PreTrainedTokenizer, tokenizer associated with the model.
@@ -253,7 +268,6 @@ def create_name_to_dataframe(data_base_dir, all_dataset_names, num_prompts_per_d
         model: str, the name of the model.
         prefix: str, the prefix of the prompt.
         token_place: str, Determine which token's hidden states will be generated. Can be `first` or `last` or `average`.
-        reload_data: bool, whether to reload the data.
 
     Returns:
         name_to_dataframe: dict, the dictionary of dataframes.
@@ -299,9 +313,18 @@ def create_directory(name):
     if not os.path.exists(name):
         os.makedirs(name)
 
-def get_num_templates_per_dataset(dataset_name_list):
+def get_num_templates_per_dataset(all_dataset_names):
+    """
+    This function calculates the number of available prompt templates per dataset in a list of dataset names.
+
+    Args:
+        all_dataset_names: list of str, the names of the datasets.
+        
+    Returns:
+        num_templates_per_dataset: list of int, contains number of prompt templates per dataset.
+    """
     num_templates_per_dataset = []
-    for dataset_name in dataset_name_list:
+    for dataset_name in all_dataset_names:
         amount_of_templates = 0
         if dataset_name in prompt_dict.keys():
             amount_of_templates += len(prompt_dict[dataset_name])
