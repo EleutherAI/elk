@@ -11,9 +11,11 @@ from transformers import (
 import os
 import torch
 import pandas as pd
-from datasets import load_dataset
-from utils_generation.construct_prompts import constructPrompt, MyPrompts
+from utils_generation.construct_prompts import constructPrompt, prompt_dict
 from utils_generation.save_utils import get_directory
+from datasets import load_dataset
+from promptsource.templates import DatasetTemplates
+
 
 
 def load_model(mdl_name, cache_dir):
@@ -132,7 +134,7 @@ def load_datasets(args, tokenizer):
     return frame_dict
 
 
-def setup_dataset_names_and_prompt_idx(prompt_idxs=None, dataset_names=None):
+def setup_dataset_names_and_prompt_idx(num_templates_per_dataset=None, dataset_names=None):
     """
     This function will setup the dataset_names and prompt_idxs.
     It will use all the relevant prompts for each dataset.
@@ -146,14 +148,14 @@ def setup_dataset_names_and_prompt_idx(prompt_idxs=None, dataset_names=None):
         prompt_idxs: list of int, the prompt idxs that will be used.
     """
 
-    prompt_idxs = MyPrompts.getGlobalPromptsNum(dataset_names)
+    num_templates_per_dataset = get_num_templates_per_dataset(dataset_names)
 
-    print(f"Consider datasets {dataset_names} with {prompt_idxs} prompts each.")
-    dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, prompt_idxs)]
-    prompt_idxs = [[w for w in range(times)] for times in prompt_idxs]
-    dataset_names, prompt_idxs = [w for j in dataset_names for w in j], [w for j in prompt_idxs for w in j]
+    print(f"Consider datasets {dataset_names} with {num_templates_per_dataset} prompts each.")
+    dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, num_templates_per_dataset)]
+    num_templates_per_dataset = [[w for w in range(times)] for times in num_templates_per_dataset]
+    dataset_names, num_templates_per_dataset = [w for j in dataset_names for w in j], [w for j in num_templates_per_dataset for w in j]
 
-    return dataset_names, prompt_idxs
+    return dataset_names, num_templates_per_dataset
 
 def get_sample_data(dataset_name, data_list, total_num):
     '''
@@ -295,7 +297,7 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
         # Otherwise, load existing raw dataset or reload / load new raw sets
         # notice that this is just the `raw data`, which is a dict or whatever
         dataset_name_with_num = f"{dataset}_{max_num}_prompt{prompt_idx}"
-        complete_path = get_directory(args.save_base_dir, args.model, dataset_name_with_num, args.prefix, args.token_place, args.tags)
+        complete_path = get_directory(args.save_base_dir, args.model, dataset_name_with_num, args.prefix, args.token_place)
         dataframe_path = os.path.join(complete_path, "frame.csv")
         
         if args.reload_data is False and os.path.exists(dataframe_path):
@@ -364,3 +366,17 @@ def create_directory(name):
     """
     if not os.path.exists(name):
         os.makedirs(name)
+
+def get_num_templates_per_dataset(dataset_name_list):
+    num_templates_per_dataset = []
+    for dataset_name in dataset_name_list:
+        amount_of_templates = 0
+        if dataset_name in prompt_dict.keys():
+            amount_of_templates += len(prompt_dict[dataset_name])
+        if dataset_name not in ["ag-news", "dbpedia-14"]:
+            amount_of_templates += len(DatasetTemplates(*get_hugging_face_load_name(dataset_name)).all_template_names)
+        if dataset_name == "copa":
+            amount_of_templates -= 4  # do not use the last four prompts
+        num_templates_per_dataset.append(amount_of_templates)
+
+    return num_templates_per_dataset
