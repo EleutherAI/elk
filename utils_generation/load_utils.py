@@ -109,14 +109,14 @@ def load_tokenizer(mdl_name, cache_dir):
 
     return tokenizer
 
-
-def get_sample_data(dataset_name, data_list, total_num):
+# TODO: UNDEERSTAND THIS FUNCTION
+def get_sample_data(dataset_name, data_list, num_data):
     '''
     Args:
 
-        set_name:   the name of the dataset, some datasets have special token name.
+        dataset_name:   the name of the dataset, some datasets have special token name.
         data_list:  a list of dataframe, with order queals to token_list
-        max_num:    number of data point that wants to take, default is twice as final size, considering that some examples are too long and could be dropped.
+        num_data:    number of data point that wants to take, default is twice as final size, considering that some examples are too long and could be dropped.
     '''
 
     lbl_tag = "label" if dataset_name != "story-cloze" else "answer_right_ending"
@@ -124,7 +124,7 @@ def get_sample_data(dataset_name, data_list, total_num):
     label_set = set(data_list[0][lbl_tag].to_list())
     label_num = len(label_set)
     data_num_lis = get_balanced_num(
-        total_num=total_num, lis_len=label_num)
+        total_num=num_data, lis_len=label_num)
 
     # randomized
     data_list = [dataframe.sample(frac=1).reset_index(drop=True) for dataframe in data_list]
@@ -144,6 +144,7 @@ def get_sample_data(dataset_name, data_list, total_num):
     return pd.concat(tmp_lis).sample(frac=1).reset_index(drop=True)
 
 
+# TODO: REWRITE THIS 
 def get_balanced_num(total_num, lis_len):
     tmp = total_num // lis_len
     more = total_num - tmp * lis_len
@@ -168,32 +169,27 @@ def get_hugging_face_load_name(dataset_name):
     elif dataset_name == "story-cloze":
         return ["story_cloze", "2016"]
 
-def loadFromDatasets(set_name, cache_dir, max_num):
+def get_raw_dataset(dataset_name, cache_dir):
     '''
-        This function will load datasets from module or raw csv, and then return a pd DataFrame
-        This DataFrame can be used to construct the example
+    This function will load datasets from module or raw csv, and then return a pd DataFrame.
+    This DataFrame can be used to construct the example.
     '''
-    if set_name != "story-cloze":
-        raw_set = load_dataset(*get_hugging_face_load_name(set_name), cache_dir=cache_dir)
+    if dataset_name != "story-cloze":
+        raw_dataset = load_dataset(*get_hugging_face_load_name(dataset_name), cache_dir=cache_dir)
     else:
-        raw_set = load_dataset(*get_hugging_face_load_name(set_name),cache_dir=cache_dir, data_dir="./datasets/rawdata")
+        raw_dataset = load_dataset(*get_hugging_face_load_name(dataset_name),cache_dir=cache_dir, data_dir="./datasets/rawdata")
 
-    if set_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14"]:
-        dataset_split_name = ["test", "train"]
-    elif set_name in ["copa", "rte", "boolq", "piqa", "qnli"]:
-        dataset_split_name = ["validation", "train"]
-    elif set_name in ["story-cloze"]:
-        dataset_split_name = ["test", "validation"]
+    if dataset_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14"]:
+        dataset_split_names = ["test", "train"]
+    elif dataset_name in ["copa", "rte", "boolq", "piqa", "qnli"]:
+        dataset_split_names = ["validation", "train"]
+    elif dataset_name in ["story-cloze"]:
+        dataset_split_names = ["test", "validation"]
 
-    # This is a dataframe with random order data
-    # Can just take enough data from scratch and then stop as needed
-    # the length of raw_data will be 2 times as the intended length
-    raw_data = get_sample_data(set_name, [raw_set[split_name].to_pandas() for split_name in dataset_split_name], 2 * max_num)
-
-    return raw_data
+    return raw_dataset, dataset_split_names
 
 
-def create_and_save_promt_dataframe(dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path, model, prefix, save_base_dir):
+def create_promt_dataframe(dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path, model, prefix, save_base_dir):
     """
     This function will create a prompt dataframe and saves it.
 
@@ -217,11 +213,10 @@ def create_and_save_promt_dataframe(dataset, prompt_idx, raw_data, max_num, toke
     create_directory(save_base_dir)
     create_directory(complete_path)
     complete_frame_csv_path = os.path.join(complete_path, "frame.csv")
-    prompt_dataframe.to_csv(complete_frame_csv_path, index = False)
     
-    return prompt_dataframe
+    return prompt_dataframe, complete_frame_csv_path
 
-def create_dataframe_dict(data_base_dir, dataset_names, num_prompts_per_dataset, num_data, tokenizer, save_base_dir, model, prefix, token_place, reload_data):
+def create_name_to_dataframe(data_base_dir, all_dataset_names, num_prompts_per_dataset, num_data, tokenizer, save_base_dir, model, prefix, token_place, reload_data):
     """
     This function will create a dictionary of dataframes, where the key is the dataset name and the value is the dataframe.
 
@@ -242,26 +237,34 @@ def create_dataframe_dict(data_base_dir, dataset_names, num_prompts_per_dataset,
     """
     create_directory(data_base_dir)
     name_to_dataframe = {}
-    for dataset, num_prompts in zip(dataset_names, num_prompts_per_dataset):
+    for dataset_name, num_prompts in zip(all_dataset_names, num_prompts_per_dataset):
         for idx in range(num_prompts):
-            path = os.path.join(data_base_dir, f"rawdata_{dataset}_{num_data}.csv")
+            path = os.path.join(data_base_dir, f"rawdata_{dataset_name}_{num_data}.csv")
         
-            dataset_name_with_num = f"{dataset}_{num_data}_prompt{idx}"
+            dataset_name_with_num = f"{dataset_name}_{num_data}_prompt{idx}"
             complete_path = get_directory(save_base_dir, model, dataset_name_with_num, prefix, token_place)
             dataframe_path = os.path.join(complete_path, "frame.csv")
  
             if os.path.exists(dataframe_path):
-                frame = pd.read_csv(dataframe_path, converters={"selection": eval})
-                name_to_dataframe[dataset_name_with_num] = frame
+                prompt_dataframe = pd.read_csv(dataframe_path, converters={"selection": eval})
+                name_to_dataframe[dataset_name_with_num] = prompt_dataframe
             else:  
                 cache_dir = os.path.join(data_base_dir, "cache")
                 create_directory(cache_dir)
-                raw_data = loadFromDatasets(dataset, cache_dir, num_data)
+
+                # This is a dataframe with random order data
+                # Can just take enough data from scratch and then stop as needed
+                # the length of raw_data will be 2 times as the intended length
+                raw_dataset, dataset_split_names = get_raw_dataset(dataset_name, cache_dir)
+                split_dataframes = [raw_dataset[split_name].to_pandas() for split_name in dataset_split_names]
+                raw_data = get_sample_data(dataset_name, split_dataframes, 2 * num_data)
                 raw_data.to_csv(path, index=False)
-                prompt_dataframe = create_and_save_promt_dataframe(dataset, idx, raw_data, num_data, tokenizer, 
+
+                prompt_dataframe, complete_frame_csv_path = create_promt_dataframe(dataset_name, idx, raw_data, num_data, tokenizer, 
                                                                    complete_path, model, prefix, save_base_dir) 
                 name_to_dataframe[dataset_name_with_num] = prompt_dataframe
-    
+                prompt_dataframe.to_csv(complete_frame_csv_path, index = False)
+
     return name_to_dataframe
 
 
