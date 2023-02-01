@@ -153,6 +153,7 @@ def setup_dataset_names_and_prompt_idx(num_templates_per_dataset=None, dataset_n
 
     return dataset_names, num_templates_per_dataset
 
+
 def get_sample_data(dataset_name, data_list, total_num):
     '''
     Args:
@@ -264,7 +265,7 @@ def create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num
     
     return prompt_dataframe
 
-def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer, print_more=False):
+def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer):
     """
     This function will create a dictionary of dataframes, where the key is the dataset name and the value is the dataframe.
 
@@ -297,25 +298,15 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
         if args.reload_data is False and os.path.exists(dataframe_path):
             frame = pd.read_csv(dataframe_path, converters={"selection": eval})
             name_to_dataframe[dataset_name_with_num] = frame
-            if print_more:
-                print(f"load post-processing {dataset_name_with_num} from {complete_path}, length = {max_num}")
-                    # print an example
         else:   # either reload, or this specific model / confusion args has not been saved yet.
             if (args.reload_data is False or reload_set_name == dataset) and os.path.exists(path):
                 raw_data = pd.read_csv(path)
-                if print_more:
-                    print(f"load raw {dataset} from {path}, length = {max_num}")
             else:
-                if print_more:
-                    print(f"load raw dataset {dataset} from module.")
-                
                 cache_dir = os.path.join(data_base_dir, "cache")
                 create_directory(cache_dir)
                 raw_data = loadFromDatasets(dataset, cache_dir, max_num)
                 raw_data.to_csv(path, index=False)
-                
-                if print_more:
-                    print(f"save raw set to {path}")
+
             
             prompt_dataframe = create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path)
             
