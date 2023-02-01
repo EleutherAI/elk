@@ -109,50 +109,6 @@ def load_tokenizer(mdl_name, cache_dir):
 
     return tokenizer
 
-def load_datasets(args, data_base_dir, prompt_idx, datapoints_per_dataset, tokenizer):
-    '''
-    This function will return the datasets. 
-    Their corresponding name will include the prompt suffix, confusion suffix, etc. 
-    These should be used to create the hidden states.
-
-    Args:
-        args: argparse, the arguments.
-        tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
-
-    Returns:
-        frame_dict: dict, the dictionary of dataframes.
-    '''
-    num_data_per_dataset = [int(num_datapoints) for num_datapoints in datapoints_per_dataset]
-    prompt_idxs = [int(w) for w in prompt_idx]
-    
-    dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, args.datasets)
-
-    frame_dict = create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data_per_dataset, tokenizer, print_more=True)
-    
-    return frame_dict
-
-
-def setup_dataset_names_and_prompt_idx(num_templates_per_dataset=None, dataset_names=None):
-    """
-    This function will setup the dataset_names and prompt_idxs.
-    It will use all the relevant prompts for each dataset.
-    
-    Args:
-        prompt_idxs: list of int, the prompt idxs that will be used.
-        dataset_names: list of str, the dataset names that will be used.
-    
-    Returns:
-        dataset_names: list of str, the dataset names that will be used.
-        prompt_idxs: list of int, the prompt idxs that will be used.
-    """
-
-    num_templates_per_dataset = get_num_templates_per_dataset(dataset_names)
-    dataset_names = [[name for _ in range(num_templates)] for name, num_templates in zip(dataset_names, num_templates_per_dataset)]
-    num_templates_per_dataset = [[w for w in range(times)] for times in num_templates_per_dataset]
-    dataset_names, num_templates_per_dataset = [w for j in dataset_names for w in j], [w for j in num_templates_per_dataset for w in j]
-
-    return dataset_names, num_templates_per_dataset
-
 
 def get_sample_data(dataset_name, data_list, total_num):
     '''
@@ -265,7 +221,7 @@ def create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num
     
     return prompt_dataframe
 
-def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data, tokenizer):
+def create_dataframe_dict(args, data_base_dir, dataset_names, num_prompts_per_dataset, num_data, tokenizer):
     """
     This function will create a dictionary of dataframes, where the key is the dataset name and the value is the dataframe.
 
@@ -276,7 +232,6 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
         prompt_idxs: list of int, the prompt idxs that will be used.
         num_data: list of int, the number of data points that will be used for each dataset.
         tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
-        print_more: bool, if True, will print more information.
 
     Returns:
         name_to_dataframe: dict, the dictionary of dataframes.
@@ -284,33 +239,34 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
     create_directory(data_base_dir)
     name_to_dataframe = {}
     reload_set_name = ""    # Only reload if this is the first prompt of a dataset
-    for (dataset, prompt_idx, max_num) in zip(dataset_names, prompt_idxs, num_data):
-        path = os.path.join(data_base_dir, f"rawdata_{dataset}_{max_num}.csv")
-      
-        # load datasets
-        # if complete dataset exists and reload == False, will directly load this dataset
-        # Otherwise, load existing raw dataset or reload / load new raw sets
-        # notice that this is just the `raw data`, which is a dict or whatever
-        dataset_name_with_num = f"{dataset}_{max_num}_prompt{prompt_idx}"
-        complete_path = get_directory(args.save_base_dir, args.model, dataset_name_with_num, args.prefix, args.token_place)
-        dataframe_path = os.path.join(complete_path, "frame.csv")
+    for dataset, num_prompts in zip(dataset_names, num_prompts_per_dataset):
+        for idx in range(num_prompts):
+            path = os.path.join(data_base_dir, f"rawdata_{dataset}_{num_data}.csv")
         
-        if args.reload_data is False and os.path.exists(dataframe_path):
-            frame = pd.read_csv(dataframe_path, converters={"selection": eval})
-            name_to_dataframe[dataset_name_with_num] = frame
-        else:   # either reload, or this specific model / confusion args has not been saved yet.
-            if (args.reload_data is False or reload_set_name == dataset) and os.path.exists(path):
-                raw_data = pd.read_csv(path)
-            else:
-                cache_dir = os.path.join(data_base_dir, "cache")
-                create_directory(cache_dir)
-                raw_data = loadFromDatasets(dataset, cache_dir, max_num)
-                raw_data.to_csv(path, index=False)
+            # load datasets
+            # if complete dataset exists and reload == False, will directly load this dataset
+            # Otherwise, load existing raw dataset or reload / load new raw sets
+            # notice that this is just the `raw data`, which is a dict or whatever
+            dataset_name_with_num = f"{dataset}_{num_data}_prompt{idx}"
+            complete_path = get_directory(args.save_base_dir, args.model, dataset_name_with_num, args.prefix, args.token_place)
+            dataframe_path = os.path.join(complete_path, "frame.csv")
+            
+            if args.reload_data is False and os.path.exists(dataframe_path):
+                frame = pd.read_csv(dataframe_path, converters={"selection": eval})
+                name_to_dataframe[dataset_name_with_num] = frame
+            else:   # either reload, or this specific model / confusion args has not been saved yet.
+                if (args.reload_data is False or reload_set_name == dataset) and os.path.exists(path):
+                    raw_data = pd.read_csv(path)
+                else:
+                    cache_dir = os.path.join(data_base_dir, "cache")
+                    create_directory(cache_dir)
+                    raw_data = loadFromDatasets(dataset, cache_dir, num_data)
+                    raw_data.to_csv(path, index=False)
 
-            
-            prompt_dataframe = create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path)
-            
-            name_to_dataframe[dataset_name_with_num] = prompt_dataframe
+                
+                prompt_dataframe = create_and_save_promt_dataframe(args, dataset, idx, raw_data, num_data, tokenizer, complete_path)
+                
+                name_to_dataframe[dataset_name_with_num] = prompt_dataframe
     
 
     return name_to_dataframe

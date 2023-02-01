@@ -1,6 +1,6 @@
 import time
 from utils_generation.parser import get_args
-from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, load_datasets
+from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, create_dataframe_dict, get_num_templates_per_dataset
 from utils_generation.generation import calculate_hidden_state
 from utils_generation.save_utils import save_hidden_state_to_np_array, save_records_to_csv, print_elapsed_time
 from tqdm import tqdm 
@@ -33,8 +33,11 @@ if __name__ == "__main__":
         args.prefix = prefix
         # load datasets and save if possible
         # TODO: CLEAN THIS UP?
-        name_to_dataframe = load_datasets(args, args.data_base_dir, args.prompt_idx, args.num_data, tokenizer)
+        num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
+        num_data = int(args.num_data[0])
 
+        name_to_dataframe = create_dataframe_dict(args, args.data_base_dir, args.datasets, num_templates_per_dataset, num_data, tokenizer)
+    
         # For each frame, generate the hidden states and save to directories
         print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
         with torch.no_grad():
