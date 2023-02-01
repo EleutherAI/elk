@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from sklearn.linear_model import LogisticRegression
 import matplotlib.pyplot as plt
 
 class CCS(object):
