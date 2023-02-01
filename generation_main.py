@@ -28,28 +28,23 @@ if __name__ == "__main__":
     print(f"Loading tokenizer for: model name = {args.model} at cache_dir = {args.cache_dir}")
     tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
 
-    print("\n\n-------------------------------- Loading datasets and calculating hidden states --------------------------------\n\n")
+    print("\n\n-------------------------------- Loading datasets --------------------------------\n\n")
     num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
     name_to_dataframe = create_name_to_dataframe(args.data_base_dir, args.datasets, num_templates_per_dataset, args.num_data, 
-                                              tokenizer, args.save_base_dir, args.model, args.prefix, args.token_place, args.reload_data)
+                                              tokenizer, args.save_base_dir, args.model, args.prefix, args.token_place)
     
     print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
     with torch.no_grad():
         for dataset_name, dataframe in tqdm(name_to_dataframe.items(), desc='Iterating over dataset-prompt combinations:'):
+            # TODO: CLEAN UP THIS FUNCTION
             hidden_state = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
-            #TODO: clean up this ['0','1'] thing
+            # TODO: clean up the ['0','1'] mess
             save_hidden_state_to_np_array(hidden_state, dataset_name, ['0','1'], args)
         
         records = []
         for dataset_name, dataframe in name_to_dataframe.items():
-            records.append({
-                "model": args.model,
-                "dataset": dataset_name,
-                "prefix": args.prefix,
-                "tag": args.tag,
-                "cal_hiddenstates": bool(args.cal_hiddenstates),
-                "population": len(dataframe)
-                })
+            records.append({"model": args.model, "dataset": dataset_name,"prefix": args.prefix, "tag": args.tag, 
+                            "cal_hiddenstates": bool(args.cal_hiddenstates),"population": len(dataframe)})
         save_records_to_csv(records, args)
                     
     print_elapsed_time(start, args.prefix, name_to_dataframe)

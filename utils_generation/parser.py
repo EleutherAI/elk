@@ -66,28 +66,20 @@ def get_args():
     if args.datasets == ["all"]:
         args.datasets = dataset_list
     else:
-        for w in args.datasets:
-            assert w in dataset_list, NotImplementedError(
-                "Dataset {} not registered in {}.json. Please check the name of the dataset!".format(w, json_dir))
+        for dataset_name in args.datasets:
+            assert dataset_name in dataset_list, NotImplementedError(f"Dataset {dataset_name} not registered in {json_dir}.json. Please check the name of the dataset!")
 
     # if (args.cal_zeroshot or args.cal_logits) and "bert" in args.model:
     # Add features. Only forbid cal_logits for bert type model now
     if args.cal_logits and "bert" in args.model:
-        raise NotImplementedError(
-            "You use {}, but bert type models do not have standard logits. Please set cal_logits to 0.".format(args.model)) 
+        raise NotImplementedError(f"You use {args.model}, but bert type models do not have standard logits. Please set cal_logits to 0.") 
 
-    assert args.model in registered_models, NotImplementedError(
-        "You use model {}, but it's not registered. For any new model, please make sure you implement the code in `load_utils` and `generation`, and then register it in `parser.py`".format(args.model))
-
-    assert args.prefix in registered_prefix, NotImplementedError(
-            "Invalid prefix name {}. Please check your prefix name. To add new prefix, please mofidy `utils_generation/prompts.json` and register new prefix in {}.json.".format(
-                args.prefix, json_dir
-            ))
+    assert args.model in registered_models, NotImplementedError(f"You use model {args.model}, but it's not registered. For any new model, please make sure you implement the code in `load_utils` and `generation`, and then register it in `parser.py`")
+    assert args.prefix in registered_prefix, NotImplementedError(f"Invalid prefix name {args.prefix}. Please check your prefix name. To add new prefix, please mofidy `utils_generation/prompts.json` and register new prefix in {json_dir}.json.")
 
     # Set default states_location according to model type
     if args.states_location == "null":
         args.states_location = "decoder" if "gpt" in args.model else "encoder"
-
     if args.states_location == "encoder" and args.cal_hiddenstates:
         assert "gpt" not in args.model, ValueError("GPT type model does not have encoder. Please set `states_location` to `decoder`.")
     if args.states_location == "decoder" and args.cal_hiddenstates:
@@ -98,7 +90,9 @@ def get_args():
         pos_index = int(args.states_index[i]) % models_layer_num[args.model]
         # For decoder, the index lies in [0,layer_num)
         # For encoder, the index lies in [-layer_num, -1]
-        args.states_index[i] = pos_index if args.states_location == "decoder" \
-                                        else pos_index - models_layer_num[args.model]
+        if args.states_location == "decoder":        
+            args.states_index[i] = pos_index
+        else: 
+            args.states_index[i] = pos_index - models_layer_num[args.model]
 
     return args
