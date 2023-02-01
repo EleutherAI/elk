@@ -34,8 +34,8 @@ def get_args():
     # datasets processing
     parser.add_argument("--prefix", type = str, nargs="+", default = ["normal"],
                         help="The name of prefix added before the question. normal means no index. You can go to `utils_generation/prompts.json` to add new prompt.")
-    parser.add_argument("--num_data", nargs="+",
-                        default=[1000], help="number of data points you want to use in each datasets. If one integer is provide, if will be extended to a list with the same length as `datasets`. If the size of datasets are no enough, will use all the data points.")
+    parser.add_argument("--num_data", nargs="+", type=int,
+                        default=1000, help="number of data points you want to use in each datasets. If one integer is provide, if will be extended to a list with the same length as `datasets`. If the size of datasets are no enough, will use all the data points.")
     parser.add_argument("--reload_data", action="store_true",
                         help="Whether to use the old version of datasets if there exists one. Using `reload_data` will let the program reselect data points from the datasets.")
     parser.add_argument("--prompt_idx", nargs="+", default=[
