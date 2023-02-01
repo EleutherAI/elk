@@ -1,7 +1,7 @@
 import time
-from utils_generation.parser import getArgs
-from utils_generation.load_utils import loadModel, loadDatasets
-from utils_generation.generation import calZeroAndHiddenStates
+from elk.utils_generation.parser import get_args
+from elk.utils_generation.load_utils import load_model, load_datasets
+from elk.utils_generation.generation import cal_zero_and_hidden_states
 
 
 if __name__ == "__main__":
@@ -10,10 +10,10 @@ if __name__ == "__main__":
     print("Time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
 
     # get args
-    args = getArgs()
+    args = get_args()
 
     # load models, stored in GPU
-    model, tokenizer = loadModel(
+    model, tokenizer = load_model(
         mdl_name=args.model, cache_dir=args.cache_dir, parallelize=args.parallelize
     )
 
@@ -21,12 +21,12 @@ if __name__ == "__main__":
     for prefix in prefix_list:
         args.prefix = prefix
         # load datasets and save if possible
-        frame_dict = loadDatasets(args, tokenizer)
+        frame_dict = load_datasets(args, tokenizer)
 
         # for each frame, calculate the zero-shot accuracy and generate the hidden
         # states if needed the zero-shot accuracy will be stored in records
         # the hidden states will be saved to directories
-        calZeroAndHiddenStates(model, tokenizer, frame_dict, args)
+        cal_zero_and_hidden_states(model, tokenizer, frame_dict, args)
 
         end = time.time()
         print("Time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))

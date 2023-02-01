@@ -1,20 +1,19 @@
+from elk.utils_extraction.func_utils import get_avg, adder
+from elk.utils_extraction.load_utils import get_dic, set_load_dir, get_zeros_acc
+from elk.utils_extraction.method_utils import main_results
 from pathlib import Path
-from utils_extraction.func_utils import getAvg, adder
-from utils_extraction.load_utils import getDic, set_load_dir, get_zeros_acc
-from utils_extraction.method_utils import mainResults
 import argparse
 import json
 import numpy as np
-import os
 import pandas as pd
 import random
 import time
 
 # JSON Load
-json_dir = "./registration"
-
-with open("{}.json".format(json_dir), "r") as f:
+json_dir = Path(__file__).parent.parent / "registration.json"
+with open(json_dir, "r") as f:
     global_dict = json.load(f)
+
 registered_dataset_list = global_dict["dataset_list"]
 registered_models = global_dict["registered_models"]
 registered_prefix = global_dict["registered_prefix"]
@@ -83,13 +82,13 @@ for key in list(vars(args).keys()):
 print("-------- args --------")
 
 
-def saveParams(name, coef, intercept):
+def save_params(name, coef, intercept):
     path = args.save_dir / "params"
     np.save(path / "coef_{}.npy".format(name), coef)
     np.save(path / "intercept_{}.npy".format(name), intercept)
 
 
-def saveCsv(csv, prefix, str=""):
+def save_csv(csv, prefix, str=""):
     dir = args.save_dir / "{}_{}_{}.csv".format(args.model, prefix, args.seed)
     csv.to_csv(dir, index=False)
     print(
@@ -187,7 +186,7 @@ if __name__ == "__main__":
                             loss="",
                         )
 
-            saveCsv(csv, global_prefix, "After calculating zeroshot performance.")
+            save_csv(csv, global_prefix, "After calculating zeroshot performance.")
 
         for method in args.method_list:
             if method == "0-shot":
@@ -200,7 +199,7 @@ if __name__ == "__main__":
                 else ("minus" if method != "Prob" else "concat")
             )
             # load the data_dict and permutation_dict
-            data_dict, permutation_dict = getDic(
+            data_dict, permutation_dict = get_dic(
                 mdl_name=model,
                 dataset_list=dataset_list,
                 prefix=global_prefix,
@@ -221,7 +220,7 @@ if __name__ == "__main__":
 
                 # return a dict with the same shape as test_dict
                 # for each key test_dict[key] is a unitary list
-                res, lss, pmodel, cmodel = mainResults(
+                res, lss, pmodel, cmodel = main_results(
                     data_dict=data_dict,
                     permutation_dict=permutation_dict,
                     projection_dict=projection_dict,
@@ -234,7 +233,7 @@ if __name__ == "__main__":
                 # save params except for KMeans
                 if method in ["TPC", "BSS"]:
                     coef, bias = cmodel.coef_ @ pmodel.getDirection(), cmodel.intercept_
-                    saveParams(
+                    save_params(
                         "{}_{}_{}_{}_{}_{}".format(
                             model, global_prefix, method, "all", train_set, args.seed
                         ),
@@ -243,7 +242,7 @@ if __name__ == "__main__":
                     )
 
                 acc, std, loss = (
-                    getAvg(res),
+                    get_avg(res),
                     np.mean([np.std(lis) for lis in res.values()]),
                     np.mean([np.mean(lis) for lis in lss.values()]),
                 )
@@ -287,4 +286,4 @@ if __name__ == "__main__":
                                 loss=lss[key][idx] if method in ["Prob", "BSS"] else "",
                             )
 
-        saveCsv(csv, global_prefix, "After finish {}".format(method))
+        save_csv(csv, global_prefix, "After finish {}".format(method))

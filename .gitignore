@@ -1,3 +1,9 @@
+# Script outputs
+datasets/
+extraction_results/
+generation_results/
+models/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

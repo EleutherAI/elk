@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def getAvg(dic):
+def get_avg(dic):
     return np.mean([np.mean(lis) for lis in dic.values()])
 
 
