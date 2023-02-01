@@ -1,3 +1,4 @@
+from pathlib import Path
 import os
 import numpy as np
 import pandas as pd
@@ -27,11 +28,12 @@ def set_load_dir(path):
     load_dir = path
 
 
-def getDirList(mdl, set_name, load_dir, data_num, confusion, place, prompt_idx):
+def getDirList(mdl, set_name, load_dir: Path, data_num, confusion, place, prompt_idx):
     length = len(mdl)
     filter = [
         w
-        for w in os.listdir(load_dir)
+        for w in map(str, load_dir.iterdir())
+        # TODO: Rewrite this with Path methods & get rid of `map(str, ...` above
         if (
             mdl == w[:length]
             and mdl + "_" in w
@@ -42,8 +44,9 @@ def getDirList(mdl, set_name, load_dir, data_num, confusion, place, prompt_idx):
         )
     ]
     if prompt_idx is not None:
-        filter = [w for w in filter if int(w.split("_")[3][6:]) in prompt_idx]
-    return [os.path.join(load_dir, w) for w in filter]
+        # TODO: Figure out what this cursed line does and rewrite it
+        filter = [w for w in filter if int(str(w).split("_")[3][6:]) in prompt_idx]
+    return [load_dir / w for w in filter]
 
 
 def organizeStates(lis, mode):
@@ -101,8 +104,8 @@ def loadHiddenStates(
     hidden_states = [
         organizeStates(
             [
-                np.load(os.path.join(w, "0{}.npy".format(app))),
-                np.load(os.path.join(w, "1{}.npy".format(app))),
+                np.load(w / f"0{app}.npy"),
+                np.load(w / f"1{app}.npy"),
             ],
             mode=mode,
         )
@@ -118,8 +121,7 @@ def loadHiddenStates(
             )
         )
     labels = [
-        np.array(pd.read_csv(os.path.join(w, "frame.csv"))["label"].to_list())
-        for w in dir_list
+        np.array(pd.read_csv(w / "frame.csv")["label"].to_list()) for w in dir_list
     ]
 
     return [(u, v) for u, v in zip(hidden_states, labels)]
@@ -226,7 +228,7 @@ print(
 def get_zeros_acc(
     csv_name, mdl_name, dataset_list, prefix, prompt_dict=None, avg=False
 ):
-    zeros = pd.read_csv(os.path.join(load_dir, csv_name + ".csv"))
+    zeros = pd.read_csv(load_dir / (csv_name + ".csv"))
     zeros.dropna(subset=["calibrated"], inplace=True)
     subzeros = zeros.loc[(zeros["model"] == mdl_name) & (zeros["prefix"] == prefix)]
 

@@ -1,13 +1,14 @@
-import os
-import numpy as np
-import time
+from pathlib import Path
+from utils_extraction.func_utils import getAvg, adder
 from utils_extraction.load_utils import getDic, set_load_dir, get_zeros_acc
 from utils_extraction.method_utils import mainResults
-from utils_extraction.func_utils import getAvg, adder
+import argparse
+import json
+import numpy as np
+import os
 import pandas as pd
 import random
-import json
-import argparse
+import time
 
 # JSON Load
 json_dir = "./registration"
@@ -23,7 +24,7 @@ models_layer_num = global_dict["models_layer_num"]
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, choices=registered_models)
 parser.add_argument(
-    "--prefix", nargs="+", detaulf=["normal"], choices=registered_prefix
+    "--prefix", nargs="+", default=["normal"], choices=registered_prefix
 )
 parser.add_argument("--datasets", nargs="+", default=registered_dataset_list)
 parser.add_argument(
@@ -42,7 +43,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--save_dir",
-    type=str,
+    type=Path,
     default="extraction_results",
     help="where the csv and params are saved",
 )
@@ -53,13 +54,13 @@ parser.add_argument(
 )
 parser.add_argument(
     "--load_dir",
-    type=str,
+    type=Path,
     default="generation_results",
     help="Where the hidden states and zero-shot accuracy are loaded.",
 )
 parser.add_argument("--location", type=str, default="auto")
 parser.add_argument("--layer", type=int, default=-1)
-parser.add_argument("--zero", type=str, default="generation_results")
+parser.add_argument("--zero", type=Path, default="generation_results")
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--prompt_save_level", default="all", choices=["single", "all"])
 args = parser.parse_args()
@@ -83,15 +84,13 @@ print("-------- args --------")
 
 
 def saveParams(name, coef, intercept):
-    path = os.path.join(args.save_dir, "params")
-    np.save(os.path.join(path, "coef_{}.npy".format(name)), coef)
-    np.save(os.path.join(path, "intercept_{}.npy".format(name)), intercept)
+    path = args.save_dir / "params"
+    np.save(path / "coef_{}.npy".format(name), coef)
+    np.save(path / "intercept_{}.npy".format(name), intercept)
 
 
 def saveCsv(csv, prefix, str=""):
-    dir = os.path.join(
-        args.save_dir, "{}_{}_{}.csv".format(args.model, prefix, args.seed)
-    )
+    dir = args.save_dir / "{}_{}_{}.csv".format(args.model, prefix, args.seed)
     csv.to_csv(dir, index=False)
     print(
         "{} Saving to {} at {}".format(
@@ -101,11 +100,10 @@ def saveCsv(csv, prefix, str=""):
 
 
 if __name__ == "__main__":
-    # check the os existence
-    if not os.path.exists(args.save_dir):
-        os.mkdir(args.save_dir)
-    if not os.path.exists(os.path.join(args.save_dir, "params")):
-        os.mkdir(os.path.join(args.save_dir, "params"))
+    # Make sure output folders exist
+    param_dir = args.save_dir / "params"
+    args.save_dir.mkdir(exist_ok=True, parents=True)
+    param_dir.mkdir(exist_ok=True, parents=True)
 
     # each loop will generate a csv file
     for global_prefix in args.prefix:
@@ -138,10 +136,7 @@ if __name__ == "__main__":
                 ]
             )
         else:
-            dir = os.path.join(
-                args.save_dir,
-                "{}_{}_{}.csv".format(args.model, global_prefix, args.seed),
-            )
+            dir = args.save_dir / f"{args.model}_{global_prefix}_{args.seed}.csv"
             csv = pd.read_csv(dir)
             print(
                 "Loaded {} at {}".format(
@@ -151,9 +146,7 @@ if __name__ == "__main__":
 
         if "0-shot" in args.method_list:
             # load zero-shot performance
-            rawzeros = pd.read_csv(
-                os.path.join(args.load_dir, "{}.csv".format(args.zero))
-            )
+            rawzeros = pd.read_csv(args.load_dir / f"{args.zero}.csv")
             # Get the global zero acc dict (setname, [acc])
             zeros_acc = get_zeros_acc(
                 csv_name=args.zero,

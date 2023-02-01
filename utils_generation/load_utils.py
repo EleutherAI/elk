@@ -220,17 +220,15 @@ def loadDatasets(args, tokenizer):
     print("Processing {} data points in total.".format(sum(num_data)))
 
     # create the directory if needed
-    if not os.path.exists(base_dir):
-        os.mkdir(base_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
 
-    cache_dir = os.path.join(base_dir, "cache")
-    if not os.path.exists(cache_dir):
-        os.mkdir(cache_dir)
+    cache_dir = base_dir / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
     frame_dict = {}
     reload_set_name = ""  # Only reload if this is the first prompt of a dataset
     for set_name, prompt_idx, max_num in zip(set_list, prompt_idx_list, num_data):
-        path = os.path.join(base_dir, "rawdata_{}_{}.csv".format(set_name, max_num))
+        path = base_dir / f"rawdata_{set_name}_{max_num}.csv"
 
         # load datasets
         # if complete dataset exists & reload is False, will directly load this dataset
@@ -239,10 +237,9 @@ def loadDatasets(args, tokenizer):
         dataset_name_w_num = "{}_{}_prompt{}".format(set_name, max_num, prompt_idx)
         complete_path = getDir(dataset_name_w_num, args)
 
-        if reload is False and os.path.exists(os.path.join(complete_path, "frame.csv")):
-            frame = pd.read_csv(
-                os.path.join(complete_path, "frame.csv"), converters={"selection": eval}
-            )
+        frame_path = complete_path / "frame.csv"
+        if reload is False and frame_path.exists():
+            frame = pd.read_csv(frame_path, converters={"selection": eval})
             frame_dict[dataset_name_w_num] = frame
             if args.print_more:
                 print(
@@ -253,9 +250,7 @@ def loadDatasets(args, tokenizer):
 
         else:
             # either reload, or this model / confusion args has not been saved yet.
-            if (reload is False or reload_set_name == set_name) and os.path.exists(
-                path
-            ):
+            if (reload is False or reload_set_name == set_name) and path.exists():
                 raw_data = pd.read_csv(path)
                 if args.print_more:
                     print(
@@ -288,11 +283,9 @@ def loadDatasets(args, tokenizer):
             frame_dict[dataset_name_w_num] = frame
 
             # save this frame
-            if not os.path.exists(args.save_base_dir):
-                os.mkdir(args.save_base_dir)
-            if not os.path.exists(complete_path):
-                os.mkdir(complete_path)
-            frame.to_csv(os.path.join(complete_path, "frame.csv"), index=False)
+            args.save_base_dir.mkdir(parents=True, exist_ok=True)
+            complete_path.mkdir(parents=True, exist_ok=True)
+            frame.to_csv(complete_path / "frame.csv", index=False)
 
         # print an example
         if args.print_more:

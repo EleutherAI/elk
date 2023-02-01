@@ -28,7 +28,7 @@ The name of prefix can be found in `./utils_generation/construct_prompts.py`. Th
 1. To test our methods, run:
 
 ```bash
-python extraction_main.py --model mdl --prefix normal
+python extraction_main.py --model <MODEL> --prefix normal
 ```
 
 For the example above, you can run:

@@ -1,56 +1,52 @@
+from pathlib import Path
 import pandas as pd
-import os
 import numpy as np
 import time
 
 
-def getDir(dataset_name_w_num, args):
+def getDir(dataset_name_w_num, args) -> Path:
     d = "{}_{}_{}_{}".format(
         args.model, dataset_name_w_num, args.prefix, args.token_place
     )
     if args.tag != "":
         d += "_{}".format(args.tag)
 
-    return os.path.join(args.save_base_dir, d)
+    return args.save_base_dir / d
 
 
 def saveFrame(frame_dict, args):
-    if not os.path.exists(args.save_base_dir):
-        os.mkdir(args.save_base_dir)
+    args.save_base_dir.mkdir(parents=True, exist_ok=True)
+
     for key, frame in frame_dict.items():
         directory = getDir(key, args)
-        if not os.path.exists(directory):
-            os.mkdir(directory)
+        directory.mkdir(parents=True, exist_ok=True)
 
-        frame.to_csv(os.path.join(directory, "frame.csv"), index=False)
+        frame.to_csv(directory / "frame.csv", index=False)
 
     print("Successfully saving datasets to each directory.")
 
 
 def saveArray(array_list, typ_list, key, args):
     directory = getDir(key, args)
-    if not os.path.exists(directory):
-        os.mkdir(directory)
+    directory.mkdir(parents=True, exist_ok=True)
 
     # hidden states is num_data * layers * dim
     # logits is num_data * vocab_size
     for typ, array in zip(typ_list, array_list):
         if args.save_all_layers or "logits" in typ:
-            np.save(os.path.join(directory, "{}.npy".format(typ)), array)
+            np.save(directory / f"{typ}.npy", array)
         else:
             # only save the last layers for encoder hidden states
             for idx in args.states_index:
                 np.save(
-                    os.path.join(
-                        directory, "{}_{}{}.npy".format(typ, args.states_location, idx)
-                    ),
+                    directory / f"{typ}_{args.states_location}{idx}.npy",
                     array[:, idx, :],
                 )
 
 
 def saveRecords(records, args):
-    f = os.path.join(args.save_base_dir, "{}.csv".format(args.save_csv_name))
-    if not os.path.exists(f):
+    f = args.save_base_dir / f"{args.save_csv_name}.csv"
+    if not f.exists():
         csv = pd.DataFrame(
             columns=[
                 "time",

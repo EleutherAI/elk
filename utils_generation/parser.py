@@ -1,3 +1,4 @@
+from pathlib import Path
 import argparse
 import json
 
@@ -18,7 +19,7 @@ def getArgs():
     # datasets loading
     parser.add_argument(
         "--data_base_dir",
-        type=str,
+        type=Path,
         default="datasets/complete_ten",
         help=(
             "The base dir of all datasets (csv files) you want to generate hidden"
@@ -30,7 +31,7 @@ def getArgs():
         nargs="+",
         help=(
             "List of name of datasets you want to use. Please make sure that the path"
-            ' of file is like `os.path.join(data_base_dir, name + ".csv"` for all name'
+            ' of file is like `data_base_dir / (name + ".csv")` for all name'
             " in datasets"
         ),
     )
@@ -38,7 +39,7 @@ def getArgs():
     # models loading
     parser.add_argument(
         "--model",
-        type=str,
+        type=Path,
         help=(
             "The model you want to use. Please use the model in huggingface and only"
             " leave the final path, i.e. for `allenai/unifiedqa-t5-11b`, only input"
@@ -57,7 +58,7 @@ def getArgs():
     )
     parser.add_argument(
         "--cache_dir",
-        type=str,
+        type=Path,
         default="models",
         help="The path to save and load pretrained model.",
     )
@@ -134,6 +135,7 @@ def getArgs():
     parser.add_argument(
         "--token_place",
         type=str,
+        choices=("first", "last", "average"),
         default="last",
         help=(
             "Determine which token's hidden states will be generated. Can be `first` or"
@@ -170,7 +172,7 @@ def getArgs():
     )
     parser.add_argument(
         "--save_base_dir",
-        type=str,
+        type=Path,
         default="generation_results",
         help="The base dir where you want to save the directories of hidden states.",
     )
