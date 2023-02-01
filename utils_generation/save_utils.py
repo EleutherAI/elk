@@ -52,7 +52,7 @@ def save_hidden_state_to_np_array(hidden_state, dataset_name_w_num, type_list, a
 		else:
 			# only save the last layers for encoder hidden states
 			for idx in args.states_index:
-				np.save(os.path.join(directory, "{typ}_{args.states_location}{idx}.npy"), array[:, idx,:])
+				np.save(os.path.join(directory, f"{typ}_{args.states_location}{idx}.npy"), array[:, idx,:])
 
 
 def save_records_to_csv(records, args):
@@ -100,5 +100,5 @@ def print_elapsed_time(start, prefix, name_to_dataframe):
 	end = time.time()
 	elapsed_minutes = round((end - start) / 60, 1)
 	print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-	print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
+	print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} dataset-prefix combinations, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
 	print("\n\n---------------------------------------\n\n")
