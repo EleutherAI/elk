@@ -21,8 +21,7 @@ def get_args():
                         help="List of name of datasets you want to use. Please make sure that the path of file is like `os.path.join(data_base_dir, name + \".csv\"` for all name in datasets")
 
     # models loading
-    parser.add_argument(
-                        "--model", type=str, help="The model you want to use. Please use the model in huggingface and only leave the final path, i.e. for `allenai/unifiedqa-t5-11b`, only input `unifiedqa-t5-11b`.")
+    parser.add_argument("--model", type=str, help="The model you want to use. Please use the model in huggingface and only leave the final path, i.e. for `allenai/unifiedqa-t5-11b`, only input `unifiedqa-t5-11b`.")
     parser.add_argument("--parallelize", action="store_true",
                         help="Whether to parallelize models in multiple gpus. Please notice that at least one gpu must be provided by `CUDA_VISIBLE_DEVICES` or `os.environ`. Using this args will help split the model equally in all gpus you provide.")
     parser.add_argument("--cache_dir", type=str, default="models",
@@ -34,7 +33,7 @@ def get_args():
     # datasets processing
     parser.add_argument("--prefix", type = str, nargs="+", default = ["normal"],
                         help="The name of prefix added before the question. normal means no index. You can go to `utils_generation/prompts.json` to add new prompt.")
-    parser.add_argument("--num_data", nargs="+", type=int,
+    parser.add_argument("--num_data", type=int,
                         default=1000, help="number of data points you want to use in each datasets. If one integer is provide, if will be extended to a list with the same length as `datasets`. If the size of datasets are no enough, will use all the data points.")
     parser.add_argument("--reload_data", action="store_true",
                         help="Whether to use the old version of datasets if there exists one. Using `reload_data` will let the program reselect data points from the datasets.")
