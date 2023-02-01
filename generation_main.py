@@ -33,7 +33,7 @@ if __name__ == "__main__":
         args.prefix = prefix
         # load datasets and save if possible
         # TODO: CLEAN THIS UP?
-        name_to_dataframe = load_datasets(args, tokenizer)
+        name_to_dataframe = load_datasets(args, args.data_base_dir, args.prompt_idx, args.num_data, tokenizer)
 
         # For each frame, generate the hidden states and save to directories
         print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")

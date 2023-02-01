@@ -109,7 +109,7 @@ def load_tokenizer(mdl_name, cache_dir):
 
     return tokenizer
 
-def load_datasets(args, tokenizer):
+def load_datasets(args, data_base_dir, prompt_idx, datapoints_per_dataset, tokenizer):
     '''
     This function will return the datasets. 
     Their corresponding name will include the prompt suffix, confusion suffix, etc. 
@@ -122,12 +122,12 @@ def load_datasets(args, tokenizer):
     Returns:
         frame_dict: dict, the dictionary of dataframes.
     '''
-    num_data_per_dataset = [int(num_datapoints) for num_datapoints in args.num_data]
-    prompt_idxs = [int(w) for w in args.prompt_idx]
+    num_data_per_dataset = [int(num_datapoints) for num_datapoints in datapoints_per_dataset]
+    prompt_idxs = [int(w) for w in prompt_idx]
     
     dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, args.datasets)
 
-    frame_dict = create_dataframe_dict(args, args.data_base_dir, dataset_names, prompt_idxs, num_data_per_dataset, tokenizer, print_more=True)
+    frame_dict = create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_data_per_dataset, tokenizer, print_more=True)
     
     return frame_dict
 
