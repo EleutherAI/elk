@@ -69,7 +69,7 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     permutation = get_permutation(hidden_states)
     print("permutation", permutation)
-    data, labels = split(hidden_states, permutation, prompts=range(len(hidden_states)), split="test")
+    data, labels = split(hidden_states, permutation, prompts=range(len(hidden_states)), split="train")
     assert len(data.shape) == 2
 
     # Train classification model
