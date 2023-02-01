@@ -127,8 +127,6 @@ def load_datasets(args, tokenizer):
     
     dataset_names, prompt_idxs = setup_dataset_names_and_prompt_idx(prompt_idxs, args.datasets)
 
-    num_data_per_dataset = align_datapoints_amount(num_data_per_dataset, dataset_names)
-
     frame_dict = create_dataframe_dict(args, args.data_base_dir, dataset_names, prompt_idxs, num_data_per_dataset, tokenizer, print_more=True)
     
     return frame_dict
@@ -149,9 +147,7 @@ def setup_dataset_names_and_prompt_idx(num_templates_per_dataset=None, dataset_n
     """
 
     num_templates_per_dataset = get_num_templates_per_dataset(dataset_names)
-
-    print(f"Consider datasets {dataset_names} with {num_templates_per_dataset} prompts each.")
-    dataset_names = [[w for _ in range(times)] for w, times in zip(dataset_names, num_templates_per_dataset)]
+    dataset_names = [[name for _ in range(num_templates)] for name, num_templates in zip(dataset_names, num_templates_per_dataset)]
     num_templates_per_dataset = [[w for w in range(times)] for times in num_templates_per_dataset]
     dataset_names, num_templates_per_dataset = [w for j in dataset_names for w in j], [w for j in num_templates_per_dataset for w in j]
 
@@ -238,8 +234,6 @@ def loadFromDatasets(set_name, cache_dir, max_num):
     raw_data = get_sample_data(set_name, [raw_set[split_name].to_pandas() for split_name in dataset_split_name], 2 * max_num)
 
     return raw_data
-
-
 
 
 def create_and_save_promt_dataframe(args, dataset, prompt_idx, raw_data, max_num, tokenizer, complete_path):
@@ -329,29 +323,6 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, prompt_idxs, num_d
     
 
     return name_to_dataframe
-
-
-def align_datapoints_amount(num_data, dataset_names):
-    """
-    This function will check the length of `num_data` and make it the same as `dataset_names`.
-    TODO: This function gives us a list of num_data_points for each prompt template e.g.
-    [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000] ... 13 prompts each 1000 datapoints
-    Args:  
-        num_data: list of int, the number of data points that will be used for each dataset.
-        dataset_names: list of str, the dataset names that will be used.
-    
-    Returns:
-        num_data: list of int, the number of data points that will be used for each dataset.
-    """
-    # deal with the length of `num_data`
-    # end up making num_data and set_list with the same length
-    assert len(num_data) == 1 or len(num_data) == len(dataset_names), "The length of `num_data` should either be one or be the same as `datasets`!"
-    
-    if len(num_data) == 1:
-        num_data = [num_data[0] for _ in dataset_names]
-
-    print(f"Processing {num_data} data points in total.")
-    return num_data
 
 
 def create_directory(name):
