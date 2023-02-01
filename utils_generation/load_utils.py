@@ -110,45 +110,63 @@ def load_tokenizer(mdl_name, cache_dir):
     return tokenizer
 
 # TODO: UNDEERSTAND THIS FUNCTION
-def get_sample_data(dataset_name, data_list, num_data):
+def get_sample_data(dataset_name, split_dataframes, sample_amount):
     '''
     Args:
 
         dataset_name:   the name of the dataset, some datasets have special token name.
-        data_list:  a list of dataframe, with order queals to token_list
-        num_data:    number of data point that wants to take, default is twice as final size, considering that some examples are too long and could be dropped.
+        split_dataframes:  a list of dataframes corresponding to the split of the dataset (train, test, eval etc.)
+        num_data:    number of data point we want to sample, default is twice as final size, considering that some examples are too long and could be dropped.
     '''
 
-    lbl_tag = "label" if dataset_name != "story-cloze" else "answer_right_ending"
+    label_tag = "label" if dataset_name != "story-cloze" else "answer_right_ending"
     
-    label_set = set(data_list[0][lbl_tag].to_list())
-    label_num = len(label_set)
-    data_num_lis = get_balanced_num(
-        total_num=num_data, lis_len=label_num)
+    all_label_names = set(split_dataframes[0][label_tag].to_list())
+    num_labels = len(all_label_names)
 
-    # randomized
-    data_list = [dataframe.sample(frac=1).reset_index(drop=True) for dataframe in data_list]
+    # TODO: UNDEERSTAND THIS FUNCTION
+    data_num_lis = get_balanced_sample_num(sample_amount, num_labels)
+
+    # randomize data frac=1 means that we take the return 100% of the dataset
+    shuffled_split_dataframes = [dataframe.sample(frac=1).reset_index(drop=True) for dataframe in split_dataframes]
 
     tmp_lis = []
-    prior = data_list[0]
+    prior = shuffled_split_dataframes[0]
 
-    for i, lbl in enumerate(label_set):
+    for i, lbl in enumerate(all_label_names):
         # the length of data_list is at most 2
-        prior_size = len(prior[prior[lbl_tag] == lbl])
+        prior_size = len(prior[prior[label_tag] == lbl])
         if prior_size < data_num_lis[i]:
             tmp_lis.append(pd.concat(
-                [prior[prior[lbl_tag] == lbl], data_list[1][data_list[1][lbl_tag] == lbl][: data_num_lis[i] - prior_size]], ignore_index=True))
+                [prior[prior[label_tag] == lbl], shuffled_split_dataframes[1][shuffled_split_dataframes[1][label_tag] == lbl][: data_num_lis[i] - prior_size]], ignore_index=True))
         else:
-            tmp_lis.append(prior[prior[lbl_tag] == lbl].sample(data_num_lis[i]).reset_index(drop=True))
+            tmp_lis.append(prior[prior[label_tag] == lbl].sample(data_num_lis[i]).reset_index(drop=True))
 
     return pd.concat(tmp_lis).sample(frac=1).reset_index(drop=True)
 
 
-# TODO: REWRITE THIS 
-def get_balanced_num(total_num, lis_len):
-    tmp = total_num // lis_len
-    more = total_num - tmp * lis_len
-    return [tmp if i < lis_len - more else tmp + 1 for i in range(lis_len)]
+def get_balanced_sample_num(sample_amount, num_labels):
+    """
+    Get the number of samples per label to balance the dataset.
+    
+    Args:
+        sample_amount: int, the number of samples to take.
+        num_labels: int, the number of labels in the dataset.
+        
+    Returns:
+        balanced_sample_num: list of int, the number of samples per label.
+    """
+
+    samples_per_group = sample_amount // num_labels
+    remaining_samples = sample_amount - samples_per_group * num_labels
+    balanced_sample_num = []
+    for i in range(num_labels):
+        if i < num_labels - remaining_samples:
+            balanced_sample_num.append(samples_per_group)
+        else:
+            balanced_sample_num.append(samples_per_group + 1)
+    return balanced_sample_num
+
 
 def get_hugging_face_load_name(dataset_name):
     """
