@@ -32,11 +32,8 @@ if __name__ == "__main__":
     for prefix in tqdm(all_prefixes, desc='Iterating over prefixes:', position=0):
         args.prefix = prefix
         # load datasets and save if possible
-        # TODO: CLEAN THIS UP?
         num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
-        num_data = int(args.num_data[0])
-
-        name_to_dataframe = create_dataframe_dict(args, args.data_base_dir, args.datasets, num_templates_per_dataset, num_data, tokenizer)
+        name_to_dataframe = create_dataframe_dict(args, args.data_base_dir, args.datasets, num_templates_per_dataset, args.num_data, tokenizer)
     
         # For each frame, generate the hidden states and save to directories
         print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")

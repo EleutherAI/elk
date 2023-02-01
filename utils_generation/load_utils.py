@@ -275,12 +275,6 @@ def create_dataframe_dict(args, data_base_dir, dataset_names, num_prompts_per_da
 def create_directory(name):
     """
     This function will create a directory if it does not exist.
-
-    Args:
-        name: str, the name of the directory.
-    
-    Returns:
-        None
     """
     if not os.path.exists(name):
         os.makedirs(name)
