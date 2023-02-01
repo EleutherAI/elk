@@ -3,7 +3,7 @@ import os
 import numpy as np
 import time
 
-def get_directory(save_base_dir, model_name, dataset_name_w_num, prefix, token_place, tags):
+def get_directory(save_base_dir, model_name, dataset_name_w_num, prefix, token_place, tags=None):
 	"""
 	Create a directory name given a model, dataset, number of data points and prefix.
 
@@ -19,7 +19,7 @@ def get_directory(save_base_dir, model_name, dataset_name_w_num, prefix, token_p
 	"""
 	directory = f"{save_base_dir}/{model_name}_{dataset_name_w_num}_{prefix}_{token_place}"
 
-	if tags != "":
+	if tags != None:
 		for tag in tags:
 			directory += f"_{tag}"
 
@@ -39,7 +39,7 @@ def save_hidden_state_to_np_array(hidden_state, dataset_name_w_num, type_list, a
 	Returns:
 		None
 	"""
-	directory = get_directory(args.save_base_dir, args.model, dataset_name_w_num, args.prefix, args.token_place, args.tags)
+	directory = get_directory(args.save_base_dir, args.model, dataset_name_w_num, args.prefix, args.token_place)
 	if not os.path.exists(directory):
 		os.mkdir(directory)
 
