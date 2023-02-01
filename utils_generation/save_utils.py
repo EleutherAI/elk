@@ -13,6 +13,7 @@ def get_directory(save_base_dir, model_name, dataset_name_w_num, prefix, token_p
 		dataset_name_w_num (str): the name of the dataset with the number of data points
 		prefix (str): the prefix
 		token_place (str): Determine which token's hidden states will be generated. Can be `first` or `last` or `average`
+		tags (list): an optional list of strings that describe the hidden state
 	
 	Returns:
 		directory (str): the directory name	
