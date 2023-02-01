@@ -1,11 +1,11 @@
 ### Introduction
 
 **WIP: The code is still actively improved...**
-This code is a simplified and refacotored version of the original code of the paper *Discovering Latent Knowledge* in the zip file linked in https://github.com/collin-burns/discovering_latent_knowledge
+This code is a simplified and refactored version of the original code of the paper *Discovering Latent Knowledge* in the zip file linked in https://github.com/collin-burns/discovering_latent_knowledge
 
-This code consists of two parts. First, you can use `generation_main.py` to calculate the zero-shot accuracy and generate hidden states. Second, you can use `extraction_main.py` to run our methods, `CCS`, `TPC` and `BSS`, to get final predictions and performance.
+This code consists of two parts. First, you can use `generation_main.py` to calculate the zero-shot accuracy and generate hidden states. Second, you can use `extraction_main.py` to run the methods, `CCS`, `TPC` and `BSS`, to get final predictions and performance.
 
-We are planning to expand on the method presented in the DLK paper. See our following post, for more information on our plans: https://www.lesswrong.com/posts/bFwigCDMC5ishLz7X/rfc-possible-ways-to-expand-on-discovering-latent-knowledge
+We are planning to expand on the method presented in the DLK paper. For more information on our plans, see our post: https://www.lesswrong.com/posts/bFwigCDMC5ishLz7X/rfc-possible-ways-to-expand-on-discovering-latent-knowledge
 
 ### Dependencies
 
