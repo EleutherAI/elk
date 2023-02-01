@@ -232,7 +232,10 @@ if __name__ == "__main__":
 
                 # save params except for KMeans
                 if method in ["TPC", "BSS"]:
-                    coef, bias = cmodel.coef_ @ pmodel.getDirection(), cmodel.intercept_
+                    coef, bias = (
+                        cmodel.coef_ @ pmodel.get_direction(),
+                        cmodel.intercept_,
+                    )
                     save_params(
                         "{}_{}_{}_{}_{}_{}".format(
                             model, global_prefix, method, "all", train_set, args.seed

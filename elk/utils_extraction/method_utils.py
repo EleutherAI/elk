@@ -1,6 +1,7 @@
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression
+from typing import Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import time
@@ -8,9 +9,13 @@ import torch
 import umap
 
 
-class myReduction:
+class Projection:
     def __init__(
-        self, method, n_components, print_more=False, svd_solver="full"
+        self,
+        method: Literal["PCA", "UMAP"],
+        n_components: int,
+        print_more=False,
+        svd_solver="full",
     ) -> None:
         self.n_components = n_components
         self.method = method
@@ -55,7 +60,7 @@ class myReduction:
                         )
                     )
 
-    def getDirection(self):
+    def get_direction(self):
         # return the component with shape (n_components, n_features)
         if self.n_components == -1:
             return np.eye(self.num_feature)
@@ -73,7 +78,7 @@ class myReduction:
         return getattr(self.model, __name)
 
 
-def getSingleLoss(x, verbose=False):
+def get_single_loss(x, verbose=False):
     # x: shape (n, 1)
     x1 = x[x < 0]
     x2 = x[x >= 0]
@@ -89,7 +94,7 @@ def getSingleLoss(x, verbose=False):
 
 def getLoss(z, weights, verbose=False):
     # weighted loss according to `weights`
-    return sum([u * getSingleLoss(x, verbose) for u, x in zip(weights, z)])
+    return sum([u * get_single_loss(x, verbose) for u, x in zip(weights, z)])
 
 
 def get_all_data(data_dict):
@@ -110,13 +115,13 @@ def get_all_data(data_dict):
     return hs0, hs1, all_labels
 
 
-class ConsistencyMethod(object):
+class ConsistencyMethod:
     def __init__(self, verbose=False, include_bias=True):
-        self.includa_bias = include_bias
+        self.include_bias = include_bias
         self.verbose = verbose
 
     def add_ones_dimension(self, h):
-        if self.includa_bias:
+        if self.include_bias:
             return np.concatenate([h, np.ones(h.shape[0])[:, None]], axis=-1)
         else:
             return h
@@ -314,7 +319,7 @@ class ConsistencyMethod(object):
         return self.get_acc(self.best_theta, data, label, getloss)
 
 
-class myClassifyModel(LogisticRegression):
+class Classifier(LogisticRegression):
     def __init__(self, method, print_more=False):
         assert method in [
             "TPC",
@@ -323,7 +328,7 @@ class myClassifyModel(LogisticRegression):
             "KMeans",
         ], "currently only support method to be `TPC`, `LR`, 'KMeans` and `BSS`!"
         self.method = method
-        super(myClassifyModel, self).__init__(max_iter=10000, n_jobs=1, C=0.1)
+        super(Classifier, self).__init__(max_iter=10000, n_jobs=1, C=0.1)
         self.print_more = print_more
 
     def set_params(self, coef, bias):
@@ -469,7 +474,7 @@ class myClassifyModel(LogisticRegression):
                 with torch.no_grad():
                     z = [w @ theta.T for w in x]
                     # if weights is None:
-                    loss = sum([getSingleLoss(w, False) for w in z]) / len(z)
+                    loss = sum([get_single_loss(w, False) for w in z]) / len(z)
                     loss = loss.detach().cpu().item()
                     if loss < minloss:
                         if self.print_more:
@@ -508,21 +513,21 @@ class myClassifyModel(LogisticRegression):
                 acc = super().score(data, label)
             if getloss:
                 if self.method == "BSS":
-                    loss = getSingleLoss(data @ self.coef_.T + self.intercept_)
+                    loss = get_single_loss(data @ self.coef_.T + self.intercept_)
                 else:
                     loss = 0.0
                 return acc, loss
             return acc
 
 
-def getConcat(data_list, axis=0):
+def get_concat(data_list, axis=0):
     sub_list = [w for w in data_list if w is not None]
     if sub_list == []:
         return None
     return np.concatenate(sub_list, axis=axis)
 
 
-def getPair(target_dict, data_dict, permutation_dict, projection_model, split="train"):
+def get_pair(target_dict, data_dict, permutation_dict, projection_model, split="train"):
     split_idx = 0 if split == "train" else 1
     lis = []
     for key, prompt_lis in target_dict.items():
@@ -536,7 +541,7 @@ def getPair(target_dict, data_dict, permutation_dict, projection_model, split="t
                 ]
             )  # each is a data & label paird, selecting the corresponding split
 
-    data, label = getConcat([w[0] for w in lis]), getConcat([w[1] for w in lis])
+    data, label = get_concat([w[0] for w in lis]), get_concat([w[1] for w in lis])
 
     return data, label
 
@@ -599,13 +604,13 @@ def main_results(
         )
 
     # use all data (not split) to do the PCA
-    proj_states = getConcat(
+    proj_states = get_concat(
         [
-            getConcat([data_dict[key][w][0] for w in lis])
+            get_concat([data_dict[key][w][0] for w in lis])
             for key, lis in projection_dict.items()
         ]
     )
-    projection_model = myReduction(
+    projection_model = Projection(
         method=projection_method, n_components=n_components, print_more=print_more
     )
     projection_model.fit(proj_states)
@@ -615,7 +620,7 @@ def main_results(
 
     if classification_method == "Prob":
         classify_model = ConsistencyMethod(verbose=print_more)
-        data_array, label = getPair(
+        data_array, label = get_pair(
             data_dict=data_dict,
             permutation_dict=permutation_dict,
             projection_model=projection_model,
@@ -630,7 +635,7 @@ def main_results(
 
     elif classification_method == "BSS":
         lis = [
-            getPair(
+            get_pair(
                 data_dict=data_dict,
                 permutation_dict=permutation_dict,
                 projection_model=projection_model,
@@ -644,19 +649,15 @@ def main_results(
             1 / len(indices) for indices in projection_dict.values() for _ in indices
         ]
 
-        classify_model = myClassifyModel(
-            method=classification_method, print_more=print_more
-        )
+        classify_model = Classifier(method=classification_method, print_more=print_more)
         classify_model.fit(
             [w[0] for w in lis], [w[1] for w in lis], weights=weights, **learn_dict
         )
 
     else:
-        classify_model = myClassifyModel(
-            method=classification_method, print_more=print_more
-        )
+        classify_model = Classifier(method=classification_method, print_more=print_more)
         classify_model.fit(
-            *getPair(
+            *get_pair(
                 data_dict=data_dict,
                 permutation_dict=permutation_dict,
                 projection_model=projection_model,
@@ -669,7 +670,7 @@ def main_results(
         res[key], lss[key] = [], []
         for prompt_idx in lis:
             dic = {key: [prompt_idx]}
-            data, label = getPair(
+            data, label = get_pair(
                 data_dict=data_dict,
                 permutation_dict=permutation_dict,
                 projection_model=projection_model,
