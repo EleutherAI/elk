@@ -21,40 +21,37 @@ if __name__ == "__main__":
     model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
     
     print(f"Linish loading model to memory. Now start loading to accelerator (gpu or mps). parallelize = {args.parallelize is True}")
-    model = put_model_on_device(model, parallelize=args.parallelize, device = args.model_device)
+    model = put_model_on_device(model, parallelize=args.parallelize, device=args.model_device)
     
     print(f"Loading tokenizer for: model name = {args.model} at cache_dir = {args.cache_dir}")
     tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
 
     print("\n\n-------------------------------- Loading datasets and calculating hidden states --------------------------------\n\n")
-    all_prefixes = args.prefix
 
-    for prefix in tqdm(all_prefixes, desc='Iterating over prefixes:', position=0):
-        args.prefix = prefix
-        # load datasets and save if possible
-        num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
-        name_to_dataframe = create_dataframe_dict(args, args.data_base_dir, args.datasets, num_templates_per_dataset, args.num_data, tokenizer)
-    
-        # For each frame, generate the hidden states and save to directories
-        print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
-        with torch.no_grad():
-            for dataset_name, dataframe in name_to_dataframe.items():
-                hidden_state = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
-                #TODO: clean up this ['0','1'] thing
-                save_hidden_state_to_np_array(hidden_state, dataset_name, ['0','1'], args)
-            
-            records = []
-            for dataset_name, dataframe in name_to_dataframe.items():
-                records.append({
-                    "model": args.model,
-                    "dataset": dataset_name,
-                    "prefix": args.prefix,
-                    "tag": args.tag,
-                    "cal_hiddenstates": bool(args.cal_hiddenstates),
-                    "population": len(dataframe)
-                    })
-            save_records_to_csv(records, args)
-                        
-        print_elapsed_time(start, prefix, name_to_dataframe)
+    # load datasets and save if possible
+    num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
+    name_to_dataframe = create_dataframe_dict(args, args.data_base_dir, args.datasets, num_templates_per_dataset, args.num_data, tokenizer)
+
+    # For each frame, generate the hidden states and save to directories
+    print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
+    with torch.no_grad():
+        for dataset_name, dataframe in name_to_dataframe.items():
+            hidden_state = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
+            #TODO: clean up this ['0','1'] thing
+            save_hidden_state_to_np_array(hidden_state, dataset_name, ['0','1'], args)
         
+        records = []
+        for dataset_name, dataframe in name_to_dataframe.items():
+            records.append({
+                "model": args.model,
+                "dataset": dataset_name,
+                "prefix": args.prefix,
+                "tag": args.tag,
+                "cal_hiddenstates": bool(args.cal_hiddenstates),
+                "population": len(dataframe)
+                })
+        save_records_to_csv(records, args)
+                    
+    print_elapsed_time(start, args.prefix, name_to_dataframe)
+    
     print("-------------------------------- Finishing Program --------------------------------")

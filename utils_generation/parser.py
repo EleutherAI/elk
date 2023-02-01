@@ -31,7 +31,7 @@ def get_args():
     
 
     # datasets processing
-    parser.add_argument("--prefix", type = str, nargs="+", default = ["normal"],
+    parser.add_argument("--prefix", type = str, default = "normal",
                         help="The name of prefix added before the question. normal means no index. You can go to `utils_generation/prompts.json` to add new prompt.")
     parser.add_argument("--num_data", type=int,
                         default=1000, help="number of data points you want to use in each datasets. If one integer is provide, if will be extended to a list with the same length as `datasets`. If the size of datasets are no enough, will use all the data points.")
@@ -79,10 +79,9 @@ def get_args():
     assert args.model in registered_models, NotImplementedError(
         "You use model {}, but it's not registered. For any new model, please make sure you implement the code in `load_utils` and `generation`, and then register it in `parser.py`".format(args.model))
 
-    for prefix in args.prefix:
-        assert prefix in registered_prefix, NotImplementedError(
+    assert args.prefix in registered_prefix, NotImplementedError(
             "Invalid prefix name {}. Please check your prefix name. To add new prefix, please mofidy `utils_generation/prompts.json` and register new prefix in {}.json.".format(
-                prefix, json_dir
+                args.prefix, json_dir
             ))
 
     # Set default states_location according to model type
