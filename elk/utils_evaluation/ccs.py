@@ -1,6 +1,15 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+from enum import Enum
+
+
+class Optimizer(Enum):
+    adam = "adam"
+    lbfgs = "lbfgs"
+
+    def __str__(self):
+        return self.value
 
 
 class CCS(object):
@@ -12,7 +21,7 @@ class CCS(object):
         num_tries=10,
         learning_rate=1e-2,
         weight_decay=0.01,
-        use_lbfgs=False,
+        optimizer=Optimizer.adam,
         device="cuda",
     ):
         self.include_bias = include_bias
@@ -21,7 +30,7 @@ class CCS(object):
         self.num_tries = num_tries
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.use_lbfgs = use_lbfgs
+        self.optimizer = optimizer
         self.device = device
 
     def init_parameters(self):
@@ -64,7 +73,7 @@ class CCS(object):
         Encourages p0 and p1 to be close to 0 or 1 (far from 0.5)
         """
         min_p = torch.min(p0, p1)
-        return (min_p**2).mean(0)
+        return (min_p ** 2).mean(0)
 
     def get_consistency_loss(self, p0, p1):
         """
@@ -131,10 +140,12 @@ class CCS(object):
         theta = torch.tensor(
             theta, dtype=torch.float, requires_grad=True, device=self.device
         )
-        if self.use_lbfgs:
+        if self.optimizer == Optimizer.lbfgs:
             loss = self.train_loop_lbfgs(x0, x1, theta)
-        else:
+        elif self.optimizer == Optimizer.adam:
             loss = self.train_loop_full_batch(x0, x1, theta)
+        else:
+            raise ValueError(f"Optimizer {self.optimizer} is not supported")
 
         theta_np = theta.cpu().detach().numpy().reshape(1, -1)
         loss_np = loss.detach().cpu().item()
