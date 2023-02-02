@@ -44,9 +44,6 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     )
     parser.add_argument("--language_model_type", type=str, default="encoder")
     parser.add_argument("--layer", type=int, default=-1)
-    parser.add_argument(
-        "--zero", type=str, default="results"
-    )  # TODO: explain this. Never used.
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--model_device",
