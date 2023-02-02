@@ -1,13 +1,13 @@
 from typing import Literal
-import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from elk.utils_evaluation.probes import Probe, OriginalLinearProbe
 
 
-class CCS(object):
+class CCS(torch.nn.Module):
     def __init__(
         self,
+        d,
         verbose=False,
         include_bias=True,
         num_epochs=1000,
@@ -17,6 +17,9 @@ class CCS(object):
         optimizer: Literal["adam", "lbfgs"] = "adam",
         device="cuda",
     ):
+        super().__init__()
+
+        self.d = d
         self.include_bias = include_bias
         self.verbose = verbose
         self.num_epochs = num_epochs
@@ -25,6 +28,7 @@ class CCS(object):
         self.weight_decay = weight_decay
         self.optimizer = optimizer
         self.device = device
+        self.best_probe = self.init_probe()
 
     def init_probe(self):
         """
@@ -34,6 +38,9 @@ class CCS(object):
             Probe: The initialized probe of the model.
         """
         return OriginalLinearProbe(self.d, self.include_bias).to(self.device)
+
+    def forward(self, x):
+        return self.best_probe(x)
 
     def get_confidence_loss(self, p0, p1):
         """
@@ -78,31 +85,23 @@ class CCS(object):
         Computes the accuracy of a probe on a dataset
         """
         with torch.no_grad():
-            p0t, p1t = self.transform(data, probe)
-        p0, p1 = p0t.cpu().detach().numpy(), p1t.cpu().detach().numpy()
+            p0, p1 = self.transform(data, probe)
         avg_confidence = 0.5 * (p0 + (1 - p1))
 
         label = label.reshape(-1)
-        predictions = (avg_confidence < 0.5).astype(int)[:, 0]
+
+        # labels are numpy arrays, so go back to numpy
+        predictions = (avg_confidence.cpu().detach().numpy() < 0.5).astype(int)[:, 0]
         acc = (predictions == label).mean()
         if getloss:
-            loss = (
-                self.get_loss(torch.tensor(p0), torch.tensor(p1)).cpu().detach().item()
-            )
+            loss = self.get_loss(p0, p1).cpu().detach().item()
             return max(acc, 1 - acc), loss
         return max(acc, 1 - acc)
 
-    def single_train(self):
+    def single_train(self, x0, x1):
         """
         Does a single training run of num_epochs epochs
         """
-
-        x0 = torch.tensor(
-            self.x0, dtype=torch.float, requires_grad=False, device=self.device
-        )
-        x1 = torch.tensor(
-            self.x1, dtype=torch.float, requires_grad=False, device=self.device
-        )
 
         probe = self.init_probe()
         if self.optimizer == "lbfgs":
@@ -112,9 +111,9 @@ class CCS(object):
         else:
             raise ValueError(f"Optimizer {self.optimizer} is not supported")
 
-        loss_np = loss.detach().cpu().item()
+        loss_item = loss.detach().cpu().item()
 
-        return probe, loss_np
+        return probe, loss_item
 
     def validate_data(self, data):
         assert len(data) == 2 and data[0].shape == data[1].shape
@@ -136,21 +135,23 @@ class CCS(object):
                 f"String fiting data with Prob. num_epochs: {self.num_epochs},"
                 f" num_tries: {self.num_tries}, learning_rate: {self.learning_rate}"
             )
-        # set up the best loss and best theta found so far
-        self.best_loss = np.inf
-        self.best_probe = None
+
+        # set up the best loss found so far
+        self.best_loss = torch.inf
 
         best_acc = 0.5
         losses, accuracies = [], []
         self.validate_data(data)
 
-        self.x0 = data[0]
-        self.x1 = data[1]
-        self.y = label.reshape(-1)
-        self.d = self.x0.shape[-1]
+        x0, x1 = map(
+            lambda np_array: torch.tensor(
+                np_array, dtype=torch.float, requires_grad=False, device=self.device
+            ),
+            data,
+        )
 
         for _ in range(self.num_tries):
-            probe, loss = self.single_train()
+            probe, loss = self.single_train(x0, x1)
 
             accuracy = self.get_accuracy(probe, data, label, getloss=False)
 
