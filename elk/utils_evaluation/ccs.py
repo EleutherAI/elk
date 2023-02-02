@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+from elk.utils_evaluation.probes import Probe, LinearProbe
 
 
 class CCS(object):
@@ -24,38 +25,14 @@ class CCS(object):
         self.use_lbfgs = use_lbfgs
         self.device = device
 
-    def init_parameters(self):
+    def init_probe(self):
         """
-        Initializes the parameters of the model.
+        Initializes the probe of the model.
 
         Returns:
-            numpy.ndarray: The initialized parameters of the model.
+            Probe: The initialized probe of the model.
         """
-        init_theta = np.random.randn(self.d).reshape(1, -1)
-        init_theta = init_theta / np.linalg.norm(init_theta)
-        return init_theta
-
-    def add_ones_dimension(self, x):
-        """
-        Adds an additional dimension of ones to the input x,
-        if include_bias is True, else returns the original input x.
-
-        Parameters:
-            x (numpy.ndarray): The input array.
-
-        Returns:
-            numpy.ndarray: The input array x with an additional dimension of ones,
-            if include_bias is True. Otherwise, returns the original input x.
-            otherwise it simply returns the original input x without any modifications.
-        """
-        if self.include_bias:
-            # by adding a dimension of ones to the input array,
-            # the bias term can be easily included in the calculation
-            # without having to modify the input data
-            ones = np.ones(x.shape[0])[:, None]
-            return np.concatenate([x, ones], axis=-1)
-        else:
-            return x
+        return LinearProbe(self.d, self.include_bias).to(self.device)
 
     def get_confidence_loss(self, p0, p1):
         """
@@ -84,25 +61,24 @@ class CCS(object):
 
         return consistency_loss + confidence_loss
 
-    # return the probability tuple (p0, p1)
-
-    def transform(self, data: list, theta_np=None):
-        if theta_np is None:
-            theta_np = self.best_theta
-        z0 = torch.tensor(self.add_ones_dimension(data[0]).dot(theta_np.T))
-        z1 = torch.tensor(self.add_ones_dimension(data[1]).dot(theta_np.T))
-
-        p0 = torch.sigmoid(z0).numpy()
-        p1 = torch.sigmoid(z1).numpy()
+    def transform(self, data: list, probe=None):
+        """return the probability tuple (p0, p1)
+        Each has shape (n,1)"""
+        if probe is None:
+            probe = self.best_probe
+        p0 = probe(torch.tensor(data[0], device=self.device))
+        p1 = probe(torch.tensor(data[1], device=self.device))
 
         return p0, p1
 
     # Return the accuracy of (data, label)
-    def get_accuracy(self, theta_np, data: list, label, getloss):
+    def get_accuracy(self, probe, data: list, label, getloss):
         """
-        Computes the accuracy of a given direction theta_np represented as a numpy array
+        Computes the accuracy of a probe on a dataset
         """
-        p0, p1 = self.transform(data, theta_np)
+        with torch.no_grad():
+            p0t, p1t = self.transform(data, probe)
+        p0, p1 = p0t.cpu().detach().numpy(), p1t.cpu().detach().numpy()
         avg_confidence = 0.5 * (p0 + (1 - p1))
 
         label = label.reshape(-1)
@@ -127,20 +103,15 @@ class CCS(object):
             self.x1, dtype=torch.float, requires_grad=False, device=self.device
         )
 
-        theta = self.init_parameters()
-        theta = torch.tensor(
-            theta, dtype=torch.float, requires_grad=True, device=self.device
-        )
+        probe = self.init_probe()
         if self.use_lbfgs:
-            loss = self.train_loop_lbfgs(x0, x1, theta)
+            loss = self.train_loop_lbfgs(x0, x1, probe)
         else:
-            loss = self.train_loop_full_batch(x0, x1, theta)
+            loss = self.train_loop_full_batch(x0, x1, probe)
 
-        theta_np = theta.cpu().detach().numpy().reshape(1, -1)
-        # print("Norm of theta is " + str(np.linalg.norm(theta_np)))
         loss_np = loss.detach().cpu().item()
 
-        return theta_np, loss_np
+        return probe, loss_np
 
     def validate_data(self, data):
         assert len(data) == 2 and data[0].shape == data[1].shape
@@ -164,21 +135,21 @@ class CCS(object):
             )
         # set up the best loss and best theta found so far
         self.best_loss = np.inf
-        self.best_theta = None
+        self.best_probe = None
 
         best_acc = 0.5
         losses, accuracies = [], []
         self.validate_data(data)
 
-        self.x0 = self.add_ones_dimension(data[0])
-        self.x1 = self.add_ones_dimension(data[1])
+        self.x0 = data[0]
+        self.x1 = data[1]
         self.y = label.reshape(-1)
         self.d = self.x0.shape[-1]
 
         for _ in range(self.num_tries):
-            theta_np, loss = self.single_train()
+            probe, loss = self.single_train()
 
-            accuracy = self.get_accuracy(theta_np, data, label, getloss=False)
+            accuracy = self.get_accuracy(probe, data, label, getloss=False)
 
             losses.append(loss)
             accuracies.append(accuracy)
@@ -191,35 +162,31 @@ class CCS(object):
                             loss, accuracy
                         )
                     )
-                self.best_theta = theta_np
+                self.best_probe = probe
                 self.best_loss = loss
                 best_acc = accuracy
 
         if self.verbose:
             self.visualize(losses, accuracies)
 
-        return self.best_theta, self.best_loss, best_acc
+        return self.best_probe, self.best_loss, best_acc
 
     def score(self, data: list, label, getloss=False):
         self.validate_data(data)
-        return self.get_accuracy(self.best_theta, data, label, getloss)
+        return self.get_accuracy(self.best_probe, data, label, getloss)
 
-    def train_loop_full_batch(self, x0, x1, theta):
+    def train_loop_full_batch(self, x0, x1, probe):
         """
-        Performs a full batch training loop. Modifies theta in place.
+        Performs a full batch training loop. Modifies the probe in place.
         """
         optimizer = torch.optim.AdamW(
-            [theta], lr=self.learning_rate, weight_decay=self.weight_decay
+            probe.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
         )
 
         # Start training (full batch)
         for _ in range(self.num_epochs):
 
-            # project onto theta
-            z0, z1 = x0.mm(theta.T), x1.mm(theta.T)
-
-            # sigmoid to get probability
-            p0, p1 = torch.sigmoid(z0), torch.sigmoid(z1)
+            p0, p1 = probe(x0), probe(x1)
 
             # get the corresponding loss
             loss = self.get_loss(p0, p1)
@@ -234,16 +201,16 @@ class CCS(object):
 
         return loss
 
-    def train_loop_lbfgs(self, x0, x1, theta):
+    def train_loop_lbfgs(self, x0, x1, probe):
         """
-        Performs a lbfgs training loop. Modifies theta in place.
+        Performs a lbfgs training loop. Modifies the probe in place.
         """
 
         l2 = self.weight_decay
 
         # set up optimizer
         optimizer = torch.optim.LBFGS(
-            [theta],
+            probe.parameters(),
             line_search_fn="strong_wolfe",
             max_iter=self.num_epochs,
             tolerance_change=torch.finfo(x0.dtype).eps,
@@ -253,16 +220,14 @@ class CCS(object):
         def closure():
             optimizer.zero_grad()
 
-            # project onto theta
-            z0, z1 = x0.mm(theta.T), x1.mm(theta.T)
-
-            # sigmoid to get probability
-            p0, p1 = torch.sigmoid(z0), torch.sigmoid(z1)
+            p0, p1 = probe(x0), probe(x1)
 
             # get the corresponding loss
             loss = self.get_loss(p0, p1)
 
-            loss += l2 * torch.norm(theta) ** 2 / 2
+            # compute l2 loss
+            for param in probe.parameters():
+                loss += l2 * torch.norm(param) ** 2 / 2
 
             # update the parameters
             loss.backward()

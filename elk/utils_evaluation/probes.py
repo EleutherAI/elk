@@ -16,12 +16,12 @@ class Probe(ABC, nn.Module):
 
 
 class LinearProbe(Probe):
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, include_bias=True):
         super().__init__()
-        self.linear = nn.Linear(input_dim, 1)
+        self.linear = nn.Linear(input_dim, 1, bias=include_bias)
 
     def forward(self, x):
-        return self.linear(x)
+        return torch.sigmoid(self.linear(x))
 
 
 class LinearOrthogonalProbe(Probe):
@@ -76,7 +76,7 @@ class MLPProbe(Probe):
     def forward(self, x):
         for layer in self.layers:
             x = layer(x)
-        return x
+        return torch.sigmoid(x)
 
 
 def project(x: torch.Tensor, constraints: torch.Tensor) -> torch.Tensor:
