@@ -11,6 +11,7 @@ from elk.utils_evaluation.utils_evaluation import (
 )
 from elk.utils_evaluation.parser import get_args
 
+
 def train(args):
     hidden_states = get_hidden_states(
         hidden_states_directory=args.hidden_states_directory,
@@ -51,7 +52,8 @@ if __name__ == "__main__":
 
     logistic_regression_model, ccs_model = train(args)
 
-    # save models # TODO: use better filename for the pkls, so they don't get overwritten
+    # save models
+    # TODO: use better filename for the pkls, so they don't get overwritten
     with open(args.trained_models_path / "logistic_regression_model.pkl", "wb") as file:
         pickle.dump(logistic_regression_model, file)
     with open(args.trained_models_path / "ccs_model.pkl", "wb") as file:

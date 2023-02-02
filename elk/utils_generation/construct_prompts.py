@@ -202,7 +202,8 @@ prompt_dict = {
 confusion_prefix = {
     # confusion == 0, add nothing
     "normal": "{}",
-    # confusion == 1, add original thing. For agreement, `confusion1` is writen as `confusion``.
+    # confusion == 1, add original thing.
+    # For agreement, `confusion1` is written as `confusion``.
     "confusion": (
         "What is human life expectancy in the United States?\n10 years.\n\nWho was"
         " president of the United States in 1955?\nAbraham Lincoln.\n\nWhich party did"
@@ -247,8 +248,10 @@ confusion_prefix = {
     # "confusion5": "Veuillez donner votre réponse en français.\n\n",
     # confusion == 6, french and french answer. No allowed now!
     # "confusion6": "Veuillez donner votre réponse en français.\n\n",
-    # confusion == 7, same questions in confusion 1, but the questions are correctly answer.
-    # This is from OpenAI, and to be consistent with confusion1, the first sentence (instruction) is removed.
+    # confusion == 7, same questions in confusion 1,
+    # but the questions are correctly answer.
+    # This is from OpenAI, and to be consistent with confusion1,
+    # the first sentence (instruction) is removed.
     "confusion7": (
         "What is human life expectancy in the United States?\nHuman life expectancy in"
         " the United States is 78 years.\n\nWho was president of the United States in"
@@ -259,8 +262,10 @@ confusion_prefix = {
         " appear closer.\n\nWhere were the 1992 Olympics held?\nThe 1992 Olympics were"
         " held in Barcelona, Spain.\n\nHow many squigs are in a bonk?\nUnknown\n\n{}"
     ),
-    # confusion == 8, same questions in confusion 1, but the questions are correctly answer.
-    # This is from OpenAI, the instruction sentence is maintained in comparison to confusion7.
+    # confusion == 8, same questions in confusion 1,
+    # but the questions are correctly answer.
+    # This is from OpenAI, the instruction sentence
+    # is maintained in comparison to confusion7.
     "confusion8": (
         "I am a highly intelligent question answering bot. If you ask me a question"
         " that is rooted in truth, I will give you the answer. If you ask me a question"
@@ -275,15 +280,21 @@ confusion_prefix = {
         " Olympics were held in Barcelona, Spain.\n\nHow many squigs are in a"
         " bonk?\nUnknown\n\n{}"
     ),
-    # First is the question. Before the answer, tell the model that I answer incorrectly but the model shouldn't.
+    # First is the question. Before the answer,
+    # tell the model that I answer incorrectly but the model shouldn't.
     "iamincorrect": "{}\nI answered this question incorrectly (but you shouldn't).",
-    # First is the qeustion. Before the answer, tell the model that my dad is not going to answer correctly and I cannot trust him.
+    # First is the qeustion. Before the answer,
+    # tell the model that my dad is not going to
+    # answer correctly and I cannot trust him.
     "dadnotrust": (
         "{}\nPeople often get this question wrong, so I can't trust their answers."
     ),
-    # First is the question. Before the answer, tell the model that my dad gave an incorrect answer.
+    # First is the question. Before the answer,
+    # tell the model that my dad gave an incorrect answer.
     "dadisincorrect": "{}\nMy dad answered this question incorrectly.",
-    # First is the question. Before the answer, tell the model that my teacher is not correct and the model should not imitate.
+    # First is the question. Before the answer,
+    # tell the model that my teacher is
+    # not correct and the model should not imitate.
     "teachernoimitate": "{}\n(This one is tricky -- even my teacher got it wrong!)",
 }
 
@@ -330,7 +341,8 @@ class MyPrompts:
         # do not use the last four prompts
         return res if self.set_name != "copa" else res - 4
 
-    # qaexamples is tuple (qlist, alist), and these 5-len examples are fixed across the whole run.
+    # qaexamples is tuple (qlist, alist),
+    # and these 5-len examples are fixed across the whole run.
     def apply(self, example, prompt_idx, candidate, qaexamples):
         """
         Candidate is a binary list with possible labels
@@ -408,7 +420,7 @@ def checkLengthExceed(tokenizer, str_list):
     return False
 
 
-def concatAnswer(question, ans, mdl_name, confusion):
+def concatAnswer(question, answer, mdl_name, confusion):
     # Add a ? at the end of the question if not;
     # Add an A: before the answer.
     if confusion != "normal":
@@ -426,31 +438,34 @@ def concatAnswer(question, ans, mdl_name, confusion):
     ):  # Do not have `\n` token, should replace to '''
         # TODO: check whether this is valid
         question = question.replace("\n", " ")
-    if ans == "":  # null one, don't do anything
+    if answer == "":  # null one, don't do anything
         return question
 
     # for bert model, should add [SEP]
     if "deberta" in mdl_name:
-        return question + " [SEP] " + ans
+        return question + " [SEP] " + answer
     elif "roberta" in mdl_name:
-        return question + "</s></s>" + ans
+        return question + "</s></s>" + answer
     elif "gpt" in mdl_name:
         if question[-1] != "\n" and question[-1] != " ":
-            return question + "\n" + ans
-        return question + ans
+            return question + "\n" + answer
+        return question + answer
     else:  # T5 based moel
         if question[-1] == "\n" or question[-1] == " ":
-            return question + ans
-        return question + " " + ans
+            return question + answer
+        return question + " " + answer
 
 
 def constructPrompt(
     set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, confusion
 ):
     """
-    According to the prompt idx and set_name, return corresponding construction
-    Will change according to model type, i.e. for Bert model will add [SEP] in the middle
-    Return: A dataframe, with `null`, `0`, `1`, `label`, `selection`, which should be save with hidden states together
+    According to the prompt idx and set_name,
+    return corresponding construction
+    Will change according to model type,
+    i.e. for Bert model will add [SEP] in the middle
+    Return: A dataframe, with `null`, `0`, `1`, `label`,
+    `selection`, which should be save with hidden states together
     """
 
     prompter = MyPrompts(set_name)
@@ -471,14 +486,18 @@ def constructPrompt(
     )
     label_num = len(set(labels))
 
-    # For possibly used examples, we take from the frame. We try to avoid using the same examples, and take at the end of the frame. We take the last 5 examples and select the one with least length.
+    # For possibly used examples, we take from the frame.
+    # We try to avoid using the same examples,
+    # and take at the end of the frame.
+    # We take the last 5 examples and select the one with least length.
     eg_start_idx = len(frame) - 5
     eg_q = frame.loc[eg_start_idx : eg_start_idx + 4].reset_index(drop=True)
     # This is the correct label list
     eg_a = []
     for w in range(eg_start_idx, eg_start_idx + 5):
         label, selection = genCandidate(labels[w], label_num)
-        eg_a.append(selection[label])  #  append the correct answer
+        # append the correct answer
+        eg_a.append(selection[label])
     qa_examples = (eg_q, eg_a)
 
     for idx in range(len(frame)):
@@ -490,7 +509,8 @@ def constructPrompt(
         label, selection = genCandidate(labels[idx], label_num)
 
         # Get the question and Answer List
-        # question, ans_lis = formatExample(set_name, frame.loc[idx], prompt_idx, selection)
+        # question, ans_lis = formatExample(set_name,
+        # frame.loc[idx], prompt_idx, selection)
         question, ans_lis = prompter.apply(
             frame.loc[idx], prompt_idx, selection, qa_examples
         )

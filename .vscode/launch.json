@@ -12,8 +12,8 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "deberta-v2-xxlarge-mnli", 
-                "--dataset","imdb",  
+                "--model", "deberta-v2-xxlarge-mnli",
+                "--dataset","imdb",
                 "--prefix", "confusion",
                 "--model_device", "cuda",
                 "--num_data", "1000"
@@ -27,8 +27,8 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "deberta-v2-xxlarge-mnli", 
-                "--dataset","imdb",  
+                "--model", "deberta-v2-xxlarge-mnli",
+                "--dataset","imdb",
                 "--prefix", "normal",
                 "--model_device", "cuda",
                 "--num_data", "1000"
@@ -42,8 +42,8 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "deberta-v2-xxlarge-mnli", 
-                "--dataset","imdb",  
+                "--model", "deberta-v2-xxlarge-mnli",
+                "--dataset","imdb",
                 "--prefix", "normal",
                 "--model_device", "cuda",
                 "--num_data", "1000"
@@ -57,8 +57,8 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "deberta-v2-xxlarge-mnli", 
-                "--dataset","imdb",  
+                "--model", "deberta-v2-xxlarge-mnli",
+                "--dataset","imdb",
                 "--prefix", "normal",
                 "--model_device", "cuda",
                 "--num_data", "1000"

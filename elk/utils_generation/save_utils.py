@@ -4,6 +4,7 @@ import numpy as np
 import time
 from pathlib import Path
 
+
 def getDir(dataset_name_w_num, args):
     d = "{}_{}_{}_{}".format(
         args.model, dataset_name_w_num, args.prefix, args.token_place
@@ -16,7 +17,7 @@ def getDir(dataset_name_w_num, args):
 
 def saveFrame(frame_dict, args):
     args.save_base_dir.mkdir(parents=True, exist_ok=True)
-        
+
     for key, frame in frame_dict.items():
 
         directory = getDir(key, args)

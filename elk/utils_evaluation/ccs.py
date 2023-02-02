@@ -46,7 +46,8 @@ class CCS(object):
         """
         if self.include_bias:
             # by adding a dimension of ones to the input array,
-            # the bias term can be easily included in the calculation without having to modify the input data
+            # the bias term can be easily included in the calculation
+            # without having to modify the input data
             ones = np.ones(x.shape[0])[:, None]
             return np.concatenate([x, ones], axis=-1)
         else:
@@ -70,7 +71,8 @@ class CCS(object):
 
     def get_loss(self, p0, p1):
         """
-        Returns the ConsistencyModel loss for two probabilities each of shape (n,1) or (n,)
+        Returns the ConsistencyModel loss for
+        two probabilities each of shape (n,1) or (n,)
         p0 and p1 correspond to the probabilities
         """
         consistency_loss = self.get_consistency_loss(p0, p1)
@@ -198,7 +200,8 @@ class CCS(object):
             if loss < self.best_loss:
                 if self.verbose:
                     print(
-                        "Found a new best theta. New loss: {:.4f}, new acc: {:.4f}".format(
+                        "Found a new best theta. New loss: {:.4f}, \
+                        new acc: {:.4f}".format(
                             loss, accuracy
                         )
                     )

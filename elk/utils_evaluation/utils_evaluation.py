@@ -6,10 +6,9 @@ import time
 
 from pathlib import Path
 
-# TODO: Refactor file
-
-######## Load default_config ########
-default_config_path = Path(__file__).parent.parent /  Path(__file__).parent.parent / "default_config.json"
+default_config_path = (
+    Path(__file__).parent.parent / Path(__file__).parent.parent / "default_config.json"
+)
 
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
@@ -23,11 +22,12 @@ def get_filtered_filenames(
     directory, model_name, dataset_name, num_data, prefix, place
 ):
     """
-    Returns a list of filenames in the given directory that match the specified filter_criteria.
+    Returns a list of filenames in the given directory
+    that match the specified filter_criteria.
 
     :param model_name: the name of the model
     :param dataset_name: the name of the dataset
-    :param hidden_states_directory: the directory containing the files
+    :param hidden_states_directory: directory containing files
     :param num_data: number of data
     :param confusion: the confusion
     :param place: the place where the data is from
@@ -163,7 +163,9 @@ def append_stats(stats_df, args, method, avg_accuracy, avg_accuracy_std, avg_los
             "method": method,
             "prefix": args.prefix,
             "prompt_level": "all",
-            "train": args.dataset,  # for now we train and test on the same dataset (with a split of course)
+            # TODO:for now we train and test on the
+            # same dataset (with a split of course)
+            "train": args.dataset,
             "test": args.dataset,
             "accuracy": avg_accuracy,
             "std": avg_accuracy_std,

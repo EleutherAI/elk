@@ -47,5 +47,3 @@ python evaluate.py --dataset imdb
 ```
 
 Once finished, results will be saved in `evaluation_results/{model}_{prefix}_{seed}.csv`
-
-

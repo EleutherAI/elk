@@ -18,6 +18,7 @@ from .save_utils import saveFrame, getDir
 from .save_utils import save_records_to_csv
 from pathlib import Path
 
+
 def load_model(mdl_name, cache_dir):
     """
     Load model from cache_dir or from HuggingFace model hub.
@@ -54,7 +55,8 @@ def load_model(mdl_name, cache_dir):
     elif "t5" in mdl_name:
         model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
 
-    # We only use the models for inference, so we don't need to train them and hence don't need to track gradients
+    # We only use the models for inference,
+    # so we don't need to train them and hence don't need to track gradients
     model.eval()
 
     return model
@@ -88,7 +90,7 @@ def put_model_on_device(model, parallelize, device="cuda"):
         else:
             mps_device = torch.device("mps")
             model.to(mps_device)
-    elif parallelize == True:
+    elif parallelize:
         model.parallelize()
     elif device == "cuda":
         if not torch.cuda.is_available():
@@ -144,7 +146,9 @@ def get_sample_data(set_name, data_list, total_num):
 
     set_name:   the name of the dataset, some datasets have special token name.
     data_list:  a list of dataframe, with order queals to token_list
-    max_num:    number of data point that wants to take, default is twice as final size, considering that some examples are too long and could be dropped.
+    max_num:    number of data point that wants to take,
+    default is twice as final size, considering that
+    some examples are too long and could be dropped.
     """
 
     lbl_tag = "label" if set_name != "story-cloze" else "answer_right_ending"
@@ -203,7 +207,8 @@ def getLoadName(set_name):
 
 def loadFromDatasets(set_name, cache_dir, max_num):
     """
-    This function will load datasets from module or raw csv, and then return a pd DataFrame
+    This function will load datasets from module or raw csv,
+    and then return a pd DataFrame
     This DataFrame can be used to construct the example
     """
     if set_name != "story-cloze":
@@ -319,14 +324,16 @@ def create_dataframe_dict(
     print_more=False,
 ):
     """
-    This function will create a dictionary of dataframes, where the key is the dataset name and the value is the dataframe.
+    This function will create a dictionary of dataframes,
+    where the key is the dataset name and the value is the dataframe.
 
     Args:
         args: argparse, the arguments.
         data_base_dir: str, the directory of the data.
         dataset_names: list of str, the dataset names that will be used.
         prompt_idxs: list of int, the prompt idxs that will be used.
-        num_data: list of int, the number of data points that will be used for each dataset.
+        num_data: list of int, the number of
+        data points that will be used for each dataset.
         tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
         print_more: bool, if True, will print more information.
 
@@ -340,9 +347,12 @@ def create_dataframe_dict(
         path = data_base_dir / f"rawdata_{dataset}_{max_num}.csv"
 
         # load datasets
-        # if complete dataset exists and reload == False, will directly load this dataset
-        # Otherwise, load existing raw dataset or reload / load new raw sets
-        # notice that this is just the `raw data`, which is a dict or whatever
+        # if complete dataset exists and reload == False,
+        # will directly load this dataset
+        # Otherwise, load existing raw dataset or
+        # reload / load new raw sets
+        # notice that this is just the
+        # `raw data`, which is a dict or whatever
         dataset_name_with_num = f"{dataset}_{max_num}_prompt{prompt_idx}"
         complete_path = getDir(dataset_name_with_num, args)
         dataframe_path = complete_path / "frame.csv"
@@ -355,8 +365,8 @@ def create_dataframe_dict(
                     f"load post-processing {dataset_name_with_num} from"
                     f" {complete_path}, length = {max_num}"
                 )
-                # print an example
-        else:  # either reload, or this specific model / confusion args has not been saved yet.
+        # either reload, or this specific model / confusion args has not been saved yet.
+        else:
             if (
                 args.reload_data is False or reload_set_name == dataset
             ) and path.exists():
@@ -386,15 +396,21 @@ def create_dataframe_dict(
 
 def align_datapoints_amount(num_examples, dataset_names):
     """
-    This function will check the length of `num_examples` and make it the same as `dataset_names`.
-    This function gives us a list of num_examples for each prompt template e.g.
-    [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000] ... so, for 13 prompts we obtain 1000 datapoints
+    This function will check the length of `num_examples`
+    and make it the same as `dataset_names`.
+    This function gives us a list of
+    num_examples for each prompt template e.g.
+    [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
+    ... so, for 13 prompts we obtain 1000 datapoints
     Args:
-        num_examples: list of ints, the number of data points that will be used for each dataset.
-        dataset_names: list of strings, the dataset names that will be used.
+        num_examples: list of ints,
+        the number of data points that will be used for each dataset.
+        dataset_names: list of strings,
+        the dataset names that will be used.
 
     Returns:
-        num_examples: list of int, the number of data points that will be used for each dataset.
+        num_examples: list of int,
+        the number of data points that will be used for each dataset.
     """
     # deal with the length of `num_examples`
     # end up making num_examples and set_list with the same length

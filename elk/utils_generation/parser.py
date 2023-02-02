@@ -3,8 +3,7 @@ import json
 from .construct_prompts import confusion_prefix
 from pathlib import Path
 
-######## Load default_config ########
-default_config_path =  Path(__file__).parent.parent / "default_config.json"
+default_config_path = Path(__file__).parent.parent / "default_config.json"
 
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
@@ -23,7 +22,7 @@ def get_args():
         type=Path,
         default="datasets/complete_ten",
         help=(
-            "The base dir of all datasets (csv files) you wnat to generate hidden"
+            "The base dir of all datasets (csv files) you want to generate hidden"
             " states."
         ),
     )
@@ -111,7 +110,7 @@ def get_args():
         "--prompt_idx",
         nargs="+",
         default=[0],
-        help="The indexs of prompt you want to use.",
+        help="The indices of prompt you want to use.",
     )
 
     # generation & zero-shot accuracy calculation
@@ -226,7 +225,8 @@ def get_args():
     for prefix in args.prefix:
         assert prefix in prefix, NotImplementedError(
             "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
-            " please mofidy `utils_generation/prompts.json` and  new prefix in {}.json.".format(
+            " please mofidy `utils_generation/prompts.json` \
+                and new prefix in {}.json.".format(
                 prefix, default_config_path
             )
         )

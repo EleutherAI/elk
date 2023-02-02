@@ -45,7 +45,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
                     for ids in ids_paired
                 ]
             else:
-                ans_token = [
+                answer_token = [
                     apply_tokenizer(w) for w in getDataPoint(frame, idx, "selection")
                 ]
                 # get the input_ids for candidates
@@ -54,9 +54,9 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
                 # calculate the hidden states and take the layer `state_idx`
                 hidden_states_paired = [
                     model(
-                        input_ids, labels=ans, output_hidden_states=True
+                        input_ids, labels=a, output_hidden_states=True
                     ).decoder_hidden_states
-                    for ans in ans_token
+                    for a in answer_token
                 ]
         elif "gpt" in mdl_name or "bert" in mdl_name:
             appender = " " + str(tokenizer.eos_token) if "gpt" in mdl_name else ""
@@ -64,7 +64,8 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
                 apply_tokenizer(getDataPoint(frame, idx, w) + appender)
                 for w in ["0", "1"]
             ]
-            # Notice that since gpt and bert only have either decoder or encoder, we don't need to specify which one to use.
+            # Notice that since gpt and bert only have either decoder or encoder,
+            # we don't need to specify which one to use.
             hidden_states_paired = [
                 model(ids, output_hidden_states=True).hidden_states
                 for ids in ids_paired
@@ -85,7 +86,8 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
                 )
             )
 
-    # For each list in hidden_states, it's a list with `len(frame)` arrays, and each array has shape `layer * hid_dim`
+    # For each list in hidden_states, it's a list with `len(frame)` arrays,
+    # and each array has shape `layer * hid_dim`
     # for each list, stack them to `num_data * layer * hid_dim`
     hidden_states = [np.stack(w, axis=0) for w in hidden_states]
 
@@ -94,7 +96,8 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
 
 def create_hiddenstates(model, tokenizer, name_to_dataframe, args):
     """
-    This function will calculate the zeroshot accuracy for each dataset and properly store
+    This function will calculate the zeroshot
+    accuracy for each dataset and properly store
     """
     with torch.no_grad():
         for name, dataframe in name_to_dataframe.items():
@@ -107,7 +110,8 @@ def create_hiddenstates(model, tokenizer, name_to_dataframe, args):
 
 def create_records(model, tokenizer, name_to_dataframe, args):
     """
-    This function will calculate the zeroshot accuracy for each dataset and properly store
+    This function will calculate the zeroshot accuracy
+    for each dataset and properly store
     """
 
     # create records, will save as csv in the end

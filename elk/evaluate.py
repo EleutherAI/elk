@@ -13,6 +13,7 @@ from elk.utils_evaluation.parser import get_args
 from elk.utils_evaluation.utils_evaluation import save_df_to_csv
 from pathlib import Path
 
+
 def evaluate(args, logistic_regression_model, ccs_model):
     os.makedirs(args.save_dir, exist_ok=True)
 
@@ -88,7 +89,7 @@ def evaluate(args, logistic_regression_model, ccs_model):
     stats_df = append_stats(
         stats_df, args, "lr", avg_accuracy_lr, avg_accuracy_std_lr, avg_loss_lr
     )
-    save_df_to_csv(args, stats_df, args.prefix, f"After finish")
+    save_df_to_csv(args, stats_df, args.prefix, "After finish")
 
 
 if __name__ == "__main__":

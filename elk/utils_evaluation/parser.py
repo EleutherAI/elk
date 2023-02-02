@@ -2,7 +2,8 @@ import argparse
 import json
 from pathlib import Path
 
-def get_args(default_config_path= Path(__file__).parent / "default_config.json"):
+
+def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
 
     with open(default_config_path, "r") as f:
         default_config = json.load(f)
