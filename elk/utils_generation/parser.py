@@ -1,5 +1,6 @@
 import argparse
 import json
+from transformers import AutoConfig
 from .construct_prompts import confusion_prefix
 from pathlib import Path
 
