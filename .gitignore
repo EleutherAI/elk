@@ -5,6 +5,9 @@ nohup.out
 .idea
 *.pkl
 
+# scripts for experiments in progress
+my_*.sh
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
