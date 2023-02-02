@@ -63,7 +63,9 @@ class LinearAlongProbe(Probe):
 
     @property
     def weight(self):
-        return torch.einsum("nd,nh->hd", self.along_directions, self.coeffs.weight)
+        return torch.einsum(
+            "n d, n h -> h d", self.along_directions, self.coeffs.weight
+        )
 
 
 class MLPProbe(Probe):
