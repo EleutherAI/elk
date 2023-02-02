@@ -137,7 +137,6 @@ class CCS(object):
             loss = self.train_loop_full_batch(x0, x1, theta)
 
         theta_np = theta.cpu().detach().numpy().reshape(1, -1)
-        # print("Norm of theta is " + str(np.linalg.norm(theta_np)))
         loss_np = loss.detach().cpu().item()
 
         return theta_np, loss_np
@@ -229,9 +228,6 @@ class CCS(object):
             loss.backward()
             optimizer.step()
 
-            # with torch.no_grad():
-            #     theta /= torch.norm(theta)
-
         return loss
 
     def train_loop_lbfgs(self, x0, x1, theta):
@@ -266,9 +262,6 @@ class CCS(object):
 
             # update the parameters
             loss.backward()
-
-            # with torch.no_grad():
-            #     theta /= torch.norm(theta)
 
             return loss
 
