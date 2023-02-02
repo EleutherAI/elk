@@ -40,7 +40,9 @@ def train(args):
     print("done training classification model")
 
     print("train ccs model")
-    ccs_model = CCS(verbose=True)
+    ccs_model = CCS(
+        verbose=True, weight_decay=args.weight_decay, use_lbfgs=args.use_lbfgs
+    )
     half = data.shape[1] // 2
     data = [data[:, :half], data[:, half:]]
     ccs_model.fit(data=data, label=labels)

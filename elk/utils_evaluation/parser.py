@@ -44,13 +44,24 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     )
     parser.add_argument("--language_model_type", type=str, default="encoder")
     parser.add_argument("--layer", type=int, default=-1)
-    parser.add_argument("--zero", type=str, default="results")
+    parser.add_argument(
+        "--zero", type=str, default="results"
+    )  # TODO: explain this. Never used.
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--model_device",
         type=str,
         default="cuda",
         help="What device to load the model onto: CPU or GPU or MPS.",
+    )
+    parser.add_argument(
+        "--use_lbfgs", action="store_true", help="Use lbfgs optimizer to train CCS."
+    )
+    parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=0.01,
+        help="Weight decay for CCS. Used as L2 regularization in lbfgs.",
     )
     args = parser.parse_args()
 

@@ -11,6 +11,8 @@ class CCS(object):
         num_epochs=1000,
         num_tries=10,
         learning_rate=1e-2,
+        weight_decay=0.01,
+        use_lbfgs=False,
         device="cuda",
     ):
         self.include_bias = include_bias
@@ -18,6 +20,8 @@ class CCS(object):
         self.num_epochs = num_epochs
         self.num_tries = num_tries
         self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.use_lbfgs = use_lbfgs
         self.device = device
 
     def init_parameters(self):
@@ -127,32 +131,14 @@ class CCS(object):
         theta = torch.tensor(
             theta, dtype=torch.float, requires_grad=True, device=self.device
         )
+        if self.use_lbfgs:
+            loss = self.train_loop_lbfgs(x0, x1, theta)
+        else:
+            loss = self.train_loop_full_batch(x0, x1, theta)
 
-        optimizer = torch.optim.AdamW([theta], lr=self.learning_rate)
-
-        # Start training (full batch)
-        for _ in range(self.num_epochs):
-
-            # project onto theta
-            z0, z1 = x0.mm(theta.T), x1.mm(theta.T)
-
-            # sigmoid to get probability
-            p0, p1 = torch.sigmoid(z0), torch.sigmoid(z1)
-
-            # get the corresponding loss
-            loss = self.get_loss(p0, p1)
-
-            # update the parameters
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            # with torch.no_grad():
-            #     theta /= torch.norm(theta)
-
-            theta_np = theta.cpu().detach().numpy().reshape(1, -1)
-            # print("Norm of theta is " + str(np.linalg.norm(theta_np)))
-            loss_np = loss.detach().cpu().item()
+        theta_np = theta.cpu().detach().numpy().reshape(1, -1)
+        # print("Norm of theta is " + str(np.linalg.norm(theta_np)))
+        loss_np = loss.detach().cpu().item()
 
         return theta_np, loss_np
 
@@ -217,3 +203,74 @@ class CCS(object):
     def score(self, data: list, label, getloss=False):
         self.validate_data(data)
         return self.get_accuracy(self.best_theta, data, label, getloss)
+
+    def train_loop_full_batch(self, x0, x1, theta):
+        """
+        Performs a full batch training loop. Modifies theta in place.
+        """
+        optimizer = torch.optim.AdamW(
+            [theta], lr=self.learning_rate, weight_decay=self.weight_decay
+        )
+
+        # Start training (full batch)
+        for _ in range(self.num_epochs):
+
+            # project onto theta
+            z0, z1 = x0.mm(theta.T), x1.mm(theta.T)
+
+            # sigmoid to get probability
+            p0, p1 = torch.sigmoid(z0), torch.sigmoid(z1)
+
+            # get the corresponding loss
+            loss = self.get_loss(p0, p1)
+
+            # update the parameters
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            # with torch.no_grad():
+            #     theta /= torch.norm(theta)
+
+        return loss
+
+    def train_loop_lbfgs(self, x0, x1, theta):
+        """
+        Performs a lbfgs training loop. Modifies theta in place.
+        """
+
+        l2 = self.weight_decay
+
+        # set up optimizer
+        optimizer = torch.optim.LBFGS(
+            [theta],
+            line_search_fn="strong_wolfe",
+            max_iter=self.num_epochs,
+            tolerance_change=torch.finfo(x0.dtype).eps,
+            tolerance_grad=torch.finfo(x0.dtype).eps,
+        )
+
+        def closure():
+            optimizer.zero_grad()
+
+            # project onto theta
+            z0, z1 = x0.mm(theta.T), x1.mm(theta.T)
+
+            # sigmoid to get probability
+            p0, p1 = torch.sigmoid(z0), torch.sigmoid(z1)
+
+            # get the corresponding loss
+            loss = self.get_loss(p0, p1)
+
+            loss += l2 * torch.norm(theta) ** 2 / 2
+
+            # update the parameters
+            loss.backward()
+
+            # with torch.no_grad():
+            #     theta /= torch.norm(theta)
+
+            return loss
+
+        optimizer.step(closure)
+        return closure()
