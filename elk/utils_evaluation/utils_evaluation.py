@@ -1,4 +1,5 @@
 import os
+import random
 import numpy as np
 import pandas as pd
 import json
@@ -16,6 +17,14 @@ datasets = default_config["datasets"]
 models = default_config["models"]
 prefix = default_config["prefix"]
 models_layer_num = default_config["models_layer_num"]
+
+
+def set_random_seed(seed):
+    """
+    Set the random seed
+    """
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 def get_filtered_filenames(

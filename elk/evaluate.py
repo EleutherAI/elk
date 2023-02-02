@@ -6,6 +6,7 @@ import pandas as pd
 from elk.utils_evaluation.utils_evaluation import (
     get_hidden_states,
     get_permutation,
+    set_random_seed,
     split,
     append_stats,
 )
@@ -16,6 +17,7 @@ from pathlib import Path
 
 def evaluate(args, logistic_regression_model, ccs_model):
     os.makedirs(args.save_dir, exist_ok=True)
+    set_random_seed(args.seed)
 
     hidden_states = get_hidden_states(
         hidden_states_directory=args.hidden_states_directory,

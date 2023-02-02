@@ -7,12 +7,15 @@ from elk.utils_evaluation.ccs import CCS
 from elk.utils_evaluation.utils_evaluation import (
     get_hidden_states,
     get_permutation,
+    set_random_seed,
     split,
 )
 from elk.utils_evaluation.parser import get_args
 
 
 def train(args):
+    set_random_seed(args.seed)
+
     hidden_states = get_hidden_states(
         hidden_states_directory=args.hidden_states_directory,
         model_name=args.model,
