@@ -108,7 +108,7 @@ class CCS(object):
         if self.optimizer == "lbfgs":
             loss = self.train_loop_lbfgs(x0, x1, probe)
         elif self.optimizer == "adam":
-            loss = self.train_loop_full_batch(x0, x1, probe)
+            loss = self.train_loop_adam(x0, x1, probe)
         else:
             raise ValueError(f"Optimizer {self.optimizer} is not supported")
 
@@ -178,7 +178,7 @@ class CCS(object):
         self.validate_data(data)
         return self.get_accuracy(self.best_probe, data, label, getloss)
 
-    def train_loop_full_batch(self, x0, x1, probe):
+    def train_loop_adam(self, x0, x1, probe):
         """
         Performs a full batch training loop. Modifies the probe in place.
         """
