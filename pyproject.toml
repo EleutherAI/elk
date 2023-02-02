@@ -14,7 +14,7 @@ dependencies = [
     "numpy==1.23.5",
     "pandas==1.5.1",
     "transformers==4.25.1",
-    "promptsource==0.2.3",
+    "git+https://github.com/bigscience-workshop/promptsource.git",
     "torch",
     "sentencepiece==0.1.97",
     "protobuf==3.20.*",
