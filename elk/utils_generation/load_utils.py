@@ -54,6 +54,9 @@ def load_model(mdl_name, cache_dir):
         )
     elif "t5" in mdl_name:
         model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
+    else:
+        # TODO add a string of try/excepts, figure out a better model name format later
+        model = AutoModelForCausalLM.from_pretrained(mdl_name, cache_dir=cache_dir)
 
     # We only use the models for inference,
     # so we don't need to train them and hence don't need to track gradients
