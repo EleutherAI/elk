@@ -23,7 +23,7 @@
             "name": "Python: Generation Cuda",
             "type": "python",
             "request": "launch",
-            "program": "generation_main.py",
+            "module": "elk.generation_main",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
@@ -38,7 +38,7 @@
             "name": "Python: Evaluation Cuda",
             "type": "python",
             "request": "launch",
-            "program": "evaluate.py",
+            "module": "elk.evaluate",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
@@ -53,7 +53,7 @@
             "name": "Python: Training Cuda",
             "type": "python",
             "request": "launch",
-            "program": "train.py",
+            "module": "elk.train.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
