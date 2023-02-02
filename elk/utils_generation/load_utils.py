@@ -117,32 +117,7 @@ def load_tokenizer(mdl_name, cache_dir):
     Returns:
         tokenizer: tokenizer for the model
     """
-
-    if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "EleutherAI/{}".format(mdl_name), cache_dir=cache_dir
-        )
-    elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
-        tokenizer = GPT2Tokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-    elif "T0" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "bigscience/{}".format(mdl_name), cache_dir=cache_dir
-        )
-    elif "unifiedqa" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "allenai/" + mdl_name, cache_dir=cache_dir
-        )
-    elif "deberta" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "microsoft/" + mdl_name, cache_dir=cache_dir
-        )
-    # TODO these lines are unnecessary
-    elif "roberta" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-    elif "t5" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
+    tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
 
     return tokenizer
 
