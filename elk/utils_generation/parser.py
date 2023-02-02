@@ -146,7 +146,7 @@ def get_args():
     )
     parser.add_argument(
         "--states_location",
-        type=Path,
+        type=str,
         default="null",
         choices=["encoder", "decoder", "null"],
         help=(
@@ -170,7 +170,10 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--tag", type=str, default="", help="Tag added as the suffix of the directory."
+        "--tag",
+        type=str,
+        default="",
+        help="Tag added as the suffix of the directory.",
     )
     parser.add_argument(
         "--save_base_dir",
