@@ -6,7 +6,7 @@ import pickle
 
 from train import train
 from evaluate import evaluate
-from utils_evaluation.parser import get_args
+from elk.utils_evaluation.parser import get_args
 
 if __name__ == "__main__":
     args = get_args(default_config_path="default_config.json")

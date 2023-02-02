@@ -3,14 +3,14 @@ import pickle
 import numpy as np
 import pandas as pd
 
-from utils_evaluation.utils_evaluation import (
+from elk.utils_evaluation.utils_evaluation import (
     get_hidden_states,
     get_permutation,
     split,
     append_stats,
 )
-from utils_evaluation.parser import get_args
-from utils_evaluation.utils_evaluation import save_df_to_csv
+from elk.utils_evaluation.parser import get_args
+from elk.utils_evaluation.utils_evaluation import save_df_to_csv
 
 
 def evaluate(args, logistic_regression_model, ccs_model):

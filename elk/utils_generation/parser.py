@@ -1,6 +1,6 @@
 import argparse
 import json
-from utils_generation.construct_prompts import confusion_prefix
+from .construct_prompts import confusion_prefix
 
 ######## Load default_config ########
 default_config_path = "default_config.json"
@@ -225,8 +225,9 @@ def get_args():
     for prefix in args.prefix:
         assert prefix in prefix, NotImplementedError(
             "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
-            " please mofidy `utils_generation/prompts.json` and  new prefix in {}.json."
-            .format(prefix, default_config_path)
+            " please mofidy `utils_generation/prompts.json` and  new prefix in {}.json.".format(
+                prefix, default_config_path
+            )
         )
 
     # Set default states_location according to model type
