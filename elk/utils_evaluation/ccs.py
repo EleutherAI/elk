@@ -1,15 +1,15 @@
+from dataclasses import dataclass
+from elk.utils_evaluation.probes import OriginalLinearProbe
 from typing import Literal
-import torch
 import matplotlib.pyplot as plt
-from elk.utils_evaluation.probes import Probe, OriginalLinearProbe
-from attrs import define
+import torch
 
 
-@define
+@dataclass
 class TrainParams:
     num_epochs: int = 1000
     num_tries: int = 10
-    learning_rate: float = 1e-2
+    lr: float = 1e-2
     weight_decay: float = 0.01
     optimizer: Literal["adam", "lbfgs"] = "adam"
 
@@ -17,16 +17,14 @@ class TrainParams:
 class CCS(torch.nn.Module):
     def __init__(
         self,
-        d,
-        verbose=False,
+        hidden_size: int,
         include_bias=True,
         device="cuda",
     ):
         super().__init__()
 
-        self.d = d
+        self.hidden_size = hidden_size
         self.include_bias = include_bias
-        self.verbose = verbose
         self.device = device
         self.best_probe = self.init_probe()
 
@@ -37,7 +35,7 @@ class CCS(torch.nn.Module):
         Returns:
             Probe: The initialized probe of the model.
         """
-        return OriginalLinearProbe(self.d, self.include_bias).to(self.device)
+        return OriginalLinearProbe(self.hidden_size, self.include_bias).to(self.device)
 
     def forward(self, x):
         return self.best_probe(x)
@@ -98,7 +96,7 @@ class CCS(torch.nn.Module):
             return max(acc, 1 - acc), loss
         return max(acc, 1 - acc)
 
-    def single_train(self, x0, x1, train_params: TrainParams):
+    def fit_once(self, x0, x1, train_params: TrainParams):
         """
         Does a single training run of num_epochs epochs
         """
@@ -121,34 +119,29 @@ class CCS(torch.nn.Module):
     def get_train_loss(self):
         return self.best_loss
 
-    def visualize(self, losses, accs):
-        plt.scatter(losses, accs)
-        plt.xlabel("Loss")
-        plt.ylabel("Accuracy")
-        plt.show()
-
     # seems 50, 20 can significantly reduce overfitting than 1000, 10
     # switch back to 1000 + 10
     def fit(
         self,
         data: list,
         label,
-        num_epochs=1000,
-        num_tries=10,
-        learning_rate=1e-2,
-        weight_decay=0.01,
+        lr: float = 1e-2,
+        num_epochs: int = 1000,
+        num_tries: int = 10,
         optimizer: Literal["adam", "lbfgs"] = "adam",
+        verbose: bool = False,
+        weight_decay: float = 0.01,
     ):
-        if self.verbose:
+        if verbose:
             print(
-                f"String fiting data with Prob. num_epochs: {num_epochs},"
-                f" num_tries: {num_tries}, learning_rate: {learning_rate}"
+                f"String fitting data with Prob. num_epochs: {num_epochs},"
+                f" num_tries: {num_tries}, learning rate: {lr}"
             )
 
         train_params = TrainParams(
             num_epochs=num_epochs,
             num_tries=num_tries,
-            learning_rate=learning_rate,
+            lr=lr,
             weight_decay=weight_decay,
             optimizer=optimizer,
         )
@@ -168,7 +161,7 @@ class CCS(torch.nn.Module):
         )
 
         for _ in range(train_params.num_tries):
-            probe, loss = self.single_train(x0, x1, train_params)
+            probe, loss = self.fit_once(x0, x1, train_params)
 
             accuracy = self.get_accuracy(probe, data, label, getloss=False)
 
@@ -176,7 +169,7 @@ class CCS(torch.nn.Module):
             accuracies.append(accuracy)
 
             if loss < self.best_loss:
-                if self.verbose:
+                if verbose:
                     print(
                         "Found a new best theta. New loss: {:.4f}, \
                         new acc: {:.4f}".format(
@@ -187,8 +180,11 @@ class CCS(torch.nn.Module):
                 self.best_loss = loss
                 best_acc = accuracy
 
-        if self.verbose:
-            self.visualize(losses, accuracies)
+        if verbose:
+            plt.scatter(losses, accuracies)
+            plt.xlabel("Loss")
+            plt.ylabel("Accuracy")
+            plt.show()
 
         return self.best_probe, self.best_loss, best_acc
 
@@ -202,12 +198,13 @@ class CCS(torch.nn.Module):
         """
         optimizer = torch.optim.AdamW(
             probe.parameters(),
-            lr=train_params.learning_rate,
+            lr=train_params.lr,
             weight_decay=train_params.weight_decay,
         )
 
         # Start training (full batch)
         for _ in range(train_params.num_epochs):
+            optimizer.zero_grad()
 
             p0, p1 = probe(x0), probe(x1)
 
@@ -217,7 +214,6 @@ class CCS(torch.nn.Module):
             loss += probe.normalize()
 
             # update the parameters
-            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
@@ -238,8 +234,10 @@ class CCS(torch.nn.Module):
             tolerance_change=torch.finfo(x0.dtype).eps,
             tolerance_grad=torch.finfo(x0.dtype).eps,
         )
+        loss = torch.inf
 
         def closure():
+            nonlocal loss
             optimizer.zero_grad()
 
             p0, p1 = probe(x0), probe(x1)
@@ -259,4 +257,4 @@ class CCS(torch.nn.Module):
             return loss
 
         optimizer.step(closure)
-        return closure()
+        return loss

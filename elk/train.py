@@ -44,12 +44,13 @@ def train(args):
     data = [data[:, :half], data[:, half:]]
     d = data[0].shape[1]
 
-    ccs_model = CCS(d=d, verbose=True)
+    ccs_model = CCS(hidden_size=d)
     ccs_model.fit(
         data=data,
         label=labels,
-        weight_decay=args.weight_decay,
         optimizer=args.optimizer,
+        verbose=True,
+        weight_decay=args.weight_decay,
     )
     print("done training ccs model")
 
