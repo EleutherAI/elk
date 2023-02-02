@@ -2,9 +2,6 @@ from numpy import longdouble
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    T5ForConditionalGeneration,
-    GPT2LMHeadModel,
-    GPT2Tokenizer,
     AutoModelForSeq2SeqLM,
     AutoModelWithLMHead,
     AutoModelForSequenceClassification,
@@ -30,7 +27,7 @@ def load_model(mdl_name, cache_dir):
     Returns:
         model (torch.nn.Module): model
     """
-    elif "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
+    if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
         model = AutoModelWithLMHead.from_pretrained(
             mdl_name, cache_dir=cache_dir
         )
