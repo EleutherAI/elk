@@ -278,6 +278,12 @@ class MyPrompts():
     def apply(self, example, prompt_idx, candidate, qaexamples):
         '''
                 Candidate is a binary list with possible labels
+
+        Args:
+            example (pd.Series): a single example
+            prompt_idx (int): the index of the prompt
+            candidate (list): a list of two labels
+            qaexamples (tuple): a tuple of two lists, each list contains 5 examples
         '''
 
         tmp = deepcopy(example)
