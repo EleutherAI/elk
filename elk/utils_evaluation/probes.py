@@ -11,8 +11,9 @@ class Probe(ABC, nn.Module):
         pass
 
     def normalize(self):
-        """Done after each training step."""
-        pass
+        """Done at the end of each training step.
+        Can return a loss to be added to the loss."""
+        return 0
 
 
 class LinearProbe(Probe):
@@ -43,6 +44,7 @@ class LinearOrthogonalProbe(Probe):
             self.linear.weight[:] = project(
                 self.linear.weight, self.orthogonal_constraints
             )
+        return 0
 
 
 class LinearAlongProbe(Probe):

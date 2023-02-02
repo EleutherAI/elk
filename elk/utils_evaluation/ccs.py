@@ -191,6 +191,8 @@ class CCS(object):
             # get the corresponding loss
             loss = self.get_loss(p0, p1)
 
+            loss += probe.normalize()
+
             # update the parameters
             optimizer.zero_grad()
             loss.backward()
@@ -228,6 +230,8 @@ class CCS(object):
             # compute l2 loss
             for param in probe.parameters():
                 loss += l2 * torch.norm(param) ** 2 / 2
+
+            loss += probe.normalize()
 
             # update the parameters
             loss.backward()
