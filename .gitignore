@@ -1,6 +1,6 @@
 *.csv
 *.npy
-models/*
+elk/models/*
 nohup.out
 .idea
 *.pkl
