@@ -9,6 +9,7 @@ with open(default_config_path, "r") as f:
     default_config = json.load(f)
 datasets = default_config["datasets"]
 prefix = default_config["prefix"]
+model_shortcuts = default_config["model_shortcuts"]
 
 
 def get_args():
@@ -237,15 +238,18 @@ def get_args():
             "BERT type model does not have decoder. Please set `states_location` to"
             " `encoder`."
         )
+    args.model = model_shortcuts.get(args.model, args.model)
+    config = AutoConfig.from_pretrained(args.model)
+    layer_num = config.num_layers
     # Set index into int.
     for i in range(len(args.states_index)):
-        pos_index = int(args.states_index[i])  # % models_layer_num[args.model]
+        pos_index = int(args.states_index[i])  # % layer_num
         # For decoder, the index lies in [0,layer_num)
         # For encoder, the index lies in [-layer_num, -1]
         args.states_index[i] = (
             pos_index
             if args.states_location == "decoder"
-            else pos_index  # - models_layer_num[args.model]
+            else pos_index - layer_num
         )
 
     print(
