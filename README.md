@@ -14,7 +14,9 @@ Our code uses [PyTorch](http://pytorch.org) and [Huggingface Transformers](https
 
 ### Quick **Start**
 
-For a quick test: You can look into and run generate.sh and evaluate.sh
+First install the package with `pip install -e .` in the root directory, or `pip install -e .[dev]` if you'd like to contribute to the project (see **Development** section below). This should install all the necessary dependencies.
+
+For a quick test: You can look into and run generate.sh and evaluate.sh (Warning: They are in the package elk itself right now. Will be changed):
 
 ```bash
 sh generate.sh
