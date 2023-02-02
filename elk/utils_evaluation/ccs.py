@@ -2,7 +2,7 @@ from typing import Literal
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from elk.utils_evaluation.probes import Probe, LinearProbe
+from elk.utils_evaluation.probes import Probe, OriginalLinearProbe
 
 
 class CCS(object):
@@ -33,7 +33,7 @@ class CCS(object):
         Returns:
             Probe: The initialized probe of the model.
         """
-        return LinearProbe(self.d, self.include_bias).to(self.device)
+        return OriginalLinearProbe(self.d, self.include_bias).to(self.device)
 
     def get_confidence_loss(self, p0, p1):
         """

@@ -25,6 +25,35 @@ class LinearProbe(Probe):
         return torch.sigmoid(self.linear(x))
 
 
+class OriginalLinearProbe(Probe):
+    """To reproduce the exact results from the paper."""
+
+    def __init__(self, input_dim, include_bias=True):
+        super().__init__()
+        self.include_bias = include_bias
+        self.d = (input_dim + 1) if include_bias else input_dim
+
+        init_theta = torch.randn(1, self.d, requires_grad=True)
+        init_theta = init_theta / torch.norm(init_theta)
+        self.theta = nn.Parameter(init_theta)
+
+    def forward(self, x):
+        # like numpy self.add_ones_dimension(x).dot(self.theta.T)
+        z = torch.einsum("n h, d h -> n d", self.add_ones_dimension(x), self.theta)
+
+        return torch.sigmoid(z)
+
+    def add_ones_dimension(self, x):
+        if self.include_bias:
+            # by adding a dimension of ones to the input array,
+            # the bias term can be easily included in the calculation
+            # without having to modify the input data
+            ones = torch.ones(x.shape[0], device=x.device)[:, None]
+            return torch.concat([x, ones], dim=-1)
+        else:
+            return x
+
+
 class LinearOrthogonalProbe(Probe):
     def __init__(self, orthogonal_constraints):
         """kernel weights will orthogonal to each orthogonal_constraint
