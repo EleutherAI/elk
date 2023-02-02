@@ -30,30 +30,14 @@ def load_model(mdl_name, cache_dir):
     Returns:
         model (torch.nn.Module): model
     """
-    if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
-        model = AutoModelForCausalLM.from_pretrained(
-            "EleutherAI/{}".format(mdl_name), cache_dir=cache_dir
+    elif "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
+        model = AutoModelWithLMHead.from_pretrained(
+            mdl_name, cache_dir=cache_dir
         )
-    elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
-        model = GPT2LMHeadModel.from_pretrained(mdl_name, cache_dir=cache_dir)
-    elif "T0" in mdl_name:
-        model = AutoModelForSeq2SeqLM.from_pretrained(
-            "bigscience/{}".format(mdl_name), cache_dir=cache_dir
-        )
-    elif "unifiedqa" in mdl_name:
-        model = T5ForConditionalGeneration.from_pretrained(
-            "allenai/" + mdl_name, cache_dir=cache_dir
-        )
-    elif "deberta" in mdl_name:
-        model = AutoModelForSequenceClassification.from_pretrained(
-            "microsoft/{}".format(mdl_name), cache_dir=cache_dir
-        )
-    elif "roberta" in mdl_name:
+    elif "bert" in mdl_name:
         model = AutoModelForSequenceClassification.from_pretrained(
             mdl_name, cache_dir=cache_dir
         )
-    elif "t5" in mdl_name:
-        model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
     else:
         # TODO add a string of try/excepts, figure out a better model name format later
         model = AutoModelForCausalLM.from_pretrained(mdl_name, cache_dir=cache_dir)
