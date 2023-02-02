@@ -19,13 +19,14 @@ First install the package with `pip install -e .` in the root directory, or `pip
 For a quick test: You can look into and run generate.sh and evaluate.sh (Warning: They are in the package elk itself right now. Will be changed):
 
 ```bash
+cd elk
 sh generate.sh
 sh train_evaluate.sh
 ```
 
 Furthermore:
 
-1. To generate the hidden states for one model `mdl` and all datasets, run
+1. To generate the hidden states for one model `mdl` and all datasets, `cd elk` and then run
 
 ```bash
 python generation_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --prefix normal --model_device cuda --num_data 1000
