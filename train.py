@@ -3,9 +3,13 @@ import pickle
 
 from sklearn.linear_model import LogisticRegression
 
-from utils_evaluation.ccs import CCS
-from utils_evaluation.utils_evaluation import get_hidden_states, get_permutation, split
-from utils_evaluation.parser import get_args
+from elk.utils_evaluation.ccs import CCS
+from elk.utils_evaluation.utils_evaluation import (
+    get_hidden_states,
+    get_permutation,
+    split,
+)
+from elk.utils_evaluation.parser import get_args
 
 
 def train(args):

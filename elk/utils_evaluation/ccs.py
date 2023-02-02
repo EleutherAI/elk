@@ -59,7 +59,7 @@ class CCS(object):
         Encourages p0 and p1 to be close to 0 or 1 (far from 0.5)
         """
         min_p = torch.min(p0, p1)
-        return (min_p ** 2).mean(0)
+        return (min_p**2).mean(0)
 
     def get_consistency_loss(self, p0, p1):
         """
@@ -198,8 +198,9 @@ class CCS(object):
             if loss < self.best_loss:
                 if self.verbose:
                     print(
-                        "Found a new best theta. New loss: {:.4f}, new acc: {:.4f}"
-                        .format(loss, accuracy)
+                        "Found a new best theta. New loss: {:.4f}, new acc: {:.4f}".format(
+                            loss, accuracy
+                        )
                     )
                 self.best_theta = theta_np
                 self.best_loss = loss

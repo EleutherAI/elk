@@ -2,8 +2,8 @@ import torch
 import numpy as np
 import functools
 from tqdm import tqdm
-from utils_generation.save_utils import saveArray
-from utils_generation.save_utils import save_records_to_csv
+from .save_utils import saveArray
+from .save_utils import save_records_to_csv
 
 
 def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
