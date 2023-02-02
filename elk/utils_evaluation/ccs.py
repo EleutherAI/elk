@@ -136,7 +136,7 @@ class CCS(object):
         if self.optimizer == "lbfgs":
             loss = self.train_loop_lbfgs(x0, x1, theta)
         elif self.optimizer == "adam":
-            loss = self.train_loop_full_batch(x0, x1, theta)
+            loss = self.train_loop_adam(x0, x1, theta)
         else:
             raise ValueError(f"Optimizer {self.optimizer} is not supported")
 
@@ -207,7 +207,7 @@ class CCS(object):
         self.validate_data(data)
         return self.get_accuracy(self.best_theta, data, label, getloss)
 
-    def train_loop_full_batch(self, x0, x1, theta):
+    def train_loop_adam(self, x0, x1, theta):
         """
         Performs a full batch training loop. Modifies theta in place.
         """
