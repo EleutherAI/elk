@@ -3,7 +3,7 @@
 **WIP: The code is still actively improved...**
 This code is a simplified and refactored version of the original code of the paper *Discovering Latent Knowledge* in the zip file linked in https://github.com/collin-burns/discovering_latent_knowledge
 
-We are planning to expand on the method presented in the DLK paper. For more information on our plans, see our post: https://www.lesswrong.com/posts/bFwigCDMC5ishLz7X/rfc-possible-ways-to-expand-on-discovering-latent-knowledge
+We are planning to expand on the method presented in the DLK paper. For more information on some of our plans, see the following post: https://www.lesswrong.com/posts/bFwigCDMC5ishLz7X/rfc-possible-ways-to-expand-on-discovering-latent-knowledge
 
 ### Dependencies
 
@@ -16,7 +16,7 @@ Our code uses [PyTorch](http://pytorch.org) and [Huggingface Transformers](https
 
 First install the package with `pip install -e .` in the root directory, or `pip install -e .[dev]` if you'd like to contribute to the project (see **Development** section below). This should install all the necessary dependencies.
 
-For a quick test: You can look into and run generate.sh and evaluate.sh (Warning: They are in the package elk itself right now. Will be changed):
+For a quick test: You can look into and run generate.sh and evaluate.sh (**Warning:** They are in the package elk itself right now. Will be changed):
 
 ```bash
 cd elk
