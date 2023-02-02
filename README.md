@@ -19,13 +19,14 @@ First install the package with `pip install -e .` in the root directory, or `pip
 For a quick test: You can look into and run generate.sh and evaluate.sh (Warning: They are in the package elk itself right now. Will be changed):
 
 ```bash
+cd elk
 sh generate.sh
 sh train_evaluate.sh
 ```
 
 Furthermore:
 
-1. To generate the hidden states for one model `mdl` and all datasets, run
+1. To generate the hidden states for one model `mdl` and all datasets, `cd elk` and then run
 
 ```bash
 python generation_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --prefix normal --model_device cuda --num_data 1000
@@ -38,12 +39,16 @@ The name of prefix can be found in `./utils_generation/construct_prompts.py`. Th
 1. To train a ccs model and a logistic regression model
 
 ```bash
-python train.py --model deberta-v2-xxlarge-mnli --prefix normal  --dataset imdb  --num_data 1000
+python train.py --model deberta-v2-xxlarge-mnli --prefix normal --dataset imdb --num_data 1000
 ```
 
 and evaluate:
 ```bash
-python evaluate.py --dataset imdb
+python evaluate.py --model deberta-v2-xxlarge-mnli --dataset imdb --num_data 1000
 ```
 
 Once finished, results will be saved in `evaluation_results/{model}_{prefix}_{seed}.csv`
+
+### Development
+
+Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
