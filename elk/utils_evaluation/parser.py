@@ -1,7 +1,6 @@
 import argparse
 import json
 from pathlib import Path
-from elk.utils_evaluation.ccs import Optimizer
 
 
 def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
@@ -57,9 +56,9 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     )
     parser.add_argument(
         "--optimizer",
-        type=Optimizer,
-        default=Optimizer.adam,
-        choices=list(Optimizer),
+        type=str,
+        default="adam",
+        choices=("adam", "lbfgs"),
         help="Optimizer for CCS. Should be adam or lbfgs.",
     )
     parser.add_argument(

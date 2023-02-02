@@ -1,15 +1,8 @@
+from typing import Literal
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from enum import Enum
-
-
-class Optimizer(Enum):
-    adam = "adam"
-    lbfgs = "lbfgs"
-
-    def __str__(self):
-        return self.value
 
 
 class CCS(object):
@@ -21,7 +14,7 @@ class CCS(object):
         num_tries=10,
         learning_rate=1e-2,
         weight_decay=0.01,
-        optimizer=Optimizer.adam,
+        optimizer: Literal["adam", "lbfgs"] = "adam",
         device="cuda",
     ):
         self.include_bias = include_bias
@@ -140,9 +133,9 @@ class CCS(object):
         theta = torch.tensor(
             theta, dtype=torch.float, requires_grad=True, device=self.device
         )
-        if self.optimizer == Optimizer.lbfgs:
+        if self.optimizer == "lbfgs":
             loss = self.train_loop_lbfgs(x0, x1, theta)
-        elif self.optimizer == Optimizer.adam:
+        elif self.optimizer == "adam":
             loss = self.train_loop_full_batch(x0, x1, theta)
         else:
             raise ValueError(f"Optimizer {self.optimizer} is not supported")
