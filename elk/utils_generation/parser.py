@@ -8,9 +8,7 @@ default_config_path = Path(__file__).parent.parent / "default_config.json"
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
 datasets = default_config["datasets"]
-models = default_config["models"]
 prefix = default_config["prefix"]
-models_layer_num = default_config["models_layer_num"]
 
 
 def get_args():
@@ -216,12 +214,6 @@ def get_args():
             " cal_logits to 0.".format(args.model)
         )
 
-    assert args.model in models, NotImplementedError(
-        "You use model {}, but it's not . For any new model, please make sure you"
-        " implement the code in `load_utils` and `generation`, and then  it in"
-        " `parser.py`".format(args.model)
-    )
-
     for prefix in args.prefix:
         assert prefix in prefix, NotImplementedError(
             "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
@@ -247,13 +239,13 @@ def get_args():
         )
     # Set index into int.
     for i in range(len(args.states_index)):
-        pos_index = int(args.states_index[i]) % models_layer_num[args.model]
+        pos_index = int(args.states_index[i])  # % models_layer_num[args.model]
         # For decoder, the index lies in [0,layer_num)
         # For encoder, the index lies in [-layer_num, -1]
         args.states_index[i] = (
             pos_index
             if args.states_location == "decoder"
-            else pos_index - models_layer_num[args.model]
+            else pos_index  # - models_layer_num[args.model]
         )
 
     print(
