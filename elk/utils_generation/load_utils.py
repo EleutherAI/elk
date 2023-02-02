@@ -136,9 +136,12 @@ def load_tokenizer(mdl_name, cache_dir):
         tokenizer = AutoTokenizer.from_pretrained(
             "microsoft/" + mdl_name, cache_dir=cache_dir
         )
+    # TODO these lines are unnecessary
     elif "roberta" in mdl_name:
         tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
     elif "t5" in mdl_name:
+        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
+    else:
         tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
 
     return tokenizer
