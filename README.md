@@ -1,6 +1,6 @@
 ### Introduction
 
-**WIP: The code is still actively improved...**
+**WIP: This codebase is under active development**
 This code is a simplified and refactored version of the original code of the paper *Discovering Latent Knowledge* in the zip file linked in https://github.com/collin-burns/discovering_latent_knowledge
 
 We are planning to expand on the method presented in the DLK paper. For more information on some of our plans, see the following post: https://www.lesswrong.com/posts/bFwigCDMC5ishLz7X/rfc-possible-ways-to-expand-on-discovering-latent-knowledge
