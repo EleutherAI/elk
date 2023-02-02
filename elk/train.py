@@ -40,12 +40,17 @@ def train(args):
     print("done training classification model")
 
     print("train ccs model")
-    ccs_model = CCS(
-        verbose=True, weight_decay=args.weight_decay, optimizer=args.optimizer
-    )
     half = data.shape[1] // 2
     data = [data[:, :half], data[:, half:]]
-    ccs_model.fit(data=data, label=labels)
+    d = data[0].shape[1]
+
+    ccs_model = CCS(d=d, verbose=True)
+    ccs_model.fit(
+        data=data,
+        label=labels,
+        weight_decay=args.weight_decay,
+        optimizer=args.optimizer,
+    )
     print("done training ccs model")
 
     return logistic_regression_model, ccs_model

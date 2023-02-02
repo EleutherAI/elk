@@ -2,6 +2,16 @@ from typing import Literal
 import torch
 import matplotlib.pyplot as plt
 from elk.utils_evaluation.probes import Probe, OriginalLinearProbe
+from attrs import define
+
+
+@define
+class TrainParams:
+    num_epochs: int = 1000
+    num_tries: int = 10
+    learning_rate: float = 1e-2
+    weight_decay: float = 0.01
+    optimizer: Literal["adam", "lbfgs"] = "adam"
 
 
 class CCS(torch.nn.Module):
@@ -10,11 +20,6 @@ class CCS(torch.nn.Module):
         d,
         verbose=False,
         include_bias=True,
-        num_epochs=1000,
-        num_tries=10,
-        learning_rate=1e-2,
-        weight_decay=0.01,
-        optimizer: Literal["adam", "lbfgs"] = "adam",
         device="cuda",
     ):
         super().__init__()
@@ -22,11 +27,6 @@ class CCS(torch.nn.Module):
         self.d = d
         self.include_bias = include_bias
         self.verbose = verbose
-        self.num_epochs = num_epochs
-        self.num_tries = num_tries
-        self.learning_rate = learning_rate
-        self.weight_decay = weight_decay
-        self.optimizer = optimizer
         self.device = device
         self.best_probe = self.init_probe()
 
@@ -98,18 +98,18 @@ class CCS(torch.nn.Module):
             return max(acc, 1 - acc), loss
         return max(acc, 1 - acc)
 
-    def single_train(self, x0, x1):
+    def single_train(self, x0, x1, train_params: TrainParams):
         """
         Does a single training run of num_epochs epochs
         """
 
         probe = self.init_probe()
-        if self.optimizer == "lbfgs":
-            loss = self.train_loop_lbfgs(x0, x1, probe)
-        elif self.optimizer == "adam":
-            loss = self.train_loop_adam(x0, x1, probe)
+        if train_params.optimizer == "lbfgs":
+            loss = self.train_loop_lbfgs(x0, x1, probe, train_params)
+        elif train_params.optimizer == "adam":
+            loss = self.train_loop_adam(x0, x1, probe, train_params)
         else:
-            raise ValueError(f"Optimizer {self.optimizer} is not supported")
+            raise ValueError(f"Optimizer {train_params.optimizer} is not supported")
 
         loss_item = loss.detach().cpu().item()
 
@@ -129,12 +129,29 @@ class CCS(torch.nn.Module):
 
     # seems 50, 20 can significantly reduce overfitting than 1000, 10
     # switch back to 1000 + 10
-    def fit(self, data: list, label):
+    def fit(
+        self,
+        data: list,
+        label,
+        num_epochs=1000,
+        num_tries=10,
+        learning_rate=1e-2,
+        weight_decay=0.01,
+        optimizer: Literal["adam", "lbfgs"] = "adam",
+    ):
         if self.verbose:
             print(
-                f"String fiting data with Prob. num_epochs: {self.num_epochs},"
-                f" num_tries: {self.num_tries}, learning_rate: {self.learning_rate}"
+                f"String fiting data with Prob. num_epochs: {num_epochs},"
+                f" num_tries: {num_tries}, learning_rate: {learning_rate}"
             )
+
+        train_params = TrainParams(
+            num_epochs=num_epochs,
+            num_tries=num_tries,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            optimizer=optimizer,
+        )
 
         # set up the best loss found so far
         self.best_loss = torch.inf
@@ -150,8 +167,8 @@ class CCS(torch.nn.Module):
             data,
         )
 
-        for _ in range(self.num_tries):
-            probe, loss = self.single_train(x0, x1)
+        for _ in range(train_params.num_tries):
+            probe, loss = self.single_train(x0, x1, train_params)
 
             accuracy = self.get_accuracy(probe, data, label, getloss=False)
 
@@ -179,16 +196,18 @@ class CCS(torch.nn.Module):
         self.validate_data(data)
         return self.get_accuracy(self.best_probe, data, label, getloss)
 
-    def train_loop_adam(self, x0, x1, probe):
+    def train_loop_adam(self, x0, x1, probe, train_params):
         """
         Performs a full batch training loop. Modifies the probe in place.
         """
         optimizer = torch.optim.AdamW(
-            probe.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+            probe.parameters(),
+            lr=train_params.learning_rate,
+            weight_decay=train_params.weight_decay,
         )
 
         # Start training (full batch)
-        for _ in range(self.num_epochs):
+        for _ in range(train_params.num_epochs):
 
             p0, p1 = probe(x0), probe(x1)
 
@@ -204,18 +223,18 @@ class CCS(torch.nn.Module):
 
         return loss
 
-    def train_loop_lbfgs(self, x0, x1, probe):
+    def train_loop_lbfgs(self, x0, x1, probe, train_params):
         """
         Performs a lbfgs training loop. Modifies the probe in place.
         """
 
-        l2 = self.weight_decay
+        l2 = train_params.weight_decay
 
         # set up optimizer
         optimizer = torch.optim.LBFGS(
             probe.parameters(),
             line_search_fn="strong_wolfe",
-            max_iter=self.num_epochs,
+            max_iter=train_params.num_epochs,
             tolerance_change=torch.finfo(x0.dtype).eps,
             tolerance_grad=torch.finfo(x0.dtype).eps,
         )
