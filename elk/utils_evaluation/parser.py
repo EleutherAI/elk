@@ -55,13 +55,19 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
         help="What device to load the model onto: CPU or GPU or MPS.",
     )
     parser.add_argument(
-        "--use_lbfgs", action="store_true", help="Use lbfgs optimizer to train CCS."
+        "--optimizer",
+        type=str,
+        default="adam",
+        choices=("adam", "lbfgs"),
+        help="Optimizer for CCS. Should be adam or lbfgs.",
     )
     parser.add_argument(
         "--weight_decay",
         type=float,
         default=0.01,
-        help="Weight decay for CCS. Used as L2 regularization in lbfgs.",
+        help=(
+            "Weight decay for CCS when using adam. Used as L2 regularization in lbfgs."
+        ),
     )
     args = parser.parse_args()
 

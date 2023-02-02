@@ -1,3 +1,4 @@
+from typing import Literal
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -13,7 +14,7 @@ class CCS(object):
         num_tries=10,
         learning_rate=1e-2,
         weight_decay=0.01,
-        use_lbfgs=False,
+        optimizer: Literal["adam", "lbfgs"] = "adam",
         device="cuda",
     ):
         self.include_bias = include_bias
@@ -22,7 +23,7 @@ class CCS(object):
         self.num_tries = num_tries
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.use_lbfgs = use_lbfgs
+        self.optimizer = optimizer
         self.device = device
 
     def init_probe(self):
@@ -104,10 +105,12 @@ class CCS(object):
         )
 
         probe = self.init_probe()
-        if self.use_lbfgs:
+        if self.optimizer == "lbfgs":
             loss = self.train_loop_lbfgs(x0, x1, probe)
-        else:
+        elif self.optimizer == "adam":
             loss = self.train_loop_full_batch(x0, x1, probe)
+        else:
+            raise ValueError(f"Optimizer {self.optimizer} is not supported")
 
         loss_np = loss.detach().cpu().item()
 
@@ -198,9 +201,6 @@ class CCS(object):
             loss.backward()
             optimizer.step()
 
-            # with torch.no_grad():
-            #     theta /= torch.norm(theta)
-
         return loss
 
     def train_loop_lbfgs(self, x0, x1, probe):
@@ -235,9 +235,6 @@ class CCS(object):
 
             # update the parameters
             loss.backward()
-
-            # with torch.no_grad():
-            #     theta /= torch.norm(theta)
 
             return loss
 

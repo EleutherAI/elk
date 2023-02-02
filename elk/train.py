@@ -41,7 +41,7 @@ def train(args):
 
     print("train ccs model")
     ccs_model = CCS(
-        verbose=True, weight_decay=args.weight_decay, use_lbfgs=args.use_lbfgs
+        verbose=True, weight_decay=args.weight_decay, optimizer=args.optimizer
     )
     half = data.shape[1] // 2
     data = [data[:, :half], data[:, half:]]
