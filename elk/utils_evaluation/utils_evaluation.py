@@ -4,10 +4,12 @@ import pandas as pd
 import json
 import time
 
+from pathlib import Path
+
 # TODO: Refactor file
 
 ######## Load default_config ########
-default_config_path = "default_config.json"
+default_config_path = Path(__file__).parent.parent /  Path(__file__).parent.parent / "default_config.json"
 
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
@@ -30,7 +32,7 @@ def get_filtered_filenames(
     :param confusion: the confusion
     :param place: the place where the data is from
     """
-    files = os.listdir(directory)
+    files = map(lambda path: path.name, directory.iterdir())
     filter_criteria = (
         lambda file_name: file_name.startswith(model_name)
         and f"_{dataset_name}_" in file_name
@@ -39,7 +41,7 @@ def get_filtered_filenames(
         and place in file_name
     )
     filtered_files = filter(filter_criteria, files)
-    return [os.path.join(directory, f) for f in filtered_files]
+    return [directory / f for f in filtered_files]
 
 
 def organize(hidden_states, mode):
@@ -107,8 +109,8 @@ def get_hidden_states(
 
     hidden_states = []
     for filename, append in zip(filtered_filenames, append_list):
-        negative_states = np.load(os.path.join(filename, f"0{append}.npy"))
-        positive_states = np.load(os.path.join(filename, f"1{append}.npy"))
+        negative_states = np.load(filename / f"0{append}.npy")
+        positive_states = np.load(filename / f"1{append}.npy")
         organized_states = organize([negative_states, positive_states], mode=mode)
         hidden_states.append(organized_states)
 
@@ -120,8 +122,8 @@ def get_hidden_states(
         f" {normalized_hidden_states[0].shape}"
     )
     labels = [
-        np.array(pd.read_csv(os.path.join(w, "frame.csv"))["label"].to_list())
-        for w in filtered_filenames
+        np.array(pd.read_csv(filename / "frame.csv")["label"].to_list())
+        for filename in filtered_filenames
     ]
 
     return [(u, v) for u, v in zip(normalized_hidden_states, labels)]
@@ -146,7 +148,7 @@ def split(hidden_states, permutation, prompts, split="train"):
 
 
 def save_df_to_csv(args, df, prefix, str=""):
-    dir = os.path.join(args.save_dir, f"{args.model}_{prefix}_{args.seed}.csv")
+    dir = args.save_dir / f"{args.model}_{prefix}_{args.seed}.csv"
     df.to_csv(dir, index=False)
     print(
         f"{str} Saving to {dir} at"

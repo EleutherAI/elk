@@ -1,8 +1,8 @@
-import os
 import pickle
 
 from sklearn.linear_model import LogisticRegression
 
+from pathlib import Path
 from elk.utils_evaluation.ccs import CCS
 from elk.utils_evaluation.utils_evaluation import (
     get_hidden_states,
@@ -10,7 +10,6 @@ from elk.utils_evaluation.utils_evaluation import (
     split,
 )
 from elk.utils_evaluation.parser import get_args
-
 
 def train(args):
     hidden_states = get_hidden_states(
@@ -47,15 +46,13 @@ def train(args):
 
 
 if __name__ == "__main__":
-    args = get_args(default_config_path="default_config.json")
+    args = get_args(default_config_path=Path(__file__).parent / "default_config.json")
     print(f"-------- args = {args} --------")
 
     logistic_regression_model, ccs_model = train(args)
 
     # save models # TODO: use better filename for the pkls, so they don't get overwritten
-    with open(
-        os.path.join(args.trained_models_path, "logistic_regression_model.pkl"), "wb"
-    ) as file:
+    with open(args.trained_models_path / "logistic_regression_model.pkl", "wb") as file:
         pickle.dump(logistic_regression_model, file)
-    with open(os.path.join(args.trained_models_path, "ccs_model.pkl"), "wb") as file:
+    with open(args.trained_models_path / "ccs_model.pkl", "wb") as file:
         pickle.dump(ccs_model, file)

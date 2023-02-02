@@ -16,7 +16,7 @@ from datasets import load_dataset
 from .construct_prompts import constructPrompt, MyPrompts
 from .save_utils import saveFrame, getDir
 from .save_utils import save_records_to_csv
-
+from pathlib import Path
 
 def load_model(mdl_name, cache_dir):
     """
@@ -270,8 +270,7 @@ def create_directory(name):
     Returns:
         None
     """
-    if not os.path.exists(name):
-        os.makedirs(name)
+    name.mkdir(parents=True, exist_ok=True)
 
 
 def create_and_save_promt_dataframe(
@@ -304,7 +303,7 @@ def create_and_save_promt_dataframe(
 
     create_directory(args.save_base_dir)
     create_directory(complete_path)
-    complete_frame_csv_path = os.path.join(complete_path, "frame.csv")
+    complete_frame_csv_path = complete_path / "frame.csv"
     prompt_dataframe.to_csv(complete_frame_csv_path, index=False)
 
     return prompt_dataframe
@@ -338,7 +337,7 @@ def create_dataframe_dict(
     name_to_dataframe = {}
     reload_set_name = ""  # Only reload if this is the first prompt of a dataset
     for (dataset, prompt_idx, max_num) in zip(dataset_names, prompt_idxs, num_data):
-        path = os.path.join(data_base_dir, f"rawdata_{dataset}_{max_num}.csv")
+        path = data_base_dir / f"rawdata_{dataset}_{max_num}.csv"
 
         # load datasets
         # if complete dataset exists and reload == False, will directly load this dataset
@@ -346,9 +345,9 @@ def create_dataframe_dict(
         # notice that this is just the `raw data`, which is a dict or whatever
         dataset_name_with_num = f"{dataset}_{max_num}_prompt{prompt_idx}"
         complete_path = getDir(dataset_name_with_num, args)
-        dataframe_path = os.path.join(complete_path, "frame.csv")
+        dataframe_path = complete_path / "frame.csv"
 
-        if args.reload_data is False and os.path.exists(dataframe_path):
+        if args.reload_data is False and dataframe_path.exists():
             frame = pd.read_csv(dataframe_path, converters={"selection": eval})
             name_to_dataframe[dataset_name_with_num] = frame
             if print_more:
@@ -360,7 +359,7 @@ def create_dataframe_dict(
         else:  # either reload, or this specific model / confusion args has not been saved yet.
             if (
                 args.reload_data is False or reload_set_name == dataset
-            ) and os.path.exists(path):
+            ) and path.exists():
                 raw_data = pd.read_csv(path)
                 if print_more:
                     print(f"load raw {dataset} from {path}, length = {max_num}")
@@ -368,7 +367,7 @@ def create_dataframe_dict(
                 if print_more:
                     print(f"load raw dataset {dataset} from module.")
 
-                cache_dir = os.path.join(data_base_dir, "cache")
+                cache_dir = data_base_dir / "cache"
                 create_directory(cache_dir)
                 raw_data = loadFromDatasets(dataset, cache_dir, max_num)
                 raw_data.to_csv(path, index=False)

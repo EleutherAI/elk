@@ -1,9 +1,10 @@
 import argparse
 import json
 from .construct_prompts import confusion_prefix
+from pathlib import Path
 
 ######## Load default_config ########
-default_config_path = "default_config.json"
+default_config_path =  Path(__file__).parent.parent / "default_config.json"
 
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
@@ -19,7 +20,7 @@ def get_args():
     # datasets loading
     parser.add_argument(
         "--data_base_dir",
-        type=str,
+        type=Path,
         default="datasets/complete_ten",
         help=(
             "The base dir of all datasets (csv files) you wnat to generate hidden"
@@ -31,7 +32,7 @@ def get_args():
         nargs="+",
         help=(
             "List of name of datasets you want to use. Please make sure that the path"
-            ' of file is like `os.path.join(data_base_dir, name + ".csv"` for all name'
+            ' of file is like `data_base_dir / (name + ".csv")` for all name'
             " in datasets"
         ),
     )
@@ -58,7 +59,7 @@ def get_args():
     )
     parser.add_argument(
         "--cache_dir",
-        type=str,
+        type=Path,
         default="models",
         help="The path to save and load pretrained model.",
     )
@@ -70,7 +71,7 @@ def get_args():
     )
     parser.add_argument(
         "--trained_models_path",
-        type=str,
+        type=Path,
         default="trained",
         help="Where to save the ccs model and logisitc regression model.",
     )
@@ -146,7 +147,7 @@ def get_args():
     )
     parser.add_argument(
         "--states_location",
-        type=str,
+        type=Path,
         default="null",
         choices=["encoder", "decoder", "null"],
         help=(
@@ -174,7 +175,7 @@ def get_args():
     )
     parser.add_argument(
         "--save_base_dir",
-        type=str,
+        type=Path,
         default="generation_results",
         help="The base dir where you want to save the directories of hidden states.",
     )

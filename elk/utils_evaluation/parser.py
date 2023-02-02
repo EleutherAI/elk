@@ -1,8 +1,8 @@
 import argparse
 import json
+from pathlib import Path
 
-
-def get_args(default_config_path="default_config.json"):
+def get_args(default_config_path= Path(__file__).parent / "default_config.json"):
 
     with open(default_config_path, "r") as f:
         default_config = json.load(f)
@@ -25,20 +25,20 @@ def get_args(default_config_path="default_config.json"):
     )
     parser.add_argument(
         "--save_dir",
-        type=str,
+        type=Path,
         default="evaluation_results",
         help="where the csv and params are saved",
     )
     parser.add_argument(
         "--trained_models_path",
-        type=str,
+        type=Path,
         default="trained",
         help="where to save the models trained via ccs and logistic regression",
     )
     parser.add_argument(
         "--hidden_states_directory",
-        type=str,
-        default="./generation_results",
+        type=Path,
+        default="generation_results",
         help="Where the hidden states and zero-shot accuracy are loaded.",
     )
     parser.add_argument("--language_model_type", type=str, default="encoder")

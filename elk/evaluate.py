@@ -11,7 +11,7 @@ from elk.utils_evaluation.utils_evaluation import (
 )
 from elk.utils_evaluation.parser import get_args
 from elk.utils_evaluation.utils_evaluation import save_df_to_csv
-
+from pathlib import Path
 
 def evaluate(args, logistic_regression_model, ccs_model):
     os.makedirs(args.save_dir, exist_ok=True)
@@ -92,14 +92,12 @@ def evaluate(args, logistic_regression_model, ccs_model):
 
 
 if __name__ == "__main__":
-    args = get_args(default_config_path="default_config.json")
+    args = get_args(default_config_path=Path(__file__).parent / "default_config.json")
 
     # load pickel from file
-    with open(
-        os.path.join(args.trained_models_path, "logistic_regression_model.pkl"), "rb"
-    ) as file:
+    with open(args.trained_models_path / "logistic_regression_model.pkl", "rb") as file:
         logistic_regression_model = pickle.load(file)
-    with open(os.path.join(args.trained_models_path, "ccs_model.pkl"), "rb") as file:
+    with open(args.trained_models_path / "ccs_model.pkl", "rb") as file:
         ccs_model = pickle.load(file)
 
     evaluate(args, logistic_regression_model, ccs_model)
