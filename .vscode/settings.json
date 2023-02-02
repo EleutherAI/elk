@@ -1,5 +1,5 @@
 {
     "python.formatting.blackArgs": [
-        "-l 80"
+        "-l 88"
     ]
 }

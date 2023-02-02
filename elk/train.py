@@ -27,7 +27,10 @@ def train(args):
     # Set the random seed for the permutation
     permutation = get_permutation(hidden_states)
     data, labels = split(
-        hidden_states, permutation, prompts=range(len(hidden_states)), split="train"
+        hidden_states,
+        permutation,
+        prompts=range(len(hidden_states)),
+        split="train",
     )
     assert len(data.shape) == 2
 
@@ -54,6 +57,7 @@ if __name__ == "__main__":
 
     # save models
     # TODO: use better filename for the pkls, so they don't get overwritten
+    Path(args.trained_models_path).mkdir(parents=True, exist_ok=True)
     with open(args.trained_models_path / "logistic_regression_model.pkl", "wb") as file:
         pickle.dump(logistic_regression_model, file)
     with open(args.trained_models_path / "ccs_model.pkl", "wb") as file:
