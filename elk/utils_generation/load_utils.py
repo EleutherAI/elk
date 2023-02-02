@@ -3,7 +3,6 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     AutoModelForSeq2SeqLM,
-    AutoModelWithLMHead,
     AutoModelForSequenceClassification,
 )
 import os
@@ -28,7 +27,7 @@ def load_model(mdl_name, cache_dir):
         model (torch.nn.Module): model
     """
     if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
-        model = AutoModelWithLMHead.from_pretrained(
+        model = AutoModelForSeq2SeqLM.from_pretrained(
             mdl_name, cache_dir=cache_dir
         )
     elif "bert" in mdl_name:
