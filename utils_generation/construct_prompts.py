@@ -397,19 +397,22 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
     prompter = MyPrompts(set_name)
     
     # TODO: REFACTOR THIS INTO A FUNCTION
-    normal_dataset_names = ['ag_news','amazon_polarity', 'dbpedia_14', 'imdb', 'piqa']
-    super_glue_dataset_names = ['boolq', 'copa', 'rte']
-    glue_dataset_names = ['qnli']
+    from utils_generation.load_utils import get_hugging_face_load_name
+    our_prompt = DatasetTemplates(*get_hugging_face_load_name(set_name))
 
-    if set_name in normal_dataset_names:
-        if set_name == 'amazon-polarity':
-            our_prompt = DatasetTemplates('amazon_')
-        else:
-            our_prompt = DatasetTemplates(set_name)
-    elif set_name in super_glue_dataset_names:
-        our_prompt = DatasetTemplates(f"super_glue/{set_name}")
-    elif set_name in glue_dataset_names:
-        our_prompt = DatasetTemplates(f"glue/{set_name}")
+    # normal_dataset_names = ['ag_news','amazon_polarity', 'dbpedia_14', 'imdb', 'piqa']
+    # super_glue_dataset_names = ['boolq', 'copa', 'rte']
+    # glue_dataset_names = ['qnli']
+
+    # if set_name in normal_dataset_names:
+    #     if set_name == 'amazon-polarity':
+    #         our_prompt = DatasetTemplates('amazon_')
+    #     else:
+    #         our_prompt = DatasetTemplates(set_name)
+    # elif set_name in super_glue_dataset_names:
+    #     our_prompt = DatasetTemplates(f"super_glue/{set_name}")
+    # elif set_name in glue_dataset_names:
+    #     our_prompt = DatasetTemplates(f"glue/{set_name}")
 
     result = {
         "null":     [],
@@ -459,15 +462,15 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
         prompt_template = our_prompt[prompt_name]
         text_label_pair = {k:v for k,v in frame.loc[idx].items()}
         question_2, ans_1 = prompt_template.apply(text_label_pair)
-        for text, label in text_label_pair.items():
-            if label == 0:
-                text_label_pair[text] = 1
-                _, pos_ans = prompt_template.apply(text_label_pair)
-                ans_lis_2 = [ans_1, pos_ans]
-            elif label == 1:
-                text_label_pair[text] = 0
-                _, neg_ans = prompt_template.apply(text_label_pair)
-                ans_lis_2 = [neg_ans, ans_1]
+        # TODO: USE LABEL DICT HERE SOMEHOW 
+        if text_label_pair['label'] == 0:
+            text_label_pair['label'] = 1
+            _, pos_ans = prompt_template.apply(text_label_pair)
+            ans_lis_2 = [ans_1, pos_ans]
+        elif text_label_pair['label'] == 1:
+            text_label_pair['label'] = 0
+            _, neg_ans = prompt_template.apply(text_label_pair)
+            ans_lis_2 = [neg_ans, ans_1]
 
 
         assert question == question_2, "Questions do not match"
