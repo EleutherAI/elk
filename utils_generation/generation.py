@@ -72,7 +72,7 @@ def get_hiddenstate_token(hidden_state, method):
     This function is used to extract the hidden state of a token from the hidden states of a sequence given an extraction method.
     
     Args:
-        # TODO: FIGURE THIS OUT 
+        # TODO: figure out the correct shape for hidden_state 
         hidden_state: a tensor of shape (seq_len, batch_size, hid_dim) or (batch_size, seq_len, hid_dim)
         method: a string in ["first", "last", "average"]
     

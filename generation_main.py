@@ -36,9 +36,9 @@ if __name__ == "__main__":
     print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
     with torch.no_grad():
         for dataset_name, dataframe in tqdm(name_to_dataframe.items(), desc='Iterating over dataset-prompt combinations:'):
-            # TODO: CLEAN UP THIS FUNCTION
+            # TODO: Could use further cleanup 
             hidden_state = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
-            # TODO: clean up the ['0','1'] mess
+            # TODO: Clean up the ['0','1'] mess
             save_hidden_state_to_np_array(hidden_state, dataset_name, ['0','1'], args)
         
         records = []
