@@ -31,7 +31,7 @@ def get_filtered_filenames(
     :param confusion: the confusion
     :param place: the place where the data is from
     """
-    files = map(lambda path: path.name, directory.iterdir())
+    files = map(lambda path: str(path.relative_to(directory)), directory.glob("**/"))
     filter_criteria = (
         lambda file_name: file_name.startswith(model_name)
         and f"_{dataset_name}_" in file_name
