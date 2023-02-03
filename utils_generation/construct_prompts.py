@@ -395,7 +395,22 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
     '''
     
     prompter = MyPrompts(set_name)
-    our_prompt = DatasetTemplates(set_name)
+    
+    # TODO: REFACTOR THIS INTO A FUNCTION
+    normal_dataset_names = ['ag_news','amazon_polarity', 'dbpedia_14', 'imdb', 'piqa']
+    super_glue_dataset_names = ['boolq', 'copa', 'rte']
+    glue_dataset_names = ['qnli']
+
+    if set_name in normal_dataset_names:
+        if set_name == 'amazon-polarity':
+            our_prompt = DatasetTemplates('amazon_')
+        else:
+            our_prompt = DatasetTemplates(set_name)
+    elif set_name in super_glue_dataset_names:
+        our_prompt = DatasetTemplates(f"super_glue/{set_name}")
+    elif set_name in glue_dataset_names:
+        our_prompt = DatasetTemplates(f"glue/{set_name}")
+
     result = {
         "null":     [],
         "0":        [],
@@ -429,28 +444,30 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
 
         # Get the question and Answer List
         # question, ans_lis = formatExample(set_name, frame.loc[idx], prompt_idx, selection)
+        # TODO: REMOVE THIS RELIANCE ON MyPrompter
         question, ans_lis = prompter.apply(
             frame.loc[idx], prompt_idx, selection, qa_examples)
         
+        # TODO: FIX THESE BUGS
         # "amazon-polarity": doesn't have any template names (list is empty)
-        # 'copa': Tried instantiating `DatasetTemplates` for copa, but no prompts found.
-        # 'rte': Tried instantiating `DatasetTemplates` for rte, but no prompts found.
-        # 'boolq': Tried instantiating `DatasetTemplates` for boolq, but no prompts found.
-        # 'qnli': Tried instantiating `DatasetTemplates` for qnli, but no prompts found.
-        # '"piqa", mixed up questions
+        # 'copa': Mixed up ans_lis go a '0' as a label 
+        # 'qnli':  ans_lis = ['yes', 'no'] and ans_lis_2 = ['no', 'yes']
+        # '"piqa", mixed up ans_lis_2 ['Apply layer of vasel... on teeth.', '0']
+
+        # TODO: REFACTOR THIS INTO A FUNCTION 
         prompt_name = our_prompt.all_template_names[prompt_idx]
         prompt_template = our_prompt[prompt_name]
         text_label_pair = {k:v for k,v in frame.loc[idx].items()}
         question_2, ans_1 = prompt_template.apply(text_label_pair)
-        for k, v in text_label_pair.items():
-            if v == 0:
-                text_label_pair[k] = 1
-                _, ans_2 = prompt_template.apply(text_label_pair)
-                ans_lis_2 = [ans_1, ans_2]
-            else:
-                text_label_pair[k] = 0
-                _, ans_2 = prompt_template.apply(text_label_pair)
-                ans_lis_2 = [ans_2, ans_1]
+        for text, label in text_label_pair.items():
+            if label == 0:
+                text_label_pair[text] = 1
+                _, pos_ans = prompt_template.apply(text_label_pair)
+                ans_lis_2 = [ans_1, pos_ans]
+            elif label == 1:
+                text_label_pair[text] = 0
+                _, neg_ans = prompt_template.apply(text_label_pair)
+                ans_lis_2 = [neg_ans, ans_1]
 
 
         assert question == question_2, "Questions do not match"
