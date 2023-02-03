@@ -1,12 +1,12 @@
+from pathlib import Path
 import argparse
 import json
-from pathlib import Path
 
 
 def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
-
     with open(default_config_path, "r") as f:
         default_config = json.load(f)
+
     datasets = default_config["datasets"]
     models = default_config["models"]
     prefix = default_config["prefix"]
@@ -28,13 +28,13 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
         "--save_dir",
         type=Path,
         default="evaluation_results",
-        help="where the csv and params are saved",
+        help="Where the CSV and params are saved",
     )
     parser.add_argument(
         "--trained_models_path",
         type=Path,
         default="trained",
-        help="where to save the models trained via ccs and logistic regression",
+        help="Where to save the CCS and logistic regression models",
     )
     parser.add_argument(
         "--hidden_states_directory",
@@ -44,15 +44,11 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     )
     parser.add_argument("--language_model_type", type=str, default="encoder")
     parser.add_argument("--layer", type=int, default=-1)
-    parser.add_argument(
-        "--zero", type=str, default="results"
-    )  # TODO: explain this. Never used.
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
-        "--model_device",
+        "--device",
         type=str,
-        default="cuda",
-        help="What device to load the model onto: CPU or GPU or MPS.",
+        help="PyTorch device to use. Default is cuda:0 if available.",
     )
     parser.add_argument(
         "--optimizer",
@@ -66,10 +62,16 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
         type=float,
         default=0.01,
         help=(
-            "Weight decay for CCS when using adam. Used as L2 regularization in lbfgs."
+            "Weight decay for CCS when using Adam. Used as L2 regularization in LBFGS."
         ),
     )
     args = parser.parse_args()
+
+    # Default to CUDA iff available
+    if args.device is None:
+        import torch
+
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if args.language_model_type == "decoder" and args.layer < 0:
         args.language_model_type += models_layer_num[args.model]

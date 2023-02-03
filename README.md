@@ -29,7 +29,7 @@ Furthermore:
 1. To generate the hidden states for one model `mdl` and all datasets, `cd elk` and then run
 
 ```bash
-python generation_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --prefix normal --model_device cuda --num_data 1000
+python generation_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --prefix normal --device cuda --num_data 1000
 ```
 
 To test `deberta-v2-xxlarge-mnli` with the misleading prefix, and only the `imdb` and `amazon-polarity` datasets, while printing extra information, run:
