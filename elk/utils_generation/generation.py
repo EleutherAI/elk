@@ -37,7 +37,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
             "GPT model does not have encoder. Relevant args: model={mdl_name},"
             " states_location={args.states_location}."
         )
-    
+
     is_t5 = "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name
 
     for idx in range(len(frame)):
@@ -63,8 +63,14 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
                 for w in ["0", "1"]
             ]
             hidden_states_paired = [
-                extract_hidden_states(model(ids, labels=pad_answer if is_t5 else None,
-                                            output_hidden_states=True), args.states_location)
+                extract_hidden_states(
+                    model(
+                        ids,
+                        labels=pad_answer if is_t5 else None,
+                        output_hidden_states=True,
+                    ),
+                    args.states_location,
+                )
                 for ids in ids_paired
             ]
 

@@ -247,16 +247,16 @@ def get_args():
         )
     args.model = model_shortcuts.get(args.model, args.model)
     config = AutoConfig.from_pretrained(args.model)
-    layer_num = getattr(config, "num_layers", getattr(config, "num_hidden_layers", None))
+    layer_num = getattr(
+        config, "num_layers", getattr(config, "num_hidden_layers", None)
+    )
     # Set index into int.
     for i in range(len(args.states_index)):
         pos_index = int(args.states_index[i]) % layer_num
         # For decoder, the index lies in [0,layer_num)
         # For encoder, the index lies in [-layer_num, -1]
         args.states_index[i] = (
-            pos_index
-            if args.states_location == "decoder"
-            else pos_index - layer_num
+            pos_index if args.states_location == "decoder" else pos_index - layer_num
         )
 
     print(

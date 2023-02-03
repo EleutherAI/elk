@@ -27,9 +27,7 @@ def load_model(mdl_name, cache_dir):
         model (torch.nn.Module): model
     """
     if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
-        model = AutoModelForSeq2SeqLM.from_pretrained(
-            mdl_name, cache_dir=cache_dir
-        )
+        model = AutoModelForSeq2SeqLM.from_pretrained(mdl_name, cache_dir=cache_dir)
     elif "bert" in mdl_name:
         model = AutoModelForSequenceClassification.from_pretrained(
             mdl_name, cache_dir=cache_dir

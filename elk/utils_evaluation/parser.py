@@ -68,7 +68,7 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
 
     # Dereference shortcut
     args.model = model_shortcuts.get(args.model, args.model)
-    
+
     # Default to CUDA iff available
     if args.device is None:
         import torch
@@ -77,7 +77,9 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
 
     if args.language_model_type == "decoder" and args.layer < 0:
         config = AutoConfig.from_pretrained(args.model)
-        layer_num = getattr(config, "num_layers", getattr(config, "num_hidden_layers", None))
+        layer_num = getattr(
+            config, "num_layers", getattr(config, "num_hidden_layers", None)
+        )
         args.language_model_type += layer_num
 
     return args
