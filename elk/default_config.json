@@ -1,11 +1,34 @@
 {
-    "datasets" : ["imdb", "amazon-polarity", "ag-news", "dbpedia-14", "copa",  "rte",  "boolq",  "qnli",  "piqa",  "story-cloze"],
-    "model_shortcuts" : {
-        "t5-11b": "google/t5-11b",
-        "unifiedqa-t5-11b": "allenai/unifiedqa-t5-11b",
-        "T0pp": "bigscience/T0pp",
-        "gpt-j-6B": "EleutherAI/gpt-j-6B",
-        "deberta-v2-xxlarge-mnli": "microsoft/deberta-v2-xxlarge-mnli"
-    },
-    "prefix" : ["normal", "confusion", "confusion2", "confusion3", "confusion4", "confusion6", "confusion7", "iamincorrect", "dadnotrust", "dadisincorrect", "teachernoimitate"]
+  "datasets": [
+    "imdb",
+    "amazon-polarity",
+    "ag-news",
+    "dbpedia-14",
+    "copa",
+    "rte",
+    "boolq",
+    "qnli",
+    "piqa",
+    "story-cloze"
+  ],
+  "model_shortcuts" : {
+    "t5-11b": "google/t5-11b",
+    "unifiedqa-t5-11b": "allenai/unifiedqa-t5-11b",
+    "T0pp": "bigscience/T0pp",
+    "gpt-j-6B": "EleutherAI/gpt-j-6B",
+    "deberta-v2-xxlarge-mnli": "microsoft/deberta-v2-xxlarge-mnli"
+  },
+  "prefix": [
+    "normal",
+    "confusion",
+    "confusion2",
+    "confusion3",
+    "confusion4",
+    "confusion6",
+    "confusion7",
+    "iamincorrect",
+    "dadnotrust",
+    "dadisincorrect",
+    "teachernoimitate"
+  ],
 }

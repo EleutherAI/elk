@@ -16,7 +16,7 @@ def extract_hidden_states(out, states_location):
 def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
 
     apply_tokenizer = functools.partial(
-        getToken, tokenizer=tokenizer, device=args.model_device
+        getToken, tokenizer=tokenizer, device=args.device
     )
 
     hidden_states = [[], []]

@@ -1,7 +1,6 @@
 import argparse
 import json
 from transformers import AutoConfig
-from .construct_prompts import confusion_prefix
 from pathlib import Path
 
 default_config_path = Path(__file__).parent.parent / "default_config.json"
@@ -63,10 +62,9 @@ def get_args():
         help="The path to save and load pretrained model.",
     )
     parser.add_argument(
-        "--model_device",
+        "--device",
         type=str,
-        default="cuda",
-        help="What device to load the model onto: CPU or GPU or MPS.",
+        help="PyTorch device to use. Default is cuda:0 if available.",
     )
     parser.add_argument(
         "--trained_models_path",
@@ -170,7 +168,10 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--tag", type=str, default="", help="Tag added as the suffix of the directory."
+        "--tag",
+        type=str,
+        default="",
+        help="Tag added as the suffix of the directory.",
     )
     parser.add_argument(
         "--save_base_dir",
@@ -195,8 +196,13 @@ def get_args():
     parser.add_argument(
         "--print_more", action="store_true", help="Whether to print more."
     )
-
     args = parser.parse_args()
+
+    # Default to CUDA iff available
+    if args.device is None:
+        import torch
+
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if args.datasets == ["all"]:
         args.datasets = datasets
