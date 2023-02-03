@@ -146,7 +146,7 @@ def get_args():
     )
     parser.add_argument(
         "--states_location",
-        type=Path,
+        type=str,
         default="null",
         choices=["encoder", "decoder", "null"],
         help=(
