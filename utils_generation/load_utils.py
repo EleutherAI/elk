@@ -11,7 +11,7 @@ from transformers import (
 import os
 import torch
 import pandas as pd
-from utils_generation.construct_prompts import constructPrompt, prompt_dict
+from utils_generation.construct_prompts import construct_prompt_dataframe, prompt_dict
 from utils_generation.save_utils import get_directory
 from datasets import load_dataset
 from promptsource.templates import DatasetTemplates
@@ -222,39 +222,7 @@ def get_raw_dataset(dataset_name, cache_dir):
 
     return raw_dataset, dataset_split_names
 
-
-def create_promt_dataframe(dataset, prompt_idx, raw_data, num_data, tokenizer, complete_path, model, prefix, save_base_dir):
-    """
-    This function will create a prompt dataframe and saves it.
-
-    Args:
-        dataset: str, the name of the dataset.
-        prompt_idx: int, the prompt idx.
-        raw_data: pd.DataFrame, the raw data.
-        num_data: int, the number of data points that will be used for each dataset.
-        tokenizer: transformers.PreTrainedTokenizer, the tokenizer.
-        complete_path: str, the path to save the prompt dataframe.
-        model: str, name of the model used to construct a prompt
-        prefix: str, prefix to append to the prompt
-        save_base_dir: str, directory to save the results in
-    
-    Returns:
-        prompt_dataframe: pd.DataFrame, the prompt dataframe.       
-    """
-
-    # TODO: Simplify constructPrompt function
-    prompt_dataframe = constructPrompt(set_name=dataset, frame=raw_data,
-                            prompt_idx=prompt_idx, mdl_name=model, 
-                            tokenizer=tokenizer, max_num = num_data, 
-                            confusion = prefix)
-
-    create_directory(save_base_dir)
-    create_directory(complete_path)
-    complete_frame_csv_path = os.path.join(complete_path, "frame.csv")
-    
-    return prompt_dataframe, complete_frame_csv_path
-
-def create_name_to_dataframe(data_base_dir, all_dataset_names, num_prompts_per_dataset, num_data, tokenizer, save_base_dir, model, prefix, token_place):
+def create_setname_to_promptframe(data_base_dir, all_dataset_names, num_prompts_per_dataset, num_data, tokenizer, save_base_dir, model, prefix, token_place):
     """
     This function will create a dictionary of dataframes, where the key is the dataset name and the value is the dataframe.
 
@@ -275,10 +243,10 @@ def create_name_to_dataframe(data_base_dir, all_dataset_names, num_prompts_per_d
     create_directory(data_base_dir)
     name_to_dataframe = {}
     for dataset_name, num_prompts in zip(all_dataset_names, num_prompts_per_dataset):
-        for idx in range(num_prompts):
+        for prompt_idx in range(num_prompts):
             path = os.path.join(data_base_dir, f"rawdata_{dataset_name}_{num_data}.csv")
         
-            dataset_name_with_num = f"{dataset_name}_{num_data}_prompt{idx}"
+            dataset_name_with_num = f"{dataset_name}_{num_data}_prompt{prompt_idx}"
             complete_path = get_directory(save_base_dir, model, dataset_name_with_num, prefix, token_place)
             dataframe_path = os.path.join(complete_path, "frame.csv")
  
@@ -297,10 +265,16 @@ def create_name_to_dataframe(data_base_dir, all_dataset_names, num_prompts_per_d
                 raw_data = get_sample_data(dataset_name, split_dataframes, 2 * num_data)
                 raw_data.to_csv(path, index=False)
 
-                # TODO: REFACTOR THIS
-                prompt_dataframe, complete_frame_csv_path = create_promt_dataframe(dataset_name, idx, raw_data, num_data, tokenizer, 
-                                                                   complete_path, model, prefix, save_base_dir) 
+                prompt_dataframe = construct_prompt_dataframe(dataset_name, raw_data,
+                                                              prompt_idx=prompt_idx, mdl_name=model, 
+                                                              tokenizer=tokenizer, max_num = num_data, 
+                                                              confusion = prefix)
                 name_to_dataframe[dataset_name_with_num] = prompt_dataframe
+
+                # Save data
+                create_directory(save_base_dir)
+                create_directory(complete_path)
+                complete_frame_csv_path = os.path.join(complete_path, "frame.csv")
                 prompt_dataframe.to_csv(complete_frame_csv_path, index = False)
 
     return name_to_dataframe
@@ -324,22 +298,15 @@ def get_num_templates_per_dataset(all_dataset_names):
         num_templates_per_dataset: list of int, contains number of prompt templates per dataset.
     """
     num_templates_per_dataset = []
-    num_templates_per_dataset_2 = []
 
     for dataset_name in all_dataset_names:
         amount_of_templates = 0
-        amt_templates_2 = 0
-        if dataset_name in prompt_dict.keys():
-            amount_of_templates += len(prompt_dict[dataset_name])
+        # if dataset_name in prompt_dict.keys():
+        #     amount_of_templates += len(prompt_dict[dataset_name])
         if dataset_name not in ["ag-news", "dbpedia-14"]:
             amount_of_templates += len(DatasetTemplates(*get_hugging_face_load_name(dataset_name)).all_template_names)
-            amt_templates_2 += len(DatasetTemplates(*get_hugging_face_load_name(dataset_name)).all_template_names)
         if dataset_name == "copa":
             amount_of_templates -= 4  # do not use the last four prompts
-            amt_templates_2 -= 4
         num_templates_per_dataset.append(amount_of_templates)
-        num_templates_per_dataset_2.append(amt_templates_2)
 
-    # TODO: FIX THIS HACK
-    return num_templates_per_dataset_2
     return num_templates_per_dataset

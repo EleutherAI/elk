@@ -253,78 +253,6 @@ My dad answered this question incorrectly.",
 (This one is tricky -- even my teacher got it wrong!)",
 }
 
-class MyPrompts():
-    def __init__(self, set_name):
-        self.set_name = set_name.replace("-", "_")
-        self.prompt_dict = prompt_dict[set_name] if set_name in prompt_dict.keys() else [
-        ]
-        self.label_dict = label_dict[set_name]
-
-        if set_name in ["ag-news", "dbpedia-14"]:
-            self.nomodule = True
-            self.module = None
-        else:
-            self.nomodule = False
-            from utils_generation.load_utils import get_hugging_face_load_name
-            self.module = DatasetTemplates(*get_hugging_face_load_name(set_name))
-
-    def getPromptsNum(self):
-        res = len(self.prompt_dict) if self.nomodule else len(
-            self.module.all_template_names) + len(self.prompt_dict)
-        # do not use the last four prompts
-        return res if self.set_name != "copa" else res - 4
-
-    # qaexamples is tuple (qlist, alist), and these 5-len examples are fixed across the whole run. 
-    def apply(self, example, prompt_idx, candidate, qaexamples):
-        '''
-                Candidate is a binary list with possible labels
-
-        Args:
-            example (pd.Series): a single example
-            prompt_idx (int): the index of the prompt
-            candidate (list): a list of two labels
-            qaexamples (tuple): a tuple of two lists, each list contains 5 examples
-        '''
-
-        tmp = deepcopy(example)
-        lbl_tag = "label" if self.set_name != "story_cloze" else "answer_right_ending"
-
-        # Low idx corresponds to T0's prompt
-        if prompt_idx < self.getPromptsNum() - len(self.prompt_dict):
-            idx = prompt_idx
-            func = self.module[self.module.all_template_names[idx]]
-            tmp[lbl_tag] = candidate[0] + int(self.set_name == "story_cloze")
-            res0 = func.apply(tmp)
-            tmp[lbl_tag] = candidate[1] + int(self.set_name == "story_cloze")
-            res1 = func.apply(tmp)
-
-            # return the question and the list of labels
-            return res0[0], [res0[1], res1[1]]
-
-        else:  # Use personal prompt
-            idx = prompt_idx - (self.getPromptsNum() - len(self.prompt_dict))
-            template, token = self.prompt_dict[idx][0], self.prompt_dict[idx][1]
-            formatter = []
-            for w in token:
-                if "e.g." in w: # format is "e.g.0_sth"
-                    idx, typ = int(w.split("_")[0][-1]), w.split("_")[1]
-                    if typ == "correct":
-                        formatter.append(self.label_dict[qaexamples[1][idx]])
-                    elif typ == "incorrect":
-                        formatter.append(self.label_dict[1 - qaexamples[1][idx]])
-                    else:     # "e.g.0_text", take qaexamples[0].loc[idx]
-                        formatter.append(qaexamples[0].loc[idx][typ])
-                else:
-                    formatter.append(self.label_dict[candidate[int(w)]] if w in ["0", "1"] else tmp[w])
-            # token = [w if w not in ["0", "1"]
-            #          else candidate[int(w)] for w in token]
-            # formatter = [tmp[w] if type(
-            #     w) != int else self.label_dict[w] for w in token]
-            question = template.format(*formatter)
-            if self.set_name not in ["ag_news", "dbpedia_14"]:
-                return question, [self.label_dict[w] for w in candidate]
-            else:
-                return question, ["choice 1", "choice 2"]
 
 def genCandidate(label, label_num):
     '''
@@ -387,18 +315,33 @@ def concatAnswer(question, ans, mdl_name, confusion):
             return question + ans
         return question + " " + ans
 
-def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, confusion):
+def get_queston_answer(prompter, prompt_idx, dataframe, data_idx):
+    prompt_name = prompter.all_template_names[prompt_idx]
+    prompt_template = prompter[prompt_name]
+    text_label_pair = {k:v for k,v in dataframe.loc[data_idx].items()}
+    actual_label = text_label_pair['label']
+    
+    question, answer = prompt_template.apply(text_label_pair)
+
+    if text_label_pair['label'] == 0:
+        text_label_pair['label'] = 1
+        _, pos_answer = prompt_template.apply(text_label_pair)
+        answer_choices = [answer, pos_answer]
+    elif text_label_pair['label'] == 1:
+        text_label_pair['label'] = 0
+        _, neg_answer = prompt_template.apply(text_label_pair)
+        answer_choices = [neg_answer, answer]
+
+    return question, answer_choices, actual_label
+
+def construct_prompt_dataframe(set_name, dataframe, prompt_idx, mdl_name, tokenizer, max_num, confusion):
     '''
             According to the prompt idx and set_name, return corresponding construction
             Will change according to model type, i.e. for Bert model will add [SEP] in the middle
             Return: A dataframe, with `null`, `0`, `1`, `label`, `selection`, which should be save with hidden states together
     '''
-    
-    # prompter = MyPrompts(set_name)
-    
-    # TODO: REFACTOR THIS INTO A FUNCTION
     from utils_generation.load_utils import get_hugging_face_load_name
-    our_prompt = DatasetTemplates(*get_hugging_face_load_name(set_name))
+    prompter = DatasetTemplates(*get_hugging_face_load_name(set_name))
 
     result = {
         "null":     [],
@@ -408,88 +351,26 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
         "selection": [],
     }
 
-	# # This is always in range(#num_label)
-    # labels = frame["label"].to_list() if set_name != "story-cloze" else [w -
-    #                         1 for w in frame["answer_right_ending"].to_list()]
-    # label_num = len(set(labels))
-
-    # # For possibly used examples, we take from the frame. We try to avoid using the same examples, and take at the end of the frame. We take the last 5 examples and select the one with least length.
-    # eg_start_idx = len(frame) - 5
-    # eg_q = frame.loc[eg_start_idx:eg_start_idx+4].reset_index(drop = True)
-    # # This is the correct label list
-    # eg_a = []
-    # for w in range(eg_start_idx, eg_start_idx + 5):
-    #     label, selection = genCandidate(labels[w], label_num)
-    #     eg_a.append(selection[label])   #  append the correct answer
-    # qa_examples = (eg_q, eg_a)
-
-    for idx in range(len(frame)):
-
+    for data_idx in range(len(dataframe)):
         # early stopping if data num meets the requirement
         if len(result["null"]) >= max_num:
             break
-
-        # label, selection = genCandidate(labels[idx], label_num)
-
-        # Get the question and Answer List
-        # question, ans_lis = formatExample(set_name, frame.loc[idx], prompt_idx, selection)
-        # TODO: REMOVE THIS RELIANCE ON MyPrompter
-        # question, ans_lis = prompter.apply(
-        #     frame.loc[idx], prompt_idx, selection, qa_examples)
         
         # TODO: FIX THESE BUGS
+        # "ag-news", "dbpedia-14" don't appear in the results 
         # '"piqa", mixed up questions: don't know what's going on here yet 
+        question, answer_choices, actual_label = get_queston_answer(prompter, prompt_idx, dataframe, data_idx)
+        concat_data = [concatAnswer(question, answer, mdl_name, confusion) for answer in answer_choices]
 
-        # TODO: REFACTOR THIS INTO A FUNCTION 
-        prompt_name = our_prompt.all_template_names[prompt_idx]
-        prompt_template = our_prompt[prompt_name]
-        text_label_pair = {k:v for k,v in frame.loc[idx].items()}
-        actual_label = text_label_pair['label']
-        question_2, ans_1 = prompt_template.apply(text_label_pair)
-        # TODO: USE LABEL DICT HERE SOMEHOW 
-        if text_label_pair['label'] == 0:
-            text_label_pair['label'] = 1
-            _, pos_ans = prompt_template.apply(text_label_pair)
-            ans_lis_2 = [ans_1, pos_ans]
-        elif text_label_pair['label'] == 1:
-            text_label_pair['label'] = 0
-            _, neg_ans = prompt_template.apply(text_label_pair)
-            ans_lis_2 = [neg_ans, ans_1]
-
-
-        # assert question == question_2, "Questions do not match"
-        # assert ans_lis == ans_lis_2, "Answers do not match"
-
-
-        
-
-        # concat_data_list = [concatAnswer(question, w, mdl_name, confusion) for w in ans_lis]
-        concat_data_2 = [concatAnswer(question_2, w, mdl_name, confusion) for w in ans_lis_2]
-
-        if checkLengthExceed(tokenizer, concat_data_2):
+        if checkLengthExceed(tokenizer, concat_data):
             continue
 
         # append to the result
-        result["null"].append(concatAnswer(question_2, "", mdl_name, confusion))
-        for i in range(2):
-            result[str(i)].append(concat_data_2[i])
+        result["null"].append(concatAnswer(question, "", mdl_name, confusion))
         result["label"].append(actual_label)
-
-        result["selection"].append(ans_lis_2)
-
-        # assert concat_data_list == concat_data_2, "You think you got this? Think again young padawan."
-        # if checkLengthExceed(tokenizer, concat_data_list):
-        #     continue
-
-        # # append to the result
-        # result["null"].append(concatAnswer(question, "", mdl_name, confusion))
-        # for i in range(2):
-        #     result[str(i)].append(concat_data_list[i])
-        # result["label"].append(label)
-
-        # result["selection"].append(ans_lis)
-
-
+        result["selection"].append(answer_choices) 
+        for i in range(2):
+            result[str(i)].append(concat_data[i])
 
     return pd.DataFrame(result)
 
