@@ -394,25 +394,11 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
             Return: A dataframe, with `null`, `0`, `1`, `label`, `selection`, which should be save with hidden states together
     '''
     
-    prompter = MyPrompts(set_name)
+    # prompter = MyPrompts(set_name)
     
     # TODO: REFACTOR THIS INTO A FUNCTION
     from utils_generation.load_utils import get_hugging_face_load_name
     our_prompt = DatasetTemplates(*get_hugging_face_load_name(set_name))
-
-    # normal_dataset_names = ['ag_news','amazon_polarity', 'dbpedia_14', 'imdb', 'piqa']
-    # super_glue_dataset_names = ['boolq', 'copa', 'rte']
-    # glue_dataset_names = ['qnli']
-
-    # if set_name in normal_dataset_names:
-    #     if set_name == 'amazon-polarity':
-    #         our_prompt = DatasetTemplates('amazon_')
-    #     else:
-    #         our_prompt = DatasetTemplates(set_name)
-    # elif set_name in super_glue_dataset_names:
-    #     our_prompt = DatasetTemplates(f"super_glue/{set_name}")
-    # elif set_name in glue_dataset_names:
-    #     our_prompt = DatasetTemplates(f"glue/{set_name}")
 
     result = {
         "null":     [],
@@ -422,20 +408,20 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
         "selection": [],
     }
 
-	# This is always in range(#num_label)
-    labels = frame["label"].to_list() if set_name != "story-cloze" else [w -
-                            1 for w in frame["answer_right_ending"].to_list()]
-    label_num = len(set(labels))
+	# # This is always in range(#num_label)
+    # labels = frame["label"].to_list() if set_name != "story-cloze" else [w -
+    #                         1 for w in frame["answer_right_ending"].to_list()]
+    # label_num = len(set(labels))
 
-    # For possibly used examples, we take from the frame. We try to avoid using the same examples, and take at the end of the frame. We take the last 5 examples and select the one with least length.
-    eg_start_idx = len(frame) - 5
-    eg_q = frame.loc[eg_start_idx:eg_start_idx+4].reset_index(drop = True)
-    # This is the correct label list
-    eg_a = []
-    for w in range(eg_start_idx, eg_start_idx + 5):
-        label, selection = genCandidate(labels[w], label_num)
-        eg_a.append(selection[label])   #  append the correct answer
-    qa_examples = (eg_q, eg_a)
+    # # For possibly used examples, we take from the frame. We try to avoid using the same examples, and take at the end of the frame. We take the last 5 examples and select the one with least length.
+    # eg_start_idx = len(frame) - 5
+    # eg_q = frame.loc[eg_start_idx:eg_start_idx+4].reset_index(drop = True)
+    # # This is the correct label list
+    # eg_a = []
+    # for w in range(eg_start_idx, eg_start_idx + 5):
+    #     label, selection = genCandidate(labels[w], label_num)
+    #     eg_a.append(selection[label])   #  append the correct answer
+    # qa_examples = (eg_q, eg_a)
 
     for idx in range(len(frame)):
 
@@ -443,24 +429,22 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
         if len(result["null"]) >= max_num:
             break
 
-        label, selection = genCandidate(labels[idx], label_num)
+        # label, selection = genCandidate(labels[idx], label_num)
 
         # Get the question and Answer List
         # question, ans_lis = formatExample(set_name, frame.loc[idx], prompt_idx, selection)
         # TODO: REMOVE THIS RELIANCE ON MyPrompter
-        question, ans_lis = prompter.apply(
-            frame.loc[idx], prompt_idx, selection, qa_examples)
+        # question, ans_lis = prompter.apply(
+        #     frame.loc[idx], prompt_idx, selection, qa_examples)
         
         # TODO: FIX THESE BUGS
-        # "amazon-polarity": doesn't have any template names (list is empty)
-        # 'copa': Mixed up ans_lis go a '0' as a label 
-        # 'qnli':  ans_lis = ['yes', 'no'] and ans_lis_2 = ['no', 'yes']
-        # '"piqa", mixed up ans_lis_2 ['Apply layer of vasel... on teeth.', '0']
+        # '"piqa", mixed up questions: don't know what's going on here yet 
 
         # TODO: REFACTOR THIS INTO A FUNCTION 
         prompt_name = our_prompt.all_template_names[prompt_idx]
         prompt_template = our_prompt[prompt_name]
         text_label_pair = {k:v for k,v in frame.loc[idx].items()}
+        actual_label = text_label_pair['label']
         question_2, ans_1 = prompt_template.apply(text_label_pair)
         # TODO: USE LABEL DICT HERE SOMEHOW 
         if text_label_pair['label'] == 0:
@@ -473,26 +457,39 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
             ans_lis_2 = [neg_ans, ans_1]
 
 
-        assert question == question_2, "Questions do not match"
-        assert ans_lis == ans_lis_2, "Answers do not match"
+        # assert question == question_2, "Questions do not match"
+        # assert ans_lis == ans_lis_2, "Answers do not match"
 
 
         
 
-        concat_data_list = [concatAnswer(question, w, mdl_name, confusion) for w in ans_lis]
+        # concat_data_list = [concatAnswer(question, w, mdl_name, confusion) for w in ans_lis]
         concat_data_2 = [concatAnswer(question_2, w, mdl_name, confusion) for w in ans_lis_2]
 
-        assert concat_data_list == concat_data_2, "You think you got this? Think again young padawan."
-        if checkLengthExceed(tokenizer, concat_data_list):
+        if checkLengthExceed(tokenizer, concat_data_2):
             continue
 
         # append to the result
-        result["null"].append(concatAnswer(question, "", mdl_name, confusion))
+        result["null"].append(concatAnswer(question_2, "", mdl_name, confusion))
         for i in range(2):
-            result[str(i)].append(concat_data_list[i])
-        result["label"].append(label)
+            result[str(i)].append(concat_data_2[i])
+        result["label"].append(actual_label)
 
-        result["selection"].append(ans_lis)
+        result["selection"].append(ans_lis_2)
+
+        # assert concat_data_list == concat_data_2, "You think you got this? Think again young padawan."
+        # if checkLengthExceed(tokenizer, concat_data_list):
+        #     continue
+
+        # # append to the result
+        # result["null"].append(concatAnswer(question, "", mdl_name, confusion))
+        # for i in range(2):
+        #     result[str(i)].append(concat_data_list[i])
+        # result["label"].append(label)
+
+        # result["selection"].append(ans_lis)
+
+
 
     return pd.DataFrame(result)
 
