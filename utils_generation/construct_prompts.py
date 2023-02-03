@@ -395,7 +395,7 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
     '''
     
     prompter = MyPrompts(set_name)
-
+    our_prompt = DatasetTemplates(set_name)
     result = {
         "null":     [],
         "0":        [],
@@ -431,8 +431,38 @@ def constructPrompt(set_name, frame, prompt_idx, mdl_name, tokenizer, max_num, c
         # question, ans_lis = formatExample(set_name, frame.loc[idx], prompt_idx, selection)
         question, ans_lis = prompter.apply(
             frame.loc[idx], prompt_idx, selection, qa_examples)
+        
+        # "amazon-polarity": doesn't have any template names (list is empty)
+        # 'copa': Tried instantiating `DatasetTemplates` for copa, but no prompts found.
+        # 'rte': Tried instantiating `DatasetTemplates` for rte, but no prompts found.
+        # 'boolq': Tried instantiating `DatasetTemplates` for boolq, but no prompts found.
+        # 'qnli': Tried instantiating `DatasetTemplates` for qnli, but no prompts found.
+        # '"piqa", mixed up questions
+        prompt_name = our_prompt.all_template_names[prompt_idx]
+        prompt_template = our_prompt[prompt_name]
+        text_label_pair = {k:v for k,v in frame.loc[idx].items()}
+        question_2, ans_1 = prompt_template.apply(text_label_pair)
+        for k, v in text_label_pair.items():
+            if v == 0:
+                text_label_pair[k] = 1
+                _, ans_2 = prompt_template.apply(text_label_pair)
+                ans_lis_2 = [ans_1, ans_2]
+            else:
+                text_label_pair[k] = 0
+                _, ans_2 = prompt_template.apply(text_label_pair)
+                ans_lis_2 = [ans_2, ans_1]
+
+
+        assert question == question_2, "Questions do not match"
+        assert ans_lis == ans_lis_2, "Answers do not match"
+
+
+        
 
         concat_data_list = [concatAnswer(question, w, mdl_name, confusion) for w in ans_lis]
+        concat_data_2 = [concatAnswer(question_2, w, mdl_name, confusion) for w in ans_lis_2]
+
+        assert concat_data_list == concat_data_2, "You think you got this? Think again young padawan."
         if checkLengthExceed(tokenizer, concat_data_list):
             continue
 

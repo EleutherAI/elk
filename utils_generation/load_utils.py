@@ -324,14 +324,22 @@ def get_num_templates_per_dataset(all_dataset_names):
         num_templates_per_dataset: list of int, contains number of prompt templates per dataset.
     """
     num_templates_per_dataset = []
+    num_templates_per_dataset_2 = []
+
     for dataset_name in all_dataset_names:
         amount_of_templates = 0
+        amt_templates_2 = 0
         if dataset_name in prompt_dict.keys():
             amount_of_templates += len(prompt_dict[dataset_name])
         if dataset_name not in ["ag-news", "dbpedia-14"]:
             amount_of_templates += len(DatasetTemplates(*get_hugging_face_load_name(dataset_name)).all_template_names)
+            amt_templates_2 += len(DatasetTemplates(*get_hugging_face_load_name(dataset_name)).all_template_names)
         if dataset_name == "copa":
             amount_of_templates -= 4  # do not use the last four prompts
+            amt_templates_2 -= 4
         num_templates_per_dataset.append(amount_of_templates)
+        num_templates_per_dataset_2.append(amt_templates_2)
 
+    # TODO: FIX THIS HACK
+    return num_templates_per_dataset_2
     return num_templates_per_dataset
