@@ -212,7 +212,7 @@ def loadFromDatasets(set_name, cache_dir, max_num):
     This DataFrame can be used to construct the example
     """
     if set_name != "story-cloze":
-        load_dataset(*getLoadName(set_name))
+        raw_set = load_dataset(*getLoadName(set_name))
     else:
         try:
             raw_set = load_dataset(
