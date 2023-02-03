@@ -53,8 +53,8 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     )
     args = parser.parse_args()
 
+    args.model = model_shortcuts.get(args.model, args.model)
     if args.language_model_type == "decoder" and args.layer < 0:
-        args.model = model_shortcuts.get(args.model, args.model)
         config = AutoConfig.from_pretrained(args.model)
         layer_num = getattr(config, "num_layers", getattr(config, "num_hidden_layers", None))
         args.language_model_type += layer_num
