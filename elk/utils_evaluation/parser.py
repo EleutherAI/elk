@@ -12,7 +12,7 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     prefix = default_config["prefix"]
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, choices=models)
+    parser.add_argument("--model", type=str)
     parser.add_argument("--prefix", default="normal", choices=prefix)
     parser.add_argument("--dataset", default=datasets[0])
     parser.add_argument("--num_data", type=int, default=10)
