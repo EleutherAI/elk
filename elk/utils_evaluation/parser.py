@@ -8,9 +8,8 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     with open(default_config_path, "r") as f:
         default_config = json.load(f)
     datasets = default_config["datasets"]
-    models = default_config["models"]
+    model_shortcuts = default_config["model_shortcuts"]
     prefix = default_config["prefix"]
-    models_layer_num = default_config["models_layer_num"]
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, choices=models)
@@ -55,6 +54,9 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     args = parser.parse_args()
 
     if args.language_model_type == "decoder" and args.layer < 0:
-        args.language_model_type += models_layer_num[args.model]
+        args.model = model_shortcuts.get(args.model, args.model)
+        config = AutoConfig.from_pretrained(args.model)
+        layer_num = getattr(config, "num_layers", getattr(config, "num_hidden_layers", None))
+        args.language_model_type += layer_num
 
     return args
