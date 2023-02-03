@@ -15,7 +15,7 @@
                 "--model", "deberta-v2-xxlarge-mnli",
                 "--dataset","imdb",
                 "--prefix", "confusion",
-                "--model_device", "cuda",
+                "--device", "cuda",
                 "--num_data", "1000"
             ]
         },
@@ -30,7 +30,7 @@
                 "--model", "deberta-v2-xxlarge-mnli",
                 "--dataset","imdb",
                 "--prefix", "normal",
-                "--model_device", "cuda",
+                "--device", "cuda",
                 "--num_data", "1000"
             ]
         },
@@ -45,7 +45,7 @@
                 "--model", "deberta-v2-xxlarge-mnli",
                 "--dataset","imdb",
                 "--prefix", "normal",
-                "--model_device", "cuda",
+                "--device", "cuda",
                 "--num_data", "1000"
             ]
         },
@@ -60,7 +60,7 @@
                 "--model", "deberta-v2-xxlarge-mnli",
                 "--dataset","imdb",
                 "--prefix", "normal",
-                "--model_device", "cuda",
+                "--device", "cuda",
                 "--num_data", "1000"
             ]
         }

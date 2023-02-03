@@ -32,9 +32,7 @@ if __name__ == "__main__":
         "finish loading model to memory. Now start loading to accelerator (gpu or"
         f" mps). parallelize = {args.parallelize is True}"
     )
-    model = put_model_on_device(
-        model, parallelize=args.parallelize, device=args.model_device
-    )
+    model = put_model_on_device(model, parallelize=args.parallelize, device=args.device)
 
     print(
         f"loading tokenizer for: model name = {args.model} at cache_dir ="

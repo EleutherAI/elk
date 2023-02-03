@@ -1,8 +1,4 @@
-import os
-import pickle
-import numpy as np
-import pandas as pd
-
+from elk.utils_evaluation.ccs import CCS
 from elk.utils_evaluation.utils_evaluation import (
     get_hidden_states,
     get_permutation,
@@ -12,10 +8,14 @@ from elk.utils_evaluation.utils_evaluation import (
 from elk.utils_evaluation.parser import get_args
 from elk.utils_evaluation.utils_evaluation import save_df_to_csv
 from pathlib import Path
+import numpy as np
+import pandas as pd
+import pickle
+import torch
 
 
-def evaluate(args, logistic_regression_model, ccs_model):
-    os.makedirs(args.save_dir, exist_ok=True)
+def evaluate(args, logistic_regression_model, ccs_model: CCS):
+    args.save_dir.mkdir(parents=True, exist_ok=True)
 
     hidden_states = get_hidden_states(
         hidden_states_directory=args.hidden_states_directory,
@@ -34,24 +34,22 @@ def evaluate(args, logistic_regression_model, ccs_model):
     accuracies_lr = []
     losses_lr = []
     for prompt_idx in range(len(hidden_states)):
-        data, labels = split(
+        features, labels = split(
             hidden_states=hidden_states,
             permutation=permutation,
             prompts=[prompt_idx],
             split="test",
         )
 
-        # evaluate classification model
-        print("evaluate classification model")
-        acc_lr = logistic_regression_model.score(data, labels)
+        print("Evaluating logistic regression model")
+        acc_lr = logistic_regression_model.score(features, labels)
         accuracies_lr.append(acc_lr)
         losses_lr.append(0)  # TODO: get loss from lr somehow
 
-        # evaluate ccs model
-        print("evaluate ccs model")
-        half = data.shape[1] // 2
-        data = [data[:, :half], data[:, half:]]
-        acc_ccs, loss_ccs = ccs_model.score(data, labels, getloss=True)
+        print("Evaluating CCS model")
+        x0, x1 = torch.from_numpy(features).to(args.device).chunk(2, dim=1)
+        labels = torch.from_numpy(labels).to(args.device)
+        acc_ccs, loss_ccs = ccs_model.score((x0, x1), labels)
         accuracies_ccs.append(acc_ccs)
         losses_ccs.append(loss_ccs)
 
@@ -89,16 +87,14 @@ def evaluate(args, logistic_regression_model, ccs_model):
     stats_df = append_stats(
         stats_df, args, "lr", avg_accuracy_lr, avg_accuracy_std_lr, avg_loss_lr
     )
-    save_df_to_csv(args, stats_df, args.prefix, "After finish")
+    save_df_to_csv(args, stats_df, args.prefix)
 
 
 if __name__ == "__main__":
     args = get_args(default_config_path=Path(__file__).parent / "default_config.json")
 
-    # load pickel from file
     with open(args.trained_models_path / "logistic_regression_model.pkl", "rb") as file:
         logistic_regression_model = pickle.load(file)
-    with open(args.trained_models_path / "ccs_model.pkl", "rb") as file:
-        ccs_model = pickle.load(file)
 
+    ccs_model = CCS.load(args.trained_models_path / "ccs_model.pt")
     evaluate(args, logistic_regression_model, ccs_model)
