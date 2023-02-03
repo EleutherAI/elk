@@ -5,6 +5,7 @@ from .losses import ccs_squared_loss
 from typing import cast, Literal, Optional, Type, Union
 import torch
 import torch.nn as nn
+import torch.nn.utils.parametrize as P
 
 
 @dataclass
@@ -27,6 +28,7 @@ class CCS(nn.Module):
         hidden_size: Optional[int] = None,
         init: Literal["default", "spherical"] = "default",
         num_layers: int = 1,
+        first_linear_parametrization: Optional[nn.Module] = None,
     ):
         super().__init__()
 
@@ -44,6 +46,11 @@ class CCS(nn.Module):
                 device=device,
             ),
         )
+
+        if first_linear_parametrization is not None:
+            P.register_parametrization(
+                self.probe[0], "weight", first_linear_parametrization
+            )
 
         for i in range(1, num_layers):
             self.probe.append(activation())
@@ -120,18 +127,24 @@ class CCS(nn.Module):
         optimizer: Literal["adam", "lbfgs"] = "adam",
         verbose: bool = False,
         weight_decay: float = 0.01,
+        train_params: Optional[TrainParams] = None,
     ):
         self.validate_data(data)
-        if verbose:
-            print(f"Fitting CCS probe; {num_epochs=}, {num_tries=}, {lr=}")
 
-        train_params = TrainParams(
+        train_params = train_params or TrainParams(
             num_epochs=num_epochs,
             num_tries=num_tries,
             lr=lr,
             weight_decay=weight_decay,
             optimizer=optimizer,
         )
+        if verbose:
+            print(
+                (
+                    f"Fitting CCS probe; num_epochs={train_params.num_epochs},"
+                    f" num_tries={train_params.num_tries}, lr={train_params.lr}"
+                )
+            )
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf

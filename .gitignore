@@ -4,6 +4,7 @@ elk/models/*
 nohup.out
 .idea
 *.pkl
+*.pt
 
 # scripts for experiments in progress
 my_*.sh
