@@ -13,9 +13,8 @@ default_config_path = (
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
 datasets = default_config["datasets"]
-models = default_config["models"]
+model_shortcuts = default_config["model_shortcuts"]
 prefix = default_config["prefix"]
-models_layer_num = default_config["models_layer_num"]
 
 
 def get_filtered_filenames(
@@ -92,7 +91,11 @@ def get_hidden_states(
     place="last",
 ):
     if language_model_type == "decoder" and layer < 0:
-        layer += models_layer_num[model_name]
+        # TODO make this a function
+        args.model = model_shortcuts.get(args.model, args.model)
+        config = AutoConfig.from_pretrained(args.model)
+        layer_num = getattr(config, "num_layers", getattr(config, "num_hidden_layers", None))
+        layer += layer_num
 
     print(
         f"start loading {language_model_type} hidden states {layer} for"
