@@ -2,6 +2,7 @@ from elk.utils_evaluation.ccs import CCS
 from elk.utils_evaluation.utils_evaluation import (
     get_hidden_states,
     get_permutation,
+    normalize,
     split,
 )
 from elk.utils_evaluation.parser import get_args
@@ -30,14 +31,16 @@ def train(args):
         mode=args.mode,
         num_data=args.num_data,
     )
+    permutation = get_permutation(hidden_states)
+    normalized_hidden_states = normalize(hidden_states, permutation)
 
     # `features` is of shape [batch_size, hidden_size * 2]
     # the first half of the features are from the first sentence,
     # the second half are from the second sentence
     features, labels = split(
-        hidden_states,
-        get_permutation(hidden_states),
-        prompts=range(len(hidden_states)),
+        normalized_hidden_states,
+        permutation,
+        prompts=range(len(normalized_hidden_states)),
         split="train",
     )
     assert len(features.shape) == 2

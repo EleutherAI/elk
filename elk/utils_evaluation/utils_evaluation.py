@@ -1,4 +1,5 @@
 import os
+from typing import Literal
 import numpy as np
 import pandas as pd
 import json
@@ -9,6 +10,8 @@ from pathlib import Path
 default_config_path = (
     Path(__file__).parent.parent / Path(__file__).parent.parent / "default_config.json"
 )
+
+TRAIN_SPLIT_IDX = 0
 
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
@@ -58,14 +61,47 @@ def organize(hidden_states, mode):
     raise NotImplementedError("This mode is not supported.")
 
 
-def normalize(data, scale=True, demean=True):
-    # demean the array and rescale each data point
-    data = data - np.mean(data, axis=0) if demean else data
-    if not scale:
-        return data
-    norm = np.linalg.norm(data, axis=1)
-    avgnorm = np.mean(norm)
-    return data / avgnorm * np.sqrt(data.shape[1])
+def normalize(
+    hidden_states,
+    permutation,
+    scale: Literal["original", "none", "elementwise", "projection"] = "original",
+    demean=True,
+):
+    if demean:
+        means = [
+            np.mean(data[permutation[TRAIN_SPLIT_IDX]], axis=0)
+            for data, label in hidden_states
+        ]
+
+        hidden_states = [
+            (data - mean, label) for (data, label), mean in zip(hidden_states, means)
+        ]
+
+    if scale == "original" or scale == "elementwise":
+        if scale == "original":
+            scale_factors = [
+                np.mean(np.linalg.norm(data[permutation[TRAIN_SPLIT_IDX]], axis=1))
+                / np.sqrt(data.shape[1])
+                for data, label in hidden_states
+            ]
+        else:
+            scale_factors = [
+                np.std(data[permutation[TRAIN_SPLIT_IDX]], axis=0)
+                for data, label in hidden_states
+            ]
+        hidden_states = [
+            (data * scale_factor, label)
+            for (data, label), scale_factor in zip(hidden_states, scale_factors)
+        ]
+    elif scale == "projection":
+        hidden_states = [
+            (data / np.linalg.norm(data, axis=1), label)
+            for data, label in hidden_states
+        ]
+    elif scale != "none":
+        raise NotImplementedError(f"Scale {scale} is not supported.")
+
+    return hidden_states
 
 
 def get_permutation(hidden_states, rate=0.6):
@@ -86,8 +122,6 @@ def get_hidden_states(
     language_model_type="encoder",
     layer=-1,
     num_data=1000,
-    scale=True,
-    demean=True,
     mode="minus",
     place="last",
 ):
@@ -96,7 +130,7 @@ def get_hidden_states(
 
     print(
         f"start loading {language_model_type} hidden states {layer} for"
-        f" {model_name} with {prefix} prefix. Scale: {scale}, Demean: {demean}, Mode:"
+        f" {model_name} with {prefix} prefix. Mode:"
         f" {mode}"
     )
 
@@ -114,24 +148,21 @@ def get_hidden_states(
         organized_states = organize([negative_states, positive_states], mode=mode)
         hidden_states.append(organized_states)
 
-    # normalize
-    normalized_hidden_states = [normalize(w, scale, demean) for w in hidden_states]
-
     print(
-        f"{len(normalized_hidden_states)} prompts for {dataset_name}, with shape"
-        f" {normalized_hidden_states[0].shape}"
+        f"{len(hidden_states)} prompts for {dataset_name}, with shape"
+        f" {hidden_states[0].shape}"
     )
     labels = [
         np.array(pd.read_csv(filename / "frame.csv")["label"].to_list())
         for filename in filtered_filenames
     ]
 
-    return [(u, v) for u, v in zip(normalized_hidden_states, labels)]
+    return [(u, v) for u, v in zip(hidden_states, labels)]
 
 
 # TODO: Make this function less insane
 def split(hidden_states, permutation, prompts, split="train"):
-    split_idx = 0 if split == "train" else 1
+    split_idx = TRAIN_SPLIT_IDX if split == "train" else (1 - TRAIN_SPLIT_IDX)
     split = []
     for prompt_idx in prompts:
         labels = hidden_states[prompt_idx][1]
