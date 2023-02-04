@@ -2,17 +2,92 @@ import argparse
 import json
 from pathlib import Path
 
-default_config_path = Path(__file__).parent.parent / "default_config.json"
-
-with open(default_config_path, "r") as f:
-    default_config = json.load(f)
-datasets = default_config["datasets"]
-models = default_config["models"]
-prefix = default_config["prefix"]
-models_layer_num = default_config["models_layer_num"]
-
 
 def get_args():
+    default_config_path = Path(__file__).parent.parent / "default_config.json"
+    with open(default_config_path, "r") as f:
+        default_config = json.load(f)
+        datasets = default_config["datasets"]
+        models = default_config["models"]
+        prefix = default_config["prefix"]
+        models_layer_num = default_config["models_layer_num"]
+
+    parser = get_parser()
+    args = parser.parse_args()
+
+    # Default to CUDA iff available
+    if args.device is None:
+        import torch
+
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    if args.datasets == ["all"]:
+        args.datasets = datasets
+    else:
+        for w in args.datasets:
+            assert w in datasets, NotImplementedError(
+                "Dataset {} not  in {}. Please check the name of the dataset!".format(
+                    w, default_config_path
+                )
+            )
+
+    # if (args.cal_zeroshot or args.cal_logits) and "bert" in args.model:
+    # Add features. Only forbid cal_logits for bert type model now
+    if args.cal_logits and "bert" in args.model:
+        raise NotImplementedError(
+            "You use {}, but bert type models do not have standard logits. Please set"
+            " cal_logits to 0.".format(args.model)
+        )
+
+    assert args.model in models, NotImplementedError(
+        "You use model {}, but it's not . For any new model, please make sure you"
+        " implement the code in `load_utils` and `generation`, and then  it in"
+        " `parser.py`".format(args.model)
+    )
+
+    for prefix in args.prefix:
+        assert prefix in prefix, NotImplementedError(
+            "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
+            " please mofidy `utils_generation/prompts.json` \
+                and new prefix in {}.json.".format(
+                prefix, default_config_path
+            )
+        )
+
+    # Set default states_location according to model type
+    if args.states_location == "null":
+        args.states_location = "decoder" if "gpt" in args.model else "encoder"
+
+    if args.states_location == "encoder" and args.cal_hiddenstates:
+        assert "gpt" not in args.model, ValueError(
+            "GPT type model does not have encoder. Please set `states_location` to"
+            " `decoder`."
+        )
+    if args.states_location == "decoder" and args.cal_hiddenstates:
+        assert "bert" not in args.model, ValueError(
+            "BERT type model does not have decoder. Please set `states_location` to"
+            " `encoder`."
+        )
+    # Set index into int.
+    for i in range(len(args.states_index)):
+        pos_index = int(args.states_index[i]) % models_layer_num[args.model]
+        # For decoder, the index lies in [0,layer_num)
+        # For encoder, the index lies in [-layer_num, -1]
+        args.states_index[i] = (
+            pos_index
+            if args.states_location == "decoder"
+            else pos_index - models_layer_num[args.model]
+        )
+
+    print(
+        "\n\n-------------------------------- Args --------------------------------\n\n"
+    )
+    for key in list(vars(args).keys()):
+        print("{}: {}".format(key, vars(args)[key]))
+
+    return args
+
+def get_parser():
     parser = argparse.ArgumentParser()
 
     # datasets loading
@@ -196,76 +271,5 @@ def get_args():
     parser.add_argument(
         "--print-more", action="store_true", help="Whether to print more."
     )
-    args = parser.parse_args()
 
-    # Default to CUDA iff available
-    if args.device is None:
-        import torch
-
-        args.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    if args.datasets == ["all"]:
-        args.datasets = datasets
-    else:
-        for w in args.datasets:
-            assert w in datasets, NotImplementedError(
-                "Dataset {} not  in {}. Please check the name of the dataset!".format(
-                    w, default_config_path
-                )
-            )
-
-    # if (args.cal_zeroshot or args.cal_logits) and "bert" in args.model:
-    # Add features. Only forbid cal_logits for bert type model now
-    if args.cal_logits and "bert" in args.model:
-        raise NotImplementedError(
-            "You use {}, but bert type models do not have standard logits. Please set"
-            " cal_logits to 0.".format(args.model)
-        )
-
-    assert args.model in models, NotImplementedError(
-        "You use model {}, but it's not . For any new model, please make sure you"
-        " implement the code in `load_utils` and `generation`, and then  it in"
-        " `parser.py`".format(args.model)
-    )
-
-    for prefix in args.prefix:
-        assert prefix in prefix, NotImplementedError(
-            "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
-            " please mofidy `utils_generation/prompts.json` \
-                and new prefix in {}.json.".format(
-                prefix, default_config_path
-            )
-        )
-
-    # Set default states_location according to model type
-    if args.states_location == "null":
-        args.states_location = "decoder" if "gpt" in args.model else "encoder"
-
-    if args.states_location == "encoder" and args.cal_hiddenstates:
-        assert "gpt" not in args.model, ValueError(
-            "GPT type model does not have encoder. Please set `states_location` to"
-            " `decoder`."
-        )
-    if args.states_location == "decoder" and args.cal_hiddenstates:
-        assert "bert" not in args.model, ValueError(
-            "BERT type model does not have decoder. Please set `states_location` to"
-            " `encoder`."
-        )
-    # Set index into int.
-    for i in range(len(args.states_index)):
-        pos_index = int(args.states_index[i]) % models_layer_num[args.model]
-        # For decoder, the index lies in [0,layer_num)
-        # For encoder, the index lies in [-layer_num, -1]
-        args.states_index[i] = (
-            pos_index
-            if args.states_location == "decoder"
-            else pos_index - models_layer_num[args.model]
-        )
-
-    print(
-        "\n\n-------------------------------- Args --------------------------------\n\n"
-    )
-    for key in list(vars(args).keys()):
-        print("{}: {}".format(key, vars(args)[key]))
-
-    return args
+    return parser
