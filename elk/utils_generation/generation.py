@@ -1,9 +1,9 @@
-import torch
-import numpy as np
-import functools
-from tqdm import tqdm
-from .save_utils import saveArray
 from .save_utils import save_records_to_csv
+from .save_utils import saveArray
+from tqdm import tqdm
+import functools
+import numpy as np
+import torch
 
 
 def extract_hidden_states(out, states_location):
@@ -14,7 +14,6 @@ def extract_hidden_states(out, states_location):
 
 
 def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
-
     apply_tokenizer = functools.partial(
         getToken, tokenizer=tokenizer, device=args.device
     )
@@ -22,16 +21,14 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
     hidden_states = [[], []]
     pad_answer = apply_tokenizer("")
 
-    is_t5 = "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name
+    is_enc_dec = model.config.is_encoder_decoder
 
     for idx in range(len(frame)):
         # calculate the hidden states
-        if model.is_encoder_decoder and args.states_location == "decoder":
-            answer_token = [
-                apply_tokenizer(w) for w in getDataPoint(frame, idx, "selection")
-            ]
+        if is_enc_dec and args.states_location == "decoder":
+            answer_token = [apply_tokenizer(w) for w in frame.loc[idx, "selection"]]
             # get the input_ids for candidates
-            input_ids = apply_tokenizer(getDataPoint(frame, idx, "null"))
+            input_ids = apply_tokenizer(frame.loc[idx, "null"])
 
             # calculate the hidden states and take the layer `state_idx`
             hidden_states_paired = [
@@ -41,16 +38,15 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
                 for a in answer_token
             ]
         else:
-            appender = " " + str(tokenizer.eos_token) if "gpt" in mdl_name else ""
             ids_paired = [
-                apply_tokenizer(getDataPoint(frame, idx, w) + appender)
+                apply_tokenizer(frame.loc[idx, w] + args.prompt_suffix)
                 for w in ["0", "1"]
             ]
             hidden_states_paired = [
                 extract_hidden_states(
                     model(
                         ids,
-                        labels=pad_answer if is_t5 else None,
+                        labels=pad_answer if is_enc_dec else None,
                         output_hidden_states=True,
                     ),
                     args.states_location,
@@ -64,7 +60,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
             hidden_states[i].append(
                 np.stack(
                     [
-                        toNP(getStatesToken(w, args.token_place))
+                        toNP(getStatesToken(w, args.token_loc))
                         for w in hidden_states_paired[i]
                     ],
                     axis=0,
@@ -108,7 +104,6 @@ def create_records(model, tokenizer, name_to_dataframe, args):
             "dataset": key,
             "prefix": args.prefix,
             "tag": args.tag,
-            "cal_hiddenstates": bool(args.cal_hiddenstates),
         }
         for key in name_to_dataframe.keys()
     ]
@@ -126,12 +121,6 @@ def create_records(model, tokenizer, name_to_dataframe, args):
     save_records_to_csv(records, args)
 
 
-def getDataPoint(frame, idx, key):
-    if type(idx) == list:
-        return frame.loc[idx[0] : idx[1] - 1, key]
-    return frame.loc[idx, key]
-
-
 def getStatesToken(hidden_state, method):
     if len(hidden_state.shape) == 3:
         hidden_state = hidden_state[0]
@@ -143,7 +132,7 @@ def getStatesToken(hidden_state, method):
         return torch.mean(hidden_state, dim=0)
     else:
         raise NotImplementedError(
-            "Only support `token_place` in `first`, `last` and `average`!"
+            "Only support `token_loc` in `first`, `last` and `average`!"
         )
 
 

@@ -31,14 +31,6 @@ def get_args():
                 )
             )
 
-    # if (args.cal_zeroshot or args.cal_logits) and "bert" in args.model:
-    # Add features. Only forbid cal_logits for bert type model now
-    if args.cal_logits and "bert" in args.model:
-        raise NotImplementedError(
-            "You use {}, but bert type models do not have standard logits. Please set"
-            " cal_logits to 0.".format(args.model)
-        )
-
     for prefix in args.prefix:
         assert prefix in prefix, NotImplementedError(
             "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
@@ -55,22 +47,9 @@ def get_args():
     num_layers = getattr(config, "num_layers", config.num_hidden_layers)
     assert isinstance(num_layers, int)
 
-    # Set default states_location according to model type
-    if args.states_location is None:
-        args.states_location = "decoder" if not config.is_encoder_decoder else "encoder"
-    elif args.states_location == "encoder" and not config.is_encoder_decoder:
-        raise NotImplementedError(
-            "You set states_location to encoder, but the model you use is not an"
-            " encoder-decoder model. Please check your model string."
-        )
-
-    # Set index into int.
-    for i in range(len(args.states_index)):
-        pos_index = int(args.states_index[i]) % num_layers
-        # For decoder, the index lies in [0,layer_num)
-        # For encoder, the index lies in [-layer_num, -1]
-        args.states_index[i] = (
-            pos_index if args.states_location == "decoder" else pos_index - num_layers
+    if args.use_encoder_states and not config.is_encoder_decoder:
+        raise ValueError(
+            "--use_encoder_states is only compatible with encoder-decoder models."
         )
 
     print(
@@ -183,22 +162,16 @@ def get_parser():
         help="Whether to calculate the zero-shot accuracy.",
     )
     parser.add_argument(
-        "--cal-hiddenstates",
-        type=int,
-        default=1,
-        help="Whether to extract the hidden states.",
-    )
-    parser.add_argument(
-        "--cal-logits",
-        type=int,
-        default=0,
+        "--prompt-suffix",
+        type=str,
+        default="",
         help=(
-            "Whether to extract the logits of the token in which the prediction firstly"
-            " differs."
+            "Suffix to append to the prompt after the answer. This sometimes improves"
+            " performance for autoregressive models."
         ),
     )
     parser.add_argument(
-        "--token-place",
+        "--token-loc",
         type=str,
         default="last",
         help=(
@@ -207,28 +180,15 @@ def get_parser():
         ),
     )
     parser.add_argument(
-        "--states-location",
-        type=str,
-        default=None,
-        choices=("encoder", "decoder"),
+        "--use-encoder-states",
+        action="store_true",
         help=(
-            "Whether to generate encoder hidden states or decoder hidden states."
-            " Default is null, which will be extended to decoder when the model is gpt"
-            " or encoder otherwise."
-        ),
-    )
-    parser.add_argument(
-        "--states-index",
-        nargs="+",
-        default=[-1],
-        help=(
-            "List of layer hidden states index to generate. -1 means the last layer."
-            " For encoder, we will transform positive index into negative. For example,"
-            " T0pp has 25 layer, indexed by 0, ..., 24. Index 20 will be transformed"
-            " into -5. For decoder, index will instead be transform into non-negative"
-            " value. For example, the last decoder layer will be 24 (rather than -1)."
-            " The choice between encoder and decoder is specified by `states_location`."
-            " For decoder, answer will be padded into token rather than into the input."
+            "Whether to extract encoder hidden states in encoder-decoder models, by"
+            " including the answer in the input to the encoder. By default we pass the"
+            " question to the encoder and the answer to the decoder, extracting the"
+            " decoder hidden state. This is closer to the pretraining setting for most"
+            " encoder-decoder models, and it allows for reusing the encoder hidden"
+            " states across different answers to the same question."
         ),
     )
     parser.add_argument(
@@ -250,12 +210,11 @@ def get_parser():
         help="Name of csv that store all running records.",
     )
     parser.add_argument(
-        "--save-all-layers",
-        action="store_true",
-        help=(
-            "Whether to save the hidden states of all layers. Notice that this will"
-            " increase the disk load significantly."
-        ),
+        "--layers",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Which layers to extract hiddens from. If None, extract from all layers.",
     )
     parser.add_argument(
         "--print-more", action="store_true", help="Whether to print more."

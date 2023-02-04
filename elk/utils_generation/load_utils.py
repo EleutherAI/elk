@@ -1,11 +1,9 @@
-from numpy import longdouble
 from transformers import (
+    AutoConfig,
     AutoModelForCausalLM,
-    AutoTokenizer,
     AutoModelForSeq2SeqLM,
     AutoModelForSequenceClassification,
 )
-import os
 import torch
 import pandas as pd
 from datasets import load_dataset
@@ -23,19 +21,16 @@ def load_model(mdl_name):
     Returns:
         model (torch.nn.Module): model
     """
-    if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
+    config = AutoConfig.from_pretrained(mdl_name)
+
+    if config.is_encoder_decoder:
         model = AutoModelForSeq2SeqLM.from_pretrained(mdl_name)
     elif "bert" in mdl_name:
         model = AutoModelForSequenceClassification.from_pretrained(mdl_name)
     else:
-        # TODO add a string of try/excepts, figure out a better model name format later
         model = AutoModelForCausalLM.from_pretrained(mdl_name)
 
-    # We only use the models for inference,
-    # so we don't need to train them and hence don't need to track gradients
-    model.eval()
-
-    return model
+    return model.eval()
 
 
 def put_model_on_device(model, parallelize, device="cuda"):
