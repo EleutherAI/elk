@@ -1,24 +1,73 @@
 import argparse
 import json
-from transformers import AutoConfig
+from transformers import AutoConfig, PretrainedConfig
 from pathlib import Path
-
-default_config_path = Path(__file__).parent.parent / "default_config.json"
-
-with open(default_config_path, "r") as f:
-    default_config = json.load(f)
-dataset_list = default_config["datasets"]
-registered_prefix = default_config["prefix"]
-model_shortcuts = default_config["model_shortcuts"]
 
 
 def get_args():
+    default_config_path = Path(__file__).parent.parent / "default_config.json"
+    with open(default_config_path, "r") as f:
+        default_config = json.load(f)
+        datasets = default_config["datasets"]
+        prefix = default_config["prefix"]
+        model_shortcuts = default_config["model_shortcuts"]
+
+    parser = get_parser()
+    args = parser.parse_args()
+
+    # Default to CUDA iff available
+    if args.device is None:
+        import torch
+
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    if args.datasets == ["all"]:
+        args.datasets = datasets
+    else:
+        for w in args.datasets:
+            assert w in datasets, NotImplementedError(
+                "Dataset {} not  in {}. Please check the name of the dataset!".format(
+                    w, default_config_path
+                )
+            )
+
+    for prefix in args.prefix:
+        assert prefix in prefix, NotImplementedError(
+            "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
+            " please mofidy `utils_generation/prompts.json` \
+                and new prefix in {}.json.".format(
+                prefix, default_config_path
+            )
+        )
+
+    args.model = model_shortcuts.get(args.model, args.model)
+    config = AutoConfig.from_pretrained(args.model)
+    assert isinstance(config, PretrainedConfig)
+
+    num_layers = getattr(config, "num_layers", config.num_hidden_layers)
+    assert isinstance(num_layers, int)
+
+    if args.use_encoder_states and not config.is_encoder_decoder:
+        raise ValueError(
+            "--use_encoder_states is only compatible with encoder-decoder models."
+        )
+
+    print(
+        "\n\n-------------------------------- Args --------------------------------\n\n"
+    )
+    for key in list(vars(args).keys()):
+        print("{}: {}".format(key, vars(args)[key]))
+
+    return args
+
+
+def get_parser():
     parser = argparse.ArgumentParser()
 
     # datasets loading
     parser.add_argument(
-        "--data_base_dir",
-        type=str,
+        "--data-base-dir",
+        type=Path,
         default="datasets/complete_ten",
         help=(
             "The base dir of all datasets (csv files) you want to extract hidden"
@@ -58,8 +107,13 @@ def get_args():
     parser.add_argument(
         "--device",
         type=str,
-        default="cuda",
-        help="What device to load the model onto: CPU or GPU or MPS.",
+        help="PyTorch device to use. Default is cuda:0 if available.",
+    )
+    parser.add_argument(
+        "--trained-models-path",
+        type=Path,
+        default="trained",
+        help="Where to save the ccs model and logistic regression model.",
     )
 
     # datasets processing
@@ -73,9 +127,9 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--num_data",
-        type=int,
-        default=1000,
+        "--num-data",
+        nargs="+",
+        default=[1000],
         help=(
             "number of data points you want to use in each datasets. If one integer is"
             " provide, if will be extended to a list with the same length as"
@@ -84,7 +138,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--reload_data",
+        "--reload-data",
         action="store_true",
         help=(
             "Whether to use the old version of datasets if there exists one. Using"
@@ -93,7 +147,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--prompt_idx",
+        "--prompt-idx",
         nargs="+",
         default=[0],
         help="The indexes of prompt you want to use.",
@@ -101,28 +155,22 @@ def get_args():
 
     # extraction & zero-shot accuracy calculation
     parser.add_argument(
-        "--cal_zeroshot",
+        "--cal-zeroshot",
         type=int,
         default=1,
         help="Whether to calculate the zero-shot accuracy.",
     )
     parser.add_argument(
-        "--cal_hiddenstates",
-        type=int,
-        default=1,
-        help="Whether to extract the hidden states.",
-    )
-    parser.add_argument(
-        "--cal_logits",
-        type=int,
-        default=0,
+        "--prompt-suffix",
+        type=str,
+        default="",
         help=(
-            "Whether to extract the logits of the token in which the prediction firstly"
-            " differs."
+            "Suffix to append to the prompt after the answer. This sometimes improves"
+            " performance for autoregressive models."
         ),
     )
     parser.add_argument(
-        "--token_place",
+        "--token-loc",
         type=str,
         default="last",
         help=(
@@ -131,112 +179,41 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--states_location",
-        type=str,
-        default="null",
-        choices=["encoder", "decoder", "null"],
+        "--use-encoder-states",
+        action="store_true",
         help=(
-            "Whether to extract encoder hidden states or decoder hidden states."
-            " Default is null, which will be extended to decoder when the model is gpt"
-            " or encoder otherwise."
-        ),
-    )
-    parser.add_argument(
-        "--states_index",
-        nargs="+",
-        default=[-1],
-        help=(
-            "List of layer hidden states index to extract. -1 means the last layer."
-            " For encoder, we will transform positive index into negative. For example,"
-            " T0pp has 25 layer, indexed by 0, ..., 24. Index 20 will be transformed"
-            " into -5. For decoder, index will instead be transform into non-negative"
-            " value. For example, the last decoder layer will be 24 (rather than -1)."
-            " The choice between encoder and decoder is specified by `states_location`."
-            " For decoder, answer will be padded into token rather than into the input."
+            "Whether to extract encoder hidden states in encoder-decoder models, by"
+            " including the answer in the input to the encoder. By default we pass the"
+            " question to the encoder and the answer to the decoder, extracting the"
+            " decoder hidden state. This is closer to the pretraining setting for most"
+            " encoder-decoder models, and it allows for reusing the encoder hidden"
+            " states across different answers to the same question."
         ),
     )
     parser.add_argument(
         "--tag", type=str, default="", help="Tag added as the suffix of the directory."
     )
     parser.add_argument(
-        "--save_base_dir",
-        type=str,
-        default="extraction_results",
+        "--save-base-dir",
+        type=Path,
+        default="generation_results",
         help="The base dir where you want to save the directories of hidden states.",
     )
     parser.add_argument(
-        "--save_csv_name",
+        "--save-csv-name",
         type=str,
         default="results",
         help="Name of csv that store all running records.",
     )
     parser.add_argument(
-        "--save_all_layers",
-        action="store_true",
-        help=(
-            "Whether to save the hidden states of all layers. Notice that this will"
-            " increase the disk load significantly."
-        ),
+        "--layers",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Which layers to extract hiddens from. If None, extract from all layers.",
     )
     parser.add_argument(
-        "--print_more", action="store_true", help="Whether to print more."
+        "--print-more", action="store_true", help="Whether to print more."
     )
 
-    args = parser.parse_args()
-
-    # Default to CUDA iff available
-    if args.device is None:
-        import torch
-
-        args.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    if args.datasets == ["all"]:
-        args.datasets = dataset_list
-    else:
-        for dataset_name in args.datasets:
-            assert dataset_name in dataset_list, NotImplementedError(
-                f"Dataset {dataset_name} not registered in {default_config_path}.json."
-                " Please check the name of the dataset!"
-            )
-
-    # if (args.cal_zeroshot or args.cal_logits) and "bert" in args.model:
-    # Add features. Only forbid cal_logits for bert type model now
-    if args.cal_logits and "bert" in args.model:
-        raise NotImplementedError(
-            f"You use {args.model}, but bert type models do not have standard logits."
-            " Please set cal_logits to 0."
-        )
-
-    assert args.prefix in registered_prefix, NotImplementedError(
-        f"Invalid prefix name {args.prefix}. Please check your prefix name. To add new"
-        " prefix, please mofidy `extraction/prompts.json` and register new"
-        f" prefix in {default_config_path}.json."
-    )
-
-    # Set default states_location according to model type
-    if args.states_location == "null":
-        args.states_location = "decoder" if "gpt" in args.model else "encoder"
-    if args.states_location == "encoder" and args.cal_hiddenstates:
-        assert "gpt" not in args.model, ValueError(
-            "GPT type model does not have encoder. Please set `states_location` to"
-            " `decoder`."
-        )
-    if args.states_location == "decoder" and args.cal_hiddenstates:
-        assert "bert" not in args.model, ValueError(
-            "BERT type model does not have decoder. Please set `states_location` to"
-            " `encoder`."
-        )
-    args.model = model_shortcuts.get(args.model, args.model)
-    config = AutoConfig.from_pretrained(args.model)
-    layer_num = getattr(config, "num_layers", config.num_hidden_layers)
-
-    # Set index into int.
-    for i in range(len(args.states_index)):
-        pos_index = int(args.states_index[i]) % layer_num
-        # For decoder, the index lies in [0,layer_num)
-        # For encoder, the index lies in [-layer_num, -1]
-        args.states_index[i] = (
-            pos_index if args.states_location == "decoder" else pos_index - layer_num
-        )
-
-    return args
+    return parser

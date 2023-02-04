@@ -37,12 +37,12 @@ The name of prefix can be found in `./extraction/construct_prompts.py`. This com
 1. To train a ccs model and a logistic regression model
 
 ```bash
-python train.py --model deberta-v2-xxlarge-mnli --prefix normal --dataset imdb --num_data 1000
+python train.py --model deberta-v2-xxlarge-mnli --prefix normal --dataset imdb --num-data 1000
 ```
 
 and evaluate:
 ```bash
-python evaluate.py --model deberta-v2-xxlarge-mnli --dataset imdb --num_data 1000
+python evaluate.py --model deberta-v2-xxlarge-mnli --dataset imdb --num-data 1000
 ```
 
 Once finished, results will be saved in `evaluation_results/{model}_{prefix}_{seed}.csv`
