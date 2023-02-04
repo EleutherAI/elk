@@ -8,15 +8,6 @@ def test_args_no_lowercase():
     should be used instead. EX: batch-size=X instead of batch_size=X
     """
 
-    # datasets = None
-    # models = None
-    # prefix = None
-    # with open("elk/default_config.json", "r", encoding="utf-8") as f:
-    #     default_config = json.load(f)
-    #     datasets = default_config["datasets"]
-    #     models = default_config["models"]
-    #     prefix = default_config["prefix"]
-
     parser = get_parser()
     for cli_flag in parser._actions:
         for flag_string in cli_flag.option_strings:
