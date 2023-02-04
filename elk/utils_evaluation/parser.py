@@ -10,13 +10,13 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     datasets = default_config["datasets"]
     models = default_config["models"]
     prefix = default_config["prefix"]
-    models_layer_num = default_config["models_layer_num"]
+    models_layer_num = default_config["models-layer-num"]
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, choices=models)
     parser.add_argument("--prefix", default="normal", choices=prefix)
     parser.add_argument("--dataset", default=datasets[0])
-    parser.add_argument("--num_data", type=int, default=10)
+    parser.add_argument("--num-data", type=int, default=10)
     parser.add_argument(
         "--mode",
         type=str,
@@ -25,24 +25,24 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
         help="How you combine h^+ and h^-.",
     )
     parser.add_argument(
-        "--save_dir",
+        "--save-dir",
         type=Path,
         default="evaluation_results",
         help="Where the CSV and params are saved",
     )
     parser.add_argument(
-        "--trained_models_path",
+        "--trained-models-path",
         type=Path,
         default="trained",
         help="Where to save the CCS and logistic regression models",
     )
     parser.add_argument(
-        "--hidden_states_directory",
+        "--hidden-states-directory",
         type=Path,
         default="generation_results",
         help="Where the hidden states and zero-shot accuracy are loaded.",
     )
-    parser.add_argument("--language_model_type", type=str, default="encoder")
+    parser.add_argument("--language-model-type", type=str, default="encoder")
     parser.add_argument("--layer", type=int, default=-1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
@@ -58,7 +58,7 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
         help="Optimizer for CCS. Should be adam or lbfgs.",
     )
     parser.add_argument(
-        "--weight_decay",
+        "--weight-decay",
         type=float,
         default=0.01,
         help=(
@@ -67,7 +67,7 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     )
     args = parser.parse_args()
 
-    # Default to CUDA iff available
+    # Default to CUDA if available
     if args.device is None:
         import torch
 

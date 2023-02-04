@@ -17,7 +17,7 @@ def get_args():
 
     # datasets loading
     parser.add_argument(
-        "--data_base_dir",
+        "--data-base-dir",
         type=Path,
         default="datasets/complete_ten",
         help=(
@@ -56,7 +56,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--cache_dir",
+        "--cache-dir",
         type=Path,
         default="models",
         help="The path to save and load pretrained model.",
@@ -67,7 +67,7 @@ def get_args():
         help="PyTorch device to use. Default is cuda:0 if available.",
     )
     parser.add_argument(
-        "--trained_models_path",
+        "--trained-models-path",
         type=Path,
         default="trained",
         help="Where to save the ccs model and logisitc regression model.",
@@ -85,7 +85,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--num_data",
+        "--num-data",
         nargs="+",
         default=[1000],
         help=(
@@ -96,7 +96,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--reload_data",
+        "--reload-data",
         action="store_true",
         help=(
             "Whether to use the old version of datasets if there exists one. Using"
@@ -105,7 +105,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--prompt_idx",
+        "--prompt-idx",
         nargs="+",
         default=[0],
         help="The indices of prompt you want to use.",
@@ -113,19 +113,19 @@ def get_args():
 
     # generation & zero-shot accuracy calculation
     parser.add_argument(
-        "--cal_zeroshot",
+        "--cal-zeroshot",
         type=int,
         default=1,
         help="Whether to calculate the zero-shot accuracy.",
     )
     parser.add_argument(
-        "--cal_hiddenstates",
+        "--cal-hiddenstates",
         type=int,
         default=1,
         help="Whether to extract the hidden states.",
     )
     parser.add_argument(
-        "--cal_logits",
+        "--cal-logits",
         type=int,
         default=0,
         help=(
@@ -134,7 +134,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--token_place",
+        "--token-place",
         type=str,
         default="last",
         help=(
@@ -143,7 +143,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--states_location",
+        "--states-location",
         type=str,
         default="null",
         choices=["encoder", "decoder", "null"],
@@ -154,7 +154,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--states_index",
+        "--states-index",
         nargs="+",
         default=[-1],
         help=(
@@ -174,19 +174,19 @@ def get_args():
         help="Tag added as the suffix of the directory.",
     )
     parser.add_argument(
-        "--save_base_dir",
+        "--save-base-dir",
         type=Path,
         default="generation_results",
         help="The base dir where you want to save the directories of hidden states.",
     )
     parser.add_argument(
-        "--save_csv_name",
+        "--save-csv-name",
         type=str,
         default="results",
         help="Name of csv that store all running records.",
     )
     parser.add_argument(
-        "--save_all_layers",
+        "--save-all-layers",
         action="store_true",
         help=(
             "Whether to save the hidden states of all layers. Notice that this will"
@@ -194,7 +194,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--print_more", action="store_true", help="Whether to print more."
+        "--print-more", action="store_true", help="Whether to print more."
     )
     args = parser.parse_args()
 
