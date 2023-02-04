@@ -76,10 +76,9 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
         args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if args.language_model_type == "decoder" and args.layer < 0:
+        from transformers import AutoConfig
+
         config = AutoConfig.from_pretrained(args.model)
-        layer_num = getattr(
-            config, "num_layers", getattr(config, "num_hidden_layers", None)
-        )
-        args.language_model_type += layer_num
+        args.layer += getattr(config, "num_layers") or config.num_hidden_layers
 
     return args

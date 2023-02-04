@@ -90,15 +90,6 @@ def get_hidden_states(
     mode="minus",
     place="last",
 ):
-    if language_model_type == "decoder" and layer < 0:
-        # TODO make this a function
-        args.model = model_shortcuts.get(args.model, args.model)
-        config = AutoConfig.from_pretrained(args.model)
-        layer_num = getattr(
-            config, "num_layers", getattr(config, "num_hidden_layers", None)
-        )
-        layer += layer_num
-
     print(
         f"start loading {language_model_type} hidden states {layer} for"
         f" {model_name} with {prefix} prefix. Scale: {scale}, Demean: {demean}, Mode:"

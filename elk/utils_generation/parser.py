@@ -247,9 +247,8 @@ def get_args():
         )
     args.model = model_shortcuts.get(args.model, args.model)
     config = AutoConfig.from_pretrained(args.model)
-    layer_num = getattr(
-        config, "num_layers", getattr(config, "num_hidden_layers", None)
-    )
+    layer_num = getattr(config, "num_layers") or config.num_hidden_layers
+
     # Set index into int.
     for i in range(len(args.states_index)):
         pos_index = int(args.states_index[i]) % layer_num
