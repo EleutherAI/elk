@@ -12,6 +12,22 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     prefix = default_config["prefix"]
     models_layer_num = default_config["models-layer-num"]
 
+    parser = get_parser(datasets, models, prefix)
+    args = parser.parse_args()
+
+    # Default to CUDA if available
+    if args.device is None:
+        import torch
+
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    if args.language_model_type == "decoder" and args.layer < 0:
+        args.language_model_type += models_layer_num[args.model]
+
+    return args
+
+
+def get_parser(datasets, models, prefix):
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, choices=models)
     parser.add_argument("--prefix", default="normal", choices=prefix)
@@ -65,15 +81,5 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
             "Weight decay for CCS when using Adam. Used as L2 regularization in LBFGS."
         ),
     )
-    args = parser.parse_args()
 
-    # Default to CUDA if available
-    if args.device is None:
-        import torch
-
-        args.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    if args.language_model_type == "decoder" and args.layer < 0:
-        args.language_model_type += models_layer_num[args.model]
-
-    return args
+    return parser
