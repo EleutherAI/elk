@@ -79,6 +79,6 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
         from transformers import AutoConfig
 
         config = AutoConfig.from_pretrained(args.model)
-        args.layer += getattr(config, "num_layers") or config.num_hidden_layers
+        args.layer += getattr(config, "num_layers", config.num_hidden_layers)
 
     return args
