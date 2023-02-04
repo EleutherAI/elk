@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import json
 import time
+import torch
 
 from pathlib import Path
 
@@ -25,6 +26,7 @@ def set_random_seed(seed):
     """
     random.seed(seed)
     np.random.seed(seed)
+    torch.manual_seed(seed)
 
 
 def get_filtered_filenames(
