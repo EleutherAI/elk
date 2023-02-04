@@ -13,9 +13,8 @@ default_config_path = (
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
 datasets = default_config["datasets"]
-models = default_config["models"]
+model_shortcuts = default_config["model_shortcuts"]
 prefix = default_config["prefix"]
-models_layer_num = default_config["models_layer_num"]
 
 
 def get_filtered_filenames(
@@ -32,7 +31,7 @@ def get_filtered_filenames(
     :param confusion: the confusion
     :param place: the place where the data is from
     """
-    files = map(lambda path: path.name, directory.iterdir())
+    files = map(lambda path: str(path.relative_to(directory)), directory.glob("**/"))
     filter_criteria = (
         lambda file_name: file_name.startswith(model_name)
         and f"_{dataset_name}_" in file_name
@@ -91,9 +90,6 @@ def get_hidden_states(
     mode="minus",
     place="last",
 ):
-    if language_model_type == "decoder" and layer < 0:
-        layer += models_layer_num[model_name]
-
     print(
         f"start loading {language_model_type} hidden states {layer} for"
         f" {model_name} with {prefix} prefix. Scale: {scale}, Demean: {demean}, Mode:"

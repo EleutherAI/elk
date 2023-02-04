@@ -1,16 +1,15 @@
 import argparse
 import json
+from transformers import AutoConfig
 from pathlib import Path
 
 default_config_path = Path(__file__).parent.parent / "default_config.json"
-json_dir = "./default_config"
 
-with open("{}.json".format(json_dir), "r") as f:
-    global_dict = json.load(f)
-dataset_list = global_dict["datasets"]
-registered_models = global_dict["models"]
-registered_prefix = global_dict["prefix"]
-models_layer_num = global_dict["models_layer_num"]
+with open(default_config_path, "r") as f:
+    default_config = json.load(f)
+dataset_list = default_config["datasets"]
+registered_prefix = default_config["prefix"]
+model_shortcuts = default_config["model_shortcuts"]
 
 
 def get_args():
@@ -55,12 +54,6 @@ def get_args():
             " Using this args will help split the model equally in all gpus you"
             " provide."
         ),
-    )
-    parser.add_argument(
-        "--cache_dir",
-        type=str,
-        default="models",
-        help="The path to save and load pretrained model.",
     )
     parser.add_argument(
         "--device",
@@ -202,8 +195,8 @@ def get_args():
     else:
         for dataset_name in args.datasets:
             assert dataset_name in dataset_list, NotImplementedError(
-                f"Dataset {dataset_name} not registered in {json_dir}.json. Please"
-                " check the name of the dataset!"
+                f"Dataset {dataset_name} not registered in {default_config_path}.json."
+                " Please check the name of the dataset!"
             )
 
     # if (args.cal_zeroshot or args.cal_logits) and "bert" in args.model:
@@ -214,15 +207,10 @@ def get_args():
             " Please set cal_logits to 0."
         )
 
-    assert args.model in registered_models, NotImplementedError(
-        f"You use model {args.model}, but it's not registered. For any new model,"
-        " please make sure you implement the code in `load_utils` and `extraction`,"
-        " and then register it in `parser.py`"
-    )
     assert args.prefix in registered_prefix, NotImplementedError(
         f"Invalid prefix name {args.prefix}. Please check your prefix name. To add new"
         " prefix, please mofidy `extraction/prompts.json` and register new"
-        f" prefix in {json_dir}.json."
+        f" prefix in {default_config_path}.json."
     )
 
     # Set default states_location according to model type
@@ -238,15 +226,17 @@ def get_args():
             "BERT type model does not have decoder. Please set `states_location` to"
             " `encoder`."
         )
+    args.model = model_shortcuts.get(args.model, args.model)
+    config = AutoConfig.from_pretrained(args.model)
+    layer_num = getattr(config, "num_layers", config.num_hidden_layers)
 
     # Set index into int.
     for i in range(len(args.states_index)):
-        pos_index = int(args.states_index[i]) % models_layer_num[args.model]
+        pos_index = int(args.states_index[i]) % layer_num
         # For decoder, the index lies in [0,layer_num)
         # For encoder, the index lies in [-layer_num, -1]
-        if args.states_location == "decoder":
-            args.states_index[i] = pos_index
-        else:
-            args.states_index[i] = pos_index - models_layer_num[args.model]
+        args.states_index[i] = (
+            pos_index if args.states_location == "decoder" else pos_index - layer_num
+        )
 
     return args

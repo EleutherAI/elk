@@ -8,12 +8,11 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
         default_config = json.load(f)
 
     datasets = default_config["datasets"]
-    models = default_config["models"]
+    model_shortcuts = default_config["model_shortcuts"]
     prefix = default_config["prefix"]
-    models_layer_num = default_config["models_layer_num"]
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, choices=models)
+    parser.add_argument("--model", type=str)
     parser.add_argument("--prefix", default="normal", choices=prefix)
     parser.add_argument("--dataset", default=datasets[0])
     parser.add_argument("--num_data", type=int, default=10)
@@ -67,6 +66,9 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     )
     args = parser.parse_args()
 
+    # Dereference shortcut
+    args.model = model_shortcuts.get(args.model, args.model)
+
     # Default to CUDA iff available
     if args.device is None:
         import torch
@@ -74,6 +76,9 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
         args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if args.language_model_type == "decoder" and args.layer < 0:
-        args.language_model_type += models_layer_num[args.model]
+        from transformers import AutoConfig
+
+        config = AutoConfig.from_pretrained(args.model)
+        args.layer += getattr(config, "num_layers", config.num_hidden_layers)
 
     return args
