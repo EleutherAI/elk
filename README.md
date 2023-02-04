@@ -51,4 +51,4 @@ Once finished, results will be saved in `evaluation_results/{model}_{prefix}_{se
 
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 
-If you work on a new feature / fix or some other code task, make sure to create an issue and assign it to yourself (Maybe, even share it in the elk channel of Eleuther's Discord with a small note) In this way, others know you are working on the issue and we won't do the same thing twice 👍 Also they can contact you easily.
+If you work on a new feature / fix or some other code task, make sure to create an issue and assign it to yourself (Maybe, even share it in the elk channel of Eleuther's Discord with a small note). In this way, others know you are working on the issue and we won't do the same thing twice 👍 Also they can contact you easily.
