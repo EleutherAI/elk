@@ -14,6 +14,7 @@ import pandas as pd
 import pickle
 import torch
 
+
 def evaluate(args, logistic_regression_model, ccs_model: CCS):
     args.save_dir.mkdir(parents=True, exist_ok=True)
     set_random_seed(args.seed)
