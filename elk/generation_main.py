@@ -1,78 +1,53 @@
 import time
-from elk.utils_generation.parser import get_args
-from elk.utils_generation.load_utils import (
-    load_model,
-    put_model_on_device,
-    load_tokenizer,
-    load_datasets,
-)
-from elk.utils_generation.generation import create_records, create_hiddenstates
-from tqdm import tqdm
+from utils_generation.parser import get_args
+from utils_generation.load_utils import load_model, put_model_on_device, load_tokenizer, create_setname_to_promptframe, get_num_templates_per_dataset
+from utils_generation.generation import calculate_hidden_state
+from utils_generation.save_utils import save_hidden_state_to_np_array, save_records_to_csv, print_elapsed_time
+from tqdm import tqdm 
+import torch
+
 
 if __name__ == "__main__":
-    print(
-        "\n\n-------------------------------- Starting Program"
-        " --------------------------------\n\n"
-    )
+    print("\n\n-------------------------------- Starting Program --------------------------------\n\n")
     start = time.time()
     print(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
 
-    # get args
+    print("\n\n-------------------------------- Args --------------------------------\n\n")
     args = get_args()
+    for key in list(vars(args).keys()):
+        print(f"{key}: {vars(args)[key]}")
+    
 
-    # load model and tokenizer (put model on hardware accelearator if possible)
-    print(
-        "\n\n--------------------------------  Setting up model and tokenizer"
-        " --------------------------------\n\n"
-    )
-    print(f"loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
+    print("\n\n--------------------------------  Setting up model and tokenizer --------------------------------\n\n")
+    print(f"Loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
     model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
-
-    print(
-        "finish loading model to memory. Now start loading to accelerator (gpu or"
-        f" mps). parallelize = {args.parallelize is True}"
-    )
-    model = put_model_on_device(
-        model, parallelize=args.parallelize, device=args.model_device
-    )
-
-    print(
-        f"loading tokenizer for: model name = {args.model} at cache_dir ="
-        f" {args.cache_dir}"
-    )
+    
+    print(f"Linish loading model to memory. Now start loading to accelerator (gpu or mps). parallelize = {args.parallelize is True}")
+    model = put_model_on_device(model, parallelize=args.parallelize, device=args.model_device)
+    
+    print(f"Loading tokenizer for: model name = {args.model} at cache_dir = {args.cache_dir}")
     tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
 
-    print(
-        "\n\n-------------------------------- Loading datasets and calculating hidden"
-        " states --------------------------------\n\n"
-    )
-    all_prefixes = args.prefix
-    for prefix in tqdm(all_prefixes, desc="Iterating over prefixes:", position=0):
-        args.prefix = prefix
-        # load datasets and save if possible
-        name_to_dataframe = load_datasets(args, tokenizer)
-
-        # For each frame, generate the hidden states and save to directories
-        print(
-            "\n\n-------------------------------- Generating hidden states"
-            " --------------------------------\n\n"
-        )
-        create_hiddenstates(model, tokenizer, name_to_dataframe, args)
-        create_records(model, tokenizer, name_to_dataframe, args)
-
-        total_samples = sum(
-            [len(dataframe) for dataframe in name_to_dataframe.values()]
-        )
-        end = time.time()
-        elapsed_minutes = round((end - start) / 60, 1)
-        print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-        print(
-            f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} datasets,"
-            f" {total_samples} samples in total, and took {elapsed_minutes} minutes."
-        )
-        print("\n\n---------------------------------------\n\n")
-
-    print(
-        "-------------------------------- Finishing Program"
-        " --------------------------------"
-    )
+    print("\n\n-------------------------------- Loading datasets --------------------------------\n\n")
+    num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
+    name_to_dataframe = create_setname_to_promptframe(args.data_base_dir, args.datasets, num_templates_per_dataset, args.num_data, 
+                                              tokenizer, args.save_base_dir, args.model, args.prefix, args.token_place)
+                                              
+    
+    print("\n\n-------------------------------- Generating hidden states --------------------------------\n\n")
+    with torch.no_grad():
+        for dataset_name, dataframe in tqdm(name_to_dataframe.items(), desc='Iterating over dataset-prompt combinations:'):
+            # TODO: Could use further cleanup 
+            hidden_state = calculate_hidden_state(args, model, tokenizer, dataframe, args.model)
+            # TODO: Clean up the ['0','1'] mess
+            save_hidden_state_to_np_array(hidden_state, dataset_name, ['0','1'], args)
+        
+        records = []
+        for dataset_name, dataframe in name_to_dataframe.items():
+            records.append({"model": args.model, "dataset": dataset_name,"prefix": args.prefix, "tag": args.tag, 
+                            "cal_hiddenstates": bool(args.cal_hiddenstates),"population": len(dataframe)})
+        save_records_to_csv(records, args)
+                    
+    print_elapsed_time(start, args.prefix, name_to_dataframe)
+    
+    print("-------------------------------- Finishing Program --------------------------------")

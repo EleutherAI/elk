@@ -1,151 +1,84 @@
 import torch
 import numpy as np
 import functools
-from tqdm import tqdm
-from .save_utils import saveArray
-from .save_utils import save_records_to_csv
 
+def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
+    """
+    This function is used to calculate the hidden states of a sequence given a model tokenizer and a dataframe.
+    
+    Args:
+        args: a Namespace object containing the arguments.
+        model: a huggingface model.
+        tokenizer: a huggingface tokenizer.
+        dataframe: a pandas dataframe containing the data.
+        mdl_name: a string containing the name of the model.
+    
+    Returns:
+        hidden_states_per_label: a list of two numpy arrays, each of shape (num_data, layer, hid_dim), where num_data is the number of data points in the dataframe.
+    """
 
-def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
-
-    apply_tokenizer = functools.partial(
-        getToken, tokenizer=tokenizer, device=args.model_device
-    )
-
-    hidden_states = [[], []]
-    pad_answer = apply_tokenizer("")
-
-    if (
-        args.states_location == "decoder"
-    ):  # In suce case, the program should generate decoder hidden states
-        assert (
-            "T0" in mdl_name or "t5" in mdl_name or "gpt" in mdl_name
-        ), NotImplementedError(
-            f"BERT does not have decoder. Relevant args: model={mdl_name},"
-            f" states_location={args.states_location}."
-        )
+    if args.states_location == "decoder":  # In such a case, the program should generate decoder hidden states
+        assert "T0" in mdl_name or "t5" in mdl_name or "gpt" in mdl_name, NotImplementedError(
+            f"BERT does not have decoder. Relevant args: model={mdl_name}, states_location={args.states_location}.") 
 
     if args.states_location == "encoder":
         assert "gpt" not in mdl_name, NotImplementedError(
-            "GPT model does not have encoder. Relevant args: model={mdl_name},"
-            " states_location={args.states_location}."
-        )
+            f"GPT model does not have encoder. Relevant args: model={mdl_name}, states_location={args.states_location}.")
 
-    for idx in range(len(frame)):
+    apply_tokenizer = functools.partial(tokenize_to_gpu, tokenizer=tokenizer, device=args.model_device)
+    pad_answer = apply_tokenizer("")     
+
+    hidden_states_per_label = [[], []]
+    for idx in range(len(dataframe)):
         # calculate the hidden states
         if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
             if args.states_location == "encoder":
-                ids_paired = [
-                    apply_tokenizer(getDataPoint(frame, idx, w)) for w in ["0", "1"]
-                ]
-                hidden_states_paired = [
-                    model(
-                        ids, labels=pad_answer, output_hidden_states=True
-                    ).encoder_hidden_states
-                    for ids in ids_paired
-                ]
+                ids_paired = [apply_tokenizer(get_datapoint_from_df(dataframe, idx, column_name)) for column_name in ["0", "1"]]
+                hidden_states_paired = [model(ids, labels=pad_answer, output_hidden_states=True).encoder_hidden_states for ids in ids_paired]
             else:
-                answer_token = [
-                    apply_tokenizer(w) for w in getDataPoint(frame, idx, "selection")
-                ]
-                # get the input_ids for candidates
-                input_ids = apply_tokenizer(getDataPoint(frame, idx, "null"))
-
-                # calculate the hidden states and take the layer `state_idx`
-                hidden_states_paired = [
-                    model(
-                        input_ids, labels=a, output_hidden_states=True
-                    ).decoder_hidden_states
-                    for a in answer_token
-                ]
+                ans_token = [apply_tokenizer(w) for w in get_datapoint_from_df(dataframe, idx, "selection")]
+                input_ids = apply_tokenizer(get_datapoint_from_df(dataframe, idx, 'null'))
+                hidden_states_paired = [model(input_ids, labels=ans, output_hidden_states=True).decoder_hidden_states for ans in ans_token]
         elif "gpt" in mdl_name or "bert" in mdl_name:
             appender = " " + str(tokenizer.eos_token) if "gpt" in mdl_name else ""
-            ids_paired = [
-                apply_tokenizer(getDataPoint(frame, idx, w) + appender)
-                for w in ["0", "1"]
-            ]
-            # Notice that since gpt and bert only have either decoder or encoder,
-            # we don't need to specify which one to use.
-            hidden_states_paired = [
-                model(ids, output_hidden_states=True).hidden_states
-                for ids in ids_paired
-            ]
+            ids_paired = [apply_tokenizer(get_datapoint_from_df(dataframe, idx, column_name) + appender) for column_name in ["0", "1"]]
+            # Notice that since gpt and bert only have either decoder or encoder, we don't need to specify which one to use.
+            hidden_states_paired = [model(ids, output_hidden_states=True).hidden_states for ids in ids_paired]
         else:
             raise NotImplementedError(f"model {mdl_name} is not supported!")
 
         # extract the corresponding token
-        for i in range(2):
+        for label in range(2):
             # shape (layer * hid_dim)
-            hidden_states[i].append(
-                np.stack(
-                    [
-                        toNP(getStatesToken(w, args.token_place))
-                        for w in hidden_states_paired[i]
-                    ],
-                    axis=0,
-                )
-            )
+            res = np.stack([torch_to_cpu_np(get_hiddenstate_token(w, args.token_place)) for w in hidden_states_paired[label]], axis=0)
+            hidden_states_per_label[label].append(res)
 
-    # For each list in hidden_states, it's a list with `len(frame)` arrays,
-    # and each array has shape `layer * hid_dim`
+    # For each list in hidden_states, it's a list with `len(frame)` arrays, and each array has shape `layer * hid_dim`
     # for each list, stack them to `num_data * layer * hid_dim`
-    hidden_states = [np.stack(w, axis=0) for w in hidden_states]
+    # TODO: WHY ARE WE DOING YET ANOTHER STACKING OPERATION?
+    hidden_states_per_label = [np.stack(w, axis=0) for w in hidden_states_per_label]
 
-    return hidden_states
-
-
-def create_hiddenstates(model, tokenizer, name_to_dataframe, args):
-    """
-    This function will calculate the zeroshot
-    accuracy for each dataset and properly store
-    """
-    with torch.no_grad():
-        for name, dataframe in name_to_dataframe.items():
-            # This part corresponds to hidden states generation
-            hidden_states = calculate_hidden_state(
-                args, model, tokenizer, dataframe, args.model
-            )
-            saveArray(hidden_states, ["0", "1"], name, args)
+    return hidden_states_per_label 
 
 
-def create_records(model, tokenizer, name_to_dataframe, args):
-    """
-    This function will calculate the zeroshot accuracy
-    for each dataset and properly store
-    """
-
-    # create records, will save as csv in the end
-    records = [
-        {
-            "model": args.model,
-            "dataset": key,
-            "prefix": args.prefix,
-            "tag": args.tag,
-            "cal_hiddenstates": bool(args.cal_hiddenstates),
-        }
-        for key in name_to_dataframe.keys()
-    ]
-
-    with torch.no_grad():
-        for name, record in tqdm(
-            zip(name_to_dataframe.keys(), records),
-            desc="Iterating over datasets:",
-            position=1,
-            leave=False,
-        ):
-            dataframe = name_to_dataframe[name]
-            record["population"] = len(dataframe)
-
-    save_records_to_csv(records, args)
-
-
-def getDataPoint(frame, idx, key):
+def get_datapoint_from_df(dataframe, idx, column_name):
     if type(idx) == list:
-        return frame.loc[idx[0] : idx[1] - 1, key]
-    return frame.loc[idx, key]
+        return dataframe.loc[idx[0]: idx[1]-1, column_name]
+    return dataframe.loc[idx, column_name]
 
 
-def getStatesToken(hidden_state, method):
+def get_hiddenstate_token(hidden_state, method):
+    """
+    This function is used to extract the hidden state of a token from the hidden states of a sequence given an extraction method.
+    
+    Args:
+        # TODO: figure out the correct shape for hidden_state 
+        hidden_state: a tensor of shape (seq_len, batch_size, hid_dim) or (batch_size, seq_len, hid_dim)
+        method: a string in ["first", "last", "average"]
+    
+    Returns:
+        a tensor of shape (batch_size, hid_dim) corresponding to the hidden state of the token.
+    """
     if len(hidden_state.shape) == 3:
         hidden_state = hidden_state[0]
     if method == "first":
@@ -155,16 +88,17 @@ def getStatesToken(hidden_state, method):
     elif method == "average":
         return torch.mean(hidden_state, dim=0)
     else:
-        raise NotImplementedError(
-            "Only support `token_place` in `first`, `last` and `average`!"
-        )
+        raise NotImplementedError("Only support `token_place` in `first`, `last` and `average`!")
 
 
-def getToken(s, tokenizer, device):
-    return tokenizer(s, return_tensors="pt").input_ids.to(device)
+def tokenize_to_gpu(s, tokenizer, device):
+    return tokenizer(s, return_tensors='pt').input_ids.to(device)
 
 
-def toNP(x):
-    if type(x) == list:
-        return [w.cpu().numpy() for w in x]
-    return x.cpu().numpy()
+def torch_to_cpu_np(tensor):
+    """
+    Puts a tensor or a list of tensors on a cpu and converts them into a numpy array.
+    """
+    if type(tensor) == list:
+        return [t.cpu().numpy() for t in tensor]
+    return tensor.cpu().numpy()

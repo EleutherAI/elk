@@ -2,80 +2,103 @@ import pandas as pd
 import os
 import numpy as np
 import time
-from pathlib import Path
 
+def get_directory(save_base_dir, model_name, dataset_name_w_num, prefix, token_place, tags=None):
+	"""
+	Create a directory name given a model, dataset, number of data points and prefix.
 
-def getDir(dataset_name_w_num, args):
-    d = "{}_{}_{}_{}".format(
-        args.model, dataset_name_w_num, args.prefix, args.token_place
-    )
-    if args.tag != "":
-        d += "_{}".format(args.tag)
+	Args:
+		save_base_dir (str): the base directory to save the hidden states
+		model_name (str): the name of the model
+		dataset_name_w_num (str): the name of the dataset with the number of data points
+		prefix (str): the prefix
+		token_place (str): Determine which token's hidden states will be generated. Can be `first` or `last` or `average`
+		tags (list): an optional list of strings that describe the hidden state
+	
+	Returns:
+		directory (str): the directory name	
+	"""
+	directory = f"{save_base_dir}/{model_name}_{dataset_name_w_num}_{prefix}_{token_place}"
 
-    return args.save_base_dir / d
+	if tags != None:
+		for tag in tags:
+			directory += f"_{tag}"
 
+	return directory
 
-def saveFrame(frame_dict, args):
-    args.save_base_dir.mkdir(parents=True, exist_ok=True)
+	
+def save_hidden_state_to_np_array(hidden_state, dataset_name_w_num, type_list, args):
+	"""
+	Save the hidden states to a numpy array at the directory created by `get_directory`.
 
-    for key, frame in frame_dict.items():
+	Args:
+		hidden_state (list): a list of hidden state arrays
+		dataset_name_w_num (str): the name of the dataset with the number of data points
+		type_list (list): a list of strings that describe the type of hidden state
+		args (argparse.Namespace): the arguments
 
-        directory = getDir(key, args)
-        directory.mkdir(parents=True, exist_ok=True)
+	Returns:
+		None
+	"""
+	directory = get_directory(args.save_base_dir, args.model, dataset_name_w_num, args.prefix, args.token_place)
+	if not os.path.exists(directory):
+		os.mkdir(directory)
 
-        frame.to_csv(directory / "frame.csv", index=False)
-
-    print("Successfully saving datasets to each directory.")
-
-
-def saveArray(array_list, typ_list, key, args):
-    directory = getDir(key, args)
-    directory.mkdir(parents=True, exist_ok=True)
-
-    # hidden states is num_data * layers * dim
-    # logits is num_data * vocab_size
-    for (typ, array) in zip(typ_list, array_list):
-        if args.save_all_layers or "logits" in typ:
-            np.save(directory / "{}.npy".format(typ), array)
-        else:
-            # only save the last layers for encoder hidden states
-            for idx in args.states_index:
-                np.save(
-                    directory / "{}_{}{}.npy".format(typ, args.states_location, idx),
-                    array[:, idx, :],
-                )
+	# hidden states is num_data * layers * dim
+	# logits is num_data * vocab_size
+	for (typ, array) in zip(type_list, hidden_state):
+		if args.save_all_layers or "logits" in typ:
+			np.save(os.path.join(directory, f"{typ}.npy"), array)
+		else:
+			# only save the last layers for encoder hidden states
+			for idx in args.states_index:
+				np.save(os.path.join(directory, f"{typ}_{args.states_location}{idx}.npy"), array[:, idx,:])
 
 
 def save_records_to_csv(records, args):
-    f = args.save_base_dir / "{}.csv".format(args.save_csv_name)
-    if not f.exists():
-        csv = pd.DataFrame(
-            columns=[
-                "time",
-                "model",
-                "dataset",
-                "prompt_idx",
-                "num_data",
-                "population",
-                "prefix",
-                "cal_zeroshot",
-                "cal_hiddenstates",
-                "log_probs",
-                "calibrated",
-                "tag",
-            ]
-        )
-    else:
-        csv = pd.read_csv(f)
+	"""
+	Save the records to a csv file at the base directory + save csv name.
 
-    t = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+	Args:
+		records (list): a list of dictionaries that contains metadata about the experiment
+		args (argparse.Namespace): the arguments
+	
+	Returns:
+		None
+	"""
+	file_path = os.path.join(args.save_base_dir, f"{args.save_csv_name}.csv")
+	if not os.path.exists(file_path):
+		all_results = pd.DataFrame(columns = ["time", "model", "dataset", "prompt_idx", "num_data", "population", "prefix", "cal_zeroshot", "cal_hiddenstates", "log_probs", "calibrated", "tag"])
+	else:
+		all_results = pd.read_csv(file_path)
+		
+	current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+	for dic in records:
+		dic["time"] = current_time        
+		spliter = dic["dataset"].split("_")
+		dic["dataset"], dic["prompt_idx"] = spliter[0], int(spliter[2][6:])
+	
+	all_results = all_results.append(records, ignore_index = True)
+	all_results.to_csv(file_path, index = False)
 
-    for dic in records:
-        dic["time"] = t
-        spliter = dic["dataset"].split("_")
-        dic["dataset"], dic["prompt_idx"] = spliter[0], int(spliter[2][6:])
-    csv = csv.append(records, ignore_index=True)
+	print(f"Successfully saved {len(records)} items in records to {file_path}")    
 
-    csv.to_csv(f, index=False)
 
-    print("Successfully saved {} items in records to {}".format(len(records), f))
+def print_elapsed_time(start, prefix, name_to_dataframe):
+	"""
+	Print information about the prefix used, the number of data points in a dataset, and the time elapsed.
+
+	Args:
+		start (float): the start time
+		prefix (str): the prefix used
+		name_to_dataframe (dict): a dictionary that maps dataset name to the dataframe
+	
+	Returns:
+		None
+	"""
+	total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
+	end = time.time()
+	elapsed_minutes = round((end - start) / 60, 1)
+	print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+	print(f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} dataset-prefix combinations, {total_samples} samples in total, and took {elapsed_minutes} minutes.")
+	print("\n\n---------------------------------------\n\n")
