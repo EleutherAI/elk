@@ -3,13 +3,11 @@
 **WIP: This codebase is under active development**
 This code is a simplified and refactored version of the original code of the paper *Discovering Latent Knowledge* in the zip file linked in https://github.com/collin-burns/discovering_latent_knowledge
 
-We are planning to expand on the method presented in the DLK paper. For more information on some of our plans, see the following post: https://www.lesswrong.com/posts/bFwigCDMC5ishLz7X/rfc-possible-ways-to-expand-on-discovering-latent-knowledge
-
 ### Dependencies
 
 See requirements.txt file
 
-Our code uses [PyTorch](http://pytorch.org) and [Huggingface Transformers](https://huggingface.co/docs/transformers/index). You will also need to install [promptsouce](https://github.com/bigscience-workshop/promptsource), a toolkit for NLP prompts. We tested our code on Python 3.8.
+Our code uses [PyTorch](http://pytorch.org) and [Huggingface Transformers](https://huggingface.co/docs/transformers/index). You will also need to install [promptsouce](https://github.com/bigscience-workshop/promptsource), a toolkit for NLP prompts. We tested our code on Python 3.9.
 
 
 ### Quick **Start**
@@ -52,3 +50,5 @@ Once finished, results will be saved in `evaluation_results/{model}_{prefix}_{se
 ### Development
 
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
+
+If you work on a new feature / fix or some other code task, make sure to create an issue and assign it to yourself (Maybe, even share it in the elk channel of Eleuther's Discord with a small note) In this way, others know you are working on the issue and we won't do the same thing twice 👍 Also they can contact you easily.
