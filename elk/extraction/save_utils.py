@@ -1,6 +1,6 @@
-import pandas as pd
-import os
+from pathlib import Path
 import numpy as np
+import pandas as pd
 import time
 
 
@@ -20,7 +20,7 @@ def get_directory(
         tags (list): an optional list of strings that describe the hidden state
 
     Returns:
-            directory (str): the directory name
+            directory (Path): the directory
     """
     directory = (
         f"{save_base_dir}/{model_name}_{dataset_name_w_num}_{prefix}_{token_place}"
@@ -30,7 +30,7 @@ def get_directory(
         for tag in tags:
             directory += f"_{tag}"
 
-    return directory
+    return Path(directory)
 
 
 def save_hidden_state_to_np_array(hidden_state, dataset_name_w_num, type_list, args):
@@ -53,19 +53,18 @@ def save_hidden_state_to_np_array(hidden_state, dataset_name_w_num, type_list, a
         args.prefix,
         args.token_place,
     )
-    if not os.path.exists(directory):
-        os.mkdir(directory)
+    directory.mkdir(parents=True, exist_ok=True)
 
     # hidden states is num_data * layers * dim
     # logits is num_data * vocab_size
     for (typ, array) in zip(type_list, hidden_state):
         if args.save_all_layers or "logits" in typ:
-            np.save(os.path.join(directory, f"{typ}.npy"), array)
+            np.save(directory / f"{typ}.npy", array)
         else:
             # only save the last layers for encoder hidden states
             for idx in args.states_index:
                 np.save(
-                    os.path.join(directory, f"{typ}_{args.states_location}{idx}.npy"),
+                    directory / f"{typ}_{args.states_location}{idx}.npy",
                     array[:, idx, :],
                 )
 
@@ -81,8 +80,8 @@ def save_records_to_csv(records, args):
     Returns:
             None
     """
-    file_path = os.path.join(args.save_base_dir, f"{args.save_csv_name}.csv")
-    if not os.path.exists(file_path):
+    file_path = args.save_base_dir / f"{args.save_csv_name}.csv"
+    if not file_path.exists():
         all_results = pd.DataFrame(
             columns=[
                 "time",
@@ -112,28 +111,3 @@ def save_records_to_csv(records, args):
     all_results.to_csv(file_path, index=False)
 
     print(f"Successfully saved {len(records)} items in records to {file_path}")
-
-
-def print_elapsed_time(start, prefix, name_to_dataframe):
-    """
-    Print information about the prefix used, the number of data points in a dataset,
-    and the time elapsed.
-
-    Args:
-        start (float): the start time
-        prefix (str): the prefix used
-        name_to_dataframe (dict): a dictionary that maps dataset name to the dataframe
-
-    Returns:
-            None
-    """
-    total_samples = sum([len(dataframe) for dataframe in name_to_dataframe.values()])
-    end = time.time()
-    elapsed_minutes = round((end - start) / 60, 1)
-    print(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-    print(
-        f"Prefix used: {prefix}, applied to {len(name_to_dataframe)} dataset-prefix"
-        f" combinations, {total_samples} samples in total, and took"
-        f" {elapsed_minutes} minutes."
-    )
-    print("\n\n---------------------------------------\n\n")

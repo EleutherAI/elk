@@ -1,41 +1,23 @@
-import time
-from utils_extraction.parser import get_args
-from utils_extraction.load_utils import (
+from extraction.parser import get_args
+from extraction.load_utils import (
     load_model,
     put_model_on_device,
     load_tokenizer,
     create_setname_to_promptframe,
     get_num_templates_per_dataset,
 )
-from utils_extraction.extraction import calculate_hidden_state
-from utils_extraction.save_utils import (
+from extraction.extraction import calculate_hidden_state
+from extraction.save_utils import (
     save_hidden_state_to_np_array,
     save_records_to_csv,
-    print_elapsed_time,
 )
 from tqdm import tqdm
 import torch
 
 
 if __name__ == "__main__":
-    print(
-        "\n\n-------------------------------- Starting Program"
-        " --------------------------------\n\n"
-    )
-    start = time.time()
-    print(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
-
-    print(
-        "\n\n-------------------------------- Args --------------------------------\n\n"
-    )
     args = get_args()
-    for key in list(vars(args).keys()):
-        print(f"{key}: {vars(args)[key]}")
 
-    print(
-        "\n\n--------------------------------  Setting up model and tokenizer"
-        " --------------------------------\n\n"
-    )
     print(f"Loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
     model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
 
@@ -51,10 +33,7 @@ if __name__ == "__main__":
     )
     tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
 
-    print(
-        "\n\n-------------------------------- Loading datasets"
-        " --------------------------------\n\n"
-    )
+    print("Loading datasets")
     num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
     name_to_dataframe = create_setname_to_promptframe(
         args.data_base_dir,
@@ -68,10 +47,7 @@ if __name__ == "__main__":
         args.token_place,
     )
 
-    print(
-        "\n\n-------------------------------- Generating hidden states"
-        " --------------------------------\n\n"
-    )
+    print("Extracting hidden states")
     with torch.no_grad():
         for dataset_name, dataframe in tqdm(
             name_to_dataframe.items(),
@@ -97,10 +73,3 @@ if __name__ == "__main__":
                 }
             )
         save_records_to_csv(records, args)
-
-    print_elapsed_time(start, args.prefix, name_to_dataframe)
-
-    print(
-        "-------------------------------- Finishing Program"
-        " --------------------------------"
-    )

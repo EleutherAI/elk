@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import random
 from promptsource.templates import DatasetTemplates
-from copy import deepcopy
 
 
 filter_length = 500
@@ -357,7 +356,7 @@ def concatAnswer(question, answer, mdl_name, confusion):
         return question + " " + answer
 
 
-def get_queston_answer(prompter, prompt_idx, dataframe, data_idx):
+def get_question_answer(prompter, prompt_idx, dataframe, data_idx):
     prompt_name = prompter.all_template_names[prompt_idx]
     prompt_template = prompter[prompt_name]
     text_label_pair = {k: v for k, v in dataframe.loc[data_idx].items()}
@@ -406,7 +405,7 @@ def construct_prompt_dataframe(
         # TODO: FIX THESE BUGS
         # "ag-news", "dbpedia-14" don't appear in the results
         # '"piqa", mixed up questions: don't know what's going on here yet
-        question, answer_choices, actual_label = get_queston_answer(
+        question, answer_choices, actual_label = get_question_answer(
             prompter, prompt_idx, dataframe, data_idx
         )
         concat_data = [

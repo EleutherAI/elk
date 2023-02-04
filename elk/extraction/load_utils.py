@@ -8,7 +8,6 @@ from transformers import (
     AutoModelWithLMHead,
     AutoModelForSequenceClassification,
 )
-import os
 import torch
 import pandas as pd
 from extraction.construct_prompts import construct_prompt_dataframe
@@ -303,26 +302,26 @@ def create_setname_to_promptframe(
     Returns:
         name_to_dataframe: dict, the dictionary of dataframes.
     """
-    create_directory(data_base_dir)
+    data_base_dir.mkdir(parents=True, exist_ok=True)
     name_to_dataframe = {}
     for dataset_name, num_prompts in zip(all_dataset_names, num_prompts_per_dataset):
         for prompt_idx in range(num_prompts):
-            path = os.path.join(data_base_dir, f"rawdata_{dataset_name}_{num_data}.csv")
+            path = data_base_dir / f"rawdata_{dataset_name}_{num_data}.csv"
 
             dataset_name_with_num = f"{dataset_name}_{num_data}_prompt{prompt_idx}"
             complete_path = get_directory(
                 save_base_dir, model, dataset_name_with_num, prefix, token_place
             )
-            dataframe_path = os.path.join(complete_path, "frame.csv")
+            dataframe_path = complete_path / "frame.csv"
 
-            if os.path.exists(dataframe_path):
+            if dataframe_path.exists():
                 prompt_dataframe = pd.read_csv(
                     dataframe_path, converters={"selection": eval}
                 )
                 name_to_dataframe[dataset_name_with_num] = prompt_dataframe
             else:
-                cache_dir = os.path.join(data_base_dir, "cache")
-                create_directory(cache_dir)
+                cache_dir = data_base_dir / "cache"
+                cache_dir.mkdir(parents=True, exist_ok=True)
 
                 # This is a dataframe with random order data
                 # Can just take enough data from scratch and then stop as needed
@@ -349,20 +348,12 @@ def create_setname_to_promptframe(
                 name_to_dataframe[dataset_name_with_num] = prompt_dataframe
 
                 # Save data
-                create_directory(save_base_dir)
-                create_directory(complete_path)
-                complete_frame_csv_path = os.path.join(complete_path, "frame.csv")
+                save_base_dir.mkdir(parents=True, exist_ok=True)
+                complete_path.mkdir(parents=True, exist_ok=True)
+                complete_frame_csv_path = complete_path / "frame.csv"
                 prompt_dataframe.to_csv(complete_frame_csv_path, index=False)
 
     return name_to_dataframe
-
-
-def create_directory(name):
-    """
-    This function will create a directory if it does not exist.
-    """
-    if not os.path.exists(name):
-        os.makedirs(name)
 
 
 def get_num_templates_per_dataset(all_dataset_names):

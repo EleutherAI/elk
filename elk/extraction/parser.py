@@ -31,7 +31,7 @@ def get_args():
         nargs="+",
         help=(
             "List of name of datasets you want to use. Please make sure that the path"
-            ' of file is like `os.path.join(data_base_dir, name + ".csv"` for all name'
+            ' of file is like `data_base_dir / (name + ".csv")` for all name'
             " in datasets"
         ),
     )

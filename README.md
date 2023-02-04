@@ -32,7 +32,7 @@ python extraction_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --pref
 
 To test `deberta-v2-xxlarge-mnli` with the misleading prefix, and only the `imdb` and `amazon-polarity` datasets, while printing extra information, run:
 
-The name of prefix can be found in `./utils_extraction/construct_prompts.py`. This command will save hidden states to `extraction_results` and will save zero-shot accuracy to `extraction_results/extraction_results.csv`.
+The name of prefix can be found in `./extraction/construct_prompts.py`. This command will save hidden states to `extraction_results` and will save zero-shot accuracy to `extraction_results/extraction_results.csv`.
 
 1. To train a ccs model and a logistic regression model
 
