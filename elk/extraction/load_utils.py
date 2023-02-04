@@ -133,7 +133,7 @@ def load_tokenizer(mdl_name, cache_dir):
     return tokenizer
 
 
-def get_sample_data(dataset_name, split_dataframes, sample_amount):
+def get_sample_data(dataset_name: str, split_dataframes, sample_amount):
     """
     Get shuffled sample data from the dataset.
     Args:
@@ -165,8 +165,8 @@ def get_sample_data(dataset_name, split_dataframes, sample_amount):
     # These splits do not necessarily correspond to train and test, they could also be
     # train and eval or something else
     # (It depends on the dataset splits that the dataset offers through HuggingFace)
-    train_split = shuffled_split_dataframes[0]
-    test_split = shuffled_split_dataframes[1]
+    train_split, test_split = shuffled_split_dataframes
+
     for label_idx, label in enumerate(all_label_names):
         label_subset = test_split[label_column_name] == label
         train_subset = train_split[label_subset]
@@ -227,14 +227,14 @@ def get_hugging_face_load_name(dataset_name):
         list of str, the name of the dataset in the right format for the huggingface
         datasets library.
     """
-    if dataset_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14", "piqa"]:
-        return [dataset_name.replace("-", "_")]
-    elif dataset_name in ["cola", "rte", "boolq"]:
-        return ["super_glue", dataset_name.replace("-", "_")]
+    if dataset_name in ["cola", "rte", "boolq"]:
+        return ["super_glue", dataset_name]
     elif dataset_name in ["qnli"]:
-        return ["glue", dataset_name.replace("-", "_")]
+        return ["glue", dataset_name]
     elif dataset_name == "story-cloze":
         return ["story_cloze", "2016"]
+    else:
+        return [dataset_name.replace("-", "_")]
 
 
 def get_raw_dataset(dataset_name, cache_dir):
