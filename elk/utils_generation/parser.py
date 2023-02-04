@@ -1,5 +1,6 @@
 import argparse
 import json
+from pathlib import Path
 
 default_config_path = Path(__file__).parent.parent / "default_config.json"
 
