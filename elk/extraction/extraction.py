@@ -1,6 +1,4 @@
 import torch
-import numpy as np
-import functools
 
 
 def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
@@ -36,8 +34,8 @@ def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
             f" states_location={args.states_location}."
         )
 
-    apply_tokenizer = functools.partial(
-        tokenize_to_gpu, tokenizer=tokenizer, device=args.device
+    apply_tokenizer = lambda s: tokenizer(s, return_tensors="pt").input_ids.to(
+        args.device
     )
     pad_answer = apply_tokenizer("")
 
@@ -47,7 +45,7 @@ def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
         if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
             if args.states_location == "encoder":
                 ids_paired = [
-                    apply_tokenizer(get_datapoint_from_df(dataframe, idx, column_name))
+                    apply_tokenizer(dataframe.loc[idx, column_name])
                     for column_name in ["0", "1"]
                 ]
                 hidden_states_paired = [
@@ -58,12 +56,9 @@ def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
                 ]
             else:
                 ans_token = [
-                    apply_tokenizer(w)
-                    for w in get_datapoint_from_df(dataframe, idx, "selection")
+                    apply_tokenizer(w) for w in dataframe.loc[idx, "selection"]
                 ]
-                input_ids = apply_tokenizer(
-                    get_datapoint_from_df(dataframe, idx, "null")
-                )
+                input_ids = apply_tokenizer(dataframe.loc[idx, "null"])
                 hidden_states_paired = [
                     model(
                         input_ids, labels=answer, output_hidden_states=True
@@ -73,9 +68,7 @@ def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
         elif "gpt" in mdl_name or "bert" in mdl_name:
             appender = " " + str(tokenizer.eos_token) if "gpt" in mdl_name else ""
             ids_paired = [
-                apply_tokenizer(
-                    get_datapoint_from_df(dataframe, idx, column_name) + appender
-                )
+                apply_tokenizer(dataframe.loc[idx, column_name] + appender)
                 for column_name in ["0", "1"]
             ]
             # Notice that since gpt and bert only have either decoder or encoder, we
@@ -90,12 +83,12 @@ def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
         # extract the corresponding token
         for label in range(2):
             # shape (layer * hid_dim)
-            res = np.stack(
+            res = torch.stack(
                 [
-                    torch_to_cpu_np(get_hiddenstate_token(w, args.token_place))
+                    get_hiddenstate_token(w, args.token_place)
                     for w in hidden_states_paired[label]
                 ],
-                axis=0,
+                dim=0,
             )
             hidden_states_per_label[label].append(res)
 
@@ -103,15 +96,7 @@ def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
     # array has shape `layer * hid_dim`
     # for each list, stack them to `num_data * layer * hid_dim`
     # TODO: WHY ARE WE DOING YET ANOTHER STACKING OPERATION?
-    hidden_states_per_label = [np.stack(w, axis=0) for w in hidden_states_per_label]
-
-    return hidden_states_per_label
-
-
-def get_datapoint_from_df(dataframe, idx, column_name):
-    if type(idx) == list:
-        return dataframe.loc[idx[0] : idx[1] - 1, column_name]
-    return dataframe.loc[idx, column_name]
+    return [torch.stack(w, dim=0) for w in hidden_states_per_label]
 
 
 def get_hiddenstate_token(hidden_state, method):
@@ -141,16 +126,3 @@ def get_hiddenstate_token(hidden_state, method):
         raise NotImplementedError(
             "Only support `token_place` in `first`, `last` and `average`!"
         )
-
-
-def tokenize_to_gpu(s, tokenizer, device):
-    return tokenizer(s, return_tensors="pt").input_ids.to(device)
-
-
-def torch_to_cpu_np(tensor):
-    """
-    Puts a tensor or a list of tensors on a cpu and converts them into a numpy array.
-    """
-    if type(tensor) == list:
-        return [t.cpu().numpy() for t in tensor]
-    return tensor.cpu().numpy()

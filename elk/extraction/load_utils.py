@@ -129,8 +129,6 @@ def load_tokenizer(mdl_name, cache_dir):
         )
     elif "roberta" in mdl_name:
         tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-    elif "t5" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
 
     return tokenizer
 
@@ -231,7 +229,7 @@ def get_hugging_face_load_name(dataset_name):
     """
     if dataset_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14", "piqa"]:
         return [dataset_name.replace("-", "_")]
-    elif dataset_name in ["copa", "rte", "boolq"]:
+    elif dataset_name in ["cola", "rte", "boolq"]:
         return ["super_glue", dataset_name.replace("-", "_")]
     elif dataset_name in ["qnli"]:
         return ["glue", dataset_name.replace("-", "_")]
@@ -264,7 +262,7 @@ def get_raw_dataset(dataset_name, cache_dir):
 
     if dataset_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14"]:
         dataset_split_names = ["test", "train"]
-    elif dataset_name in ["copa", "rte", "boolq", "piqa", "qnli"]:
+    elif dataset_name in ["cola", "rte", "boolq", "piqa", "qnli"]:
         dataset_split_names = ["validation", "train"]
     elif dataset_name in ["story-cloze"]:
         dataset_split_names = ["test", "validation"]
@@ -380,7 +378,7 @@ def get_num_templates_per_dataset(all_dataset_names):
                     *get_hugging_face_load_name(dataset_name)
                 ).all_template_names
             )
-        if dataset_name == "copa":
+        if dataset_name == "cola":
             amount_of_templates -= 4  # do not use the last four prompts
         num_templates_per_dataset.append(amount_of_templates)
 
