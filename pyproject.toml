@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elk"
+description = "Keeping language models honest by directly eliciting knowledge encoded in their activations"
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["nlp", "interpretability", "language-models", "explainable-ai"]
+license = {text = "MIT License"}
+dependencies = [
+    "datasets==2.8.0",
+    "numpy==1.23.5",
+    "pandas==1.5.1",
+    "transformers==4.25.1",
+    "promptsource==0.2.3",
+    "torch",
+    "sentencepiece==0.1.97",
+    "protobuf==3.20.*",
+    "scikit-learn==1.2.0",
+    "umap-learn==0.5.3",
+    "matplotlib==3.6.3",
+    "tqdm==4.64.1"
+]
+version = "0.0.1"
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit",
+    "pytest",
+]
+
+[tool.setuptools]
+packages = ["elk"]

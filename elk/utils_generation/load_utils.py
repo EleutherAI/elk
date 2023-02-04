@@ -6,7 +6,7 @@ from transformers import (
     GPT2Tokenizer,
     AutoModelForSeq2SeqLM,
     AutoModelWithLMHead,
-    AutoModelForSequenceClassification
+    AutoModelForSequenceClassification,
 )
 import os
 import torch
@@ -25,7 +25,7 @@ def load_model(mdl_name, cache_dir):
     Args:
         mdl_name (str): name of the model
         cache_dir (str): path to the cache directory
-    
+
     Returns:
         model (torch.nn.Module): model in evaluation mode
     """
@@ -40,14 +40,17 @@ def load_model(mdl_name, cache_dir):
     elif "deberta" in mdl_name:
         model = AutoModelForSequenceClassification.from_pretrained(f"microsoft/{mdl_name}", cache_dir=cache_dir)
     elif "roberta" in mdl_name:
-        model = AutoModelForSequenceClassification.from_pretrained(mdl_name, cache_dir = cache_dir)
+        model = AutoModelForSequenceClassification.from_pretrained(
+            mdl_name, cache_dir=cache_dir
+        )
     elif "t5" in mdl_name:
         model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
     
     # We only use the models for inference, so we don't need to train them and hence don't need to track gradients
     return model.eval()
 
-def put_model_on_device(model, parallelize, device = "cuda"):
+
+def put_model_on_device(model, parallelize, device="cuda"):
     """
     Put model on device (hardware accelearator like "cuda", "mps" or simply "cpu").
     
@@ -55,7 +58,7 @@ def put_model_on_device(model, parallelize, device = "cuda"):
         model (torch.nn.Module): model to put on device
         parallelize (bool): whether to parallelize the model
         device (str): device to put the model on
-        
+
     Returns:
         model (torch.nn.Module): model on device
     """
@@ -69,26 +72,27 @@ def put_model_on_device(model, parallelize, device = "cuda"):
         else:
             mps_device = torch.device("mps")
             model.to(mps_device)
-    elif parallelize == True:
+    elif parallelize:
         model.parallelize()
-    elif device == 'cuda':
+    elif device == "cuda":
         if not torch.cuda.is_available():
             print("CUDA not available, using CPU instead.")
         else:
-            model.to('cuda')
+            model.to("cuda")
     else:
         model.to("cpu")
 
     return model
 
+
 def load_tokenizer(mdl_name, cache_dir):
     """
     Load tokenizer for the model.
-    
+
     Args:
         mdl_name (str): name of the model
         cache_dir (str): path to the cache directory
-    
+
     Returns:
         tokenizer: tokenizer for the model
     """
@@ -224,7 +228,8 @@ def get_raw_dataset(dataset_name, cache_dir):
 
 def create_setname_to_promptframe(data_base_dir, all_dataset_names, num_prompts_per_dataset, num_data, tokenizer, save_base_dir, model, prefix, token_place):
     """
-    This function will create a dictionary of dataframes, where the key is the dataset name and the value is the dataframe.
+    This function will create a dictionary of dataframes,
+    where the key is the dataset name and the value is the dataframe.
 
     Args:
         data_base_dir: str, the directory to save the raw data csv files.
