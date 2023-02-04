@@ -1,6 +1,7 @@
 *.csv
 *.npy
 elk/models/*
+elk/trained/*
 nohup.out
 .idea
 *.pkl

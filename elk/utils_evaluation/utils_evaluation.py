@@ -15,7 +15,7 @@ with open(default_config_path, "r") as f:
 datasets = default_config["datasets"]
 models = default_config["models"]
 prefix = default_config["prefix"]
-models_layer_num = default_config["models_layer_num"]
+models_layer_num = default_config["models-layer-num"]
 
 
 def get_filtered_filenames(
