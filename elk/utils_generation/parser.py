@@ -1,6 +1,6 @@
 import argparse
 import json
-from transformers import AutoConfig
+from transformers import AutoConfig, PretrainedConfig
 from pathlib import Path
 
 
@@ -48,32 +48,29 @@ def get_args():
             )
         )
 
-    # Set default states_location according to model type
-    if args.states_location == "null":
-        args.states_location = "decoder" if "gpt" in args.model else "encoder"
-
-    if args.states_location == "encoder" and args.cal_hiddenstates:
-        assert "gpt" not in args.model, ValueError(
-            "GPT type model does not have encoder. Please set `states_location` to"
-            " `decoder`."
-        )
-    if args.states_location == "decoder" and args.cal_hiddenstates:
-        assert "bert" not in args.model, ValueError(
-            "BERT type model does not have decoder. Please set `states_location` to"
-            " `encoder`."
-        )
-
     args.model = model_shortcuts.get(args.model, args.model)
     config = AutoConfig.from_pretrained(args.model)
-    layer_num = getattr(config, "num_layers", config.num_hidden_layers)
+    assert isinstance(config, PretrainedConfig)
+
+    num_layers = getattr(config, "num_layers", config.num_hidden_layers)
+    assert isinstance(num_layers, int)
+
+    # Set default states_location according to model type
+    if args.states_location is None:
+        args.states_location = "decoder" if not config.is_encoder_decoder else "encoder"
+    elif args.states_location == "encoder" and not config.is_encoder_decoder:
+        raise NotImplementedError(
+            "You set states_location to encoder, but the model you use is not an"
+            " encoder-decoder model. Please check your model string."
+        )
 
     # Set index into int.
     for i in range(len(args.states_index)):
-        pos_index = int(args.states_index[i]) % layer_num
+        pos_index = int(args.states_index[i]) % num_layers
         # For decoder, the index lies in [0,layer_num)
         # For encoder, the index lies in [-layer_num, -1]
         args.states_index[i] = (
-            pos_index if args.states_location == "decoder" else pos_index - layer_num
+            pos_index if args.states_location == "decoder" else pos_index - num_layers
         )
 
     print(
@@ -212,8 +209,8 @@ def get_parser():
     parser.add_argument(
         "--states-location",
         type=str,
-        default="null",
-        choices=["encoder", "decoder", "null"],
+        default=None,
+        choices=("encoder", "decoder"),
         help=(
             "Whether to generate encoder hidden states or decoder hidden states."
             " Default is null, which will be extended to decoder when the model is gpt"
