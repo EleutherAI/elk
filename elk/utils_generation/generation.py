@@ -22,27 +22,11 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
     hidden_states = [[], []]
     pad_answer = apply_tokenizer("")
 
-    if (
-        args.states_location == "decoder"
-    ):  # In suce case, the program should generate decoder hidden states
-        assert (
-            "T0" in mdl_name or "t5" in mdl_name or "gpt" in mdl_name
-        ), NotImplementedError(
-            f"BERT does not have decoder. Relevant args: model={mdl_name},"
-            f" states_location={args.states_location}."
-        )
-
-    if args.states_location == "encoder":
-        assert "gpt" not in mdl_name, NotImplementedError(
-            "GPT model does not have encoder. Relevant args: model={mdl_name},"
-            " states_location={args.states_location}."
-        )
-
     is_t5 = "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name
 
     for idx in range(len(frame)):
         # calculate the hidden states
-        if is_t5 and args.states_location == "decoder":
+        if model.is_encoder_decoder and args.states_location == "decoder":
             answer_token = [
                 apply_tokenizer(w) for w in getDataPoint(frame, idx, "selection")
             ]
