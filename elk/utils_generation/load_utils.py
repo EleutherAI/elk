@@ -152,7 +152,22 @@ def loadFromDatasets(set_name, max_num):
     if set_name != "story-cloze":
         raw_set = load_dataset(*getLoadName(set_name))
     else:
-        raw_set = load_dataset(*getLoadName(set_name), data_dir="./datasets/rawdata")
+        try:
+            raw_set = load_dataset(
+                *getLoadName(set_name), data_dir="./datasets/rawdata"
+            )
+        except Exception:
+            # the whole exception stack will be printed out
+            # so we don't loose any information
+            raise FileNotFoundError(
+                "story-cloze is not available on huggingface.\n"
+                "Fill this form http://goo.gl/forms/aQz39sdDrO "
+                "to get access to the dataset.\n "
+                "You should get immediately an email with "
+                "a link to download the dataset.\n"
+                "Then put the two files directly in the folder "
+                "./datasets/rawdata/ and try again."
+            )
 
     if set_name in ["imdb", "amazon-polarity", "ag-news", "dbpedia-14"]:
         token_list = ["test", "train"]
