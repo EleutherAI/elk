@@ -3,10 +3,10 @@ from elk.utils_generation.parser import get_args
 from elk.utils_generation.load_utils import (
     load_model,
     put_model_on_device,
-    load_tokenizer,
     load_datasets,
 )
 from elk.utils_generation.generation import create_records, create_hiddenstates
+from transformers import AutoTokenizer
 from tqdm import tqdm
 
 if __name__ == "__main__":
@@ -25,8 +25,8 @@ if __name__ == "__main__":
         "\n\n--------------------------------  Setting up model and tokenizer"
         " --------------------------------\n\n"
     )
-    print(f"loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
-    model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
+    print(f"loading model: model name = {args.model}")
+    model = load_model(mdl_name=args.model)
 
     print(
         "finish loading model to memory. Now start loading to accelerator (gpu or"
@@ -34,11 +34,8 @@ if __name__ == "__main__":
     )
     model = put_model_on_device(model, parallelize=args.parallelize, device=args.device)
 
-    print(
-        f"loading tokenizer for: model name = {args.model} at cache_dir ="
-        f" {args.cache_dir}"
-    )
-    tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
+    print(f"loading tokenizer for: model name = {args.model}")
+    tokenizer = AutoTokenizer.from_pretrained(args.model)
 
     print(
         "\n\n-------------------------------- Loading datasets and calculating hidden"

@@ -56,12 +56,6 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--cache_dir",
-        type=Path,
-        default="models",
-        help="The path to save and load pretrained model.",
-    )
-    parser.add_argument(
         "--device",
         type=str,
         help="PyTorch device to use. Default is cuda:0 if available.",
