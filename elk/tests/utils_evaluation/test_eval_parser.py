@@ -2,7 +2,7 @@ import json
 from elk.utils_evaluation.parser import get_parser
 
 
-def test_args_no_lowercase():
+def test_args_no_underscores():
     """
     Assert that there are no underscores in the CLI parameter names. We wish
     to enforce this style since the GNU style guide recommends against it
