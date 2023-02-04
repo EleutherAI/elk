@@ -3,13 +3,11 @@
 **WIP: This codebase is under active development**
 This code is a simplified and refactored version of the original code of the paper *Discovering Latent Knowledge* in the zip file linked in https://github.com/collin-burns/discovering_latent_knowledge
 
-We are planning to expand on the method presented in the DLK paper. For more information on some of our plans, see the following post: https://www.lesswrong.com/posts/bFwigCDMC5ishLz7X/rfc-possible-ways-to-expand-on-discovering-latent-knowledge
-
 ### Dependencies
 
 See requirements.txt file
 
-Our code uses [PyTorch](http://pytorch.org) and [Huggingface Transformers](https://huggingface.co/docs/transformers/index). You will also need to install [promptsouce](https://github.com/bigscience-workshop/promptsource), a toolkit for NLP prompts. We tested our code on Python 3.8.
+Our code uses [PyTorch](http://pytorch.org) and [Huggingface Transformers](https://huggingface.co/docs/transformers/index). You will also need to install [promptsouce](https://github.com/bigscience-workshop/promptsource), a toolkit for NLP prompts. We tested our code on Python 3.9.
 
 
 ### Quick **Start**
@@ -29,7 +27,7 @@ Furthermore:
 1. To generate the hidden states for one model `mdl` and all datasets, `cd elk` and then run
 
 ```bash
-python generation_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --prefix normal --model_device cuda --num_data 1000
+python generation_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --prefix normal --device cuda --num-data 1000
 ```
 
 To test `deberta-v2-xxlarge-mnli` with the misleading prefix, and only the `imdb` and `amazon-polarity` datasets, while printing extra information, run:
@@ -39,12 +37,12 @@ The name of prefix can be found in `./utils_generation/construct_prompts.py`. Th
 1. To train a ccs model and a logistic regression model
 
 ```bash
-python train.py --model deberta-v2-xxlarge-mnli --prefix normal --dataset imdb --num_data 1000
+python train.py --model deberta-v2-xxlarge-mnli --prefix normal --dataset imdb --num-data 1000
 ```
 
 and evaluate:
 ```bash
-python evaluate.py --model deberta-v2-xxlarge-mnli --dataset imdb --num_data 1000
+python evaluate.py --model deberta-v2-xxlarge-mnli --dataset imdb --num-data 1000
 ```
 
 Once finished, results will be saved in `evaluation_results/{model}_{prefix}_{seed}.csv`
@@ -52,3 +50,5 @@ Once finished, results will be saved in `evaluation_results/{model}_{prefix}_{se
 ### Development
 
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
+
+If you work on a new feature / fix or some other code task, make sure to create an issue and assign it to yourself (Maybe, even share it in the elk channel of Eleuther's Discord with a small note). In this way, others know you are working on the issue and people won't do the same thing twice 👍 Also others can contact you easily.

@@ -1,272 +1,222 @@
-from typing import Literal
-import numpy as np
+from copy import deepcopy
+from dataclasses import dataclass
+from pathlib import Path
+from .losses import ccs_squared_loss
+from typing import cast, Literal, Optional, Type, Union
 import torch
-import matplotlib.pyplot as plt
+import torch.nn as nn
 
 
-class CCS(object):
+@dataclass
+class TrainParams:
+    num_epochs: int = 1000
+    num_tries: int = 10
+    lr: float = 1e-2
+    weight_decay: float = 0.01
+    optimizer: Literal["adam", "lbfgs"] = "adam"
+
+
+class CCS(nn.Module):
     def __init__(
         self,
-        verbose=False,
-        include_bias=True,
-        num_epochs=1000,
-        num_tries=10,
-        learning_rate=1e-2,
-        weight_decay=0.01,
-        optimizer: Literal["adam", "lbfgs"] = "adam",
-        device="cuda",
+        in_features: int,
+        *,
+        activation: Type[nn.Module] = nn.GELU,
+        bias: bool = True,
+        device: str = "cuda",
+        hidden_size: Optional[int] = None,
+        init: Literal["default", "spherical"] = "default",
+        num_layers: int = 1,
     ):
-        self.include_bias = include_bias
-        self.verbose = verbose
-        self.num_epochs = num_epochs
-        self.num_tries = num_tries
-        self.learning_rate = learning_rate
-        self.weight_decay = weight_decay
-        self.optimizer = optimizer
+        super().__init__()
+
+        # By default, use an MLP expansion ratio of 4/3. This ratio is used by
+        # Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
+        # MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
+        # but this seems to lead to excessively large MLPs when num_layers > 2.
+        hidden_size = hidden_size or 4 * in_features // 3
+
+        self.probe = nn.Sequential(
+            nn.Linear(
+                in_features,
+                1 if num_layers < 2 else hidden_size,
+                bias=bias,
+                device=device,
+            ),
+        )
+
+        for i in range(1, num_layers):
+            self.probe.append(activation())
+            self.probe.append(
+                nn.Linear(
+                    hidden_size,
+                    1 if i == num_layers - 1 else hidden_size,
+                    bias=bias,
+                    device=device,
+                )
+            )
+
+        self.init = init
         self.device = device
 
-    def init_parameters(self):
-        """
-        Initializes the parameters of the model.
+    def reset_parameters(self):
+        # Mathematically equivalent to the unusual initialization scheme used in the
+        # original paper. They sample a random Gaussian vector of dim in_features + 1,
+        # normalize to the unit sphere, then add an extra all-ones dimension to the
+        # input and compute the inner product. Here, we use nn.Linear with an explicit
+        # bias term, but use the same initialization.
+        if self.init == "spherical":
+            assert len(self.probe) == 1, "Only linear probes can use spherical init"
+            probe = cast(nn.Linear, self.probe[0])  # Pylance gets the type wrong here
 
-        Returns:
-            numpy.ndarray: The initialized parameters of the model.
-        """
-        init_theta = np.random.randn(self.d).reshape(1, -1)
-        init_theta = init_theta / np.linalg.norm(init_theta)
-        return init_theta
+            theta = torch.randn(1, probe.in_features + 1, device=probe.weight.device)
+            theta /= theta.norm()
+            probe.weight.data = theta[:, :-1]
+            probe.bias.data = theta[:, -1]
 
-    def add_ones_dimension(self, x):
-        """
-        Adds an additional dimension of ones to the input x,
-        if include_bias is True, else returns the original input x.
-
-        Parameters:
-            x (numpy.ndarray): The input array.
-
-        Returns:
-            numpy.ndarray: The input array x with an additional dimension of ones,
-            if include_bias is True. Otherwise, returns the original input x.
-            otherwise it simply returns the original input x without any modifications.
-        """
-        if self.include_bias:
-            # by adding a dimension of ones to the input array,
-            # the bias term can be easily included in the calculation
-            # without having to modify the input data
-            ones = np.ones(x.shape[0])[:, None]
-            return np.concatenate([x, ones], axis=-1)
+        # Default PyTorch initialization (Kaiming uniform)
+        elif self.init == "default":
+            for layer in self.probe:
+                if isinstance(layer, nn.Linear):
+                    layer.reset_parameters()
         else:
-            return x
+            raise ValueError(f"Unknown init: {self.init}")
 
-    def get_confidence_loss(self, p0, p1):
+    # These methods will do something fancier in the future
+    @classmethod
+    def load(cls, path: Union[Path, str]):
+        return torch.load(path)
+
+    def save(self, path: Union[Path, str]):
+        # TODO: Save separate JSON and PT files for the CCS model.
+        torch.save(self, path)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the raw score output of the probe on `x`."""
+        return self.probe(x)
+
+    def fit_once(self, x0, x1, train_params: TrainParams):
         """
-        Assumes p0 and p1 are each a tensor of probabilities of shape (n,1) or (n,)
-        Assumes p0 is close to 1-p1
-        Encourages p0 and p1 to be close to 0 or 1 (far from 0.5)
+        Do a single training run of num_epochs epochs
         """
-        min_p = torch.min(p0, p1)
-        return (min_p**2).mean(0)
-
-    def get_consistency_loss(self, p0, p1):
-        """
-        Assumes p0 and p1 are each a tensor of probabilities of shape (n,1) or (n,)
-        Encourages p0 to be close to 1-p1 and vice versa
-        """
-        return ((p0 - (1 - p1)) ** 2).mean(0)
-
-    def get_loss(self, p0, p1):
-        """
-        Returns the ConsistencyModel loss for
-        two probabilities each of shape (n,1) or (n,)
-        p0 and p1 correspond to the probabilities
-        """
-        consistency_loss = self.get_consistency_loss(p0, p1)
-        confidence_loss = self.get_confidence_loss(p0, p1)
-
-        return consistency_loss + confidence_loss
-
-    # return the probability tuple (p0, p1)
-
-    def transform(self, data: list, theta_np=None):
-        if theta_np is None:
-            theta_np = self.best_theta
-        z0 = torch.tensor(self.add_ones_dimension(data[0]).dot(theta_np.T))
-        z1 = torch.tensor(self.add_ones_dimension(data[1]).dot(theta_np.T))
-
-        p0 = torch.sigmoid(z0).numpy()
-        p1 = torch.sigmoid(z1).numpy()
-
-        return p0, p1
-
-    # Return the accuracy of (data, label)
-    def get_accuracy(self, theta_np, data: list, label, getloss):
-        """
-        Computes the accuracy of a given direction theta_np represented as a numpy array
-        """
-        p0, p1 = self.transform(data, theta_np)
-        avg_confidence = 0.5 * (p0 + (1 - p1))
-
-        label = label.reshape(-1)
-        predictions = (avg_confidence < 0.5).astype(int)[:, 0]
-        acc = (predictions == label).mean()
-        if getloss:
-            loss = (
-                self.get_loss(torch.tensor(p0), torch.tensor(p1)).cpu().detach().item()
-            )
-            return max(acc, 1 - acc), loss
-        return max(acc, 1 - acc)
-
-    def single_train(self):
-        """
-        Does a single training run of num_epochs epochs
-        """
-
-        x0 = torch.tensor(
-            self.x0, dtype=torch.float, requires_grad=False, device=self.device
-        )
-        x1 = torch.tensor(
-            self.x1, dtype=torch.float, requires_grad=False, device=self.device
-        )
-
-        theta = self.init_parameters()
-        theta = torch.tensor(
-            theta, dtype=torch.float, requires_grad=True, device=self.device
-        )
-        if self.optimizer == "lbfgs":
-            loss = self.train_loop_lbfgs(x0, x1, theta)
-        elif self.optimizer == "adam":
-            loss = self.train_loop_adam(x0, x1, theta)
+        if train_params.optimizer == "lbfgs":
+            loss = self.train_loop_lbfgs(x0, x1, train_params)
+        elif train_params.optimizer == "adam":
+            loss = self.train_loop_adam(x0, x1, train_params)
         else:
-            raise ValueError(f"Optimizer {self.optimizer} is not supported")
+            raise ValueError(f"Optimizer {train_params.optimizer} is not supported")
 
-        theta_np = theta.cpu().detach().numpy().reshape(1, -1)
-        loss_np = loss.detach().cpu().item()
-
-        return theta_np, loss_np
+        return float(loss)
 
     def validate_data(self, data):
         assert len(data) == 2 and data[0].shape == data[1].shape
 
-    def get_train_loss(self):
-        return self.best_loss
-
-    def visualize(self, losses, accs):
-        plt.scatter(losses, accs)
-        plt.xlabel("Loss")
-        plt.ylabel("Accuracy")
-        plt.show()
-
-    # seems 50, 20 can significantly reduce overfitting than 1000, 10
-    # switch back to 1000 + 10
-    def fit(self, data: list, label):
-        if self.verbose:
-            print(
-                f"String fiting data with Prob. num_epochs: {self.num_epochs},"
-                f" num_tries: {self.num_tries}, learning_rate: {self.learning_rate}"
-            )
-        # set up the best loss and best theta found so far
-        self.best_loss = np.inf
-        self.best_theta = None
-
-        best_acc = 0.5
-        losses, accuracies = [], []
+    def fit(
+        self,
+        data: tuple[torch.Tensor, torch.Tensor],
+        lr: float = 1e-2,
+        num_epochs: int = 1000,
+        num_tries: int = 10,
+        optimizer: Literal["adam", "lbfgs"] = "adam",
+        verbose: bool = False,
+        weight_decay: float = 0.01,
+    ):
         self.validate_data(data)
+        if verbose:
+            print(f"Fitting CCS probe; {num_epochs=}, {num_tries=}, {lr=}")
 
-        self.x0 = self.add_ones_dimension(data[0])
-        self.x1 = self.add_ones_dimension(data[1])
-        self.y = label.reshape(-1)
-        self.d = self.x0.shape[-1]
-
-        for _ in range(self.num_tries):
-            theta_np, loss = self.single_train()
-
-            accuracy = self.get_accuracy(theta_np, data, label, getloss=False)
-
-            losses.append(loss)
-            accuracies.append(accuracy)
-
-            if loss < self.best_loss:
-                if self.verbose:
-                    print(
-                        "Found a new best theta. New loss: {:.4f}, \
-                        new acc: {:.4f}".format(
-                            loss, accuracy
-                        )
-                    )
-                self.best_theta = theta_np
-                self.best_loss = loss
-                best_acc = accuracy
-
-        if self.verbose:
-            self.visualize(losses, accuracies)
-
-        return self.best_theta, self.best_loss, best_acc
-
-    def score(self, data: list, label, getloss=False):
-        self.validate_data(data)
-        return self.get_accuracy(self.best_theta, data, label, getloss)
-
-    def train_loop_adam(self, x0, x1, theta):
-        """
-        Performs a full batch training loop. Modifies theta in place.
-        """
-        optimizer = torch.optim.AdamW(
-            [theta], lr=self.learning_rate, weight_decay=self.weight_decay
+        train_params = TrainParams(
+            num_epochs=num_epochs,
+            num_tries=num_tries,
+            lr=lr,
+            weight_decay=weight_decay,
+            optimizer=optimizer,
         )
 
-        # Start training (full batch)
-        for _ in range(self.num_epochs):
+        # Record the best acc, loss, and params found so far
+        best_loss = torch.inf
+        best_state: dict[str, torch.Tensor] = {}  # State dict of the best run
+        x0, x1 = data
 
-            # project onto theta
-            z0, z1 = x0.mm(theta.T), x1.mm(theta.T)
+        for _ in range(train_params.num_tries):
+            self.reset_parameters()
 
-            # sigmoid to get probability
-            p0, p1 = torch.sigmoid(z0), torch.sigmoid(z1)
+            loss = self.fit_once(x0, x1, train_params)
+            if loss < best_loss:
+                if verbose:
+                    print(f"Found new best params; loss: {loss:.4f}")
 
-            # get the corresponding loss
-            loss = self.get_loss(p0, p1)
+                best_loss = loss
+                best_state = deepcopy(self.probe.state_dict())
 
-            # update the parameters
+        self.probe.load_state_dict(best_state)
+
+    @torch.no_grad()
+    def score(
+        self, data: tuple[torch.Tensor, torch.Tensor], labels: torch.Tensor
+    ) -> tuple[float, float]:
+        self.validate_data(data)
+
+        logit0, logit1 = map(self, data)
+        p0, p1 = logit0.sigmoid(), logit1.sigmoid()
+        avg_pred = 0.5 * (p0 + (1 - p1))
+
+        predictions = avg_pred.lt(0.5).squeeze(1).to(int)
+        raw_acc = predictions.eq(labels.reshape(-1)).float().mean()
+        max_acc = torch.max(raw_acc, 1 - raw_acc).item()
+
+        return max_acc, ccs_squared_loss(logit0, logit1).item()
+
+    def train_loop_adam(self, x0, x1, train_params: TrainParams) -> float:
+        """Adam train loop, returning the final loss. Modifies params in-place."""
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=train_params.lr,
+            weight_decay=train_params.weight_decay,
+        )
+
+        loss = torch.inf
+        for _ in range(train_params.num_epochs):
             optimizer.zero_grad()
+
+            logit0, logit1 = self(x0), self(x1)
+            loss = ccs_squared_loss(logit0, logit1)
+
             loss.backward()
             optimizer.step()
 
-        return loss
+        return float(loss)
 
-    def train_loop_lbfgs(self, x0, x1, theta):
-        """
-        Performs a lbfgs training loop. Modifies theta in place.
-        """
+    def train_loop_lbfgs(self, x0, x1, train_params: TrainParams) -> float:
+        """LBFGS train loop, returning the final loss. Modifies params in-place."""
 
-        l2 = self.weight_decay
-
-        # set up optimizer
         optimizer = torch.optim.LBFGS(
-            [theta],
+            self.parameters(),
             line_search_fn="strong_wolfe",
-            max_iter=self.num_epochs,
+            max_iter=train_params.num_epochs,
             tolerance_change=torch.finfo(x0.dtype).eps,
             tolerance_grad=torch.finfo(x0.dtype).eps,
         )
+        # Raw unsupervised loss, WITHOUT regularization
+        loss = torch.inf
 
         def closure():
+            nonlocal loss
             optimizer.zero_grad()
 
-            # project onto theta
-            z0, z1 = x0.mm(theta.T), x1.mm(theta.T)
+            logit0, logit1 = self(x0), self(x1)
+            loss = ccs_squared_loss(logit0, logit1)
+            regularizer = 0.0
 
-            # sigmoid to get probability
-            p0, p1 = torch.sigmoid(z0), torch.sigmoid(z1)
+            # We explicitly add L2 regularization to the loss, since LBFGS
+            # doesn't have a weight_decay parameter
+            for param in self.parameters():
+                regularizer += train_params.weight_decay * param.norm() ** 2 / 2
 
-            # get the corresponding loss
-            loss = self.get_loss(p0, p1)
+            regularized = loss + regularizer
+            regularized.backward()
 
-            loss += l2 * torch.norm(theta) ** 2 / 2
-
-            # update the parameters
-            loss.backward()
-
-            return loss
+            return float(regularized)
 
         optimizer.step(closure)
-        return closure()
+        return float(loss)

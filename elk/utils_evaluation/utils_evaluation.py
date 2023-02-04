@@ -17,7 +17,7 @@ with open(default_config_path, "r") as f:
 datasets = default_config["datasets"]
 models = default_config["models"]
 prefix = default_config["prefix"]
-models_layer_num = default_config["models_layer_num"]
+models_layer_num = default_config["models-layer-num"]
 
 
 def set_random_seed(seed):
@@ -140,6 +140,7 @@ def get_hidden_states(
     return [(u, v) for u, v in zip(normalized_hidden_states, labels)]
 
 
+# TODO: Make this function less insane
 def split(hidden_states, permutation, prompts, split="train"):
     split_idx = 0 if split == "train" else 1
     split = []
@@ -158,12 +159,11 @@ def split(hidden_states, permutation, prompts, split="train"):
     return hidden_states, labels
 
 
-def save_df_to_csv(args, df, prefix, str=""):
+def save_df_to_csv(args, df, prefix):
     dir = args.save_dir / f"{args.model}_{prefix}_{args.seed}.csv"
     df.to_csv(dir, index=False)
     print(
-        f"{str} Saving to {dir} at"
-        f" {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}"
+        f"Saving to {dir} at" f" {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}"
     )
 
 
