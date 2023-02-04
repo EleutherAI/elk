@@ -11,8 +11,8 @@ from transformers import (
 import os
 import torch
 import pandas as pd
-from utils_extraction.construct_prompts import construct_prompt_dataframe
-from utils_extraction.save_utils import get_directory
+from extraction.construct_prompts import construct_prompt_dataframe
+from extraction.save_utils import get_directory
 from datasets import load_dataset
 from promptsource.templates import DatasetTemplates
 

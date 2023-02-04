@@ -76,7 +76,7 @@ def get_args():
         default="normal",
         help=(
             "The name of prefix added before the question. normal means no index. You"
-            " can go to `utils_extraction/prompts.json` to add new prompt."
+            " can go to `extraction/prompts.json` to add new prompt."
         ),
     )
     parser.add_argument(
@@ -221,7 +221,7 @@ def get_args():
     )
     assert args.prefix in registered_prefix, NotImplementedError(
         f"Invalid prefix name {args.prefix}. Please check your prefix name. To add new"
-        " prefix, please mofidy `utils_extraction/prompts.json` and register new"
+        " prefix, please mofidy `extraction/prompts.json` and register new"
         f" prefix in {json_dir}.json."
     )
 

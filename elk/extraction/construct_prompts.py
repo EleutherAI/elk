@@ -386,7 +386,7 @@ def construct_prompt_dataframe(
     Return: A dataframe, with `null`, `0`, `1`, `label`, `selection`, which should be
     saved with hidden states together
     """
-    from utils_extraction.load_utils import get_hugging_face_load_name
+    from extraction.load_utils import get_hugging_face_load_name
 
     prompter = DatasetTemplates(*get_hugging_face_load_name(set_name))
 
