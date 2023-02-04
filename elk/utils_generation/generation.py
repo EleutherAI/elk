@@ -101,7 +101,9 @@ def create_hiddenstates(model, tokenizer, name_to_dataframe, args):
     accuracy for each dataset and properly store
     """
     with torch.no_grad():
-        for name, dataframe in name_to_dataframe.items():
+        from tqdm.auto import tqdm
+
+        for name, dataframe in tqdm(name_to_dataframe.items()):
             # This part corresponds to hidden states generation
             hidden_states = calculate_hidden_state(
                 args, model, tokenizer, dataframe, args.model
