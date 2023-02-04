@@ -15,7 +15,7 @@ def get_directory(
         model_name (str): the name of the model
         dataset_name_w_num (str): the name of the dataset with the number of datapoints
         prefix (str): the prefix
-        token_place (str): Determine which token's hidden states will be generated.
+        token_place (str): Determine which token's hidden states will be extractd.
             Can be `first` or `last` or `average`
         tags (list): an optional list of strings that describe the hidden state
 

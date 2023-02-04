@@ -22,7 +22,7 @@ def get_args():
         type=str,
         default="datasets/complete_ten",
         help=(
-            "The base dir of all datasets (csv files) you want to generate hidden"
+            "The base dir of all datasets (csv files) you want to extract hidden"
             " states."
         ),
     )
@@ -76,7 +76,7 @@ def get_args():
         default="normal",
         help=(
             "The name of prefix added before the question. normal means no index. You"
-            " can go to `utils_generation/prompts.json` to add new prompt."
+            " can go to `utils_extraction/prompts.json` to add new prompt."
         ),
     )
     parser.add_argument(
@@ -106,7 +106,7 @@ def get_args():
         help="The indexes of prompt you want to use.",
     )
 
-    # generation & zero-shot accuracy calculation
+    # extraction & zero-shot accuracy calculation
     parser.add_argument(
         "--cal_zeroshot",
         type=int,
@@ -133,7 +133,7 @@ def get_args():
         type=str,
         default="last",
         help=(
-            "Determine which token's hidden states will be generated. Can be `first` or"
+            "Determine which token's hidden states will be extractd. Can be `first` or"
             " `last` or `average`."
         ),
     )
@@ -143,7 +143,7 @@ def get_args():
         default="null",
         choices=["encoder", "decoder", "null"],
         help=(
-            "Whether to generate encoder hidden states or decoder hidden states."
+            "Whether to extract encoder hidden states or decoder hidden states."
             " Default is null, which will be extended to decoder when the model is gpt"
             " or encoder otherwise."
         ),
@@ -153,7 +153,7 @@ def get_args():
         nargs="+",
         default=[-1],
         help=(
-            "List of layer hidden states index to generate. -1 means the last layer."
+            "List of layer hidden states index to extract. -1 means the last layer."
             " For encoder, we will transform positive index into negative. For example,"
             " T0pp has 25 layer, indexed by 0, ..., 24. Index 20 will be transformed"
             " into -5. For decoder, index will instead be transform into non-negative"
@@ -168,7 +168,7 @@ def get_args():
     parser.add_argument(
         "--save_base_dir",
         type=str,
-        default="generation_results",
+        default="extraction_results",
         help="The base dir where you want to save the directories of hidden states.",
     )
     parser.add_argument(
@@ -216,12 +216,12 @@ def get_args():
 
     assert args.model in registered_models, NotImplementedError(
         f"You use model {args.model}, but it's not registered. For any new model,"
-        " please make sure you implement the code in `load_utils` and `generation`,"
+        " please make sure you implement the code in `load_utils` and `extraction`,"
         " and then register it in `parser.py`"
     )
     assert args.prefix in registered_prefix, NotImplementedError(
         f"Invalid prefix name {args.prefix}. Please check your prefix name. To add new"
-        " prefix, please mofidy `utils_generation/prompts.json` and register new"
+        " prefix, please mofidy `utils_extraction/prompts.json` and register new"
         f" prefix in {json_dir}.json."
     )
 

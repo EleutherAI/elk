@@ -39,7 +39,7 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
     parser.add_argument(
         "--hidden_states_directory",
         type=Path,
-        default="generation_results",
+        default="extraction_results",
         help="Where the hidden states and zero-shot accuracy are loaded.",
     )
     parser.add_argument("--language_model_type", type=str, default="encoder")

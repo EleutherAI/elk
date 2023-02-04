@@ -11,8 +11,8 @@ from transformers import (
 import os
 import torch
 import pandas as pd
-from utils_generation.construct_prompts import construct_prompt_dataframe
-from utils_generation.save_utils import get_directory
+from utils_extraction.construct_prompts import construct_prompt_dataframe
+from utils_extraction.save_utils import get_directory
 from datasets import load_dataset
 from promptsource.templates import DatasetTemplates
 
@@ -297,7 +297,7 @@ def create_setname_to_promptframe(
         save_base_dir: str, the directory to save the prompt dataframes.
         model: str, the name of the model.
         prefix: str, the prefix of the prompt.
-        token_place: str, Determine which token's hidden states will be generated. Can
+        token_place: str, Determine which token's hidden states will be extractd. Can
             be `first` or `last` or `average`.
 
     Returns:

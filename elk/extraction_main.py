@@ -1,14 +1,14 @@
 import time
-from utils_generation.parser import get_args
-from utils_generation.load_utils import (
+from utils_extraction.parser import get_args
+from utils_extraction.load_utils import (
     load_model,
     put_model_on_device,
     load_tokenizer,
     create_setname_to_promptframe,
     get_num_templates_per_dataset,
 )
-from utils_generation.generation import calculate_hidden_state
-from utils_generation.save_utils import (
+from utils_extraction.extraction import calculate_hidden_state
+from utils_extraction.save_utils import (
     save_hidden_state_to_np_array,
     save_records_to_csv,
     print_elapsed_time,

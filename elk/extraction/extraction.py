@@ -22,7 +22,7 @@ def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
 
     if (
         args.states_location == "decoder"
-    ):  # In such a case, the program should generate decoder hidden states
+    ):  # In such a case, the program should extract decoder hidden states
         assert (
             "T0" in mdl_name or "t5" in mdl_name or "gpt" in mdl_name
         ), NotImplementedError(
