@@ -1,84 +1,121 @@
+from accelerate import find_executable_batch_size
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers.modeling_outputs import CausalLMOutputWithPast
+from typing import cast, Sequence
+import pandas as pd
 import torch
 
 
-def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
-    """
-    This function is used to calculate the hidden states of a sequence given a model
-    tokenizer and a dataframe.
+# We use this function to find where the answer starts in the tokenized prompt.
+# This way, we're robust to idiosyncrasies in the tokenizer.
+def common_prefix_len(*seqs: Sequence) -> int:
+    """Compute the length of the common prefix of N sequences."""
+    for i, elems in enumerate(zip(*seqs)):
+        pivot, *rest = elems
+        if not all(elem == pivot for elem in rest):
+            return i
 
-    Args:
-        args: a Namespace object containing the arguments.
-        model: a huggingface model.
-        tokenizer: a huggingface tokenizer.
-        dataframe: a pandas dataframe containing the data.
-        mdl_name: a string containing the name of the model.
+    return min(len(x) for x in seqs)
+
+
+@torch.autocast("cuda", enabled=torch.cuda.is_available())
+@torch.no_grad()
+def extract_hiddens(
+    args,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    dataframe: pd.DataFrame,
+) -> list[torch.Tensor]:
+    """
+    Run inference on a model with a set of prompts, collecting the hidden states.
 
     Returns:
         hidden_states_per_label: a list of two numpy arrays, each of shape (num_data,
         layer, hid_dim), where num_data is the number of data points in the dataframe.
     """
 
-    if (
-        args.states_location == "decoder"
-    ):  # In such a case, the program should extract decoder hidden states
-        assert (
-            "T0" in mdl_name or "t5" in mdl_name or "gpt" in mdl_name
-        ), NotImplementedError(
-            f"BERT does not have decoder. Relevant args: model={mdl_name},"
-            f" states_location={args.states_location}."
-        )
-
-    if args.states_location == "encoder":
-        assert "gpt" not in mdl_name, NotImplementedError(
-            f"GPT model does not have encoder. Relevant args: model={mdl_name},"
-            f" states_location={args.states_location}."
-        )
-
     apply_tokenizer = lambda s: tokenizer(s, return_tensors="pt").input_ids.to(
         args.device
     )
-    pad_answer = apply_tokenizer("")
-
     hidden_states_per_label = [[], []]
+
+    # We'd like to be able to save compute by reusing hiddens with `past_key_values`
+    # when we can, and this requires knowing if the model uses causal masking.
+    # This heuristic may have some false negatives, but it should be safe. The HF docs
+    # say that the classes in "architectures" should be suitable for this *specific*
+    # checkpoint- for example `bert-base-uncased` only lists `BertForMaskedLM`, even
+    # though there is a `BertForCausalLM` class.
+    is_causal = any(
+        arch.endswith("ForCausalLM")
+        for arch in getattr(model.config, "architectures", [""])
+    )
+    is_enc_dec = model.config.is_encoder_decoder
+
+    # If this is an encoder-decoder model and we're passing the answer to the encoder,
+    # we don't need to run the decoder at all. Just strip it off, making the problem
+    # equivalent to a regular encoder-only model.
+    if is_enc_dec and args.use_encoder_states:
+        # This isn't actually *guaranteed* by HF, but it's true for all existing models
+        if not hasattr(model, "get_encoder") or not callable(model.get_encoder):
+            raise ValueError(
+                "Encoder-decoder model doesn't have expected get_encoder() method"
+            )
+
+        model = cast(PreTrainedModel, model.get_encoder())
+
+    # Iterating over questions
     for idx in range(len(dataframe)):
-        # calculate the hidden states
-        if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
-            if args.states_location == "encoder":
-                ids_paired = [
-                    apply_tokenizer(dataframe.loc[idx, column_name])
-                    for column_name in ["0", "1"]
-                ]
-                hidden_states_paired = [
-                    model(
-                        ids, labels=pad_answer, output_hidden_states=True
-                    ).encoder_hidden_states
-                    for ids in ids_paired
-                ]
-            else:
-                ans_token = [
-                    apply_tokenizer(w) for w in dataframe.loc[idx, "selection"]
-                ]
-                input_ids = apply_tokenizer(dataframe.loc[idx, "null"])
-                hidden_states_paired = [
-                    model(
-                        input_ids, labels=answer, output_hidden_states=True
-                    ).decoder_hidden_states
-                    for answer in ans_token
-                ]
-        elif "gpt" in mdl_name or "bert" in mdl_name:
-            appender = " " + str(tokenizer.eos_token) if "gpt" in mdl_name else ""
-            ids_paired = [
-                apply_tokenizer(dataframe.loc[idx, column_name] + appender)
-                for column_name in ["0", "1"]
-            ]
-            # Notice that since gpt and bert only have either decoder or encoder, we
-            # don't need to specify which one to use.
-            hidden_states_paired = [
-                model(ids, output_hidden_states=True).hidden_states
-                for ids in ids_paired
-            ]
+        # There are three conditions here:
+        # 1) Encoder-decoder transformer, with answer in the decoder
+        # 2) Decoder-only transformer
+        # 3) Transformer encoder
+        # In cases 1 & 2, we can reuse hidden states for the question.
+        # In case 3, we have to recompute all hidden states every time.
+        ans0, ans1 = dataframe.loc[idx, "selection"]
+
+        # Condition 1: Encoder-decoder transformer, with answer in the decoder
+        if is_enc_dec and not args.use_encoder_states:
+            # First run the full model on the question + answer 0
+            output0 = model(
+                input_ids=torch.tensor(dataframe.loc[idx, "0"], device=args.device),
+                labels=apply_tokenizer(ans0 + args.prompt_suffix),
+                output_hidden_states=True,
+            )
+            # Then run the decoder on answer 1 with cached encoder states
+            output1 = model(
+                encoder_hidden_states=output0.encoder_hidden_states,
+                labels=apply_tokenizer(ans1),
+                output_hidden_states=True,
+            )
+
+        # Either a decoder-only transformer or a transformer encoder
         else:
-            raise NotImplementedError(f"model {mdl_name} is not supported!")
+            # First run the model on the question + answer 0
+            output0 = model(
+                input_ids=apply_tokenizer(dataframe.loc[idx, "0"] + args.prompt_suffix),
+                output_hidden_states=True,
+                use_cache=True,
+            )
+
+            # Condition 2: Decoder-only transformer
+            if isinstance(output0, CausalLMOutputWithPast):
+                output1 = model(
+                    input_ids=apply_tokenizer(ans1 + args.prompt_suffix),
+                    output_hidden_states=True,
+                    past_key_values=output0.past_key_values,
+                )
+
+            # Condition 3: Transformer encoder
+            else:
+                output1 = model(
+                    input_ids=apply_tokenizer(dataframe.loc[idx, "1"]),
+                    output_hidden_states=True,
+                )
+
+        ids_paired = [
+            apply_tokenizer(dataframe.loc[idx, column_name] + args.prompt_suffix)
+            for column_name in ["0", "1"]
+        ]
 
         # extract the corresponding token
         for label in range(2):
@@ -97,6 +134,11 @@ def calculate_hidden_state(args, model, tokenizer, dataframe, mdl_name):
     # for each list, stack them to `num_data * layer * hid_dim`
     # TODO: WHY ARE WE DOING YET ANOTHER STACKING OPERATION?
     return [torch.stack(w, dim=0) for w in hidden_states_per_label]
+
+
+@find_executable_batch_size
+def _extract_inner(batch_size: int):
+    pass
 
 
 def get_hiddenstate_token(hidden_state, method):

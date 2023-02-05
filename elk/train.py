@@ -1,6 +1,6 @@
 from elk.utils_evaluation.ccs import CCS
 from elk.utils_evaluation.utils_evaluation import (
-    get_hidden_states,
+    load_hidden_states,
     get_permutation,
     split,
 )
@@ -20,7 +20,7 @@ def train(args):
     torch.manual_seed(args.seed)
 
     # Extract hidden states from the model
-    hidden_states = get_hidden_states(
+    hidden_states = load_hidden_states(
         hidden_states_directory=args.hidden_states_directory,
         model_name=args.model,
         dataset_name=args.dataset,

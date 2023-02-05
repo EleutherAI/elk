@@ -1,6 +1,6 @@
 from elk.utils_evaluation.ccs import CCS
 from elk.utils_evaluation.utils_evaluation import (
-    get_hidden_states,
+    load_hidden_states,
     get_permutation,
     split,
     append_stats,
@@ -17,7 +17,7 @@ import torch
 def evaluate(args, logistic_regression_model, ccs_model: CCS):
     args.save_dir.mkdir(parents=True, exist_ok=True)
 
-    hidden_states = get_hidden_states(
+    hidden_states = load_hidden_states(
         hidden_states_directory=args.hidden_states_directory,
         model_name=args.model,
         dataset_name=args.dataset,

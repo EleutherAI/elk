@@ -1,14 +1,11 @@
-import os
+import json
 import numpy as np
 import pandas as pd
-import json
 import time
 
 from pathlib import Path
 
-default_config_path = (
-    Path(__file__).parent.parent / Path(__file__).parent.parent / "default_config.json"
-)
+default_config_path = Path(__file__).parent.parent / "default_config.json"
 
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
@@ -77,7 +74,7 @@ def get_permutation(hidden_states, rate=0.6):
     ]
 
 
-def get_hidden_states(
+def load_hidden_states(
     hidden_states_directory,
     model_name,
     dataset_name,

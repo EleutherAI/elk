@@ -1,136 +1,8 @@
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    T5ForConditionalGeneration,
-    GPT2LMHeadModel,
-    GPT2Tokenizer,
-    AutoModelForSeq2SeqLM,
-    AutoModelWithLMHead,
-    AutoModelForSequenceClassification,
-)
-import torch
-import pandas as pd
-from extraction.construct_prompts import construct_prompt_dataframe
-from extraction.save_utils import get_directory
+from .construct_prompts import construct_prompt_dataframe
+from .save_utils import get_directory
 from datasets import load_dataset
 from promptsource.templates import DatasetTemplates
-
-
-def load_model(mdl_name, cache_dir):
-    """
-    Load model from cache_dir or from HuggingFace model hub.
-
-    Args:
-        mdl_name (str): name of the model
-        cache_dir (str): path to the cache directory
-
-    Returns:
-        model (torch.nn.Module): model in evaluation mode
-    """
-    if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
-        model = AutoModelForCausalLM.from_pretrained(
-            f"EleutherAI/{mdl_name}", cache_dir=cache_dir
-        )
-    elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
-        model = GPT2LMHeadModel.from_pretrained(mdl_name, cache_dir=cache_dir)
-    elif "T0" in mdl_name:
-        model = AutoModelForSeq2SeqLM.from_pretrained(
-            f"bigscience/{mdl_name}", cache_dir=cache_dir
-        )
-    elif "unifiedqa" in mdl_name:
-        model = T5ForConditionalGeneration.from_pretrained(
-            f"allenai/{mdl_name}", cache_dir=cache_dir
-        )
-    elif "deberta" in mdl_name:
-        model = AutoModelForSequenceClassification.from_pretrained(
-            f"microsoft/{mdl_name}", cache_dir=cache_dir
-        )
-    elif "roberta" in mdl_name:
-        model = AutoModelForSequenceClassification.from_pretrained(
-            mdl_name, cache_dir=cache_dir
-        )
-    elif "t5" in mdl_name:
-        model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
-
-    # We only use the models for inference, so we don't need to train them and hence
-    # don't need to track gradients
-    return model.eval()
-
-
-def put_model_on_device(model, parallelize, device="cuda"):
-    """
-    Put model on device (hardware accelearator like "cuda", "mps" or simply "cpu").
-
-    Args:
-        model (torch.nn.Module): model to put on device
-        parallelize (bool): whether to parallelize the model
-        device (str): device to put the model on
-
-    Returns:
-        model (torch.nn.Module): model on device
-    """
-    if device == "mps":
-        # Check that MPS is available
-        if not torch.backends.mps.is_available():
-            if not torch.backends.mps.is_built():
-                print(
-                    "MPS not available because the current PyTorch install was not"
-                    " built with MPS enabled."
-                )
-            else:
-                print(
-                    "MPS not available because the current MacOS version is not 12.3+"
-                    " and/or you do not have an MPS-enabled device on this machine."
-                )
-        else:
-            mps_device = torch.device("mps")
-            model.to(mps_device)
-    elif parallelize:
-        model.parallelize()
-    elif device == "cuda":
-        if not torch.cuda.is_available():
-            print("CUDA not available, using CPU instead.")
-        else:
-            model.to("cuda")
-    else:
-        model.to("cpu")
-
-    return model
-
-
-def load_tokenizer(mdl_name, cache_dir):
-    """
-    Load tokenizer for the model.
-
-    Args:
-        mdl_name (str): name of the model
-        cache_dir (str): path to the cache directory
-
-    Returns:
-        tokenizer: tokenizer for the model
-    """
-    if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
-        tokenizer = AutoTokenizer.from_pretrained(
-            f"EleutherAI/{mdl_name}", cache_dir=cache_dir
-        )
-    elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
-        tokenizer = GPT2Tokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-    elif "T0" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            f"bigscience/{mdl_name}", cache_dir=cache_dir
-        )
-    elif "unifiedqa" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            f"allenai/{mdl_name}", cache_dir=cache_dir
-        )
-    elif "deberta" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            f"microsoft/{mdl_name}", cache_dir=cache_dir
-        )
-    elif "roberta" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-
-    return tokenizer
+import pandas as pd
 
 
 def get_sample_data(dataset_name: str, split_dataframes, sample_amount):
@@ -237,26 +109,22 @@ def get_hugging_face_load_name(dataset_name):
         return [dataset_name.replace("-", "_")]
 
 
-def get_raw_dataset(dataset_name, cache_dir):
+def get_raw_dataset(dataset_name):
     """
     Load datasets from module or raw csv, and then return a DataFrame.
     This DataFrame can be used to construct the example.
 
     Args:
         dataset_name:   the name of the dataset
-        cache_dir:  the directory where the dataset might have been cached in the past
 
     Returns:
         raw_dataset:   A `DatasetDict` object containing the raw dataset
     """
     if dataset_name != "story-cloze":
-        raw_dataset = load_dataset(
-            *get_hugging_face_load_name(dataset_name), cache_dir=cache_dir
-        )
+        raw_dataset = load_dataset(*get_hugging_face_load_name(dataset_name))
     else:
         raw_dataset = load_dataset(
             *get_hugging_face_load_name(dataset_name),
-            cache_dir=cache_dir,
             data_dir="./datasets/rawdata",
         )
 
@@ -324,9 +192,7 @@ def create_setname_to_promptframe(
                 # This is a dataframe with random order data
                 # Can just take enough data from scratch and then stop as needed
                 # the length of raw_data will be 2 times as the intended length
-                raw_dataset, dataset_split_names = get_raw_dataset(
-                    dataset_name, cache_dir
-                )
+                raw_dataset, dataset_split_names = get_raw_dataset(dataset_name)
                 split_dataframes = [
                     raw_dataset[split_name].to_pandas()
                     for split_name in dataset_split_names
@@ -338,7 +204,6 @@ def create_setname_to_promptframe(
                     dataset_name,
                     raw_data,
                     prompt_idx=prompt_idx,
-                    mdl_name=model,
                     tokenizer=tokenizer,
                     max_num=num_data,
                     confusion=prefix,

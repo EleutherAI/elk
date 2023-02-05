@@ -10,6 +10,7 @@ requires-python = ">=3.9"
 keywords = ["nlp", "interpretability", "language-models", "explainable-ai"]
 license = {text = "MIT License"}
 dependencies = [
+    "accelerate",
     "datasets==2.8.0",
     "numpy==1.23.5",
     "pandas==1.5.1",
