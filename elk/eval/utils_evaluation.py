@@ -15,7 +15,7 @@ prefix = default_config["prefix"]
 
 
 def get_filtered_filenames(
-    directory, model_name, dataset_name, num_data, prefix, place
+    directory, model_name, dataset_name, max_examples, prefix, place
 ):
     """
     Returns a list of filenames in the given directory
@@ -24,7 +24,7 @@ def get_filtered_filenames(
     :param model_name: the name of the model
     :param dataset_name: the name of the dataset
     :param hidden_states_directory: directory containing files
-    :param num_data: number of data
+    :param max_examples: number of data
     :param confusion: the confusion
     :param place: the place where the data is from
     """
@@ -32,7 +32,7 @@ def get_filtered_filenames(
     filter_criteria = (
         lambda file_name: file_name.startswith(model_name)
         and f"_{dataset_name}_" in file_name
-        and f"_{num_data}_" in file_name
+        and f"_{max_examples}_" in file_name
         and f"_{prefix}_" in file_name
         and place in file_name
     )
@@ -40,10 +40,8 @@ def get_filtered_filenames(
     return [directory / f for f in filtered_files]
 
 
-def organize(hidden_states, mode):
-    """
-    Whether to do minus, to concat or do nothing
-    """
+def reduce_paired_states(hidden_states: list, mode: str):
+    """Reduce pairs of hidden states into single vectors"""
     if mode in ["0", "1"]:
         return hidden_states[int(mode)]
     elif mode == "minus":
@@ -76,12 +74,12 @@ def get_permutation(hidden_states, rate=0.6):
 
 def load_hidden_states(
     hidden_states_directory,
-    model_name,
-    dataset_name,
+    model_name: str,
+    dataset_name: str,
     prefix="normal",
     language_model_type="encoder",
     layer=-1,
-    num_data=1000,
+    max_examples=1000,
     scale=True,
     demean=True,
     mode="minus",
@@ -94,7 +92,7 @@ def load_hidden_states(
     )
 
     filtered_filenames = get_filtered_filenames(
-        hidden_states_directory, model_name, dataset_name, num_data, prefix, place
+        hidden_states_directory, model_name, dataset_name, max_examples, prefix, place
     )
     print("filtered_filenames", filtered_filenames)
 
@@ -104,7 +102,9 @@ def load_hidden_states(
     for filename, append in zip(filtered_filenames, append_list):
         negative_states = np.load(filename / f"0{append}.npy")
         positive_states = np.load(filename / f"1{append}.npy")
-        organized_states = organize([negative_states, positive_states], mode=mode)
+        organized_states = reduce_paired_states(
+            [negative_states, positive_states], mode=mode
+        )
         hidden_states.append(organized_states)
 
     # normalize

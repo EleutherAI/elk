@@ -9,7 +9,7 @@
             ["text", "0", "1"]
         ]
     ],
-    "amazon-polarity": [
+    "amazon_polarity": [
         [
             "Consider the following example: ''' {} '''\nBetween {} and {}, the sentiment of this example is",
             ["content", "0", "1"]
@@ -19,7 +19,7 @@
             ["content", "0", "1"]
         ]
     ],
-    "ag-news": [
+    "ag_news": [
         [
             "Consider the following example: ''' {} '''\nChoice 1: {}. Choice 2: {}.Between choice 1 and choice 2, the topic of this example is ",
             ["text", "0", "1"]
@@ -53,7 +53,7 @@
             ["text", "0", "1"]
         ]
     ],
-    "dbpedia-14": [
+    "dbpedia_14": [
         [
             "Consider the following example: ''' {} '''\nChoice 1: {}. Choice 2: {}.Between choice 1 and choice 2, the topic of this example is ",
             ["content", "0", "1"]
@@ -87,7 +87,7 @@
             ["content", "0", "1"]
         ]
     ],
-    "story-cloze": [
+    "story_cloze": [
         [
             "Consider the following story: ''' {} {} {} {} '''\nChoice 1: {}\nChoice 2: {}\nWhich is the more plausible ending of this story, choice 1 or choice 2?",
             [

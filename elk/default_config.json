@@ -1,15 +1,15 @@
 {
   "datasets": [
     "imdb",
-    "amazon-polarity",
-    "ag-news",
-    "dbpedia-14",
+    "amazon_polarity",
+    "ag_news",
+    "dbpedia_14",
     "cola",
     "rte",
     "boolq",
     "qnli",
     "piqa",
-    "story-cloze"
+    "story_cloze"
   ],
   "model_shortcuts" : {
     "t5-11b": "google/t5-11b",

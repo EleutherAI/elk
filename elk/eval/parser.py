@@ -1,5 +1,5 @@
+from argparse import ArgumentParser
 from pathlib import Path
-import argparse
 import json
 
 
@@ -23,23 +23,11 @@ def get_args(default_config_path=Path(__file__).parent / "default_config.json"):
 
         args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if args.language_model_type == "decoder" and args.layer < 0:
-        from transformers import AutoConfig
-
-        config = AutoConfig.from_pretrained(args.model)
-        args.layer += getattr(config, "num_layers", config.num_hidden_layers)
-
-    # Default to CUDA if available
-    if args.device is None:
-        import torch
-
-        args.device = "cuda" if torch.cuda.is_available() else "cpu"
-
     return args
 
 
 def get_parser(datasets, prefix):
-    parser = argparse.ArgumentParser()
+    parser = ArgumentParser()
     parser.add_argument("--model", type=str)
     parser.add_argument("--prefix", default="normal", choices=prefix)
     parser.add_argument("--dataset", default=datasets[0])
@@ -63,13 +51,6 @@ def get_parser(datasets, prefix):
         default="trained",
         help="Where to save the CCS and logistic regression models",
     )
-    parser.add_argument(
-        "--hidden-states-directory",
-        type=Path,
-        default="extraction_results",
-        help="Where the hidden states and zero-shot accuracy are loaded.",
-    )
-    parser.add_argument("--language-model-type", type=str, default="encoder")
     parser.add_argument("--layer", type=int, default=-1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(

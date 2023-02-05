@@ -1,12 +1,12 @@
-from elk.utils_evaluation.ccs import CCS
-from elk.utils_evaluation.utils_evaluation import (
+from elk.training.ccs import CCS
+from elk.eval.utils_evaluation import (
     load_hidden_states,
     get_permutation,
     split,
     append_stats,
 )
-from elk.utils_evaluation.parser import get_args
-from elk.utils_evaluation.utils_evaluation import save_df_to_csv
+from elk.eval.parser import get_args
+from elk.eval.utils_evaluation import save_df_to_csv
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -25,7 +25,7 @@ def evaluate(args, logistic_regression_model, ccs_model: CCS):
         language_model_type=args.language_model_type,
         layer=args.layer,
         mode=args.mode,
-        num_data=args.num_data,
+        max_examples=args.max_examples,
     )
     permutation = get_permutation(hidden_states)
 

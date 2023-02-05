@@ -1,15 +1,11 @@
 from extraction.parser import get_args
-from extraction.load_utils import (
-    create_setname_to_promptframe,
-    get_num_templates_per_dataset,
-)
-from extraction.extraction import extract_hiddens
-from extraction.save_utils import (
-    save_hidden_state_to_np_array,
-    save_records_to_csv,
-)
-from tqdm import tqdm
+from hashlib import md5
+from .extraction import extract_hiddens, PromptCollator
+from .utils import elk_cache_dir
 from transformers import AutoModel, AutoTokenizer
+import json
+import pickle
+import torch
 
 
 if __name__ == "__main__":
@@ -24,39 +20,19 @@ if __name__ == "__main__":
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
+    run_id = md5(pickle.dumps(args)).hexdigest()
+    save_dir = elk_cache_dir() / run_id
+    print(f"Saving results to '{save_dir}'")
+
     print("Loading datasets")
-    num_templates_per_dataset = get_num_templates_per_dataset(args.datasets)
-    name_to_dataframe = create_setname_to_promptframe(
-        args.data_base_dir,
-        args.datasets,
-        num_templates_per_dataset,
-        args.num_data,
-        tokenizer,
-        args.save_base_dir,
-        args.model,
-        args.prefix,
-        args.token_place,
-    )
+    collator = PromptCollator(*args.dataset, split="train")
+    with open(save_dir / "hiddens.pt", "wb") as f:
+        # Save the hidden states
+        for state in extract_hiddens(args, model, tokenizer, collator):
+            torch.save(state, f)
 
-    for dataset_name, dataframe in tqdm(
-        name_to_dataframe.items(),
-        desc="Extracting",
-    ):
-        # TODO: Could use further cleanup
-        hidden_state = extract_hiddens(args, model, tokenizer, dataframe)
-        # TODO: Clean up the ['0','1'] mess
-        save_hidden_state_to_np_array(hidden_state, dataset_name, ["0", "1"], args)
+    with open(save_dir / "args.pkl", "w") as f:
+        json.dump(vars(args), f)
 
-    records = []
-    for dataset_name, dataframe in name_to_dataframe.items():
-        records.append(
-            {
-                "model": args.model,
-                "dataset": dataset_name,
-                "prefix": args.prefix,
-                "tag": args.tag,
-                "cal_hiddenstates": bool(args.cal_hiddenstates),
-                "population": len(dataframe),
-            }
-        )
-    save_records_to_csv(records, args)
+    with open(save_dir / "model_config.pkl", "w") as f:
+        json.dump(model.config.to_dict(), f)

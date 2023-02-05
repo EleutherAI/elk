@@ -1,10 +1,10 @@
-from elk.utils_evaluation.ccs import CCS
-from elk.utils_evaluation.utils_evaluation import (
+from elk.training.ccs import CCS
+from elk.eval.utils_evaluation import (
     load_hidden_states,
     get_permutation,
     split,
 )
-from elk.utils_evaluation.parser import get_args
+from elk.eval.parser import get_args
 from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 import numpy as np
@@ -28,7 +28,7 @@ def train(args):
         language_model_type=args.language_model_type,
         layer=args.layer,
         mode=args.mode,
-        num_data=args.num_data,
+        max_examples=args.max_examples,
     )
 
     # `features` is of shape [batch_size, hidden_size * 2]

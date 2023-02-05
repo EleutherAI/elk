@@ -1,5 +1,5 @@
 import json
-from elk.utils_evaluation.parser import get_parser
+from elk.eval.parser import get_parser
 
 
 def test_args_no_underscores():
