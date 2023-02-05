@@ -26,7 +26,7 @@ def extract_hiddens(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
     collator: PromptCollator,
-) -> Iterable[torch.Tensor]:
+) -> Iterable[tuple[torch.Tensor, int]]:
     """Run inference on a model with a set of prompts, yielding the hidden states."""
 
     def reduce_seqs(hiddens: list[torch.Tensor]) -> torch.Tensor:
@@ -73,7 +73,7 @@ def extract_hiddens(
         model = cast(PreTrainedModel, model.get_encoder())
 
     # Iterating over questions
-    for prompts in tqdm(collator):
+    for prompts, label in tqdm(collator):
         # There are three conditions here:
         # 1) Encoder-decoder transformer, with answer in the decoder
         # 2) Decoder-only transformer
@@ -145,4 +145,4 @@ def extract_hiddens(
                 ]
 
         # [num_layers, num_choices, hidden_size]
-        yield torch.stack(hiddens, dim=1)
+        yield torch.stack(hiddens, dim=1), label

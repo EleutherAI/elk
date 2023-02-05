@@ -44,16 +44,17 @@ class PromptCollator:
         self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
         self.rng = Random(seed)
 
-    def __getitem__(self, index: int) -> list[Prompt]:
+    def __getitem__(self, index: int) -> tuple[list[Prompt], int]:
         example = self.dataset[index]
         template = self.rng.choice(self.prompter.templates)
+        true_label = example[self.label_column]
 
         prompts = []
-        for label in self.labels:
-            example[self.label_column] = label
+        for fake_label in self.labels:
+            example[self.label_column] = fake_label
             prompts.append(Prompt(*template.apply(example)))
 
-        return prompts
+        return prompts, true_label
 
     def __iter__(self):
         return (self[i] for i in range(len(self.dataset)))

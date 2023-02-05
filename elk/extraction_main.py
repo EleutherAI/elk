@@ -1,10 +1,8 @@
-from extraction.parser import get_args
-from hashlib import md5
 from .extraction import extract_hiddens, PromptCollator
-from .utils import elk_cache_dir
+from .extraction.parser import get_args
+from .files import get_memorable_cache_dir
 from transformers import AutoModel, AutoTokenizer
 import json
-import pickle
 import torch
 
 
@@ -20,16 +18,15 @@ if __name__ == "__main__":
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
-    run_id = md5(pickle.dumps(args)).hexdigest()
-    save_dir = elk_cache_dir() / run_id
-    print(f"Saving results to '{save_dir}'")
+    save_dir = get_memorable_cache_dir()
+    print(f"Saving results to \033[1m{save_dir}\033[0m")  # bold
 
     print("Loading datasets")
     collator = PromptCollator(*args.dataset, split="train")
     with open(save_dir / "hiddens.pt", "wb") as f:
         # Save the hidden states
-        for state in extract_hiddens(args, model, tokenizer, collator):
-            torch.save(state, f)
+        for state, label in extract_hiddens(args, model, tokenizer, collator):
+            torch.save((state, label), f)
 
     with open(save_dir / "args.pkl", "w") as f:
         json.dump(vars(args), f)

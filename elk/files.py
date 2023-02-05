@@ -1,8 +1,8 @@
 from pathlib import Path
-from random import Random
 import json
 import os
 import pickle
+import random
 
 
 def elk_cache_dir() -> Path:
@@ -17,7 +17,7 @@ def elk_cache_dir() -> Path:
     return cache_dir
 
 
-def get_memorable_cache_dir(root: Path, seed=None, exist_ok: bool = False):
+def get_memorable_cache_dir():
     """Return a memorably-named cached directory of the form 'goofy-goodall'."""
     resource_dir = Path(__file__).parent / "resources"
 
@@ -26,15 +26,13 @@ def get_memorable_cache_dir(root: Path, seed=None, exist_ok: bool = False):
     with open(resource_dir / "nouns.json", "r") as f:
         nouns = json.load(f)
 
-    rng = Random(x=pickle.dumps(seed) if seed is not None else None)
+    root = elk_cache_dir()
     root.mkdir(parents=True, exist_ok=True)
 
-    adj = rng.choice(adjectives)
-    noun = rng.choice(nouns)
-    file_name = f"{adj}-{noun}"
-
-    i = 1
-    while not exist_ok and root.joinpath(file_name).exists():
-        file_name = f"{adj}-{noun}-{i}"
+    file_name = "."
+    while root.joinpath(file_name).exists():
+        adj = random.choice(adjectives)
+        noun = random.choice(nouns)
+        file_name = f"{adj}-{noun}"
 
     return root / file_name
