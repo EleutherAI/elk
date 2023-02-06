@@ -107,12 +107,6 @@ def get_parser():
         "--tag", type=str, default="", help="Tag added as the suffix of the directory."
     )
     parser.add_argument(
-        "--save-base-dir",
-        type=Path,
-        default="hidden_states",
-        help="The base dir where you want to save the directories of hidden states.",
-    )
-    parser.add_argument(
         "--layers",
         type=int,
         nargs="+",

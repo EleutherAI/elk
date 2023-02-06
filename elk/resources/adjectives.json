@@ -1,5 +1,3 @@
-// Taken from Docker's names generator:
-// https://github.com/docker/docker-ce/blob/master/components/engine/pkg/namesgenerator/names-generator.go
 [
     "admiring",
     "adoring",

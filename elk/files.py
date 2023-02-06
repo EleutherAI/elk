@@ -23,16 +23,17 @@ def get_memorable_cache_dir():
 
     with open(resource_dir / "adjectives.json", "r") as f:
         adjectives = json.load(f)
-    with open(resource_dir / "nouns.json", "r") as f:
-        nouns = json.load(f)
-
-    root = elk_cache_dir()
-    root.mkdir(parents=True, exist_ok=True)
+    with open(resource_dir / "names.json", "r") as f:
+        names = json.load(f)
 
     file_name = "."
+    root = elk_cache_dir()
+
     while root.joinpath(file_name).exists():
         adj = random.choice(adjectives)
-        noun = random.choice(nouns)
+        noun = random.choice(names)
         file_name = f"{adj}-{noun}"
 
-    return root / file_name
+    path = root / file_name
+    path.mkdir(parents=True, exist_ok=True)
+    return path

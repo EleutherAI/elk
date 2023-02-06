@@ -1,7 +1,6 @@
 from .eval.parser import get_args
 from .eval.utils_evaluation import load_hidden_states
 from .training.ccs import CCS
-from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 import numpy as np

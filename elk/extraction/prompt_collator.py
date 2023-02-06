@@ -46,7 +46,7 @@ class PromptCollator:
 
     def __getitem__(self, index: int) -> tuple[list[Prompt], int]:
         example = self.dataset[index]
-        template = self.rng.choice(self.prompter.templates)
+        template = self.rng.choice(list(self.prompter.templates.values()))
         true_label = example[self.label_column]
 
         prompts = []

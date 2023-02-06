@@ -40,8 +40,8 @@ def extract_hiddens(
         else:
             raise ValueError(f"Invalid token_loc: {args.token_loc}")
 
-        if args.layer is not None:
-            hiddens = [hiddens[args.layer]]
+        if args.layers is not None:
+            hiddens = [hiddens[i] for i in args.layers]
 
         return torch.stack(hiddens)
 
@@ -108,14 +108,15 @@ def extract_hiddens(
             tokenized_prompts = [
                 tokenizer.encode(str(prompt) + args.prompt_suffix) for prompt in prompts
             ]
-            output0 = model(
-                input_ids=torch.tensor(tokenized_prompts[0], device=args.device),
-                output_hidden_states=True,
-                use_cache=True,
-            )
 
             # Condition 2: Decoder-only transformer
             if is_causal:
+                output0 = model(
+                    input_ids=torch.tensor(tokenized_prompts[0], device=args.device),
+                    output_hidden_states=True,
+                    use_cache=True,
+                )
+
                 question_len = common_prefix_len(*tokenized_prompts)
                 question_hiddens = pytree_map(
                     lambda x: x[:, :question_len], output0.hidden_states
@@ -124,7 +125,9 @@ def extract_hiddens(
                 hiddens = [reduce_seqs(output0.hidden_states)] + [
                     reduce_seqs(
                         model(
-                            input_ids=torch.tensor(prompt_ids, device=args.device),
+                            input_ids=torch.tensor(
+                                prompt_ids, device=args.device
+                            ).unsqueeze(0),
                             output_hidden_states=True,
                             past_key_values=question_hiddens,
                         ).hidden_states
@@ -134,6 +137,8 @@ def extract_hiddens(
 
             # Condition 3: Transformer encoder
             else:
+                x = torch.tensor(tokenized_prompts[0], device=args.device).unsqueeze(0)
+                output0 = model(input_ids=x, output_hidden_states=True)
                 hiddens = [reduce_seqs(output0.hidden_states)] + [
                     reduce_seqs(
                         model(
