@@ -1,4 +1,4 @@
-from typing import Callable, TypeVar
+from typing import Callable, Mapping, TypeVar
 
 
 TreeType = TypeVar("TreeType")
@@ -14,10 +14,10 @@ def pytree_map(func: Callable, tree: TreeType) -> TreeType:
 
     Examples:
     >>> pytree_map(lambda x: x + 1, {"x": 7, "y": 42})
-    {'x': 8, 'y': 44}
+    {'x': 8, 'y': 43}
     """
     # Recursive case
-    if isinstance(tree, dict):
+    if isinstance(tree, Mapping):
         return {k: pytree_map(func, v) for k, v in tree.items()}  # type: ignore
 
     if isinstance(tree, list):

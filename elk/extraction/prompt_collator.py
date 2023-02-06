@@ -24,6 +24,7 @@ class PromptCollator:
         *,
         split: str,
         label_column: str = "label",
+        max_examples: int = 0,
         seed: int = 42,
     ):
         data = load_dataset(path, name)
@@ -40,6 +41,9 @@ class PromptCollator:
 
         self.dataset = data[split]
         self.labels = sorted(set(self.dataset[label_column]))
+        if max_examples:
+            self.dataset = self.dataset.select(range(max_examples))
+
         self.label_column = label_column
         self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
         self.rng = Random(seed)

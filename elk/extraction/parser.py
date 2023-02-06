@@ -31,9 +31,6 @@ def get_args():
             )
         )
 
-    print(
-        "\n\n-------------------------------- Args --------------------------------\n\n"
-    )
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))
 
@@ -71,6 +68,7 @@ def get_parser():
     parser.add_argument(
         "--max-examples",
         default=1000,
+        type=int,
         help="Maximum number of examples to use from each dataset.",
     )
     parser.add_argument(
@@ -104,17 +102,11 @@ def get_parser():
         ),
     )
     parser.add_argument(
-        "--tag", type=str, default="", help="Tag added as the suffix of the directory."
-    )
-    parser.add_argument(
         "--layers",
         type=int,
         nargs="+",
         default=None,
         help="Which layers to extract hiddens from. If None, extract from all layers.",
-    )
-    parser.add_argument(
-        "--print-more", action="store_true", help="Whether to print more."
     )
 
     return parser
