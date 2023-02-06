@@ -17,7 +17,7 @@ def elk_cache_dir() -> Path:
     return cache_dir
 
 
-def get_memorable_cache_dir():
+def memorable_cache_dir():
     """Return a memorably-named cached directory of the form 'goofy-goodall'."""
     resource_dir = Path(__file__).parent / "resources"
 
@@ -27,12 +27,13 @@ def get_memorable_cache_dir():
         nouns = json.load(f)
 
     root = elk_cache_dir()
-    root.mkdir(parents=True, exist_ok=True)
 
-    file_name = "."
-    while root.joinpath(file_name).exists():
+    sub_dir = "."
+    while root.joinpath(sub_dir).exists():
         adj = random.choice(adjectives)
         noun = random.choice(nouns)
-        file_name = f"{adj}-{noun}"
+        sub_dir = f"{adj}-{noun}"
 
-    return root / file_name
+    cache_dir = root / sub_dir
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
