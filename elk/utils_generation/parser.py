@@ -10,7 +10,7 @@ def get_args():
         datasets = default_config["datasets"]
         models = default_config["models"]
         prefix = default_config["prefix"]
-        models_layer_num = default_config["models_layer_num"]
+        models_layer_num = default_config["models-layer-num"]
 
     parser = get_parser()
     args = parser.parse_args()
