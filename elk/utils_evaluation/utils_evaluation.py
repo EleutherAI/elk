@@ -148,14 +148,6 @@ def split(hidden_states, permutation, prompts, split="train"):
     return hidden_states, labels
 
 
-def save_df_to_csv(args, df, prefix):
-    dir = args.save_dir / f"{args.model}_{prefix}_{args.seed}.csv"
-    df.to_csv(dir, index=False)
-    print(
-        f"Saving to {dir} at" f" {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}"
-    )
-
-
 def append_stats(stats_df, args, method, avg_accuracy, avg_accuracy_std, avg_loss):
     return stats_df.append(
         {

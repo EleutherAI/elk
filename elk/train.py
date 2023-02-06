@@ -13,22 +13,22 @@ import random
 import torch
 
 
-def train(args):
+def train(seed, hidden_states_directory, model, dataset, prefix, language_model_type, layer, mode, num_data, device, optimizer, weight_decay):
     # Reproducibility
-    np.random.seed(args.seed)
-    random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
 
-    # Extract hidden states from the model
+    # load hidden states extracted from the model
     hidden_states = get_hidden_states(
-        hidden_states_directory=args.hidden_states_directory,
-        model_name=args.model,
-        dataset_name=args.dataset,
-        prefix=args.prefix,
-        language_model_type=args.language_model_type,
-        layer=args.layer,
-        mode=args.mode,
-        num_data=args.num_data,
+        hidden_states_directory=hidden_states_directory,
+        model_name=model,
+        dataset_name=dataset,
+        prefix=prefix,
+        language_model_type=language_model_type,
+        layer=layer,
+        mode=mode,
+        num_data=num_data,
     )
 
     # `features` is of shape [batch_size, hidden_size * 2]
@@ -50,14 +50,14 @@ def train(args):
     print("Done.")
 
     print("Training CCS model...")
-    x0, x1 = torch.from_numpy(features).to(args.device).chunk(2, dim=1)
+    x0, x1 = torch.from_numpy(features).to(device).chunk(2, dim=1)
 
-    ccs_model = CCS(in_features=features.shape[1] // 2, device=args.device)
+    ccs_model = CCS(in_features=features.shape[1] // 2, device=device)
     ccs_model.fit(
         data=(x0, x1),
-        optimizer=args.optimizer,
+        optimizer=optimizer,
         verbose=True,
-        weight_decay=args.weight_decay,
+        weight_decay=weight_decay,
     )
     print("Done.")
 
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     args = get_args(default_config_path=Path(__file__).parent / "default_config.json")
     print(f"-------- args = {args} --------")
 
-    logistic_regression_model, ccs_model = train(args)
+    logistic_regression_model, ccs_model = train(args.seed, args.hidden_states_directory, args.model, args.dataset, args.prefix, args.language_model_type, args.layer, args.mode, args.num_data, args.device, args.optimizer, args.weight_decay)
 
     # save models
     # TODO: use better filenames for the pkls, so they don't get overwritten

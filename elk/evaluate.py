@@ -6,7 +6,7 @@ from elk.utils_evaluation.utils_evaluation import (
     append_stats,
 )
 from elk.utils_evaluation.parser import get_args
-from elk.utils_evaluation.utils_evaluation import save_df_to_csv
+from elk.utils_evaluation.utils_evaluation import save_dataframe_to_csv
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -87,7 +87,7 @@ def evaluate(args, logistic_regression_model, ccs_model: CCS):
     stats_df = append_stats(
         stats_df, args, "lr", avg_accuracy_lr, avg_accuracy_std_lr, avg_loss_lr
     )
-    save_df_to_csv(args, stats_df, args.prefix)
+    return stats_df
 
 
 if __name__ == "__main__":
@@ -97,4 +97,6 @@ if __name__ == "__main__":
         logistic_regression_model = pickle.load(file)
 
     ccs_model = CCS.load(args.trained_models_path / "ccs_model.pt")
-    evaluate(args, logistic_regression_model, ccs_model)
+    results = evaluate(args, logistic_regression_model, ccs_model)
+
+    results.to_csv(args.save_dir / "results.csv", index=False)
