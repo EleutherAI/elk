@@ -63,6 +63,15 @@ def get_parser(datasets, models, prefix):
         default="generation_results",
         help="Where the hidden states and zero-shot accuracy are loaded.",
     )
+    parser.add_argument(
+        "--run-name",
+        type=str,
+        default="",
+        help=(
+            "Prefix to everything loaded and saved by this run, "
+            "excluding generation states."
+        ),
+    )
     parser.add_argument("--language-model-type", type=str, default="encoder")
     parser.add_argument("--layer", type=int, default=-1)
     parser.add_argument("--seed", type=int, default=0)

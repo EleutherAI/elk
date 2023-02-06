@@ -93,8 +93,10 @@ def evaluate(args, logistic_regression_model, ccs_model: CCS):
 if __name__ == "__main__":
     args = get_args(default_config_path=Path(__file__).parent / "default_config.json")
 
-    with open(args.trained_models_path / "logistic_regression_model.pkl", "rb") as file:
+    with open(
+        args.trained_models_path / f"{args.run_name}logistic_regression_model.pkl", "rb"
+    ) as file:
         logistic_regression_model = pickle.load(file)
 
-    ccs_model = CCS.load(args.trained_models_path / "ccs_model.pt")
+    ccs_model = CCS.load(args.trained_models_path / f"{args.run_name}ccs_model.pt")
     evaluate(args, logistic_regression_model, ccs_model)
