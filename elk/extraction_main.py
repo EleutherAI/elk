@@ -1,6 +1,6 @@
 from .extraction import extract_hiddens, PromptCollator
 from .extraction.parser import get_args
-from .files import get_memorable_cache_dir
+from .files import memorable_cache_dir
 from transformers import AutoModel, AutoTokenizer
 import json
 import torch
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
-    save_dir = get_memorable_cache_dir()
+    save_dir = memorable_cache_dir()
     print(f"Saving results to \033[1m{save_dir}\033[0m")  # bold
 
     print("Loading datasets")

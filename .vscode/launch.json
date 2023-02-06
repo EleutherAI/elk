@@ -12,26 +12,26 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "deberta-v2-xxlarge-mnli",
-                "--dataset","imdb",
+                "deberta-v2-xxlarge-mnli",
+                "imdb",
                 "--prefix", "confusion",
                 "--device", "cuda",
-                "--num-data", "1000"
+                "--max-examples", "1000"
             ]
         },
         {
-            "name": "Python: Generation Cuda",
+            "name": "Python: Extraction Cuda",
             "type": "python",
             "request": "launch",
             "module": "elk.extraction_main",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "deberta-v2-xxlarge-mnli",
-                "--dataset","imdb",
+                "deberta-v2-xxlarge-mnli",
+                "imdb",
                 "--prefix", "normal",
                 "--device", "cuda",
-                "--num-data", "1000"
+                "--max-examples", "1000"
             ]
         },
         {
@@ -42,11 +42,11 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "deberta-v2-xxlarge-mnli",
-                "--dataset","imdb",
+                "deberta-v2-xxlarge-mnli",
+                "imdb",
                 "--prefix", "normal",
                 "--device", "cuda",
-                "--num-data", "1000"
+                "--max-examples", "1000"
             ]
         },
         {
@@ -57,11 +57,11 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
-                "--model", "deberta-v2-xxlarge-mnli",
-                "--dataset","imdb",
+                "deberta-v2-xxlarge-mnli",
+                "imdb",
                 "--prefix", "normal",
                 "--device", "cuda",
-                "--num-data", "1000"
+                "--max-examples", "1000"
             ]
         }
     ]
