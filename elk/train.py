@@ -32,7 +32,9 @@ def train(args):
         num_data=args.num_data,
     )
     permutation = get_permutation(hidden_states)
-    normalized_hidden_states = normalize(hidden_states, permutation)
+    normalized_hidden_states = normalize(
+        hidden_states, permutation, include_test_set=args.include_test_set
+    )
 
     # `features` is of shape [batch_size, hidden_size * 2]
     # the first half of the features are from the first sentence,

@@ -41,6 +41,11 @@ def get_parser(datasets, models, prefix):
         help="How you combine h^+ and h^-.",
     )
     parser.add_argument(
+        "--include-test-set",
+        action="store_true",
+        help="Whether to also use the test set for computing normalizations constants",
+    )
+    parser.add_argument(
         "--save-dir",
         type=Path,
         default="evaluation_results",

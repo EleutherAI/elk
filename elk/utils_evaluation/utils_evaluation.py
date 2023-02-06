@@ -66,11 +66,16 @@ def normalize(
     permutation,
     scale: Literal["original", "none", "elementwise", "projection"] = "original",
     demean=True,
+    include_test_set=False,
 ):
+    labels_length = len(hidden_states[0][1])
+    data_indexes_used = (
+        np.arange(labels_length) if include_test_set else permutation[TRAIN_SPLIT_IDX]
+    )
+
     if demean:
         means = [
-            np.mean(data[permutation[TRAIN_SPLIT_IDX]], axis=0)
-            for data, label in hidden_states
+            np.mean(data[data_indexes_used], axis=0) for data, label in hidden_states
         ]
 
         hidden_states = [
@@ -80,14 +85,13 @@ def normalize(
     if scale == "original" or scale == "elementwise":
         if scale == "original":
             scale_factors = [
-                np.mean(np.linalg.norm(data[permutation[TRAIN_SPLIT_IDX]], axis=1))
+                np.mean(np.linalg.norm(data[data_indexes_used], axis=1))
                 / np.sqrt(data.shape[1])
                 for data, label in hidden_states
             ]
         else:
             scale_factors = [
-                np.std(data[permutation[TRAIN_SPLIT_IDX]], axis=0)
-                for data, label in hidden_states
+                np.std(data[data_indexes_used], axis=0) for data, label in hidden_states
             ]
         hidden_states = [
             (data * scale_factor, label)
