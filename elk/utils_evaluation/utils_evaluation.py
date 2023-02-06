@@ -64,7 +64,7 @@ def organize(hidden_states, mode):
 def normalize(
     hidden_states,
     permutation,
-    scale: Literal["original", "none", "elementwise", "projection"] = "original",
+    scale: Literal["original", "none", "elementwise", "layernorm"] = "original",
     demean=True,
     include_test_set=False,
 ):
@@ -74,6 +74,7 @@ def normalize(
     )
 
     if demean:
+        # center the data
         means = [
             np.mean(data[data_indexes_used], axis=0) for data, label in hidden_states
         ]
@@ -84,12 +85,14 @@ def normalize(
 
     if scale == "original" or scale == "elementwise":
         if scale == "original":
+            # make vectors have an average norm of sqrt(d)
             scale_factors = [
                 np.mean(np.linalg.norm(data[data_indexes_used], axis=1))
                 / np.sqrt(data.shape[1])
                 for data, label in hidden_states
             ]
         else:
+            # make each coordinate of the vector have a standard deviation of 1
             scale_factors = [
                 np.std(data[data_indexes_used], axis=0) for data, label in hidden_states
             ]
@@ -97,7 +100,8 @@ def normalize(
             (data * scale_factor, label)
             for (data, label), scale_factor in zip(hidden_states, scale_factors)
         ]
-    elif scale == "projection":
+    elif scale == "layernorm":
+        # make each vector have a norm of 1
         hidden_states = [
             (data / np.linalg.norm(data, axis=1), label)
             for data, label in hidden_states
