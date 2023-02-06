@@ -1,12 +1,15 @@
-from .eval.parser import get_args
-from .eval.utils_evaluation import load_hidden_states
-from .training.ccs import CCS
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-import numpy as np
 import pickle
 import random
+
+import numpy as np
 import torch
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+
+from .eval.parser import get_args
+from .eval.utils_evaluation import load_hidden_states
+from .files import elk_cache_dir
+from .training.ccs import CCS
 
 
 def train(args):
@@ -15,9 +18,9 @@ def train(args):
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    # Extract hidden states from the model
+    # load the hidden states extracted from the model
     hiddens, labels = load_hidden_states(
-        args.name,
+        path=elk_cache_dir() / args.name / "hiddens.pt",
         reduce=args.mode,
     )
 

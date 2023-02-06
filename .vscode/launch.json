@@ -53,15 +53,14 @@
             "name": "Python: Training Cuda",
             "type": "python",
             "request": "launch",
-            "module": "elk.train.py",
+            "module": "elk.train",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
+                "suspicious-wu",
                 "deberta-v2-xxlarge-mnli",
                 "imdb",
-                "--prefix", "normal",
-                "--device", "cuda",
-                "--max-examples", "1000"
+                "--device", "cuda"
             ]
         }
     ]

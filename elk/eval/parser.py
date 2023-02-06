@@ -1,6 +1,6 @@
+import json
 from argparse import ArgumentParser
 from pathlib import Path
-import json
 
 
 def get_args():
@@ -25,6 +25,16 @@ def get_args():
 def get_parser():
     parser = ArgumentParser()
     parser.add_argument("name", type=str, help="Name of the experiment")
+    parser.add_argument(
+        "model",
+        type=str,
+        help="HuggingFace name of model from which to extract hidden states.",
+    )
+    parser.add_argument(
+        "dataset",
+        type=str,
+        help="HuggingFace dataset you want to use",
+    )
     parser.add_argument(
         "--mode",
         type=str,
