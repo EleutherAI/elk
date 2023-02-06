@@ -3,10 +3,10 @@ import random
 
 import numpy as np
 import torch
+from argparse import ArgumentParser
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
-from .eval.parser import get_args
 from .eval.utils_evaluation import load_hidden_states
 from .files import elk_cache_dir
 from .training.ccs import CCS
@@ -52,13 +52,42 @@ def train(args):
 
 
 if __name__ == "__main__":
-    args = get_args()
+    parser = ArgumentParser()
+    parser.add_argument("name", type=str, help="Name of the experiment")
+    parser.add_argument(
+        "--device",
+        type=str,
+        help="PyTorch device to use. Default is cuda:0 if available.",
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="concat",
+        choices=["minus", "concat"],
+        help="How you combine h^+ and h^-.",
+    )
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        default="adam",
+        choices=("adam", "lbfgs"),
+        help="Optimizer for CCS. Should be adam or lbfgs.",
+    )
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=0.01,
+        help=(
+            "Weight decay for CCS when using Adam. Used as L2 regularization in LBFGS."
+        ),
+    )
+    args = parser.parse_args()
+
     lr_model, ccs_model = train(args)
 
-    # save models
-    # TODO: use better filenames for the pkls, so they don't get overwritten
-    args.trained_models_path.mkdir(parents=True, exist_ok=True)
-    with open(args.trained_models_path / "lr_model.pkl", "wb") as file:
+    path = elk_cache_dir() / args.name
+    with open(path / "lr_model.pkl", "wb") as file:
         pickle.dump(lr_model, file)
 
-    ccs_model.save(args.trained_models_path / "ccs_model.pt")
+    ccs_model.save(path / "ccs_model.pt")

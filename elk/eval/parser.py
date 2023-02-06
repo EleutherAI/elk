@@ -48,33 +48,7 @@ def get_parser():
         default="evaluation_results",
         help="Where the CSV and params are saved",
     )
-    parser.add_argument(
-        "--trained-models-path",
-        type=Path,
-        default="trained",
-        help="Where to save the CCS and logistic regression models",
-    )
     parser.add_argument("--layer", type=int, default=-1)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument(
-        "--device",
-        type=str,
-        help="PyTorch device to use. Default is cuda:0 if available.",
-    )
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="adam",
-        choices=("adam", "lbfgs"),
-        help="Optimizer for CCS. Should be adam or lbfgs.",
-    )
-    parser.add_argument(
-        "--weight-decay",
-        type=float,
-        default=0.01,
-        help=(
-            "Weight decay for CCS when using Adam. Used as L2 regularization in LBFGS."
-        ),
-    )
 
     return parser

@@ -29,7 +29,7 @@ def extract_hiddens(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
     collator: PromptCollator,
-) -> Iterable[tuple[torch.Tensor, int]]:
+) -> Iterable[tuple[torch.Tensor, list[int]]]:
     """Run inference on a model with a set of prompts, yielding the hidden states."""
     yield from _extract_inner(args, model, tokenizer, collator)  # type: ignore
 
@@ -105,16 +105,6 @@ def _extract_inner(
             tokenizer(s, return_tensors="pt", truncation=True, padding=True),
         )
 
-    # We'd like to be able to save compute by reusing hiddens with `past_key_values`
-    # when we can, and this requires knowing if the model uses causal masking.
-    # This heuristic may have some false negatives, but it should be safe. The HF docs
-    # say that the classes in "architectures" should be suitable for this *specific*
-    # checkpoint- for example `bert-base-uncased` only lists `BertForMaskedLM`, even
-    # though there is a `BertForCausalLM` class.
-    is_causal = any(
-        arch.endswith("ForCausalLM")
-        for arch in getattr(model.config, "architectures", [""])
-    )
     is_enc_dec = model.config.is_encoder_decoder
 
     # If this is an encoder-decoder model and we're passing the answer to the encoder,
@@ -132,7 +122,7 @@ def _extract_inner(
     dl = DataLoader(collator, batch_size=batch_size, collate_fn=collate)
 
     # Iterating over questions
-    for choices, label in tqdm(dl):
+    for choices, labels in tqdm(dl):
         # There are three conditions here:
         # 1) Encoder-decoder transformer, with answer in the decoder
         # 2) Decoder-only transformer
@@ -164,46 +154,10 @@ def _extract_inner(
                 )
                 for prompt in rest
             ]
+            # [batch_size, num_layers, num_choices, hidden_size]
+            yield torch.stack(hiddens, dim=2), labels
 
         # Either a decoder-only transformer or a transformer encoder
         else:
-            # Condition 2: Decoder-only transformer
-            if is_causal:
-                # First run the model on the question + answer 0
-                tokenized_prompts = [
-                    tokenizer.encode(str(prompt) + args.prompt_suffix)
-                    for prompt in choices
-                ]
-                output0 = model(
-                    input_ids=torch.tensor(tokenized_prompts[0], device=args.device),
-                    output_hidden_states=True,
-                    use_cache=True,
-                )
-
-                question_len = common_prefix_len(*tokenized_prompts)
-                question_hiddens = pytree_map(
-                    lambda x: x[:, :question_len], output0.hidden_states
-                )
-
-                hiddens = [reduce_seqs(output0.hidden_states)] + [
-                    reduce_seqs(
-                        model(
-                            input_ids=torch.tensor(
-                                prompt_ids, device=args.device
-                            ),  # .unsqueeze(0),
-                            output_hidden_states=True,
-                            past_key_values=question_hiddens,
-                        ).hidden_states
-                    )
-                    for prompt_ids in tokenized_prompts[1:]
-                ]
-
-            # Condition 3: Transformer encoder
-            else:
-                h = model(**choices, output_hidden_states=True).hidden_states
-                yield reduce_seqs(h, choices["attention_mask"]), label
-
-                continue
-
-        # [batch_size, num_layers, num_choices, hidden_size]
-        yield torch.stack(hiddens, dim=2), label
+            h = model(**choices, output_hidden_states=True).hidden_states
+            yield reduce_seqs(h, choices["attention_mask"]), labels

@@ -26,10 +26,15 @@ if __name__ == "__main__":
         *args.dataset, max_examples=args.max_examples, split="train"
     )
 
+    items = [
+        (features.cpu(), labels)
+        for features, labels in extract_hiddens(args, model, tokenizer, collator)
+    ]
     with open(save_dir / "hiddens.pt", "wb") as f:
-        # Save the hidden states
-        for state, label in extract_hiddens(args, model, tokenizer, collator):
-            torch.save((state, label), f)
+        hidden_batches, label_batches = zip(*items)
+        hiddens = torch.cat(hidden_batches)  # type: ignore
+        labels = sum(label_batches, [])
+        torch.save((hiddens, labels), f)
 
     with open(save_dir / "args.pkl", "w") as f:
         json.dump(vars(args), f)

@@ -38,17 +38,9 @@ def load_hidden_states(
     scale=True,
     demean=True,
 ):
-    batches: list[tuple[torch.Tensor, int]] = []
-    with open(path, "rb") as f:
-        while True:
-            try:
-                batches.append(torch.load(f, map_location="cpu"))
-            except EOFError:
-                break
+    hiddens, labels = torch.load(path, map_location="cpu")
 
-    hiddens = torch.stack([h for h, _ in batches], dim=0)
-    labels = [label for _, label in batches]
     normalized = [normalize(w, scale, demean) for w in hiddens]
     normalized = [reduce_paired_states(w, reduce) for w in normalized]
 
-    return hiddens, labels
+    return normalized, labels
