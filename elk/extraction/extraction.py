@@ -1,5 +1,8 @@
 from ..utils import pytree_map
-from .prompt_collator import PromptCollator
+from .prompt_collator import Prompt, PromptCollator
+from accelerate import find_executable_batch_size
+from einops import rearrange
+from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from typing import cast, Iterable, Sequence
@@ -28,25 +31,79 @@ def extract_hiddens(
     collator: PromptCollator,
 ) -> Iterable[tuple[torch.Tensor, int]]:
     """Run inference on a model with a set of prompts, yielding the hidden states."""
+    yield from _extract_inner(args, model, tokenizer, collator)  # type: ignore
 
-    def reduce_seqs(hiddens: list[torch.Tensor]) -> torch.Tensor:
+
+@find_executable_batch_size(starting_batch_size=32)
+def _extract_inner(
+    batch_size: int,
+    args,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    collator: PromptCollator,
+):
+    print(f"Using batch size: {batch_size}")
+    num_choices = len(collator.labels)
+
+    # We want to make sure the answer is never truncated
+    tokenizer.truncation_side = "left"
+
+    # This is sort of annoying. We have a list of questions, and for each data point we
+    # have K different answers. We want to run inference on each question-answer pair,
+    # but we want to batch them together so that we can run inference on the whole
+    # batch. So we have to do some gymnastics to get the right shape.
+    # This function returns the flattened questions and answers, and the labels for
+    # each question-answer pair. After inference we need to reshape the results.
+    def collate(items: list[tuple[list[Prompt], int]]) -> tuple[dict, list[int]]:
+        nested_choices = [
+            [str(choice) + args.prompt_suffix for choice in choices]
+            for choices, _ in items
+        ]
+        tokenized = pytree_map(
+            # Unflatten for inference
+            lambda x: x.to(args.device),
+            tokenizer(
+                # Flatten to fit in the tokenizer
+                [choice for choices in nested_choices for choice in choices],
+                padding=True,
+                return_tensors="pt",
+                truncation=True,
+            ),
+        )
+        return tokenized, [label for _, label in items]
+
+    def reduce_seqs(
+        hiddens: list[torch.Tensor], attention_mask: torch.Tensor
+    ) -> torch.Tensor:
         """Reduce sequences of hiddens into single vectors."""
+
+        # Unflatten the hiddens
+        hiddens = [rearrange(h, "(b n) l d -> b n l d", n=num_choices) for h in hiddens]
+
         if args.token_loc == "first":
-            hiddens = [h[:, 0].squeeze() for h in hiddens]
+            hiddens = [h[..., 0, :].squeeze() for h in hiddens]
         elif args.token_loc == "last":
-            hiddens = [h[:, -1].squeeze() for h in hiddens]
+            # Because of padding, the last token is going to be at a different index
+            # for each example, so we use gather.
+            B, C, *_ = hiddens[0].shape
+            lengths = attention_mask.sum(dim=-1).view(B, C, 1, 1)
+            hiddens = [h.gather(index=lengths - 1, dim=-2).squeeze() for h in hiddens]
         elif args.token_loc == "mean":
-            hiddens = [h.mean(dim=1).squeeze() for h in hiddens]
+            hiddens = [h.mean(dim=-2).squeeze() for h in hiddens]
         else:
             raise ValueError(f"Invalid token_loc: {args.token_loc}")
 
         if args.layers is not None:
             hiddens = [hiddens[i] for i in args.layers]
 
-        return torch.stack(hiddens)
+        # [batch size, layers, num choices, hidden size]
+        return torch.stack(hiddens, dim=1)
 
-    def tokenize(s: str):
-        return tokenizer(s, return_tensors="pt").input_ids.to(args.device)
+    def tokenize(s: list[str]):
+        return pytree_map(
+            lambda x: x.to(args.device),
+            tokenizer(s, return_tensors="pt", truncation=True, padding=True),
+        )
 
     # We'd like to be able to save compute by reusing hiddens with `past_key_values`
     # when we can, and this requires knowing if the model uses causal masking.
@@ -72,22 +129,28 @@ def extract_hiddens(
 
         model = cast(PreTrainedModel, model.get_encoder())
 
+    dl = DataLoader(collator, batch_size=batch_size, collate_fn=collate)
+
     # Iterating over questions
-    for prompts, label in tqdm(collator):
+    for choices, label in tqdm(dl):
         # There are three conditions here:
         # 1) Encoder-decoder transformer, with answer in the decoder
         # 2) Decoder-only transformer
         # 3) Transformer encoder
         # In cases 1 & 2, we can reuse hidden states for the question.
         # In case 3, we have to recompute all hidden states every time.
-        prompt0, *rest = prompts
 
         # Condition 1: Encoder-decoder transformer, with answer in the decoder
         if is_enc_dec and not args.use_encoder_states:
+            prompt0, *rest = choices
+
             # First run the full model on the question + answer 0
             output0 = model(
-                input_ids=tokenize(prompt0.question),
-                labels=tokenize(prompt0.answer + args.prompt_suffix),
+                **tokenize(prompt0.question),
+                **{
+                    f"decoder_{k}": v
+                    for k, v in tokenize(prompt0.answer + args.prompt_suffix).items()
+                },
                 output_hidden_states=True,
             )
             # Then run the decoder on the other answers with cached encoder states
@@ -104,13 +167,13 @@ def extract_hiddens(
 
         # Either a decoder-only transformer or a transformer encoder
         else:
-            # First run the model on the question + answer 0
-            tokenized_prompts = [
-                tokenizer.encode(str(prompt) + args.prompt_suffix) for prompt in prompts
-            ]
-
             # Condition 2: Decoder-only transformer
             if is_causal:
+                # First run the model on the question + answer 0
+                tokenized_prompts = [
+                    tokenizer.encode(str(prompt) + args.prompt_suffix)
+                    for prompt in choices
+                ]
                 output0 = model(
                     input_ids=torch.tensor(tokenized_prompts[0], device=args.device),
                     output_hidden_states=True,
@@ -127,7 +190,7 @@ def extract_hiddens(
                         model(
                             input_ids=torch.tensor(
                                 prompt_ids, device=args.device
-                            ).unsqueeze(0),
+                            ),  # .unsqueeze(0),
                             output_hidden_states=True,
                             past_key_values=question_hiddens,
                         ).hidden_states
@@ -137,17 +200,10 @@ def extract_hiddens(
 
             # Condition 3: Transformer encoder
             else:
-                x = torch.tensor(tokenized_prompts[0], device=args.device).unsqueeze(0)
-                output0 = model(input_ids=x, output_hidden_states=True)
-                hiddens = [reduce_seqs(output0.hidden_states)] + [
-                    reduce_seqs(
-                        model(
-                            input_ids=tokenize(str(prompt) + args.prompt_suffix),
-                            output_hidden_states=True,
-                        ).hidden_states
-                    )
-                    for prompt in rest
-                ]
+                h = model(**choices, output_hidden_states=True).hidden_states
+                yield reduce_seqs(h, choices["attention_mask"]), label
 
-        # [num_layers, num_choices, hidden_size]
-        yield torch.stack(hiddens, dim=1), label
+                continue
+
+        # [batch_size, num_layers, num_choices, hidden_size]
+        yield torch.stack(hiddens, dim=2), label

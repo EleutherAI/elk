@@ -22,7 +22,10 @@ if __name__ == "__main__":
     print(f"Saving results to \033[1m{save_dir}\033[0m")  # bold
 
     print("Loading datasets")
-    collator = PromptCollator(*args.dataset, split="train")
+    collator = PromptCollator(
+        *args.dataset, max_examples=args.max_examples, split="train"
+    )
+
     with open(save_dir / "hiddens.pt", "wb") as f:
         # Save the hidden states
         for state, label in extract_hiddens(args, model, tokenizer, collator):
