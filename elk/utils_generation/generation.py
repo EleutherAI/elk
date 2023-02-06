@@ -7,7 +7,6 @@ from .save_utils import save_records_to_csv
 
 
 def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
-
     apply_tokenizer = functools.partial(
         getToken, tokenizer=tokenizer, device=args.device
     )

@@ -19,7 +19,6 @@ def saveFrame(frame_dict, args):
     args.save_base_dir.mkdir(parents=True, exist_ok=True)
 
     for key, frame in frame_dict.items():
-
         directory = getDir(key, args)
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -34,7 +33,7 @@ def saveArray(array_list, typ_list, key, args):
 
     # hidden states is num_data * layers * dim
     # logits is num_data * vocab_size
-    for (typ, array) in zip(typ_list, array_list):
+    for typ, array in zip(typ_list, array_list):
         if args.save_all_layers or "logits" in typ:
             np.save(directory / "{}.npy".format(typ), array)
         else:

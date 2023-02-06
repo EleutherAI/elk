@@ -501,7 +501,6 @@ def constructPrompt(
     qa_examples = (eg_q, eg_a)
 
     for idx in range(len(frame)):
-
         # early stopping if data num meets the requirement
         if len(result["null"]) >= max_num:
             break

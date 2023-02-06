@@ -358,7 +358,7 @@ def create_dataframe_dict(
     create_directory(data_base_dir)
     name_to_dataframe = {}
     reload_set_name = ""  # Only reload if this is the first prompt of a dataset
-    for (dataset, prompt_idx, max_num) in zip(dataset_names, prompt_idxs, num_data):
+    for dataset, prompt_idx, max_num in zip(dataset_names, prompt_idxs, num_data):
         path = data_base_dir / f"rawdata_{dataset}_{max_num}.csv"
 
         # load datasets
