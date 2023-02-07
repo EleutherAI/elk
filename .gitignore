@@ -4,6 +4,7 @@ elk/models/*
 nohup.out
 .idea
 datasets/
+models/
 
 *.pkl
 
