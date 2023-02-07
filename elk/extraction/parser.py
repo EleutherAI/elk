@@ -46,6 +46,7 @@ def get_parser():
     )
     parser.add_argument(
         "--label-column",
+        default="label",
         type=str,
         help="Column of the dataset to use as the label. Default is 'label'.",
     )
