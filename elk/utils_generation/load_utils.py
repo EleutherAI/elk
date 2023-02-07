@@ -11,8 +11,8 @@ from transformers import (
 import os
 import torch
 import pandas as pd
-from utils_generation.construct_prompts import construct_prompt_dataframe, prompt_dict
-from utils_generation.save_utils import get_directory
+from elk.utils_generation.construct_prompts import construct_prompt_dataframe, prompt_dict
+from elk.utils_generation.save_utils import get_directory
 from datasets import load_dataset
 from promptsource.templates import DatasetTemplates
 
@@ -309,9 +309,10 @@ def get_num_templates_per_dataset(all_dataset_names):
         # if dataset_name in prompt_dict.keys():
         #     amount_of_templates += len(prompt_dict[dataset_name])
         if dataset_name not in ["ag-news", "dbpedia-14"]:
-            amount_of_templates += len(DatasetTemplates(*get_hugging_face_load_name(dataset_name)).all_template_names)
+            amount_of_templates += len(DatasetTemplates("imdb").all_template_names)
         if dataset_name == "copa":
             amount_of_templates -= 4  # do not use the last four prompts
         num_templates_per_dataset.append(amount_of_templates)
 
+    print("num_templates_per_dataset", num_templates_per_dataset)
     return num_templates_per_dataset
