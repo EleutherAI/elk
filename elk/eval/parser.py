@@ -42,12 +42,7 @@ def get_parser():
         choices=["minus", "concat"],
         help="How you combine h^+ and h^-.",
     )
-    parser.add_argument(
-        "--save-dir",
-        type=Path,
-        default="evaluation_results",
-        help="Where the CSV and params are saved",
-    )
+    parser.add_argument("--device", type=str, help="PyTorch device to use.")
     parser.add_argument("--layer", type=int, default=-1)
     parser.add_argument("--seed", type=int, default=0)
 

@@ -25,7 +25,6 @@ def reduce_paired_states(hidden_states: torch.Tensor, mode: str):
 
 def normalize(data: torch.Tensor, scale=True, demean=True):
     # demean the array and rescale each data point
-    breakpoint()
     data = data - data.mean(dim=0) if demean else data
     if not scale:
         return data
@@ -40,7 +39,6 @@ def load_hidden_states(
     demean=True,
 ):
     hiddens, labels = torch.load(path, map_location="cpu")
-    breakpoint()
 
     normalized = normalize(hiddens, scale, demean)
     normalized = reduce_paired_states(hiddens, reduce)
