@@ -9,9 +9,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from tqdm.auto import tqdm
 
-from .eval.utils_evaluation import load_hidden_states
 from .files import elk_cache_dir
 from .training.ccs import CCS
+from .training.preprocessing import load_hidden_states
 
 
 @torch.autocast("cuda", enabled=torch.cuda.is_available())
@@ -23,10 +23,7 @@ def train(args):
 
     # load the hidden states extracted from the model
     cache_dir = elk_cache_dir() / args.name
-    hiddens, labels = load_hidden_states(
-        path=cache_dir / "hiddens.pt",
-        reduce=args.mode,
-    )
+    hiddens, labels = load_hidden_states(path=cache_dir / "hiddens.pt")
     assert np.mean(labels) not in [0, 1]
 
     train_hiddens, test_hiddens, train_labels, test_labels = train_test_split(
@@ -91,16 +88,9 @@ if __name__ == "__main__":
         help="PyTorch device to use. Default is cuda:0 if available.",
     )
     parser.add_argument(
-        "--mode",
-        type=str,
-        default="concat",
-        choices=["minus", "concat"],
-        help="How you combine h^+ and h^-.",
-    )
-    parser.add_argument(
         "--optimizer",
         type=str,
-        default="adam",
+        default="lbfgs",
         choices=("adam", "lbfgs"),
         help="Optimizer for CCS. Should be adam or lbfgs.",
     )

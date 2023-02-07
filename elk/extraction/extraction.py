@@ -5,20 +5,8 @@ from einops import rearrange
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
-from typing import cast, Iterable, Sequence
+from typing import cast, Iterable
 import torch
-
-
-# We use this function to find where the answer starts in the tokenized prompt.
-# This way, we're robust to idiosyncrasies in the tokenizer.
-def common_prefix_len(*seqs: Sequence) -> int:
-    """Compute the length of the common prefix of N sequences."""
-    for i, elems in enumerate(zip(*seqs)):
-        pivot, *rest = elems
-        if not all(elem == pivot for elem in rest):
-            return i
-
-    return min(len(x) for x in seqs)
 
 
 @torch.autocast("cuda", enabled=torch.cuda.is_available())
@@ -33,6 +21,7 @@ def extract_hiddens(
     yield from _extract_inner(args, model, tokenizer, collator)  # type: ignore
 
 
+# TODO: Bring back batching when we have a good way to prevent excess padding
 @find_executable_batch_size(starting_batch_size=1)
 def _extract_inner(
     batch_size: int,
@@ -44,13 +33,10 @@ def _extract_inner(
     print(f"Using batch size: {batch_size}")
     num_choices = len(collator.labels)
 
+    # TODO: Make this configurable or something
     # We want to make sure the answer is never truncated
     tokenizer.truncation_side = "left"
 
-    # This is sort of annoying. We have a list of questions, and for each data point we
-    # have K different answers. We want to run inference on each question-answer pair,
-    # but we want to batch them together so that we can run inference on the whole
-    # batch. So we have to do some gymnastics to get the right shape.
     # This function returns the flattened questions and answers, and the labels for
     # each question-answer pair. After inference we need to reshape the results.
     def collate(prompts: list[Prompt]) -> tuple[dict, list[int]]:
