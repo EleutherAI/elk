@@ -97,7 +97,7 @@ def normalize(
                 np.std(data[data_indexes_used], axis=0) for data, label in hidden_states
             ]
         hidden_states = [
-            (data * scale_factor, label)
+            (data / scale_factor, label)
             for (data, label), scale_factor in zip(hidden_states, scale_factors)
         ]
     elif scale == "layernorm":
