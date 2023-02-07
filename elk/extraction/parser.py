@@ -45,6 +45,11 @@ def get_parser():
         help="PyTorch device to use. Default is cuda:0 if available.",
     )
     parser.add_argument(
+        "--label_column",
+        type=str,
+        help="Column of the dataset to use as the label. Default is 'label'.",
+    )
+    parser.add_argument(
         "--max-examples",
         default=1000,
         type=int,
