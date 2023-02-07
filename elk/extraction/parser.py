@@ -51,6 +51,12 @@ def get_parser():
         help="Maximum number of examples to use from each dataset.",
     )
     parser.add_argument(
+        "--name",
+        type=str,
+        help="Name of the experiment. If not provided, a memorable name of the form "
+        "`objective-ramanujan` will be generated.",
+    )
+    parser.add_argument(
         "--prompt-suffix",
         type=str,
         default="",

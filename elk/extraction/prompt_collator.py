@@ -33,6 +33,7 @@ class PromptCollator:
         # Create a train-test split if needed
         train_name, *others = data.keys()
         if not others:
+            print("Creating a train-test split...")
             data = data[train_name].train_test_split(
                 seed=seed, stratify_by_column=label_column
             )

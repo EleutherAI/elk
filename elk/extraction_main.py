@@ -1,6 +1,6 @@
 from .extraction import extract_hiddens, PromptCollator
 from .extraction.parser import get_args
-from .files import memorable_cache_dir
+from .files import elk_cache_dir, memorable_cache_dir
 from transformers import AutoModel, AutoTokenizer
 import json
 import torch
@@ -18,13 +18,15 @@ if __name__ == "__main__":
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
-    save_dir = memorable_cache_dir()
+    save_dir = elk_cache_dir() / args.name if args.name else memorable_cache_dir()
     print(f"Saving results to \033[1m{save_dir}\033[0m")  # bold
 
     print("Loading datasets")
     collator = PromptCollator(
         *args.dataset, max_examples=args.max_examples, split="train"
     )
+    prompt_names = collator.prompter.all_template_names
+    print(f"Randomizing over {len(prompt_names)} prompts: {prompt_names}")
 
     items = [
         (features.cpu(), labels)
