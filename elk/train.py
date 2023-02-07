@@ -35,7 +35,11 @@ def train(args):
     ccs_models = []
     lr_models = []
 
-    pbar = tqdm(train_hiddens.unbind(1), unit="layer")
+    # Do the last layer first- useful for debugging, maybe change later
+    layers = list(train_hiddens.unbind(1))
+    layers.reverse()
+
+    pbar = tqdm(layers, unit="layer")
     for layer_hiddens in pbar:
         # TODO: Once we implement cross-validation for CCS, we should benchmark against
         # LogisticRegressionCV here.
@@ -44,19 +48,23 @@ def train(args):
         lr_model.fit(layer_hiddens, train_labels)
 
         pbar.set_description("Fitting CCS")
-        x0, x1 = layer_hiddens.to(args.device).chunk(2, dim=1)
+        x0, x1 = layer_hiddens.to(args.device).chunk(2, dim=-1)
+        breakpoint()
 
-        ccs_model = CCS(in_features=layer_hiddens.shape[1] // 2, device=args.device)
-        ccs_model.fit(
+        ccs_model = CCS(in_features=x0.shape[-1], device=args.device)
+        final_loss = ccs_model.fit(
             data=(x0, x1),
             optimizer=args.optimizer,
             verbose=False,
             weight_decay=args.weight_decay,
         )
+        pbar.set_postfix(loss=final_loss)
 
         lr_models.append(lr_model)
         ccs_models.append(ccs_model)
 
+    ccs_models.reverse()
+    lr_models.reverse()
     return lr_models, ccs_models
 
 

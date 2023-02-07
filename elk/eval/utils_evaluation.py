@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import torch
 
+
 default_config_path = Path(__file__).parent.parent / "default_config.json"
 
 with open(default_config_path, "r") as f:
@@ -23,24 +24,15 @@ def reduce_paired_states(hidden_states: torch.Tensor, mode: str):
     raise NotImplementedError("This mode is not supported.")
 
 
-def normalize(data: torch.Tensor, scale=True, demean=True):
-    # demean the array and rescale each data point
-    data = data - data.mean(dim=0) if demean else data
-    if not scale:
-        return data
-
-    return data / data.norm(dim=1).mean() * data.shape[1] ** 0.5
+def normalize(data: torch.Tensor):
+    variances, means = torch.var_mean(data, dim=0)
+    return (data - means) / variances.sqrt()
 
 
-def load_hidden_states(
-    path: Path,
-    reduce: str,
-    scale=True,
-    demean=True,
-):
+def load_hidden_states(path: Path, reduce: str):
     hiddens, labels = torch.load(path, map_location="cpu")
 
-    normalized = normalize(hiddens, scale, demean)
+    normalized = normalize(hiddens.float())
     normalized = reduce_paired_states(hiddens, reduce)
 
     return normalized, labels

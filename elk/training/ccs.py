@@ -120,7 +120,7 @@ class CCS(nn.Module):
         optimizer: Literal["adam", "lbfgs"] = "adam",
         verbose: bool = False,
         weight_decay: float = 0.01,
-    ):
+    ) -> float:
         self.validate_data(data)
         if verbose:
             print(f"Fitting CCS probe; {num_epochs=}, {num_tries=}, {lr=}")
@@ -150,6 +150,7 @@ class CCS(nn.Module):
                 best_state = deepcopy(self.probe.state_dict())
 
         self.probe.load_state_dict(best_state)
+        return best_loss
 
     @torch.no_grad()
     def score(
