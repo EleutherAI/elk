@@ -4,10 +4,7 @@ from pathlib import Path
 
 default_config_path = Path(__file__).parent.parent / "default_config.json"
 
-######## JSON Load ########
-json_dir = "./default_config"
-
-with open("{}.json".format(json_dir), "r") as f:
+with open(default_config_path, "r") as f:
     global_dict = json.load(f)
 dataset_list = global_dict["datasets"]
 registered_models = global_dict["models"]

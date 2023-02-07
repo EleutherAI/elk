@@ -53,7 +53,7 @@
             "name": "Python: Training Cuda",
             "type": "python",
             "request": "launch",
-            "module": "elk.train.py",
+            "module": "elk.train",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args" : [
