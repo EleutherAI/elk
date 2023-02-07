@@ -34,7 +34,13 @@ def get_filtered_filenames(
     """
     filtered_files = []
     for file in directory.iterdir():
-        if file.name.startswith(model_name) and f"_{dataset_name}_" in file.name and f"_{num_data}_" in file.name and f"_{prefix}_" in file.name and place in file.name:
+        if (
+            file.name.startswith(model_name)
+            and f"_{dataset_name}_" in file.name
+            and f"_{num_data}_" in file.name
+            and f"_{prefix}_" in file.name
+            and place in file.name
+        ):
             filtered_files.append(directory / file.name)
 
     return filtered_files

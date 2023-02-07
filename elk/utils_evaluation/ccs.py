@@ -60,7 +60,7 @@ class CCS(object):
         Encourages p0 and p1 to be close to 0 or 1 (far from 0.5)
         """
         min_p = torch.min(p0, p1)
-        return (min_p**2).mean(0)
+        return (min_p ** 2).mean(0)
 
     def get_consistency_loss(self, p0, p1):
         """
