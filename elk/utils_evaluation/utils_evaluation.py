@@ -32,16 +32,12 @@ def get_filtered_filenames(
     :param confusion: the confusion
     :param place: the place where the data is from
     """
-    files = map(lambda path: path.name, directory.iterdir())
-    filter_criteria = (
-        lambda file_name: file_name.startswith(model_name)
-        and f"_{dataset_name}_" in file_name
-        and f"_{num_data}_" in file_name
-        and f"_{prefix}_" in file_name
-        and place in file_name
-    )
-    filtered_files = filter(filter_criteria, files)
-    return [directory / f for f in filtered_files]
+    filtered_files = []
+    for file in directory.iterdir():
+        if file.name.startswith(model_name) and f"_{dataset_name}_" in file.name and f"_{num_data}_" in file.name and f"_{prefix}_" in file.name and place in file.name:
+            filtered_files.append(directory / file.name)
+
+    return filtered_files
 
 
 def organize(hidden_states, mode):
