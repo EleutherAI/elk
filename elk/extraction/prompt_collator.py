@@ -7,13 +7,14 @@ from typing import Optional
 
 @dataclass
 class Prompt:
-    """A prompt is a question and answer pair."""
+    """A prompt is a question, its possible answers, and a label."""
 
     question: str
-    answer: str
+    answers: list[str]
+    label: int
 
-    def __str__(self):
-        return f"{self.question}\n{self.answer}"
+    def to_string(self, answer_idx: int, sep: str = " [SEP] ") -> str:
+        return f"{self.question}{sep}{self.answers[answer_idx]}"
 
 
 class PromptCollator:
@@ -49,17 +50,23 @@ class PromptCollator:
         self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
         self.rng = Random(seed)
 
-    def __getitem__(self, index: int) -> tuple[list[Prompt], int]:
+    def __getitem__(self, index: int) -> Prompt:
         example = self.dataset[index]
         template = self.rng.choice(list(self.prompter.templates.values()))
         true_label = example[self.label_column]
 
-        prompts = []
+        answers = []
+        questions = set()
+
         for fake_label in self.labels:
             example[self.label_column] = fake_label
-            prompts.append(Prompt(*template.apply(example)))
 
-        return prompts, true_label
+            q, a = template.apply(example)
+            answers.append(a)
+            questions.add(q)
+
+        assert len(questions) == 1
+        return Prompt(question=questions.pop(), answers=answers, label=true_label)
 
     def __iter__(self):
         return (self[i] for i in range(len(self.dataset)))

@@ -21,7 +21,6 @@ def common_prefix_len(*seqs: Sequence) -> int:
     return min(len(x) for x in seqs)
 
 
-# TODO: Add support for batched inference
 @torch.autocast("cuda", enabled=torch.cuda.is_available())
 @torch.no_grad()
 def extract_hiddens(
@@ -34,7 +33,7 @@ def extract_hiddens(
     yield from _extract_inner(args, model, tokenizer, collator)  # type: ignore
 
 
-@find_executable_batch_size(starting_batch_size=32)
+@find_executable_batch_size(starting_batch_size=1)
 def _extract_inner(
     batch_size: int,
     args,
@@ -54,23 +53,23 @@ def _extract_inner(
     # batch. So we have to do some gymnastics to get the right shape.
     # This function returns the flattened questions and answers, and the labels for
     # each question-answer pair. After inference we need to reshape the results.
-    def collate(items: list[tuple[list[Prompt], int]]) -> tuple[dict, list[int]]:
-        nested_choices = [
-            [str(choice) + args.prompt_suffix for choice in choices]
-            for choices, _ in items
+    def collate(prompts: list[Prompt]) -> tuple[dict, list[int]]:
+        choices = [
+            prompt.to_string(i) + args.prompt_suffix
+            for prompt in prompts
+            for i in range(num_choices)
         ]
         tokenized = pytree_map(
             # Unflatten for inference
             lambda x: x.to(args.device),
             tokenizer(
-                # Flatten to fit in the tokenizer
-                [choice for choices in nested_choices for choice in choices],
+                choices,
                 padding=True,
                 return_tensors="pt",
                 truncation=True,
             ),
         )
-        return tokenized, [label for _, label in items]
+        return tokenized, [prompt.label for prompt in prompts]
 
     def reduce_seqs(
         hiddens: list[torch.Tensor], attention_mask: torch.Tensor
@@ -81,16 +80,16 @@ def _extract_inner(
         hiddens = [rearrange(h, "(b c) l d -> b c l d", c=num_choices) for h in hiddens]
 
         if args.token_loc == "first":
-            hiddens = [h[..., 0, :].squeeze() for h in hiddens]
+            hiddens = [h[..., 0, :] for h in hiddens]
         elif args.token_loc == "last":
             # Because of padding, the last token is going to be at a different index
             # for each example, so we use gather.
             B, C, _, D = hiddens[0].shape
             lengths = attention_mask.sum(dim=-1).view(B, C, 1, 1)
             indices = lengths.sub(1).expand(B, C, 1, D)
-            hiddens = [h.gather(index=indices, dim=-2).squeeze() for h in hiddens]
+            hiddens = [h.gather(index=indices, dim=-2).squeeze(-2) for h in hiddens]
         elif args.token_loc == "mean":
-            hiddens = [h.mean(dim=-2).squeeze() for h in hiddens]
+            hiddens = [h.mean(dim=-2) for h in hiddens]
         else:
             raise ValueError(f"Invalid token_loc: {args.token_loc}")
 
@@ -145,13 +144,13 @@ def _extract_inner(
                 output_hidden_states=True,
             )
             # Then run the decoder on the other answers with cached encoder states
-            hiddens = [reduce_seqs(output0.decoder_hidden_states)] + [
+            hiddens = [reduce_seqs(output0.decoder_hidden_states[1:])] + [
                 reduce_seqs(
                     model(
-                        encoder_hidden_states=output0.encoder_hidden_states,
+                        encoder_hidden_states=output0.encoder_hidden_states[1:],
                         labels=tokenize(prompt.answer + args.prompt_suffix),
                         output_hidden_states=True,
-                    ).decoder_hidden_states
+                    ).decoder_hidden_states[1:]
                 )
                 for prompt in rest
             ]
@@ -160,5 +159,6 @@ def _extract_inner(
 
         # Either a decoder-only transformer or a transformer encoder
         else:
-            h = model(**choices, output_hidden_states=True).hidden_states
+            # Skip the input embeddings which are unlikely to be interesting
+            h = model(**choices, output_hidden_states=True).hidden_states[1:]
             yield reduce_seqs(h, choices["attention_mask"]), labels
