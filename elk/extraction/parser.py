@@ -7,7 +7,6 @@ def get_args():
     default_config_path = Path(__file__).parent.parent / "default_config.json"
     with open(default_config_path, "r") as f:
         default_config = json.load(f)
-        prefix = default_config["prefix"]
         model_shortcuts = default_config["model_shortcuts"]
 
     parser = get_parser()
@@ -21,15 +20,6 @@ def get_args():
         import torch
 
         args.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    for prefix in args.prefix:
-        assert prefix in prefix, NotImplementedError(
-            "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
-            " please modify `utils_generation/prompts.json` \
-                and new prefix in {}.json.".format(
-                prefix, default_config_path
-            )
-        )
 
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))
@@ -53,17 +43,6 @@ def get_parser():
         "--device",
         type=str,
         help="PyTorch device to use. Default is cuda:0 if available.",
-    )
-
-    # datasets processing
-    parser.add_argument(
-        "--prefix",
-        type=str,
-        default="normal",
-        help=(
-            "The name of prefix added before the question. normal means no index. You"
-            " can go to `extraction/prompts.json` to add new prompt."
-        ),
     )
     parser.add_argument(
         "--max-examples",

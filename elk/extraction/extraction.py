@@ -78,16 +78,17 @@ def _extract_inner(
         """Reduce sequences of hiddens into single vectors."""
 
         # Unflatten the hiddens
-        hiddens = [rearrange(h, "(b n) l d -> b n l d", n=num_choices) for h in hiddens]
+        hiddens = [rearrange(h, "(b c) l d -> b c l d", c=num_choices) for h in hiddens]
 
         if args.token_loc == "first":
             hiddens = [h[..., 0, :].squeeze() for h in hiddens]
         elif args.token_loc == "last":
             # Because of padding, the last token is going to be at a different index
             # for each example, so we use gather.
-            B, C, *_ = hiddens[0].shape
+            B, C, _, D = hiddens[0].shape
             lengths = attention_mask.sum(dim=-1).view(B, C, 1, 1)
-            hiddens = [h.gather(index=lengths - 1, dim=-2).squeeze() for h in hiddens]
+            indices = lengths.sub(1).expand(B, C, 1, D)
+            hiddens = [h.gather(index=indices, dim=-2).squeeze() for h in hiddens]
         elif args.token_loc == "mean":
             hiddens = [h.mean(dim=-2).squeeze() for h in hiddens]
         else:
