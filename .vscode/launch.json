@@ -28,8 +28,8 @@
             "justMyCode": true,
             "args" : [
                 "deberta-v2-xxlarge-mnli",
-                "imdb",
-                "--prefix", "normal",
+                "super_glue", "boolq",
+                "--label-column", "label",
                 "--device", "cuda",
                 "--max-examples", "1000"
             ]
@@ -43,7 +43,7 @@
             "justMyCode": true,
             "args" : [
                 "deberta-v2-xxlarge-mnli",
-                "imdb",
+                "super_glue", "boolq",
                 "--prefix", "normal",
                 "--device", "cuda",
                 "--max-examples", "1000"
@@ -58,9 +58,6 @@
             "justMyCode": true,
             "args" : [
                 "suspicious-wu",
-                "deberta-v2-xxlarge-mnli",
-                "imdb",
-                "--device", "cuda"
             ]
         }
     ]
