@@ -2,7 +2,6 @@ from .files import elk_cache_dir
 from .training.ccs import CCS
 from .training.preprocessing import load_hidden_states
 from argparse import ArgumentParser
-from sklearn.model_selection import train_test_split
 import pickle
 import torch
 
@@ -44,18 +43,15 @@ def main():
 
     hidden_path = elk_cache_dir() / (args.transfer_to or args.name)
     print(f"Loading hidden states from \033[1m{hidden_path}\033[0m")  # bold
-    hiddens, labels = load_hidden_states(path=hidden_path / "hiddens.pt")
-    _, test_hiddens, __, test_labels = train_test_split(
-        hiddens, labels, random_state=args.seed, stratify=labels
-    )
+    hiddens, labels = load_hidden_states(path=hidden_path / "test_hiddens.pt")
 
     path = elk_cache_dir() / args.name
     with open(path / "lr_models.pkl", "rb") as file:
         lr_models = pickle.load(file)
 
     ccs_models = torch.load(path / "ccs_models.pt")
-    for h, lr_model, ccs_model in zip(test_hiddens.unbind(1), lr_models, ccs_models):
-        evaluate(args, h, test_labels, lr_model, ccs_model)
+    for h, lr_model, ccs_model in zip(hiddens.unbind(1), lr_models, ccs_models):
+        evaluate(args, h, labels, lr_model, ccs_model)
 
 
 if __name__ == "__main__":

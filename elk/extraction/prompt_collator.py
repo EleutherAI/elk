@@ -3,6 +3,7 @@ from datasets import DatasetDict, load_dataset
 from promptsource.templates import DatasetTemplates
 from random import Random
 from typing import Literal, Optional
+import numpy as np
 
 
 @dataclass
@@ -42,8 +43,15 @@ class PromptCollator:
         else:
             data = data.shuffle(seed)
 
+        if split not in data and split == "validation":
+            print("No validation split found, using test split instead")
+            split = "test"
+
         self.dataset = data[split]
-        self.labels = sorted(set(self.dataset[label_column]))
+        self.labels, counts = np.unique(self.dataset[label_column], return_counts=True)
+        self.label_fracs = counts / counts.sum()
+        if len(self.labels) < 2:
+            raise ValueError(f"Dataset {path}/{name} has only one label")
         if max_examples:
             self.dataset = self.dataset.select(range(max_examples))
 

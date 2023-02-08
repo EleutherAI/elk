@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 import torch
 
 
@@ -10,7 +11,21 @@ def normalize(data: torch.Tensor):
 def load_hidden_states(path: Path):
     hiddens, labels = torch.load(path, map_location="cpu")
 
-    # Normalize to zero mean and unit variance, then concatenate the
-    # positive and negative examples together.
-    normalized = normalize(hiddens.float()).flatten(start_dim=-2)
-    return normalized, labels
+    # Concatenate the positive and negative examples together.
+    return hiddens.flatten(start_dim=-2), labels
+
+
+def silence_datasets_messages():
+    """Silence the annoying wall of logging messages and warnings."""
+
+    def filter_fn(log_record):
+        msg = log_record.getMessage()
+        return (
+            "Found cached dataset" not in msg
+            and "Loading cached" not in msg
+            and "Using custom data configuration" not in msg
+        )
+
+    handler = logging.StreamHandler()
+    handler.addFilter(filter_fn)
+    logging.getLogger("datasets").addHandler(handler)

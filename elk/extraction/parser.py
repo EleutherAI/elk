@@ -82,6 +82,15 @@ def get_parser():
         ),
     )
     parser.add_argument(
+        "--val-frac",
+        type=float,
+        default=0.25,
+        help=(
+            "Fraction of `--max-examples` to use for testing. Ignored when "
+            "`--max-examples` is None; in that case the whole test set is used."
+        ),
+    )
+    parser.add_argument(
         "--token-loc",
         type=str,
         default="last",

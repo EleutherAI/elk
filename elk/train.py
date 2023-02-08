@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from argparse import ArgumentParser
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm.auto import tqdm
 
 from .files import elk_cache_dir
@@ -23,53 +23,74 @@ def train(args):
 
     # load the hidden states extracted from the model
     cache_dir = elk_cache_dir() / args.name
-    hiddens, labels = load_hidden_states(path=cache_dir / "hiddens.pt")
-    assert np.mean(labels) not in [0, 1]
-
-    train_hiddens, test_hiddens, train_labels, test_labels = train_test_split(
-        hiddens, labels, random_state=args.seed, stratify=labels
+    train_hiddens, train_labels = load_hidden_states(
+        path=cache_dir / "train_hiddens.pt"
     )
-    assert isinstance(test_hiddens, torch.Tensor)
+    val_hiddens, val_labels = load_hidden_states(
+        path=cache_dir / "validation_hiddens.pt"
+    )
+    assert len(set(train_labels)) > 1
+    assert len(set(val_labels)) > 1
+
+    assert isinstance(val_hiddens, torch.Tensor)
     assert isinstance(train_hiddens, torch.Tensor)
+    train_hiddens -= train_hiddens.float().mean(dim=0)
+    val_hiddens -= val_hiddens.float().mean(dim=0)
 
     ccs_models = []
     lr_models = []
     L = train_hiddens.shape[1]
 
     # Do the last layer first- useful for debugging, maybe change later
-    test_layers = list(test_hiddens.unbind(1))
+    val_layers = list(val_hiddens.unbind(1))
     train_layers = list(train_hiddens.unbind(1))
-    test_layers.reverse()
+    val_layers.reverse()
     train_layers.reverse()
 
-    pbar = tqdm(zip(train_layers, test_layers), total=L, unit="layer")
+    pbar = tqdm(zip(train_layers, val_layers), total=L, unit="layer")
     writer = csv.writer(open(cache_dir / "eval.csv", "w"))
-    writer.writerow(["layer", "train_loss", "test_loss", "test_acc", "lr_acc"])
+    writer.writerow(
+        [
+            "layer",
+            "train_loss",
+            "loss",
+            "acc",
+            "cal_acc",
+            "auroc",
+            "lr_auroc",
+            "lr_acc",
+        ]
+    )
 
-    for train_h, test_h in pbar:
+    for train_h, val_h in pbar:
         # TODO: Once we implement cross-validation for CCS, we should benchmark against
         # LogisticRegressionCV here.
         pbar.set_description("Fitting LR")
         lr_model = LogisticRegression(max_iter=10000, n_jobs=1, C=0.1)
         lr_model.fit(train_h, train_labels)
-        lr_acc = lr_model.score(test_h, test_labels)
+
+        lr_preds = lr_model.predict_proba(val_h)[:, 1]
+        lr_acc = accuracy_score(val_labels, lr_preds > 0.5)
+        lr_auroc = roc_auc_score(val_labels, lr_preds)
 
         pbar.set_description("Fitting CCS")
         x0, x1 = train_h.to(args.device).chunk(2, dim=-1)
-        test_x0, test_x1 = test_h.to(args.device).chunk(2, dim=-1)
+        val_x0, val_x1 = val_h.to(args.device).chunk(2, dim=-1)
 
-        ccs_model = CCS(in_features=x0.shape[-1], device=args.device)
+        ccs_model = CCS(in_features=x0.shape[-1], device=args.device, loss=args.loss)
         train_loss = ccs_model.fit(
             data=(x0, x1),
             optimizer=args.optimizer,
             verbose=False,
             weight_decay=args.weight_decay,
         )
-        test_acc, test_loss = ccs_model.score(
-            (test_x0, test_x1), torch.tensor(test_labels, device=args.device)
+        val_result = ccs_model.score(
+            (val_x0, val_x1),
+            torch.tensor(val_labels, device=args.device),
         )
-        pbar.set_postfix(loss=train_loss, ccs_acc=test_acc, lr_acc=lr_acc)
-        writer.writerow([L - pbar.n, train_loss, test_loss, test_acc, lr_acc])
+        pbar.set_postfix(ccs_auroc=val_result.auroc, lr_auroc=lr_auroc)
+        stats = [train_loss, *val_result, lr_auroc, lr_acc]
+        writer.writerow([L - pbar.n] + [f"{s:.4f}" for s in stats])
 
         lr_models.append(lr_model)
         ccs_models.append(ccs_model)
@@ -86,6 +107,13 @@ if __name__ == "__main__":
         "--device",
         type=str,
         help="PyTorch device to use. Default is cuda:0 if available.",
+    )
+    parser.add_argument(
+        "--loss",
+        type=str,
+        default="squared",
+        choices=("js", "squared"),
+        help="Loss function used for CCS.",
     )
     parser.add_argument(
         "--optimizer",
