@@ -4,7 +4,7 @@
     "amazon_polarity",
     "ag_news",
     "dbpedia_14",
-    "cola",
+    "copa",
     "rte",
     "boolq",
     "qnli",

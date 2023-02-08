@@ -4,7 +4,7 @@ from accelerate import find_executable_batch_size
 from einops import rearrange
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
 from typing import cast, Iterable
 import torch
 
@@ -37,25 +37,42 @@ def _extract_inner(
     # We want to make sure the answer is never truncated
     tokenizer.truncation_side = "left"
 
-    # This function returns the flattened questions and answers, and the labels for
-    # each question-answer pair. After inference we need to reshape the results.
-    def collate(prompts: list[Prompt]) -> tuple[dict, list[int]]:
-        choices = [
-            prompt.to_string(i) + args.prompt_suffix
-            for prompt in prompts
-            for i in range(num_choices)
-        ]
-        tokenized = pytree_map(
-            # Unflatten for inference
+    def tokenize(strings: list[str]):
+        return pytree_map(
             lambda x: x.to(args.device),
             tokenizer(
-                choices,
+                strings,
                 padding=True,
                 return_tensors="pt",
                 truncation=True,
             ),
         )
-        return tokenized, [prompt.label for prompt in prompts]
+
+    # This function returns the flattened questions and answers, and the labels for
+    # each question-answer pair. After inference we need to reshape the results.
+    def collate(prompts: list[Prompt]) -> tuple[BatchEncoding, list[int]]:
+        choices = [
+            prompt.to_string(i) + args.prompt_suffix
+            for prompt in prompts
+            for i in range(num_choices)
+        ]
+        return tokenize(choices), [prompt.label for prompt in prompts]
+
+    def collate_enc_dec(
+        prompts: list[Prompt],
+    ) -> tuple[BatchEncoding, BatchEncoding, list[int]]:
+        tokenized_questions = tokenize(
+            [prompt.question for prompt in prompts for _ in range(num_choices)]
+        )
+        tokenized_answers = tokenize(
+            [
+                prompt.answers[i] + args.prompt_suffix
+                for prompt in prompts
+                for i in range(num_choices)
+            ]
+        )
+        labels = [prompt.label for prompt in prompts]
+        return tokenized_questions, tokenized_answers, labels
 
     def reduce_seqs(
         hiddens: list[torch.Tensor], attention_mask: torch.Tensor
@@ -85,17 +102,10 @@ def _extract_inner(
         # [batch size, layers, num choices, hidden size]
         return torch.stack(hiddens, dim=1)
 
-    def tokenize(s: list[str]):
-        return pytree_map(
-            lambda x: x.to(args.device),
-            tokenizer(s, return_tensors="pt", truncation=True, padding=True),
-        )
-
-    is_enc_dec = model.config.is_encoder_decoder
-
     # If this is an encoder-decoder model and we're passing the answer to the encoder,
     # we don't need to run the decoder at all. Just strip it off, making the problem
     # equivalent to a regular encoder-only model.
+    is_enc_dec = model.config.is_encoder_decoder
     if is_enc_dec and args.use_encoder_states:
         # This isn't actually *guaranteed* by HF, but it's true for all existing models
         if not hasattr(model, "get_encoder") or not callable(model.get_encoder):
@@ -105,46 +115,33 @@ def _extract_inner(
 
         model = cast(PreTrainedModel, model.get_encoder())
 
-    dl = DataLoader(collator, batch_size=batch_size, collate_fn=collate)
+    # Whether to concatenate the question and answer before passing to the model.
+    # If False pass them to the encoder and decoder separately.
+    should_concat = not is_enc_dec or args.use_encoder_states
+
+    dl = DataLoader(
+        collator,
+        batch_size=batch_size,
+        collate_fn=collate if should_concat else collate_enc_dec,
+    )
 
     # Iterating over questions
-    for choices, labels in tqdm(dl):
-        # There are three conditions here:
-        # 1) Encoder-decoder transformer, with answer in the decoder
-        # 2) Decoder-only transformer
-        # 3) Transformer encoder
-        # In cases 1 & 2, we can reuse hidden states for the question.
-        # In case 3, we have to recompute all hidden states every time.
-
+    for batch in tqdm(dl):
         # Condition 1: Encoder-decoder transformer, with answer in the decoder
-        if is_enc_dec and not args.use_encoder_states:
-            prompt0, *rest = choices
-
-            # First run the full model on the question + answer 0
-            output0 = model(
-                **tokenize(prompt0.question),
-                **{
-                    f"decoder_{k}": v
-                    for k, v in tokenize(prompt0.answer + args.prompt_suffix).items()
-                },
+        if not should_concat:
+            questions, answers, labels = batch
+            outputs = model(
+                **questions,
+                **{f"decoder_{k}": v for k, v in answers.items()},
                 output_hidden_states=True,
             )
-            # Then run the decoder on the other answers with cached encoder states
-            hiddens = [reduce_seqs(output0.decoder_hidden_states[1:])] + [
-                reduce_seqs(
-                    model(
-                        encoder_hidden_states=output0.encoder_hidden_states[1:],
-                        labels=tokenize(prompt.answer + args.prompt_suffix),
-                        output_hidden_states=True,
-                    ).decoder_hidden_states[1:]
-                )
-                for prompt in rest
-            ]
             # [batch_size, num_layers, num_choices, hidden_size]
-            yield torch.stack(hiddens, dim=2), labels
+            yield torch.stack(outputs.hidden_states, dim=2), labels
 
         # Either a decoder-only transformer or a transformer encoder
         else:
+            choices, labels = batch
+
             # Skip the input embeddings which are unlikely to be interesting
             h = model(**choices, output_hidden_states=True).hidden_states[1:]
             yield reduce_seqs(h, choices["attention_mask"]), labels
