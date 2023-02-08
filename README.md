@@ -14,38 +14,16 @@ Our code uses [PyTorch](http://pytorch.org) and [Huggingface Transformers](https
 
 First install the package with `pip install -e .` in the root directory, or `pip install -e .[dev]` if you'd like to contribute to the project (see **Development** section below). This should install all the necessary dependencies.
 
-For a quick test: You can look into and run extraction.sh and evaluate.sh (**Warning:** They are in the package elk itself right now. Will be changed):
-
 ```bash
-cd elk
-sh extraction.sh
-sh train_evaluate.sh
+
+# Extract hidden states from the deberta model for prompts generated from the imdb dataset
+# By default, this will create a new folder with a randomly generated name, e.g. eager-yonath, under /home/.cache/elk/
+# The folder will contain the hidden states and other important files
+elk extract deberta-v2-xxlarge-mnli imdb
+
+# Set the above mentioned folder name to train the probe
+elk train eager-yonath
 ```
-
-Furthermore:
-
-1. To extract the hidden states for one model `mdl` and all datasets, `cd elk` and then run
-
-```bash
-python extraction_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --prefix normal --device cuda --max_examples 1000
-```
-
-To test `deberta-v2-xxlarge-mnli` with the misleading prefix, and only the `imdb` and `amazon_polarity` datasets, while printing extra information, run:
-
-The name of prefix can be found in `./extraction/construct_prompts.py`. This command will save hidden states to `extraction_results` and will save zero-shot accuracy to `extraction_results/extraction_results.csv`.
-
-1. To train a ccs model and a logistic regression model
-
-```bash
-python train.py --model deberta-v2-xxlarge-mnli --prefix normal --dataset imdb --num-data 1000
-```
-
-and evaluate:
-```bash
-python evaluate.py --model deberta-v2-xxlarge-mnli --dataset imdb --num-data 1000
-```
-
-Once finished, results will be saved in `evaluation_results/{model}_{prefix}_{seed}.csv`
 
 ### Development
 
