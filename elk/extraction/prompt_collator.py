@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datasets import DatasetDict, load_dataset
 from promptsource.templates import DatasetTemplates
 from random import Random
-from typing import Optional
+from typing import Literal, Optional
 
 
 @dataclass
@@ -27,6 +27,7 @@ class PromptCollator:
         label_column: str = "label",
         max_examples: int = 0,
         seed: int = 42,
+        strategy: Literal["all", "randomize"] = "randomize",
     ):
         data = load_dataset(path, name)
         assert isinstance(data, DatasetDict)
@@ -49,12 +50,23 @@ class PromptCollator:
         self.label_column = label_column
         self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
         self.rng = Random(seed)
+        self.strategy = strategy
 
     def __getitem__(self, index: int) -> Prompt:
-        example = self.dataset[index]
-        template = self.rng.choice(list(self.prompter.templates.values()))
-        true_label = example[self.label_column]
+        prompts = list(self.prompter.templates.values())
 
+        if self.strategy == "all":
+            example_idx, prompt_idx = divmod(index, len(prompts))
+            example = self.dataset[example_idx]
+            template = prompts[prompt_idx]
+
+        elif self.strategy == "randomize":
+            example = self.dataset[index]
+            template = self.rng.choice(prompts)
+        else:
+            raise ValueError(f"Unknown strategy {self.strategy}")
+
+        true_label = example[self.label_column]
         answers = []
         questions = set()
 
@@ -72,4 +84,8 @@ class PromptCollator:
         return (self[i] for i in range(len(self.dataset)))
 
     def __len__(self):
-        return len(self.dataset)
+        N = len(self.dataset)
+        if self.strategy == "all":
+            N *= len(self.prompter.templates)
+
+        return N

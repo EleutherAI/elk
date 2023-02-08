@@ -27,9 +27,15 @@ if __name__ == "__main__":
         max_examples=args.max_examples,
         split="train",
         label_column=args.label_column,
+        strategy=args.prompts,
     )
     prompt_names = collator.prompter.all_template_names
-    print(f"Randomizing over {len(prompt_names)} prompts: {prompt_names}")
+    if args.prompts == "all":
+        print(f"Using {len(prompt_names)} prompts for each data point: {prompt_names}")
+    elif args.prompts == "randomize":
+        print(f"Randomizing over {len(prompt_names)} prompts: {prompt_names}")
+    else:
+        raise ValueError(f"Unknown prompt strategy: {args.prompts}")
 
     items = [
         (features.cpu(), labels)

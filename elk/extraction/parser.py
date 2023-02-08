@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 def get_args():
-    default_config_path = Path(__file__).parent.parent / "default_config.json"
-    with open(default_config_path, "r") as f:
+    config_path = Path(__file__).parent.parent / "resources" / "config.json"
+    with open(config_path, "r") as f:
         default_config = json.load(f)
         model_shortcuts = default_config["model_shortcuts"]
 
@@ -61,6 +61,16 @@ def get_parser():
         type=str,
         help="Name of the experiment. If not provided, a memorable name of the form "
         "`objective-ramanujan` will be generated.",
+    )
+    parser.add_argument(
+        "--prompts",
+        type=str,
+        default="randomize",
+        choices=("all", "randomize"),
+        help=(
+            "'all' means to use all prompts for every example, while 'randomize' means "
+            "to assign a single random prompt to each data point."
+        ),
     )
     parser.add_argument(
         "--prompt-suffix",
