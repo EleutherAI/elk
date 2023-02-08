@@ -23,7 +23,10 @@ if __name__ == "__main__":
 
     print("Loading datasets")
     collator = PromptCollator(
-        *args.dataset, max_examples=args.max_examples, split="train", label_column=args.label_column
+        *args.dataset,
+        max_examples=args.max_examples,
+        split="train",
+        label_column=args.label_column,
     )
     prompt_names = collator.prompter.all_template_names
     print(f"Randomizing over {len(prompt_names)} prompts: {prompt_names}")
