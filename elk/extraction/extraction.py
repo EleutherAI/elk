@@ -34,6 +34,10 @@ def _extract_inner(
     num_choices = len(collator.labels)
 
     # TODO: Make this configurable or something
+    # Token used to separate the question from the answer
+    sep_token = tokenizer.sep_token or "\n"
+
+    # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
     tokenizer.truncation_side = "left"
 
@@ -52,7 +56,7 @@ def _extract_inner(
     # each question-answer pair. After inference we need to reshape the results.
     def collate(prompts: list[Prompt]) -> tuple[BatchEncoding, list[int]]:
         choices = [
-            prompt.to_string(i) + args.prompt_suffix
+            prompt.to_string(i, sep=sep_token) + args.prompt_suffix
             for prompt in prompts
             for i in range(num_choices)
         ]
@@ -136,7 +140,7 @@ def _extract_inner(
                 output_hidden_states=True,
             )
             # [batch_size, num_layers, num_choices, hidden_size]
-            yield torch.stack(outputs.hidden_states, dim=2), labels
+            yield torch.stack(outputs.decoder_hidden_states, dim=2), labels
 
         # Either a decoder-only transformer or a transformer encoder
         else:

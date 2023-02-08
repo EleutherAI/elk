@@ -12,16 +12,15 @@ def evaluate(args, hiddens, labels, lr_model, ccs_model: CCS):
 
     print("Evaluating logistic regression model")
     acc_lr = lr_model.score(hiddens, labels)
+    print(f"LR Accuracy: {acc_lr}")
 
     print("Evaluating CCS model")
     labels = torch.tensor(labels, device=args.device)
     x0, x1 = hiddens.to(args.device).chunk(2, dim=1)
-    acc_ccs, loss_ccs = ccs_model.score((x0, x1), labels)
+    result = ccs_model.score((x0, x1), labels)
 
-    print(f"accuracy_ccs {acc_ccs}")
-    print(f"loss_ccs {loss_ccs}")
-
-    print(f"accuracy_lr {acc_lr}")
+    # TODO: Save this somewhere
+    print(result)
 
 
 def main():

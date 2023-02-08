@@ -1,34 +1,8 @@
-import json
 from argparse import ArgumentParser
-from pathlib import Path
 
 
-def get_args():
-    config_path = Path(__file__).parent.parent / "resources" / "config.json"
-    with open(config_path, "r") as f:
-        default_config = json.load(f)
-        model_shortcuts = default_config["model_shortcuts"]
-
-    parser = get_parser()
-    args = parser.parse_args()
-
-    # Dereference shortcut
-    args.model = model_shortcuts.get(args.model, args.model)
-
-    # Default to CUDA iff available
-    if args.device is None:
-        import torch
-
-        args.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    for key in list(vars(args).keys()):
-        print("{}: {}".format(key, vars(args)[key]))
-
-    return args
-
-
-def get_parser():
-    parser = ArgumentParser()
+def get_extraction_parser():
+    parser = ArgumentParser(add_help=False)
     parser.add_argument(
         "model",
         type=str,

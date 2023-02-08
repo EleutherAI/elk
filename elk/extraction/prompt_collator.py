@@ -14,7 +14,7 @@ class Prompt:
     answers: list[str]
     label: int
 
-    def to_string(self, answer_idx: int, sep: str = " [SEP] ") -> str:
+    def to_string(self, answer_idx: int, sep: str = "\n") -> str:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
 
 

@@ -13,7 +13,7 @@ def test_args_no_underscores():
     datasets = None
     models = None
     prefix = None
-    with open("elk/resources/default_config.json", "r", encoding="utf-8") as f:
+    with open("elk/resources/config.json", "r") as f:
         default_config = json.load(f)
         datasets = default_config["datasets"]
         models = default_config["models"]
