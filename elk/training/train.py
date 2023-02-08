@@ -34,8 +34,21 @@ def train(args):
 
     assert isinstance(val_hiddens, torch.Tensor)
     assert isinstance(train_hiddens, torch.Tensor)
-    train_hiddens -= train_hiddens.float().mean(dim=0)
-    val_hiddens -= val_hiddens.float().mean(dim=0)
+
+    if args.legacy_normalization:
+        master = torch.cat([train_hiddens, val_hiddens], dim=0).float()
+        means = master.mean(dim=0)
+
+        # breakpoint()
+        train_hiddens -= means
+        val_hiddens -= means
+
+        scale = master.shape[-1] ** 0.5 / master.norm(dim=-1).mean()
+        train_hiddens *= scale
+        val_hiddens *= scale
+    else:
+        train_hiddens -= train_hiddens.float().mean(dim=0)
+        val_hiddens -= val_hiddens.float().mean(dim=0)
 
     ccs_models = []
     lr_models = []
@@ -77,7 +90,9 @@ def train(args):
         x0, x1 = train_h.to(args.device).chunk(2, dim=-1)
         val_x0, val_x1 = val_h.to(args.device).chunk(2, dim=-1)
 
-        ccs_model = CCS(in_features=x0.shape[-1], device=args.device, loss=args.loss)
+        ccs_model = CCS(
+            in_features=x0.shape[-1], device=args.device, init=args.init, loss=args.loss
+        )
         train_loss = ccs_model.fit(
             data=(x0, x1),
             optimizer=args.optimizer,
