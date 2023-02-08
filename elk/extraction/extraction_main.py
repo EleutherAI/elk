@@ -33,6 +33,8 @@ def run(args):
             (features.cpu(), labels)
             for features, labels in extract_hiddens(args, model, tokenizer, collator)
         ]
+        save_dir.mkdir(parents=True, exist_ok=True)
+
         with open(save_dir / f"{split}_hiddens.pt", "wb") as f:
             hidden_batches, label_batches = zip(*items)
             hiddens = torch.cat(hidden_batches)  # type: ignore
