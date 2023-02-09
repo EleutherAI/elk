@@ -10,8 +10,11 @@ def get_training_parser() -> ArgumentParser:
         help="PyTorch device to use. Default is cuda:0 if available.",
     )
     parser.add_argument(
-        "--legacy-normalization",
-        action="store_true",
+        "--normalization",
+        type=str,
+        default="meanonly",
+        choices=("legacy", "elementwise", "meanonly"),
+        help="Normalization method to use for CCS.",
     )
     parser.add_argument(
         "--init",

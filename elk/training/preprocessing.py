@@ -1,11 +1,40 @@
 from pathlib import Path
 import logging
+from typing import Literal
 import torch
 
 
-def normalize(data: torch.Tensor):
-    variances, means = torch.var_mean(data, dim=0)
-    return (data - means) / variances.add(1e-5).sqrt()
+def normalize(
+    train_hiddens: torch.Tensor,
+    val_hiddens: torch.Tensor,
+    method: Literal["legacy", "elementwise", "meanonly"] = "legacy",
+):
+    if method == "legacy":
+        master = torch.cat([train_hiddens, val_hiddens], dim=0).float()
+        means = master.mean(dim=0)
+
+        train_hiddens -= means
+        val_hiddens -= means
+
+        scale = master.shape[-1] ** 0.5 / master.norm(dim=-1).mean()
+        train_hiddens *= scale
+        val_hiddens *= scale
+    else:
+        means = train_hiddens.float().mean(dim=0)
+        train_hiddens -= means
+        val_hiddens -= means
+
+        if scale == "elementwise":
+            scale = 1 / train_hiddens.norm(dim=0, keepdim=True)
+        elif scale == "meanonly":
+            scale = 1
+        else:
+            raise NotImplementedError(f"Scale {scale} is not supported.")
+
+        train_hiddens *= scale
+        val_hiddens *= scale
+
+    return train_hiddens, val_hiddens
 
 
 def load_hidden_states(path: Path):

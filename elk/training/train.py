@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 from ..files import elk_cache_dir
 from .ccs import CCS
 from .parser import get_training_parser
-from .preprocessing import load_hidden_states
+from .preprocessing import load_hidden_states, normalize
 
 
 @torch.autocast("cuda", enabled=torch.cuda.is_available())
@@ -35,20 +35,9 @@ def train(args):
     assert isinstance(val_hiddens, torch.Tensor)
     assert isinstance(train_hiddens, torch.Tensor)
 
-    if args.legacy_normalization:
-        master = torch.cat([train_hiddens, val_hiddens], dim=0).float()
-        means = master.mean(dim=0)
-
-        # breakpoint()
-        train_hiddens -= means
-        val_hiddens -= means
-
-        scale = master.shape[-1] ** 0.5 / master.norm(dim=-1).mean()
-        train_hiddens *= scale
-        val_hiddens *= scale
-    else:
-        train_hiddens -= train_hiddens.float().mean(dim=0)
-        val_hiddens -= val_hiddens.float().mean(dim=0)
+    train_hiddens, val_hiddens = normalize(
+        train_hiddens, val_hiddens, args.normalization
+    )
 
     ccs_models = []
     lr_models = []
