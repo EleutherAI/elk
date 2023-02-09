@@ -55,7 +55,7 @@ def get_parser(datasets, models, prefix):
     parser.add_argument(
         "--hidden-states-directory",
         type=Path,
-        default="generation_results",
+        default="extraction_results",
         help="Where the hidden states and zero-shot accuracy are loaded.",
     )
     parser.add_argument("--language-model-type", type=str, default="encoder")

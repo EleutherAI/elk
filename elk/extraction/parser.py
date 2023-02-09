@@ -41,14 +41,14 @@ def get_args():
 
     assert args.model in models, NotImplementedError(
         "You use model {}, but it's not . For any new model, please make sure you"
-        " implement the code in `load_utils` and `generation`, and then  it in"
+        " implement the code in `load_utils` and `extraction`, and then  it in"
         " `parser.py`".format(args.model)
     )
 
     for prefix in args.prefix:
         assert prefix in prefix, NotImplementedError(
             "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
-            " please mofidy `utils_generation/prompts.json` \
+            " please mofidy `extraction/prompts.json` \
                 and new prefix in {}.json.".format(
                 prefix, default_config_path
             )
@@ -157,7 +157,7 @@ def get_parser():
         default=["normal"],
         help=(
             "The name of prefix added before the question. normal means no index. You"
-            " can go to `utils_generation/prompts.json` to add new prompt."
+            " can go to `extraction/prompts.json` to add new prompt."
         ),
     )
     parser.add_argument(
@@ -187,7 +187,7 @@ def get_parser():
         help="The indices of prompt you want to use.",
     )
 
-    # generation & zero-shot accuracy calculation
+    # extraction & zero-shot accuracy calculation
     parser.add_argument(
         "--cal-zeroshot",
         type=int,
@@ -252,7 +252,7 @@ def get_parser():
     parser.add_argument(
         "--save-base-dir",
         type=Path,
-        default="generation_results",
+        default="extraction_results",
         help="The base dir where you want to save the directories of hidden states.",
     )
     parser.add_argument(

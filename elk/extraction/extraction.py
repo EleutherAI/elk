@@ -101,7 +101,7 @@ def create_hiddenstates(model, tokenizer, name_to_dataframe, args):
     """
     with torch.no_grad():
         for name, dataframe in name_to_dataframe.items():
-            # This part corresponds to hidden states generation
+            # This part corresponds to hidden states extraction
             hidden_states = calculate_hidden_state(
                 args, model, tokenizer, dataframe, args.model
             )

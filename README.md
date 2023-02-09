@@ -27,12 +27,12 @@ Furthermore:
 1. To generate the hidden states for one model `mdl` and all datasets, `cd elk` and then run
 
 ```bash
-python generation_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --prefix normal --device cuda --num-data 1000
+python extraction_main.py --model deberta-v2-xxlarge-mnli --datasets imdb --prefix normal --device cuda --num-data 1000
 ```
 
 To test `deberta-v2-xxlarge-mnli` with the misleading prefix, and only the `imdb` and `amazon-polarity` datasets, while printing extra information, run:
 
-The name of prefix can be found in `./utils_generation/construct_prompts.py`. This command will save hidden states to `generation_results` and will save zero-shot accuracy to `generation_results/generation_results.csv`.
+The name of prefix can be found in `./extraction/construct_prompts.py`. This command will save hidden states to `extraction_results` and will save zero-shot accuracy to `extraction_results/extraction_results.csv`.
 
 1. To train a ccs model and a logistic regression model
 

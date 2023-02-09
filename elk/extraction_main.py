@@ -1,12 +1,12 @@
 import time
-from elk.utils_generation.parser import get_args
-from elk.utils_generation.load_utils import (
+from elk.extraction.parser import get_args
+from elk.extraction.load_utils import (
     load_model,
     put_model_on_device,
     load_tokenizer,
     load_datasets,
 )
-from elk.utils_generation.generation import create_records, create_hiddenstates
+from elk.extraction.extraction import create_records, create_hiddenstates
 from tqdm import tqdm
 
 if __name__ == "__main__":

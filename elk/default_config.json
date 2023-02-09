@@ -32,7 +32,7 @@
     "dadisincorrect",
     "teachernoimitate"
   ],
-  "models-layer-num": {
+  "models_layer_num": {
     "t5-11b": 25,
     "unifiedqa-t5-11b": 25,
     "T0pp": 25,
