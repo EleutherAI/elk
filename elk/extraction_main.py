@@ -1,4 +1,3 @@
-import time
 from elk.extraction.parser import get_args
 from elk.extraction.load_utils import (
     load_model,

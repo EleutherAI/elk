@@ -3,7 +3,6 @@ import pandas as pd
 import random
 from promptsource.templates import DatasetTemplates
 from copy import deepcopy
-from functools import partial
 
 
 filter_length = 500
