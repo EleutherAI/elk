@@ -1,61 +1,4 @@
 from argparse import ArgumentParser
-from pathlib import Path
-from transformers import AutoConfig, PretrainedConfig
-import json
-
-
-def get_args():
-    default_config_path = Path(__file__).parent.parent / "default_config.json"
-    with open(default_config_path, "r") as f:
-        default_config = json.load(f)
-        datasets = default_config["datasets"]
-        prefix = default_config["prefix"]
-        model_shortcuts = default_config["model_shortcuts"]
-
-    parser = get_extraction_parser()
-    args = parser.parse_args()
-
-    # Default to CUDA iff available
-    if args.device is None:
-        import torch
-
-        args.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    if args.datasets == ["all"]:
-        args.datasets = datasets
-    else:
-        for w in args.datasets:
-            assert w in datasets, NotImplementedError(
-                "Dataset {} not  in {}. Please check the name of the dataset!".format(
-                    w, default_config_path
-                )
-            )
-
-    for prefix in args.prefix:
-        assert prefix in prefix, NotImplementedError(
-            "Invalid prefix name {}. Please check your prefix name. To add new prefix,"
-            " please mofidy `extraction/prompts.json` \
-                and new prefix in {}.json.".format(
-                prefix, default_config_path
-            )
-        )
-
-    args.model = model_shortcuts.get(args.model, args.model)
-    config = AutoConfig.from_pretrained(args.model)
-    assert isinstance(config, PretrainedConfig)
-
-    num_layers = getattr(config, "num_layers", config.num_hidden_layers)
-    assert isinstance(num_layers, int)
-
-    if args.use_encoder_states and not config.is_encoder_decoder:
-        raise ValueError(
-            "--use_encoder_states is only compatible with encoder-decoder models."
-        )
-
-    for key in list(vars(args).keys()):
-        print("{}: {}".format(key, vars(args)[key]))
-
-    return args
 
 
 def get_extraction_parser():
@@ -80,6 +23,12 @@ def get_extraction_parser():
         default="label",
         type=str,
         help="Column of the dataset to use as the label. Default is 'label'.",
+    )
+    parser.add_argument(
+        "--layer-stride",
+        default=1,
+        type=int,
+        help="Stride between layers to extract. Default is 1.",
     )
     parser.add_argument(
         "--max-examples",
