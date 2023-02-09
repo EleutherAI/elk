@@ -30,5 +30,13 @@
     "dadnotrust",
     "dadisincorrect",
     "teachernoimitate"
-  ]
+  ],
+  "models_layer_num": {
+    "t5-11b": 25,
+    "unifiedqa-t5-11b": 25,
+    "T0pp": 25,
+    "gpt-j-6B": 29,
+    "roberta-large-mnli": 25,
+    "deberta-v2-xxlarge-mnli": 49
+  }
 }

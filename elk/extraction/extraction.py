@@ -23,7 +23,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
 
     is_enc_dec = model.config.is_encoder_decoder
 
-    for idx in range(len(frame)):
+    for idx in tqdm(range(len(frame))):
         # calculate the hidden states
         if is_enc_dec and args.states_location == "decoder":
             answer_token = [apply_tokenizer(w) for w in frame.loc[idx, "selection"]]
