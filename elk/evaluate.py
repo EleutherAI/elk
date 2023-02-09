@@ -1,4 +1,4 @@
-from elk.utils_evaluation.ccs import CCS
+from elk.training.ccs import CCS
 from elk.utils_evaluation.utils_evaluation import (
     get_hidden_states,
     get_permutation,
