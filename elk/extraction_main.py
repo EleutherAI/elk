@@ -25,8 +25,8 @@ if __name__ == "__main__":
         "\n\n--------------------------------  Setting up model and tokenizer"
         " --------------------------------\n\n"
     )
-    print(f"loading model: model name = {args.model} at cache_dir = {args.cache_dir}")
-    model = load_model(mdl_name=args.model, cache_dir=args.cache_dir)
+    print(f"loading model: model name = {args.model}")
+    model = load_model(mdl_name=args.model)
 
     print(
         "finish loading model to memory. Now start loading to accelerator (gpu or"
@@ -34,11 +34,8 @@ if __name__ == "__main__":
     )
     model = put_model_on_device(model, parallelize=args.parallelize, device=args.device)
 
-    print(
-        f"loading tokenizer for: model name = {args.model} at cache_dir ="
-        f" {args.cache_dir}"
-    )
-    tokenizer = load_tokenizer(mdl_name=args.model, cache_dir=args.cache_dir)
+    print(f"loading tokenizer for: model name = {args.model}")
+    tokenizer = load_tokenizer(mdl_name=args.model)
 
     print(
         "\n\n-------------------------------- Loading datasets and calculating hidden"
