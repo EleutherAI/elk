@@ -1,65 +1,36 @@
-from numpy import longdouble
 from transformers import (
+    AutoConfig,
     AutoModelForCausalLM,
-    AutoTokenizer,
-    T5ForConditionalGeneration,
-    GPT2LMHeadModel,
-    GPT2Tokenizer,
     AutoModelForSeq2SeqLM,
-    AutoModelWithLMHead,
     AutoModelForSequenceClassification,
 )
-import os
 import torch
 import pandas as pd
 from datasets import load_dataset
 from .construct_prompts import constructPrompt, MyPrompts
-from .save_utils import saveFrame, getDir
-from .save_utils import save_records_to_csv
-from pathlib import Path
+from .save_utils import getDir
 
 
-def load_model(mdl_name, cache_dir):
+def load_model(mdl_name):
     """
-    Load model from cache_dir or from HuggingFace model hub.
+    Load model from HuggingFace model hub.
 
     Args:
         mdl_name (str): name of the model
-        cache_dir (str): path to the cache directory
 
     Returns:
         model (torch.nn.Module): model
     """
-    if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
-        model = AutoModelForCausalLM.from_pretrained(
-            "EleutherAI/{}".format(mdl_name), cache_dir=cache_dir
-        )
-    elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
-        model = GPT2LMHeadModel.from_pretrained(mdl_name, cache_dir=cache_dir)
-    elif "T0" in mdl_name:
-        model = AutoModelForSeq2SeqLM.from_pretrained(
-            "bigscience/{}".format(mdl_name), cache_dir=cache_dir
-        )
-    elif "unifiedqa" in mdl_name:
-        model = T5ForConditionalGeneration.from_pretrained(
-            "allenai/" + mdl_name, cache_dir=cache_dir
-        )
-    elif "deberta" in mdl_name:
-        model = AutoModelForSequenceClassification.from_pretrained(
-            "microsoft/{}".format(mdl_name), cache_dir=cache_dir
-        )
-    elif "roberta" in mdl_name:
-        model = AutoModelForSequenceClassification.from_pretrained(
-            mdl_name, cache_dir=cache_dir
-        )
-    elif "t5" in mdl_name:
-        model = AutoModelWithLMHead.from_pretrained(mdl_name, cache_dir=cache_dir)
+    config = AutoConfig.from_pretrained(mdl_name)
 
-    # We only use the models for inference,
-    # so we don't need to train them and hence don't need to track gradients
-    model.eval()
+    if config.is_encoder_decoder:
+        model = AutoModelForSeq2SeqLM.from_pretrained(mdl_name)
+    elif "bert" in mdl_name:
+        model = AutoModelForSequenceClassification.from_pretrained(mdl_name)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(mdl_name)
 
-    return model
+    return model.eval()
 
 
 def put_model_on_device(model, parallelize, device="cuda"):
@@ -101,44 +72,6 @@ def put_model_on_device(model, parallelize, device="cuda"):
         model.to("cpu")
 
     return model
-
-
-def load_tokenizer(mdl_name, cache_dir):
-    """
-    Load tokenizer for the model.
-
-    Args:
-        mdl_name (str): name of the model
-        cache_dir (str): path to the cache directory
-
-    Returns:
-        tokenizer: tokenizer for the model
-    """
-
-    if mdl_name in ["gpt-neo-2.7B", "gpt-j-6B"]:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "EleutherAI/{}".format(mdl_name), cache_dir=cache_dir
-        )
-    elif mdl_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]:
-        tokenizer = GPT2Tokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-    elif "T0" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "bigscience/{}".format(mdl_name), cache_dir=cache_dir
-        )
-    elif "unifiedqa" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "allenai/" + mdl_name, cache_dir=cache_dir
-        )
-    elif "deberta" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            "microsoft/" + mdl_name, cache_dir=cache_dir
-        )
-    elif "roberta" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-    elif "t5" in mdl_name:
-        tokenizer = AutoTokenizer.from_pretrained(mdl_name, cache_dir=cache_dir)
-
-    return tokenizer
 
 
 def get_sample_data(set_name, data_list, total_num):
@@ -205,7 +138,7 @@ def getLoadName(set_name):
         return ["story_cloze", "2016"]
 
 
-def loadFromDatasets(set_name, cache_dir, max_num):
+def loadFromDatasets(set_name, max_num):
     """
     This function will load datasets from module or raw csv,
     and then return a pd DataFrame
@@ -392,9 +325,7 @@ def create_dataframe_dict(
                 if print_more:
                     print(f"load raw dataset {dataset} from module.")
 
-                cache_dir = data_base_dir / "cache"
-                create_directory(cache_dir)
-                raw_data = loadFromDatasets(dataset, cache_dir, max_num)
+                raw_data = loadFromDatasets(dataset, max_num)
                 raw_data.to_csv(path, index=False)
 
                 if print_more:

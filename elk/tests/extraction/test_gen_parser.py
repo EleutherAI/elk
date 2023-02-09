@@ -1,4 +1,4 @@
-from elk.utils_generation.parser import get_parser
+from elk.extraction.parser import get_parser
 
 
 def test_args_no_underscores():

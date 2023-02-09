@@ -3,7 +3,6 @@ import pandas as pd
 import random
 from promptsource.templates import DatasetTemplates
 from copy import deepcopy
-from functools import partial
 
 
 filter_length = 500
@@ -312,12 +311,12 @@ class MyPrompts:
             self.module = None
         else:
             self.nomodule = False
-            from utils_generation.load_utils import getLoadName
+            from extraction.load_utils import getLoadName
 
             self.module = DatasetTemplates(*getLoadName(set_name))
 
     def getGlobalPromptsNum(set_name_list):
-        from utils_generation.load_utils import getLoadName
+        from extraction.load_utils import getLoadName
 
         res = []
         for set_name in set_name_list:
