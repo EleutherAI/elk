@@ -12,7 +12,7 @@ def get_args():
         prefix = default_config["prefix"]
         model_shortcuts = default_config["model_shortcuts"]
 
-    parser = get_parser()
+    parser = get_extraction_parser()
     args = parser.parse_args()
 
     # Default to CUDA iff available
@@ -58,7 +58,7 @@ def get_args():
     return args
 
 
-def get_parser():
+def get_extraction_parser():
     parser = argparse.ArgumentParser()
 
     # datasets loading
