@@ -6,11 +6,12 @@ import numpy as np
 import torch
 
 
-def extract_hidden_states(out, states_location):
+def extract_hidden_states(out, use_encoder: bool):
     """
-    Extract either `hidden_states` (BERT/GPT) or `{states_location}_hidden_states` (T5)
+    Extract either `hidden_states` (BERT/GPT) or `{encoder,decoder}_hidden_states` (T5)
     """
-    return out.get("hidden_states", out.get(f"{states_location}_hidden_states", None))
+    prefix = "encoder" if use_encoder else "decoder"
+    return out.get("hidden_states", out.get(f"{prefix}_hidden_states", None))
 
 
 def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
@@ -25,7 +26,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
 
     for idx in tqdm(range(len(frame))):
         # calculate the hidden states
-        if is_enc_dec and args.states_location == "decoder":
+        if is_enc_dec and not args.use_encoder_states:
             answer_token = [apply_tokenizer(w) for w in frame.loc[idx, "selection"]]
             # get the input_ids for candidates
             input_ids = apply_tokenizer(frame.loc[idx, "null"])
@@ -49,7 +50,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
                         labels=pad_answer if is_enc_dec else None,
                         output_hidden_states=True,
                     ),
-                    args.states_location,
+                    args.use_encoder_states,
                 )
                 for ids in ids_paired
             ]

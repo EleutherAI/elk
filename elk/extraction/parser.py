@@ -52,9 +52,6 @@ def get_args():
             "--use_encoder_states is only compatible with encoder-decoder models."
         )
 
-    print(
-        "\n\n-------------------------------- Args --------------------------------\n\n"
-    )
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))
 
