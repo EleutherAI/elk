@@ -16,9 +16,8 @@ TRAIN_SPLIT_IDX = 0
 with open(default_config_path, "r") as f:
     default_config = json.load(f)
 datasets = default_config["datasets"]
-models = default_config["models"]
+model_shortcuts = default_config["model_shortcuts"]
 prefix = default_config["prefix"]
-models_layer_num = default_config["models-layer-num"]
 
 
 def get_filtered_filenames(
@@ -35,7 +34,7 @@ def get_filtered_filenames(
     :param confusion: the confusion
     :param place: the place where the data is from
     """
-    files = map(lambda path: path.name, directory.iterdir())
+    files = map(lambda path: str(path.relative_to(directory)), directory.glob("**/"))
     filter_criteria = (
         lambda file_name: file_name.startswith(model_name)
         and f"_{dataset_name}_" in file_name
@@ -97,7 +96,7 @@ def normalize(
                 np.std(data[data_indexes_used], axis=0) for data, label in hidden_states
             ]
         hidden_states = [
-            (data * scale_factor, label)
+            (data / scale_factor, label)
             for (data, label), scale_factor in zip(hidden_states, scale_factors)
         ]
     elif scale == "layernorm":
@@ -133,9 +132,6 @@ def get_hidden_states(
     mode="minus",
     place="last",
 ):
-    if language_model_type == "decoder" and layer < 0:
-        layer += models_layer_num[model_name]
-
     print(
         f"start loading {language_model_type} hidden states {layer} for"
         f" {model_name} with {prefix} prefix. Mode:"
@@ -147,13 +143,14 @@ def get_hidden_states(
     )
     print("filtered_filenames", filtered_filenames)
 
-    append_list = ["_" + language_model_type + str(layer) for _ in filtered_filenames]
-
     hidden_states = []
-    for filename, append in zip(filtered_filenames, append_list):
-        negative_states = np.load(filename / f"0{append}.npy")
-        positive_states = np.load(filename / f"1{append}.npy")
-        organized_states = organize([negative_states, positive_states], mode=mode)
+    for filename in filtered_filenames:
+        negative_states = np.load(filename / "0.npy")
+        positive_states = np.load(filename / "1.npy")
+
+        organized_states = organize(
+            [negative_states[:, layer], positive_states[:, layer]], mode=mode
+        )
         hidden_states.append(organized_states)
 
     print(
