@@ -101,13 +101,14 @@ def get_hidden_states(
     )
     print("filtered_filenames", filtered_filenames)
 
-    append_list = ["_" + language_model_type + str(layer) for _ in filtered_filenames]
-
     hidden_states = []
-    for filename, append in zip(filtered_filenames, append_list):
-        negative_states = np.load(filename / f"0{append}.npy")
-        positive_states = np.load(filename / f"1{append}.npy")
-        organized_states = organize([negative_states, positive_states], mode=mode)
+    for filename in filtered_filenames:
+        negative_states = np.load(filename / "0.npy")
+        positive_states = np.load(filename / "1.npy")
+
+        organized_states = organize(
+            [negative_states[:, layer], positive_states[:, layer]], mode=mode
+        )
         hidden_states.append(organized_states)
 
     # normalize
@@ -146,6 +147,7 @@ def split(hidden_states, permutation, prompts, split="train"):
 
 def save_df_to_csv(args, df, prefix):
     dir = args.save_dir / f"{args.model}_{prefix}_{args.seed}.csv"
+    dir.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(dir, index=False)
     print(
         f"Saving to {dir} at" f" {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}"
