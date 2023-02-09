@@ -31,7 +31,7 @@ def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
             " states_location={args.states_location}."
         )
 
-    for idx in range(len(frame)):
+    for idx in tqdm(range(len(frame))):
         # calculate the hidden states
         if "T0" in mdl_name or "unifiedqa" in mdl_name or "t5" in mdl_name:
             if args.states_location == "encoder":
