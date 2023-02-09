@@ -1,9 +1,22 @@
 from argparse import ArgumentParser
+from ..extraction.parser import add_saveable_args
+
+
+def get_named_training_parser() -> ArgumentParser:
+    parser = ArgumentParser(add_help=False)
+    parser.add_argument("name", type=str, help="Name of the experiment")
+    add_train_args(parser)
+    return parser
 
 
 def get_training_parser() -> ArgumentParser:
     parser = ArgumentParser(add_help=False)
-    parser.add_argument("name", type=str, help="Name of the experiment")
+    add_saveable_args(parser)
+    add_train_args(parser)
+    return parser
+
+
+def add_train_args(parser: ArgumentParser):
     parser.add_argument(
         "--device",
         type=str,

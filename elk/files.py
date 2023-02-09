@@ -3,13 +3,13 @@ from hashlib import md5
 from pathlib import Path
 import os
 import pickle
+from .extraction.parser import get_saveable_args
 
 
 def args_to_uuid(args: Namespace) -> str:
     """Return a unique identifier for the given CLI args."""
 
-    identifying_args = vars(args).copy()
-    del identifying_args["device"]  # Device shouldn't affect the output
+    identifying_args = get_saveable_args(args)
 
     return md5(pickle.dumps(identifying_args)).hexdigest()
 
