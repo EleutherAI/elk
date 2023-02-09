@@ -185,8 +185,7 @@ def split(hidden_states, permutation, prompts, split="train"):
 
 
 def save_df_to_csv(args, df, prefix):
-    dir = args.save_dir / f"{args.model}_{prefix}_{args.seed}.csv"
-    dir.parent.mkdir(parents=True, exist_ok=True)
+    dir = args.save_dir / f"{args.run_name}{args.model}_{prefix}_{args.seed}.csv"
     df.to_csv(dir, index=False)
     print(
         f"Saving to {dir} at" f" {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}"

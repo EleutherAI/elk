@@ -78,7 +78,9 @@ if __name__ == "__main__":
     # save models
     # TODO: use better filenames for the pkls, so they don't get overwritten
     args.trained_models_path.mkdir(parents=True, exist_ok=True)
-    with open(args.trained_models_path / "logistic_regression_model.pkl", "wb") as file:
+    with open(
+        args.trained_models_path / f"{args.run_name}logistic_regression_model.pkl", "wb"
+    ) as file:
         pickle.dump(logistic_regression_model, file)
 
-    ccs_model.save(args.trained_models_path / "ccs_model.pt")
+    ccs_model.save(args.trained_models_path / f"{args.run_name}ccs_model.pt")
