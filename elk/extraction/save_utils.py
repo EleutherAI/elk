@@ -1,13 +1,11 @@
-import pandas as pd
-import os
 import numpy as np
+import pandas as pd
 import time
-from pathlib import Path
 
 
 def getDir(dataset_name_w_num, args):
     d = "{}_{}_{}_{}".format(
-        args.model, dataset_name_w_num, args.prefix, args.token_place
+        args.model, dataset_name_w_num, args.prefix, args.token_loc
     )
     if args.tag != "":
         d += "_{}".format(args.tag)
@@ -35,19 +33,18 @@ def saveArray(array_list, typ_list, key, args):
     # hidden states is num_data * layers * dim
     # logits is num_data * vocab_size
     for (typ, array) in zip(typ_list, array_list):
-        if args.save_all_layers or "logits" in typ:
-            np.save(directory / "{}.npy".format(typ), array)
-        else:
-            # only save the last layers for encoder hidden states
-            for idx in args.states_index:
+        if args.layers:
+            for idx in args.layers:
                 np.save(
-                    directory / "{}_{}{}.npy".format(typ, args.states_location, idx),
+                    directory / f"{typ}_{idx}.npy",
                     array[:, idx, :],
                 )
+        else:
+            np.save(directory / f"{typ}.npy", array)
 
 
 def save_records_to_csv(records, args):
-    f = args.save_base_dir / "{}.csv".format(args.save_csv_name)
+    f = args.save_base_dir / f"{args.save_csv_name}.csv"
     if not f.exists():
         csv = pd.DataFrame(
             columns=[
@@ -59,7 +56,6 @@ def save_records_to_csv(records, args):
                 "population",
                 "prefix",
                 "cal_zeroshot",
-                "cal_hiddenstates",
                 "log_probs",
                 "calibrated",
                 "tag",

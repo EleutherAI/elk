@@ -11,14 +11,13 @@
     "piqa",
     "story-cloze"
   ],
-  "models": [
-    "t5-11b",
-    "unifiedqa-t5-11b",
-    "T0pp",
-    "gpt-j-6B",
-    "roberta-large-mnli",
-    "deberta-v2-xxlarge-mnli"
-  ],
+  "model_shortcuts" : {
+    "t5-11b": "google/t5-11b",
+    "unifiedqa-t5-11b": "allenai/unifiedqa-t5-11b",
+    "T0pp": "bigscience/T0pp",
+    "gpt-j-6B": "EleutherAI/gpt-j-6B",
+    "deberta-v2-xxlarge-mnli": "microsoft/deberta-v2-xxlarge-mnli"
+  },
   "prefix": [
     "normal",
     "confusion",

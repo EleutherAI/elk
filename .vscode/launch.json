@@ -16,7 +16,7 @@
                 "--dataset","imdb",
                 "--prefix", "confusion",
                 "--device", "cuda",
-                "--num_data", "1000"
+                "--num-data", "1000"
             ]
         },
         {
@@ -31,7 +31,7 @@
                 "--dataset","imdb",
                 "--prefix", "normal",
                 "--device", "cuda",
-                "--num_data", "1000"
+                "--num-data", "1000"
             ]
         },
         {
@@ -46,7 +46,7 @@
                 "--dataset","imdb",
                 "--prefix", "normal",
                 "--device", "cuda",
-                "--num_data", "1000"
+                "--num-data", "1000"
             ]
         },
         {
@@ -61,7 +61,7 @@
                 "--dataset","imdb",
                 "--prefix", "normal",
                 "--device", "cuda",
-                "--num_data", "1000"
+                "--num-data", "1000"
             ]
         }
     ]
