@@ -1,6 +1,6 @@
 import pickle
 
-from train import train
+from elk.training.train import train
 from evaluate import evaluate
 from elk.utils_evaluation.parser import get_args
 from pathlib import Path

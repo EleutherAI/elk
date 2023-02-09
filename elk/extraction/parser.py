@@ -1,7 +1,7 @@
-import argparse
-import json
-from transformers import AutoConfig, PretrainedConfig
+from argparse import ArgumentParser
 from pathlib import Path
+from transformers import AutoConfig, PretrainedConfig
+import json
 
 
 def get_args():
@@ -59,47 +59,16 @@ def get_args():
 
 
 def get_extraction_parser():
-    parser = argparse.ArgumentParser()
-
-    # datasets loading
+    parser = ArgumentParser(add_help=False)
     parser.add_argument(
-        "--data-base-dir",
-        type=Path,
-        default="datasets/complete_ten",
-        help=(
-            "The base dir of all datasets (csv files) you want to generate hidden"
-            " states."
-        ),
-    )
-    parser.add_argument(
-        "--datasets",
-        nargs="+",
-        help=(
-            "List of name of datasets you want to use. Please make sure that the path"
-            ' of file is like `data_base_dir / (name + ".csv")` for all name'
-            " in datasets"
-        ),
-    )
-
-    # models loading
-    parser.add_argument(
-        "--model",
+        "model",
         type=str,
-        help=(
-            "The model you want to use. Please use the model in huggingface and only"
-            " leave the final path, i.e. for `allenai/unifiedqa-t5-11b`, only input"
-            " `unifiedqa-t5-11b`."
-        ),
+        help="HuggingFace name of model from which to extract hidden states.",
     )
     parser.add_argument(
-        "--parallelize",
-        action="store_true",
-        help=(
-            "Whether to parallelize models in multiple gpus. Please notice that at"
-            " least one gpu must be provided by `CUDA_VISIBLE_DEVICES` or `os.environ`."
-            " Using this args will help split the model equally in all gpus you"
-            " provide."
-        ),
+        "dataset",
+        nargs="+",
+        help="HuggingFace dataset you want to use",
     )
     parser.add_argument(
         "--device",
@@ -107,56 +76,32 @@ def get_extraction_parser():
         help="PyTorch device to use. Default is cuda:0 if available.",
     )
     parser.add_argument(
-        "--trained-models-path",
-        type=Path,
-        default="trained",
-        help="Where to save the ccs model and logisitc regression model.",
-    )
-
-    # datasets processing
-    parser.add_argument(
-        "--prefix",
+        "--label-column",
+        default="label",
         type=str,
-        nargs="+",
-        default=["normal"],
-        help=(
-            "The name of prefix added before the question. normal means no index. You"
-            " can go to `extraction/prompts.json` to add new prompt."
-        ),
+        help="Column of the dataset to use as the label. Default is 'label'.",
     )
     parser.add_argument(
-        "--num-data",
-        nargs="+",
-        default=[1000],
-        help=(
-            "number of data points you want to use in each datasets. If one integer is"
-            " provide, if will be extended to a list with the same length as"
-            " `datasets`. If the size of datasets are no enough, will use all the data"
-            " points."
-        ),
-    )
-    parser.add_argument(
-        "--reload-data",
-        action="store_true",
-        help=(
-            "Whether to use the old version of datasets if there exists one. Using"
-            " `reload_data` will let the program reselect data points from the"
-            " datasets."
-        ),
-    )
-    parser.add_argument(
-        "--prompt-idx",
-        nargs="+",
-        default=[0],
-        help="The indices of prompt you want to use.",
-    )
-
-    # extraction & zero-shot accuracy calculation
-    parser.add_argument(
-        "--cal-zeroshot",
+        "--max-examples",
+        default=1000,
         type=int,
-        default=1,
-        help="Whether to calculate the zero-shot accuracy.",
+        help="Maximum number of examples to use from each dataset.",
+    )
+    parser.add_argument(
+        "--name",
+        type=str,
+        help="Name of the experiment. If not provided, a memorable name of the form "
+        "`objective-ramanujan` will be generated.",
+    )
+    parser.add_argument(
+        "--prompts",
+        type=str,
+        default="randomize",
+        choices=("all", "randomize"),
+        help=(
+            "'all' means to use all prompts for every example, while 'randomize' means "
+            "to assign a single random prompt to each data point."
+        ),
     )
     parser.add_argument(
         "--prompt-suffix",
@@ -168,11 +113,20 @@ def get_extraction_parser():
         ),
     )
     parser.add_argument(
+        "--val-frac",
+        type=float,
+        default=0.25,
+        help=(
+            "Fraction of `--max-examples` to use for testing. Ignored when "
+            "`--max-examples` is None; in that case the whole test set is used."
+        ),
+    )
+    parser.add_argument(
         "--token-loc",
         type=str,
         default="last",
         help=(
-            "Determine which token's hidden states will be generated. Can be `first` or"
+            "Determine which token's hidden states will be extractd. Can be `first` or"
             " `last` or `average`."
         ),
     )
@@ -189,32 +143,10 @@ def get_extraction_parser():
         ),
     )
     parser.add_argument(
-        "--tag",
-        type=str,
-        default="",
-        help="Tag added as the suffix of the directory.",
-    )
-    parser.add_argument(
-        "--save-base-dir",
-        type=Path,
-        default="extraction_results",
-        help="The base dir where you want to save the directories of hidden states.",
-    )
-    parser.add_argument(
-        "--save-csv-name",
-        type=str,
-        default="results",
-        help="Name of csv that store all running records.",
-    )
-    parser.add_argument(
         "--layers",
         type=int,
         nargs="+",
         default=None,
         help="Which layers to extract hiddens from. If None, extract from all layers.",
     )
-    parser.add_argument(
-        "--print-more", action="store_true", help="Whether to print more."
-    )
-
     return parser

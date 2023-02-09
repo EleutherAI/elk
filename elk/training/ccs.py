@@ -1,10 +1,20 @@
+from .losses import ccs_squared_loss, js_loss
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from .losses import ccs_squared_loss
-from typing import cast, Literal, Optional, Type, Union
+from sklearn.metrics import roc_auc_score
+from typing import cast, Literal, NamedTuple, Optional, Type, Union
 import torch
 import torch.nn as nn
+
+
+class EvalResult(NamedTuple):
+    """The result of evaluating a CCS model on a dataset."""
+
+    loss: float
+    acc: float
+    cal_acc: float
+    auroc: float
 
 
 @dataclass
@@ -26,7 +36,9 @@ class CCS(nn.Module):
         device: str = "cuda",
         hidden_size: Optional[int] = None,
         init: Literal["default", "spherical"] = "default",
+        loss: Literal["js", "squared"] = "squared",
         num_layers: int = 1,
+        pre_ln: bool = False,
     ):
         super().__init__()
 
@@ -44,6 +56,9 @@ class CCS(nn.Module):
                 device=device,
             ),
         )
+        if pre_ln:
+            # Include a LayerNorm module before the first linear layer
+            self.probe.insert(0, nn.LayerNorm(in_features, elementwise_affine=False))
 
         for i in range(1, num_layers):
             self.probe.append(activation())
@@ -58,6 +73,7 @@ class CCS(nn.Module):
 
         self.init = init
         self.device = device
+        self.loss = js_loss if loss == "js" else ccs_squared_loss
 
     def reset_parameters(self):
         # Mathematically equivalent to the unusual initialization scheme used in the
@@ -120,7 +136,7 @@ class CCS(nn.Module):
         optimizer: Literal["adam", "lbfgs"] = "adam",
         verbose: bool = False,
         weight_decay: float = 0.01,
-    ):
+    ) -> float:
         self.validate_data(data)
         if verbose:
             print(f"Fitting CCS probe; {num_epochs=}, {num_tries=}, {lr=}")
@@ -150,22 +166,35 @@ class CCS(nn.Module):
                 best_state = deepcopy(self.probe.state_dict())
 
         self.probe.load_state_dict(best_state)
+        return best_loss
 
     @torch.no_grad()
     def score(
-        self, data: tuple[torch.Tensor, torch.Tensor], labels: torch.Tensor
-    ) -> tuple[float, float]:
+        self,
+        data: tuple[torch.Tensor, torch.Tensor],
+        labels: torch.Tensor,
+    ) -> EvalResult:
         self.validate_data(data)
 
         logit0, logit1 = map(self, data)
         p0, p1 = logit0.sigmoid(), logit1.sigmoid()
-        avg_pred = 0.5 * (p0 + (1 - p1))
+        pred_probs = 0.5 * (p0 + (1 - p1))
 
-        predictions = avg_pred.lt(0.5).squeeze(1).to(int)
-        raw_acc = predictions.eq(labels.reshape(-1)).float().mean()
-        max_acc = torch.max(raw_acc, 1 - raw_acc).item()
+        # Calibrated accuracy
+        cal_thresh = pred_probs.float().quantile(labels.float().mean())
+        cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(int)
+        raw_preds = pred_probs.gt(0.5).squeeze(1).to(int)
 
-        return max_acc, ccs_squared_loss(logit0, logit1).item()
+        auroc = float(roc_auc_score(labels.tolist(), pred_probs.tolist()))
+        cal_acc = cal_preds.eq(labels.reshape(-1)).float().mean()
+        raw_acc = raw_preds.eq(labels.reshape(-1)).float().mean()
+
+        return EvalResult(
+            loss=self.loss(logit0, logit1).item(),
+            acc=torch.max(raw_acc, 1 - raw_acc).item(),
+            cal_acc=torch.max(cal_acc, 1 - cal_acc).item(),
+            auroc=max(auroc, 1 - auroc),
+        )
 
     def train_loop_adam(self, x0, x1, train_params: TrainParams) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
@@ -180,7 +209,7 @@ class CCS(nn.Module):
             optimizer.zero_grad()
 
             logit0, logit1 = self(x0), self(x1)
-            loss = ccs_squared_loss(logit0, logit1)
+            loss = self.loss(logit0, logit1)
 
             loss.backward()
             optimizer.step()
@@ -205,7 +234,7 @@ class CCS(nn.Module):
             optimizer.zero_grad()
 
             logit0, logit1 = self(x0), self(x1)
-            loss = ccs_squared_loss(logit0, logit1)
+            loss = self.loss(logit0, logit1)
             regularizer = 0.0
 
             # We explicitly add L2 regularization to the loss, since LBFGS

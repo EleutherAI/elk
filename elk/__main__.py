@@ -1,7 +1,7 @@
 from .extraction.extraction_main import run as run_extraction
 from .extraction.parser import get_extraction_parser
 from .training.parser import get_training_parser
-from .train import train
+from .training.train import train
 from argparse import ArgumentParser
 from pathlib import Path
 import json
@@ -33,7 +33,7 @@ def run():
         args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if model := getattr(args, "model", None):
-        config_path = Path(__file__).parent / "resources" / "config.json"
+        config_path = Path(__file__).parent / "default_config.json"
         with open(config_path, "r") as f:
             default_config = json.load(f)
             model_shortcuts = default_config["model_shortcuts"]
