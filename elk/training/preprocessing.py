@@ -24,12 +24,12 @@ def normalize(
         train_hiddens -= means
         val_hiddens -= means
 
-        if scale == "elementwise":
+        if method == "elementwise":
             scale = 1 / train_hiddens.norm(dim=0, keepdim=True)
-        elif scale == "meanonly":
+        elif method == "meanonly":
             scale = 1
         else:
-            raise NotImplementedError(f"Scale {scale} is not supported.")
+            raise NotImplementedError(f"Scale method '{method}' is not supported.")
 
         train_hiddens *= scale
         val_hiddens *= scale
