@@ -126,7 +126,7 @@ def get_extraction_parser():
         type=str,
         default="last",
         help=(
-            "Determine which token's hidden states will be extractd. Can be `first` or"
+            "Determine which token's hidden states will be extracted. Can be `first` or"
             " `last` or `average`."
         ),
     )
