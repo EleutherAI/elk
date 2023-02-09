@@ -18,8 +18,6 @@ First install the package with `pip install -e .` in the root directory, or `pip
 elk extract microsoft/deberta-v2-xxlarge-mnli imdb --max-examples 1000
 ```
 
-To test `microsoft/deberta-v2-xxlarge-mnli` with the misleading prefix, and only the `imdb` and `amazon_polarity` datasets, while printing extra information, run:
-
 1. To train a CCS model and a logistic regression model
 
 ```bash
