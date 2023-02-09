@@ -1,4 +1,4 @@
-from elk.extraction.parser import get_parser
+from elk.extraction.parser import get_extraction_parser
 
 
 def test_args_no_underscores():
@@ -9,7 +9,7 @@ def test_args_no_underscores():
     should be used instead. EX: batch-size=X instead of batch_size=X
     """
 
-    parser = get_parser()
+    parser = get_extraction_parser()
     for cli_flag in parser._actions:
         for flag_string in cli_flag.option_strings:
             assert "_" not in flag_string

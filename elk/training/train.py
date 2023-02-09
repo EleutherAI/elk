@@ -39,7 +39,6 @@ def train(args):
         master = torch.cat([train_hiddens, val_hiddens], dim=0).float()
         means = master.mean(dim=0)
 
-        # breakpoint()
         train_hiddens -= means
         val_hiddens -= means
 

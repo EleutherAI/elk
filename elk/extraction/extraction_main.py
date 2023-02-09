@@ -45,6 +45,11 @@ def run(args):
     model = AutoModel.from_pretrained(args.model, torch_dtype="auto").to(args.device)
     print(f"Done. Model class: '{model.__class__.__name__}'")
 
+    if args.use_encoder_states and not model.config.is_encoder_decoder:
+        raise ValueError(
+            "--use_encoder_states is only compatible with encoder-decoder models."
+        )
+
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 

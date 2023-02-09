@@ -4,6 +4,7 @@ from .training.parser import get_training_parser
 from .training.train import train
 from argparse import ArgumentParser
 from pathlib import Path
+from transformers import AutoConfig, PretrainedConfig
 import json
 
 
@@ -40,6 +41,18 @@ def run():
 
         # Dereference shortcut
         args.model = model_shortcuts.get(model, model)
+        config = AutoConfig.from_pretrained(args.model)
+        assert isinstance(config, PretrainedConfig)
+
+        num_layers = getattr(config, "num_layers", config.num_hidden_layers)
+        assert isinstance(num_layers, int)
+
+        if args.layers and args.layer_stride > 1:
+            raise ValueError(
+                "Cannot use both --layers and --layer-stride. Please use only one."
+            )
+        elif args.layer_stride > 1:
+            args.layers = list(range(0, num_layers, args.layer_stride))
 
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))
