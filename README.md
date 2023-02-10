@@ -31,10 +31,7 @@ To only train a CCS model and a logistic regression model
 elk train microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
-and evaluate:
-```bash
-python evaluate.py microsoft/deberta-v2-xxlarge-mnli imdb --num-data 1000
-```
+and evaluate on different datasets: [WIP]
 
 Once finished, results will be saved in `~/.cache/elk/{model}_{prefix}_{seed}.csv`
 
