@@ -3,7 +3,7 @@ name: "Run CPU Tests"
 on: "push"
 
 jobs:
-  run-tests:
+  run-tests-python3_9:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -17,18 +17,26 @@ jobs:
         run: python -m pip install --upgrade pip
 
       - name: Install Dependencies
-        run: |
-          pip install -e .[dev]
+        run: pip install -e .[dev]
 
-      # - name: Install Dependencies
-      #   run: |
-      #     sudo apt-get install libopenmpi-dev -y
-      #     pip install torch==1.8.2 torchvision==0.9.2 torchaudio==0.8.2 --extra-index-url https://download.pytorch.org/whl/lts/1.8/cpu
-      #     pip install -r requirements/requirements.txt
-      #     pip install -r requirements/requirements-dev.txt
+      - name: Run CPU Tests
+        run: pytest -m cpu
 
-      # - name: Prepare Data
-      #   run: python prepare_data.py
+  run-tests-python3_10:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Upgrade Pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install Dependencies
+        run: pip install -e .[dev]
 
       - name: Run CPU Tests
         run: pytest -m cpu
