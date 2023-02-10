@@ -2,16 +2,10 @@ from argparse import ArgumentParser
 from ..extraction.parser import add_saveable_args
 
 
-def get_named_training_parser() -> ArgumentParser:
+def get_training_parser(name=True) -> ArgumentParser:
     parser = ArgumentParser(add_help=False)
-    parser.add_argument("name", type=str, help="Name of the experiment")
-    add_train_args(parser)
-    return parser
-
-
-def get_training_parser() -> ArgumentParser:
-    parser = ArgumentParser(add_help=False)
-    add_saveable_args(parser)
+    if name:
+        parser.add_argument("name", type=str, help="Name of the experiment")
     add_train_args(parser)
     return parser
 
