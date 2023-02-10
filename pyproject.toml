@@ -14,13 +14,15 @@ dependencies = [
     "numpy==1.23.5",
     "pandas==1.5.1",
     "transformers==4.25.1",
-    "promptsource @ git+https://github.com/bigscience-workshop/promptsource.git",
+    "promptsource@git+https://github.com/NotodAI-Research/promptsource.git",
     "torch",
     "sentencepiece==0.1.97",
     "protobuf==3.20.*",
     "scikit-learn==1.2.0",
     "matplotlib==3.6.3",
-    "tqdm==4.64.1"
+    "tqdm==4.64.1",
+    "accelerate==0.16.0",
+    "einops==0.6.0"
 ]
 version = "0.0.1"
 
@@ -29,6 +31,9 @@ dev = [
     "pre-commit",
     "pytest",
 ]
+
+[project.scripts]
+elk = "elk.__main__:run"
 
 [tool.setuptools]
 packages = ["elk"]

@@ -1,147 +1,151 @@
-from .save_utils import save_records_to_csv
-from .save_utils import saveArray
-from tqdm import tqdm
-import functools
-import numpy as np
+from ..utils import pytree_map
+from .prompt_collator import Prompt, PromptCollator
+from accelerate import find_executable_batch_size
+from einops import rearrange
+from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
+from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
+from typing import cast, Iterable
 import torch
 
 
-def extract_hidden_states(out, use_encoder: bool):
-    """
-    Extract either `hidden_states` (BERT/GPT) or `{encoder,decoder}_hidden_states` (T5)
-    """
-    prefix = "encoder" if use_encoder else "decoder"
-    return out.get("hidden_states", out.get(f"{prefix}_hidden_states", None))
+@torch.autocast("cuda", enabled=torch.cuda.is_available())
+@torch.no_grad()
+def extract_hiddens(
+    args,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    collator: PromptCollator,
+) -> Iterable[tuple[torch.Tensor, list[int]]]:
+    """Run inference on a model with a set of prompts, yielding the hidden states."""
+    yield from _extract_inner(args, model, tokenizer, collator)  # type: ignore
 
 
-def calculate_hidden_state(args, model, tokenizer, frame, mdl_name):
-    apply_tokenizer = functools.partial(
-        getToken, tokenizer=tokenizer, device=args.device
-    )
+# TODO: Bring back batching when we have a good way to prevent excess padding
+@find_executable_batch_size(starting_batch_size=1)
+def _extract_inner(
+    batch_size: int,
+    args,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    collator: PromptCollator,
+):
+    print(f"Using batch size: {batch_size}")
+    num_choices = len(collator.labels)
 
-    hidden_states = [[], []]
-    pad_answer = apply_tokenizer("")
+    # TODO: Make this configurable or something
+    # Token used to separate the question from the answer
+    sep_token = tokenizer.sep_token or "\n"
 
-    is_enc_dec = model.config.is_encoder_decoder
+    # TODO: Maybe also make this configurable?
+    # We want to make sure the answer is never truncated
+    tokenizer.truncation_side = "left"
 
-    for idx in tqdm(range(len(frame))):
-        # calculate the hidden states
-        if is_enc_dec and not args.use_encoder_states:
-            answer_token = [apply_tokenizer(w) for w in frame.loc[idx, "selection"]]
-            # get the input_ids for candidates
-            input_ids = apply_tokenizer(frame.loc[idx, "null"])
-
-            # calculate the hidden states and take the layer `state_idx`
-            hidden_states_paired = [
-                model(
-                    input_ids, labels=a, output_hidden_states=True
-                ).decoder_hidden_states
-                for a in answer_token
-            ]
-        else:
-            ids_paired = [
-                apply_tokenizer(frame.loc[idx, w] + args.prompt_suffix)
-                for w in ["0", "1"]
-            ]
-            hidden_states_paired = [
-                extract_hidden_states(
-                    model(
-                        ids,
-                        labels=pad_answer if is_enc_dec else None,
-                        output_hidden_states=True,
-                    ),
-                    args.use_encoder_states,
-                )
-                for ids in ids_paired
-            ]
-
-        # extract the corresponding token
-        for i in range(2):
-            # shape (layer * hid_dim)
-            hidden_states[i].append(
-                np.stack(
-                    [
-                        toNP(getStatesToken(w, args.token_loc))
-                        for w in hidden_states_paired[i]
-                    ],
-                    axis=0,
-                )
-            )
-
-    # For each list in hidden_states, it's a list with `len(frame)` arrays,
-    # and each array has shape `layer * hid_dim`
-    # for each list, stack them to `num_data * layer * hid_dim`
-    hidden_states = [np.stack(w, axis=0) for w in hidden_states]
-
-    return hidden_states
-
-
-def create_hiddenstates(model, tokenizer, name_to_dataframe, args):
-    """
-    This function will calculate the zeroshot
-    accuracy for each dataset and properly store
-    """
-    with torch.no_grad():
-        from tqdm.auto import tqdm
-
-        for name, dataframe in tqdm(name_to_dataframe.items()):
-            # This part corresponds to hidden states generation
-            hidden_states = calculate_hidden_state(
-                args, model, tokenizer, dataframe, args.model
-            )
-            saveArray(hidden_states, ["0", "1"], name, args)
-
-
-def create_records(model, tokenizer, name_to_dataframe, args):
-    """
-    This function will calculate the zeroshot accuracy
-    for each dataset and properly store
-    """
-
-    # create records, will save as csv in the end
-    records = [
-        {
-            "model": args.model,
-            "dataset": key,
-            "prefix": args.prefix,
-            "tag": args.tag,
-        }
-        for key in name_to_dataframe.keys()
-    ]
-
-    with torch.no_grad():
-        for name, record in tqdm(
-            zip(name_to_dataframe.keys(), records),
-            desc="Iterating over datasets:",
-            position=1,
-            leave=False,
-        ):
-            dataframe = name_to_dataframe[name]
-            record["population"] = len(dataframe)
-
-    save_records_to_csv(records, args)
-
-
-def getStatesToken(hidden_state, method):
-    if len(hidden_state.shape) == 3:
-        hidden_state = hidden_state[0]
-    if method == "first":
-        return hidden_state[0]
-    elif method == "last":
-        return hidden_state[-1]
-    elif method == "average":
-        return torch.mean(hidden_state, dim=0)
-    else:
-        raise NotImplementedError(
-            "Only support `token_loc` in `first`, `last` and `average`!"
+    def tokenize(strings: list[str]):
+        return pytree_map(
+            lambda x: x.to(args.device),
+            tokenizer(
+                strings,
+                padding=True,
+                return_tensors="pt",
+                truncation=True,
+            ),
         )
 
+    # This function returns the flattened questions and answers, and the labels for
+    # each question-answer pair. After inference we need to reshape the results.
+    def collate(prompts: list[Prompt]) -> tuple[BatchEncoding, list[int]]:
+        choices = [
+            prompt.to_string(i, sep=sep_token) + args.prompt_suffix
+            for prompt in prompts
+            for i in range(num_choices)
+        ]
+        return tokenize(choices), [prompt.label for prompt in prompts]
 
-def getToken(s, tokenizer, device):
-    return tokenizer(s, return_tensors="pt").input_ids.to(device)
+    def collate_enc_dec(
+        prompts: list[Prompt],
+    ) -> tuple[BatchEncoding, BatchEncoding, list[int]]:
+        tokenized_questions = tokenize(
+            [prompt.question for prompt in prompts for _ in range(num_choices)]
+        )
+        tokenized_answers = tokenize(
+            [
+                prompt.answers[i] + args.prompt_suffix
+                for prompt in prompts
+                for i in range(num_choices)
+            ]
+        )
+        labels = [prompt.label for prompt in prompts]
+        return tokenized_questions, tokenized_answers, labels
 
+    def reduce_seqs(
+        hiddens: list[torch.Tensor], attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """Reduce sequences of hiddens into single vectors."""
 
-def toNP(x):
-    if type(x) == list:
-        return [w.cpu().numpy() for w in x]
-    return x.cpu().numpy()
+        # Unflatten the hiddens
+        hiddens = [rearrange(h, "(b c) l d -> b c l d", c=num_choices) for h in hiddens]
+
+        if args.token_loc == "first":
+            hiddens = [h[..., 0, :] for h in hiddens]
+        elif args.token_loc == "last":
+            # Because of padding, the last token is going to be at a different index
+            # for each example, so we use gather.
+            B, C, _, D = hiddens[0].shape
+            lengths = attention_mask.sum(dim=-1).view(B, C, 1, 1)
+            indices = lengths.sub(1).expand(B, C, 1, D)
+            hiddens = [h.gather(index=indices, dim=-2).squeeze(-2) for h in hiddens]
+        elif args.token_loc == "mean":
+            hiddens = [h.mean(dim=-2) for h in hiddens]
+        else:
+            raise ValueError(f"Invalid token_loc: {args.token_loc}")
+
+        if args.layers is not None:
+            hiddens = [hiddens[i] for i in args.layers]
+
+        # [batch size, layers, num choices, hidden size]
+        return torch.stack(hiddens, dim=1)
+
+    # If this is an encoder-decoder model and we're passing the answer to the encoder,
+    # we don't need to run the decoder at all. Just strip it off, making the problem
+    # equivalent to a regular encoder-only model.
+    is_enc_dec = model.config.is_encoder_decoder
+    if is_enc_dec and args.use_encoder_states:
+        # This isn't actually *guaranteed* by HF, but it's true for all existing models
+        if not hasattr(model, "get_encoder") or not callable(model.get_encoder):
+            raise ValueError(
+                "Encoder-decoder model doesn't have expected get_encoder() method"
+            )
+
+        model = cast(PreTrainedModel, model.get_encoder())
+
+    # Whether to concatenate the question and answer before passing to the model.
+    # If False pass them to the encoder and decoder separately.
+    should_concat = not is_enc_dec or args.use_encoder_states
+
+    dl = DataLoader(
+        collator,
+        batch_size=batch_size,
+        collate_fn=collate if should_concat else collate_enc_dec,
+    )
+
+    # Iterating over questions
+    for batch in tqdm(dl):
+        # Condition 1: Encoder-decoder transformer, with answer in the decoder
+        if not should_concat:
+            questions, answers, labels = batch
+            outputs = model(
+                **questions,
+                **{f"decoder_{k}": v for k, v in answers.items()},
+                output_hidden_states=True,
+            )
+            # [batch_size, num_layers, num_choices, hidden_size]
+            yield torch.stack(outputs.decoder_hidden_states, dim=2), labels
+
+        # Either a decoder-only transformer or a transformer encoder
+        else:
+            choices, labels = batch
+
+            # Skip the input embeddings which are unlikely to be interesting
+            h = model(**choices, output_hidden_states=True).hidden_states[1:]
+            yield reduce_seqs(h, choices["attention_mask"]), labels
