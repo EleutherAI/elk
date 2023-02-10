@@ -12,22 +12,26 @@ Our code is based on [PyTorch](http://pytorch.org) and [Huggingface Transformers
 
 First install the package with `pip install -e .` in the root directory, or `pip install -e .[dev]` if you'd like to contribute to the project (see **Development** section below). This should install all the necessary dependencies.
 
-1. To extract the hidden states for one model `model` and the dataset `dataset`, run:
+
+To extract the hidden states for one model `model` and the dataset `dataset` *and* train a probe on these extracted hidden states, run:
+
+```bash
+elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --max-examples 1000
+```
+
+To only extract the hidden states for one model `model` and the dataset `dataset`, run:
 
 ```bash
 elk extract microsoft/deberta-v2-xxlarge-mnli imdb --max-examples 1000
 ```
 
-1. To train a CCS model and a logistic regression model
+To only train a CCS model and a logistic regression model
 
 ```bash
 elk train microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
-and evaluate:
-```bash
-python evaluate.py microsoft/deberta-v2-xxlarge-mnli imdb --num-data 1000
-```
+and evaluate on different datasets: [WIP]
 
 Once finished, results will be saved in `~/.cache/elk/{model}_{prefix}_{seed}.csv`
 

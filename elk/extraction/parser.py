@@ -90,8 +90,8 @@ def add_unsaveable_args(parser):
     parser.add_argument(
         "--name",
         type=str,
-        help="Name of the experiment. If not provided, a memorable name of the form "
-        "`objective-ramanujan` will be generated.",
+        help="Name of the experiment. If not provided, a name as a md5 hash "
+        "of the form c7f9cac6827745ec4d3ca2fcdbfde451 will be generated.",
     )
     parser.add_argument(
         "--val-frac",
