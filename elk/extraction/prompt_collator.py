@@ -5,6 +5,15 @@ from random import Random
 from typing import Literal, Optional
 import numpy as np
 
+def balance(dataset: DatasetDict, label_column: str = "label"):
+    """Balance a dataset by undersampling the majority class."""
+    labels, counts = np.unique(dataset[label_column], return_counts=True)
+    breakpoint()
+    min_count = counts.min()
+    for label in labels:
+        dataset = dataset.filter(lambda x: x[label_column] == label).shuffle()
+        dataset = dataset.select(range(min_count))
+    return dataset
 
 @dataclass
 class Prompt:
@@ -32,6 +41,8 @@ class PromptCollator:
     ):
         data = load_dataset(path, name)
         assert isinstance(data, DatasetDict)
+
+        data = balance(data)
 
         # Create a train-test split if needed
         train_name, *others = data.keys()
