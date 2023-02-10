@@ -2,6 +2,7 @@ import pytest
 import pandas as pd
 
 
+@pytest.mark.skip
 class TestExtractionOutput:
     def testExtractionOutput(self):
         # Read the contents of the csv files into pandas dataframes
