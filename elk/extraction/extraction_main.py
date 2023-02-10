@@ -29,7 +29,15 @@ def run(args):
 
         items = [
             (features.cpu(), labels)
-            for features, labels in extract_hiddens(args, model, tokenizer, collator)
+            for features, labels in extract_hiddens(
+                model,
+                tokenizer,
+                collator,
+                layers=args.layers,
+                prompt_suffix=args.prompt_suffix,
+                token_loc=args.token_loc,
+                use_encoder_states=args.use_encoder_states,
+            )
         ]
         save_dir.mkdir(parents=True, exist_ok=True)
 

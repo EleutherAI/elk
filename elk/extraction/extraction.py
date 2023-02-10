@@ -1,36 +1,29 @@
 from ..utils import pytree_map
 from .prompt_collator import Prompt, PromptCollator
-from accelerate import find_executable_batch_size
 from einops import rearrange
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
-from typing import cast, Iterable
+from typing import cast, Iterable, Literal, Sequence
 import torch
 
 
 @torch.autocast("cuda", enabled=torch.cuda.is_available())
 @torch.no_grad()
 def extract_hiddens(
-    args,
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
     collator: PromptCollator,
+    *,
+    # TODO: Bring back auto-batching when we have a good way to prevent excess padding
+    batch_size: int = 1,
+    layers: Sequence[int] = (),
+    prompt_suffix: str = "",
+    token_loc: Literal["first", "last", "mean"] = "last",
+    use_encoder_states: bool = False,
 ) -> Iterable[tuple[torch.Tensor, list[int]]]:
     """Run inference on a model with a set of prompts, yielding the hidden states."""
-    yield from _extract_inner(args, model, tokenizer, collator)  # type: ignore
-
-
-# TODO: Bring back batching when we have a good way to prevent excess padding
-@find_executable_batch_size(starting_batch_size=1)
-def _extract_inner(
-    batch_size: int,
-    args,
-    model: PreTrainedModel,
-    tokenizer: PreTrainedTokenizerBase,
-    collator: PromptCollator,
-):
-    print(f"Using batch size: {batch_size}")
+    device = model.device
     num_choices = len(collator.labels)
 
     # TODO: Make this configurable or something
@@ -43,7 +36,7 @@ def _extract_inner(
 
     def tokenize(strings: list[str]):
         return pytree_map(
-            lambda x: x.to(args.device),
+            lambda x: x.to(device),
             tokenizer(
                 strings,
                 padding=True,
@@ -56,7 +49,7 @@ def _extract_inner(
     # each question-answer pair. After inference we need to reshape the results.
     def collate(prompts: list[Prompt]) -> tuple[BatchEncoding, list[int]]:
         choices = [
-            prompt.to_string(i, sep=sep_token) + args.prompt_suffix
+            prompt.to_string(i, sep=sep_token) + prompt_suffix
             for prompt in prompts
             for i in range(num_choices)
         ]
@@ -70,7 +63,7 @@ def _extract_inner(
         )
         tokenized_answers = tokenize(
             [
-                prompt.answers[i] + args.prompt_suffix
+                prompt.answers[i] + prompt_suffix
                 for prompt in prompts
                 for i in range(num_choices)
             ]
@@ -86,22 +79,22 @@ def _extract_inner(
         # Unflatten the hiddens
         hiddens = [rearrange(h, "(b c) l d -> b c l d", c=num_choices) for h in hiddens]
 
-        if args.token_loc == "first":
+        if token_loc == "first":
             hiddens = [h[..., 0, :] for h in hiddens]
-        elif args.token_loc == "last":
+        elif token_loc == "last":
             # Because of padding, the last token is going to be at a different index
             # for each example, so we use gather.
             B, C, _, D = hiddens[0].shape
             lengths = attention_mask.sum(dim=-1).view(B, C, 1, 1)
             indices = lengths.sub(1).expand(B, C, 1, D)
             hiddens = [h.gather(index=indices, dim=-2).squeeze(-2) for h in hiddens]
-        elif args.token_loc == "mean":
+        elif token_loc == "mean":
             hiddens = [h.mean(dim=-2) for h in hiddens]
         else:
-            raise ValueError(f"Invalid token_loc: {args.token_loc}")
+            raise ValueError(f"Invalid token_loc: {token_loc}")
 
-        if args.layers is not None:
-            hiddens = [hiddens[i] for i in args.layers]
+        if layers:
+            hiddens = [hiddens[i] for i in layers]
 
         # [batch size, layers, num choices, hidden size]
         return torch.stack(hiddens, dim=1)
@@ -110,7 +103,7 @@ def _extract_inner(
     # we don't need to run the decoder at all. Just strip it off, making the problem
     # equivalent to a regular encoder-only model.
     is_enc_dec = model.config.is_encoder_decoder
-    if is_enc_dec and args.use_encoder_states:
+    if is_enc_dec and use_encoder_states:
         # This isn't actually *guaranteed* by HF, but it's true for all existing models
         if not hasattr(model, "get_encoder") or not callable(model.get_encoder):
             raise ValueError(
@@ -121,7 +114,7 @@ def _extract_inner(
 
     # Whether to concatenate the question and answer before passing to the model.
     # If False pass them to the encoder and decoder separately.
-    should_concat = not is_enc_dec or args.use_encoder_states
+    should_concat = not is_enc_dec or use_encoder_states
 
     dl = DataLoader(
         collator,
