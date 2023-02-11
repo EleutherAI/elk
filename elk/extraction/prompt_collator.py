@@ -30,6 +30,9 @@ class PromptCollator:
         seed: int = 42,
         strategy: Literal["all", "randomize"] = "randomize",
     ):
+        """Create a prompt collator.
+        @param strategy: "all" will generate all prompts for all examples, while
+            "randomize" will generate a random prompt for each example."""
         data = load_dataset(path, name)
         assert isinstance(data, DatasetDict)
 
@@ -59,41 +62,52 @@ class PromptCollator:
         self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
         self.rng = Random(seed)
         self.strategy = strategy
+        self._apply_prompts()
 
-    def __getitem__(self, index: int) -> Prompt:
-        prompts = list(self.prompter.templates.values())
+    def _apply_prompts(self):
+        """Modify the dataset"""
+        self.dataset = self.dataset.map(self._apply_batch, batched=True, batch_size=100)
 
-        if self.strategy == "all":
-            example_idx, prompt_idx = divmod(index, len(prompts))
-            example = self.dataset[example_idx]
-            template = prompts[prompt_idx]
+    def _apply_batch(self, examples: dict) -> dict:
+        """@param examples: a dict of lists of examples"""
+        batch_size = len(examples[self.label_column])
 
-        elif self.strategy == "randomize":
-            example = self.dataset[index]
-            template = self.rng.choice(prompts)
-        else:
-            raise ValueError(f"Unknown strategy {self.strategy}")
+        out_examples = {"template_name": [], "question": [], "answers": [], "label": []}
+        for i in range(batch_size):
+            example = {k: v[i] for k, v in examples.items()}
+            if self.strategy == "all":
+                templates = self.prompter.templates.items()
+            elif self.strategy == "randomize":
+                templates = [self.rng.choice(list(self.prompter.templates.items()))]
+            else:
+                raise ValueError(f"Unknown strategy {self.strategy}")
+            for template_name, template in templates:
+                true_label = example[self.label_column]
+                answers = []
+                questions = set()
+                for fake_label in self.labels:
+                    example[self.label_column] = fake_label
 
-        true_label = example[self.label_column]
-        answers = []
-        questions = set()
+                    q, a = template.apply(example)
+                    answers.append(a)
+                    questions.add(q)
 
-        for fake_label in self.labels:
-            example[self.label_column] = fake_label
+                assert len(questions) == 1
+                prompt = Prompt(
+                    question=questions.pop(), answers=answers, label=true_label
+                )
+                out_examples["template_name"].append(template_name)
+                out_examples["question"].append(prompt.question)
+                out_examples["answers"].append(prompt.answers)
+                out_examples["label"].append(prompt.label)
 
-            q, a = template.apply(example)
-            answers.append(a)
-            questions.add(q)
+        return out_examples
 
-        assert len(questions) == 1
-        return Prompt(question=questions.pop(), answers=answers, label=true_label)
+    def __getitem__(self, index: int) -> dict:
+        return self.dataset[index]
 
     def __iter__(self):
         return (self[i] for i in range(len(self.dataset)))
 
     def __len__(self):
-        N = len(self.dataset)
-        if self.strategy == "all":
-            N *= len(self.prompter.templates)
-
-        return N
+        return len(self.dataset)

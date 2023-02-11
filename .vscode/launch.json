@@ -5,18 +5,46 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Attach using Process Id",
+            "type": "python",
+            "request": "attach",
+            "processId": "${command:pickProcess}",
+            "justMyCode": true
+        },
+        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args" : [
-                "--model", "deberta-v2-xxlarge-mnli",
-                "--dataset","imdb",
-                "--prefix", "confusion",
-                "--device", "cuda",
-                "--num-data", "1000"
+            "args": [
+                "--model",
+                "deberta-v2-xxlarge-mnli",
+                "--dataset",
+                "imdb",
+                "--prefix",
+                "confusion",
+                "--device",
+                "cuda",
+                "--num-data",
+                "1000"
+            ]
+        },
+        {
+            // elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --max-examples 1000
+            "name": "Python: elk elicit",
+            "type": "python",
+            "request": "launch",
+            "module": "elk",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "elicit",
+                "microsoft/deberta-v2-xxlarge-mnli",
+                "imdb",
+                "--max-examples",
+                "1000",
             ]
         },
         {
@@ -26,12 +54,17 @@
             "module": "elk.extraction_main",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args" : [
-                "--model", "deberta-v2-xxlarge-mnli",
-                "--dataset","imdb",
-                "--prefix", "normal",
-                "--device", "cuda",
-                "--num-data", "1000"
+            "args": [
+                "--model",
+                "deberta-v2-xxlarge-mnli",
+                "--dataset",
+                "imdb",
+                "--prefix",
+                "normal",
+                "--device",
+                "cuda",
+                "--num-data",
+                "1000"
             ]
         },
         {
@@ -41,12 +74,17 @@
             "module": "elk.evaluate",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args" : [
-                "--model", "deberta-v2-xxlarge-mnli",
-                "--dataset","imdb",
-                "--prefix", "normal",
-                "--device", "cuda",
-                "--num-data", "1000"
+            "args": [
+                "--model",
+                "deberta-v2-xxlarge-mnli",
+                "--dataset",
+                "imdb",
+                "--prefix",
+                "normal",
+                "--device",
+                "cuda",
+                "--num-data",
+                "1000"
             ]
         },
         {
@@ -56,12 +94,17 @@
             "module": "elk.train.py",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args" : [
-                "--model", "deberta-v2-xxlarge-mnli",
-                "--dataset","imdb",
-                "--prefix", "normal",
-                "--device", "cuda",
-                "--num-data", "1000"
+            "args": [
+                "--model",
+                "deberta-v2-xxlarge-mnli",
+                "--dataset",
+                "imdb",
+                "--prefix",
+                "normal",
+                "--device",
+                "cuda",
+                "--num-data",
+                "1000"
             ]
         }
     ]

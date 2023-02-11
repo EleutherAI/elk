@@ -27,25 +27,20 @@ def run(args):
             else:
                 raise ValueError(f"Unknown prompt strategy: {args.prompts}")
 
-        items = [
-            (features.cpu(), labels)
-            for features, labels in extract_hiddens(
-                model,
-                tokenizer,
-                collator,
-                layers=args.layers,
-                prompt_suffix=args.prompt_suffix,
-                token_loc=args.token_loc,
-                use_encoder_states=args.use_encoder_states,
-            )
-        ]
+        dataset_with_hiddens = extract_hiddens(
+            model,
+            tokenizer,
+            collator,
+            layers=args.layers,
+            prompt_suffix=args.prompt_suffix,
+            token_loc=args.token_loc,
+            use_encoder_states=args.use_encoder_states,
+        )
+
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        with open(save_dir / f"{split}_hiddens.pt", "wb") as f:
-            hidden_batches, label_batches = zip(*items)
-            hiddens = torch.cat(hidden_batches)  # type: ignore
-            labels = sum(label_batches, [])
-            torch.save((hiddens, labels), f)
+        # save the hiddens dataset to disk
+        dataset_with_hiddens.save_to_disk(save_dir / f"{split}_hiddens")
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.

@@ -2,6 +2,7 @@ from pathlib import Path
 import logging
 from typing import Literal
 import torch
+from datasets import load_from_disk
 
 
 def normalize(
@@ -38,7 +39,15 @@ def normalize(
 
 
 def load_hidden_states(path: Path):
-    hiddens, labels = torch.load(path, map_location="cpu")
+    """Load the hidden states from a file."""
+    # TODO: the training code should be updated to use all the information
+    # in the dataset, not just the hidden states and labels. This is just
+    # a temporary link to the old code.
+
+    # load the huggingface dataset, then convert it to a torch tensor
+    dataset = load_from_disk(path)
+    labels = dataset["labels"]
+    hiddens = torch.tensor(dataset["hiddens"], device="cpu")
 
     # Concatenate the positive and negative examples together.
     return hiddens.flatten(start_dim=-2), labels
