@@ -1,6 +1,5 @@
 from .losses import ccs_squared_loss, js_loss
 from copy import deepcopy
-from dataclasses import dataclass
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
 from typing import cast, Literal, NamedTuple, Optional, Type, Union
@@ -15,15 +14,6 @@ class EvalResult(NamedTuple):
     acc: float
     cal_acc: float
     auroc: float
-
-
-@dataclass
-class TrainParams:
-    num_epochs: int = 1000
-    num_tries: int = 10
-    lr: float = 1e-2
-    weight_decay: float = 0.01
-    optimizer: Literal["adam", "lbfgs"] = "adam"
 
 
 class CCS(nn.Module):
@@ -111,19 +101,6 @@ class CCS(nn.Module):
         """Return the raw score output of the probe on `x`."""
         return self.probe(x)
 
-    def fit_once(self, x0, x1, train_params: TrainParams):
-        """
-        Do a single training run of num_epochs epochs
-        """
-        if train_params.optimizer == "lbfgs":
-            loss = self.train_loop_lbfgs(x0, x1, train_params)
-        elif train_params.optimizer == "adam":
-            loss = self.train_loop_adam(x0, x1, train_params)
-        else:
-            raise ValueError(f"Optimizer {train_params.optimizer} is not supported")
-
-        return float(loss)
-
     def validate_data(self, data):
         assert len(data) == 2 and data[0].shape == data[1].shape
 
@@ -141,31 +118,29 @@ class CCS(nn.Module):
         if verbose:
             print(f"Fitting CCS probe; {num_epochs=}, {num_tries=}, {lr=}")
 
-        train_params = TrainParams(
-            num_epochs=num_epochs,
-            num_tries=num_tries,
-            lr=lr,
-            weight_decay=weight_decay,
-            optimizer=optimizer,
-        )
-
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf
         best_state: dict[str, torch.Tensor] = {}  # State dict of the best run
         x0, x1 = data
 
-        for _ in range(train_params.num_tries):
+        for _ in range(num_tries):
             self.reset_parameters()
 
-            loss = self.fit_once(x0, x1, train_params)
+            if optimizer == "lbfgs":
+                loss = self.train_loop_lbfgs(x0, x1, num_epochs, weight_decay)
+            elif optimizer == "adam":
+                loss = self.train_loop_adam(x0, x1, lr, num_epochs, weight_decay)
+            else:
+                raise ValueError(f"Optimizer {optimizer} is not supported")
+
             if loss < best_loss:
                 if verbose:
                     print(f"Found new best params; loss: {loss:.4f}")
 
                 best_loss = loss
-                best_state = deepcopy(self.probe.state_dict())
+                best_state = deepcopy(self.state_dict())
 
-        self.probe.load_state_dict(best_state)
+        self.load_state_dict(best_state)
         return best_loss
 
     @torch.no_grad()
@@ -196,16 +171,16 @@ class CCS(nn.Module):
             auroc=max(auroc, 1 - auroc),
         )
 
-    def train_loop_adam(self, x0, x1, train_params: TrainParams) -> float:
+    def train_loop_adam(self, x0, x1, lr: float, num_epochs: int, wd: float) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
         optimizer = torch.optim.AdamW(
             self.parameters(),
-            lr=train_params.lr,
-            weight_decay=train_params.weight_decay,
+            lr=lr,
+            weight_decay=wd,
         )
 
         loss = torch.inf
-        for _ in range(train_params.num_epochs):
+        for _ in range(num_epochs):
             optimizer.zero_grad()
 
             logit0, logit1 = self(x0), self(x1)
@@ -216,13 +191,13 @@ class CCS(nn.Module):
 
         return float(loss)
 
-    def train_loop_lbfgs(self, x0, x1, train_params: TrainParams) -> float:
+    def train_loop_lbfgs(self, x0, x1, max_iter: int, l2_penalty: float) -> float:
         """LBFGS train loop, returning the final loss. Modifies params in-place."""
 
         optimizer = torch.optim.LBFGS(
             self.parameters(),
             line_search_fn="strong_wolfe",
-            max_iter=train_params.num_epochs,
+            max_iter=max_iter,
             tolerance_change=torch.finfo(x0.dtype).eps,
             tolerance_grad=torch.finfo(x0.dtype).eps,
         )
@@ -240,7 +215,7 @@ class CCS(nn.Module):
             # We explicitly add L2 regularization to the loss, since LBFGS
             # doesn't have a weight_decay parameter
             for param in self.parameters():
-                regularizer += train_params.weight_decay * param.norm() ** 2 / 2
+                regularizer += l2_penalty * param.norm() ** 2 / 2
 
             regularized = loss + regularizer
             regularized.backward()

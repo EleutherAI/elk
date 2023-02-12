@@ -33,6 +33,8 @@ def extract_hiddens(
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
     tokenizer.truncation_side = "left"
+    if not tokenizer.pad_token:
+        tokenizer.pad_token = tokenizer.eos_token
 
     def tokenize(strings: list[str]):
         return pytree_map(

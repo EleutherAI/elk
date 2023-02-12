@@ -84,8 +84,8 @@ def train(args):
         )
         train_loss = ccs_model.fit(
             data=(x0, x1),
+            num_tries=args.num_tries,
             optimizer=args.optimizer,
-            verbose=False,
             weight_decay=args.weight_decay,
         )
         val_result = ccs_model.score(
