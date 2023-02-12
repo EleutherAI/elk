@@ -5,7 +5,7 @@ from datasets import DatasetDict, concatenate_datasets
 def undersample(dataset: DatasetDict, label_column: str = "label"):
     """
     Balance a dataset by undersampling the majority class.
-    
+
     Args:
         dataset (DatasetDict): The dataset to balance.
         label_column (str, optional): 
