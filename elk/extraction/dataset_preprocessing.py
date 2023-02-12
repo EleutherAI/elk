@@ -8,7 +8,9 @@ def undersample(dataset: DatasetDict, label_column: str = "label"):
     
     Args:
         dataset (DatasetDict): The dataset to balance.
-        label_column (str, optional): The column containing the labels. Defaults to "label".
+        label_column (str, optional): 
+        The column containing the labels.
+        Defaults to "label".
     
     Returns:
         DatasetDict: The balanced dataset.
@@ -17,6 +19,8 @@ def undersample(dataset: DatasetDict, label_column: str = "label"):
 
     subsets = []
     for label in labels:
-        subsets.append(dataset.filter(lambda x: x[label_column] == label).select(range(min(counts))))
+        subsets.append(dataset.filter(
+            lambda x: x[label_column] == label).select(range(min(counts)))
+        )
 
     return concatenate_datasets(subsets).shuffle()
