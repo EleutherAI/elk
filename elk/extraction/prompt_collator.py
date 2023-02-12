@@ -5,15 +5,8 @@ from random import Random
 from typing import Literal, Optional
 import numpy as np
 
-def balance(dataset: DatasetDict, label_column: str = "label"):
-    """Balance a dataset by undersampling the majority class."""
-    labels, counts = np.unique(dataset[label_column], return_counts=True)
-    breakpoint()
-    min_count = counts.min()
-    for label in labels:
-        dataset = dataset.filter(lambda x: x[label_column] == label).shuffle()
-        dataset = dataset.select(range(min_count))
-    return dataset
+from elk.extraction.dataset_preprocessing import undersample
+
 
 @dataclass
 class Prompt:
@@ -38,11 +31,10 @@ class PromptCollator:
         max_examples: int = 0,
         seed: int = 42,
         strategy: Literal["all", "randomize"] = "randomize",
+        balance: bool = False,
     ):
         data = load_dataset(path, name)
         assert isinstance(data, DatasetDict)
-
-        data = balance(data)
 
         # Create a train-test split if needed
         train_name, *others = data.keys()
@@ -59,8 +51,17 @@ class PromptCollator:
             split = "test"
 
         self.dataset = data[split]
+
+        if balance:
+            self.dataset = undersample(self.dataset, label_column)
+
         self.labels, counts = np.unique(self.dataset[label_column], return_counts=True)
         self.label_fracs = counts / counts.sum()
+
+        print(f"Class balance '{split}': {[f'{x:.2%}' for x in self.label_fracs]}")
+        if self.label_fracs[0] != self.label_fracs[1]:
+            print("Use arg --balance to force class balance")
+
         if len(self.labels) < 2:
             raise ValueError(f"Dataset {path}/{name} has only one label")
         if max_examples:

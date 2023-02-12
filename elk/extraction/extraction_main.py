@@ -16,8 +16,9 @@ def run(args):
             split=split,
             label_column=args.label_column,
             strategy=args.prompts,
+            balance=args.balance,
         )
-        print(f"Class balance '{split}': {[f'{x:.2%}' for x in collator.label_fracs]}")
+
         if split == "train":
             prompt_names = collator.prompter.all_template_names
             if args.prompts == "all":
