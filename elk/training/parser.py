@@ -38,6 +38,12 @@ def add_train_args(parser: ArgumentParser):
         help="Loss function used for CCS.",
     )
     parser.add_argument(
+        "--num-tries",
+        type=int,
+        default=10,
+        help="Number of random initializations to try.",
+    )
+    parser.add_argument(
         "--optimizer",
         type=str,
         default="lbfgs",
