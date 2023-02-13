@@ -13,7 +13,9 @@ class RecursiveCCS:
     probes: list[CCS] = field(default_factory=list)
     device: str = "cuda"
 
-    def fit_next_probe(self, data: tuple[Tensor, Tensor], **train_params) -> CCS:
+    def fit_next_probe(
+        self, data: tuple[Tensor, Tensor], ccs_params, train_params
+    ) -> tuple[CCS, float]:
         """Finds the next probe by training a new probe and comparing it to the
         current probes."""
         parametrization = self.get_next_parametrization()
@@ -22,11 +24,11 @@ class RecursiveCCS:
         probe = CCS(
             in_features=in_features,
             first_linear_parametrization=parametrization,
-            device=self.device,
+            **ccs_params,
         )
-        probe.fit(data, **train_params)
+        train_loss = probe.fit(data, **train_params)
         self.probes.append(probe)
-        return probe
+        return probe, train_loss
 
     def score_all(self, data: tuple[Tensor, Tensor], labels: Tensor) -> list[float]:
         """Scores all probes."""

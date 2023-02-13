@@ -5,6 +5,7 @@ from sklearn.metrics import roc_auc_score
 from typing import cast, Literal, NamedTuple, Optional, Type, Union
 import torch
 import torch.nn as nn
+import torch.nn.utils.parametrize as P
 
 
 class EvalResult(NamedTuple):
@@ -29,6 +30,7 @@ class CCS(nn.Module):
         loss: Literal["js", "squared"] = "squared",
         num_layers: int = 1,
         pre_ln: bool = False,
+        first_linear_parametrization: Optional[nn.Module] = None,
     ):
         super().__init__()
 
@@ -59,6 +61,11 @@ class CCS(nn.Module):
                     bias=bias,
                     device=device,
                 )
+            )
+
+        if first_linear_parametrization is not None:
+            P.register_parametrization(
+                self.probe, "0.weight", first_linear_parametrization
             )
 
         self.init = init
