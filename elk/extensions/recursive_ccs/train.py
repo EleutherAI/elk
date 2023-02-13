@@ -15,7 +15,6 @@ from elk.extensions.recursive_ccs.rccs import RecursiveCCS
 from elk.extensions.recursive_ccs.parser import get_rccs_training_parser
 
 
-@torch.autocast("cuda", enabled=False)
 def train(args):
     # Reproducibility
     np.random.seed(args.seed)
