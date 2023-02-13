@@ -6,6 +6,8 @@ from torch import nn
 import torch
 from torch import Tensor
 from itertools import count
+from elk.training.ccs import EvalResult
+import torch.nn.utils.parametrize as P
 
 
 @dataclass
@@ -30,7 +32,7 @@ class RecursiveCCS:
         self.probes.append(probe)
         return probe, train_loss
 
-    def score_all(self, data: tuple[Tensor, Tensor], labels: Tensor) -> list[float]:
+    def score(self, data: tuple[Tensor, Tensor], labels: Tensor) -> list[EvalResult]:
         """Scores all probes."""
         return [probe.score(data, labels) for probe in self.probes]
 
@@ -66,6 +68,35 @@ class RecursiveCCS:
 
         return OrthogonalProjection(directions)
 
+    @classmethod
+    def save(cls, path: Path, *rccs: "RecursiveCCS") -> None:
+        """Saves the probes of the RecursiveCCS to the given path.
+
+        Remove the parametrizations, because they are not serializable."""
+        for r in rccs:
+            for probe in r.probes:
+                # if has parametrization, remove them
+                if hasattr(probe.probe[0], "parametrizations"):
+                    P.remove_parametrizations(probe.probe[0], "weight")
+        torch.save(rccs, path)
+
+    @classmethod
+    def load(cls, path: Path, device: str = "cuda") -> list["RecursiveCCS"]:
+        """Loads the probes from the given path.
+
+        Recover the parametrizations."""
+        rccs = torch.load(path)
+        # Recover parametrizations
+        for r in rccs:
+            new_r = RecursiveCCS(device=device)
+            for probe in r.probes:
+                new_r.probes.append(probe)
+                parametrization = new_r.get_next_parametrization()
+                if parametrization is not None:
+                    P.register_parametrization(
+                        probe.probe[0], "weight", parametrization
+                    )
+
 
 def project(x: torch.Tensor, constraints: torch.Tensor) -> torch.Tensor:
     """Projects on the hyperplane defined by the constraints.
@@ -78,6 +109,11 @@ def project(x: torch.Tensor, constraints: torch.Tensor) -> torch.Tensor:
 def assert_orthogonal(directions: torch.Tensor, atol: float = 1e-6) -> None:
     """Asserts that the directions are orthogonal."""
     inner_products = torch.einsum("nh,mh->nm", directions, directions)
-    assert torch.allclose(
-        inner_products, torch.eye(len(directions)).to(directions.device), atol=atol
-    )
+
+    diff = torch.abs(
+        inner_products
+        - torch.eye(
+            len(directions), dtype=inner_products.dtype, device=inner_products.device
+        )
+    ).max()
+    assert diff < atol, f"Directions are not orthogonal: {diff=}"

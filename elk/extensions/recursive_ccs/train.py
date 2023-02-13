@@ -15,7 +15,7 @@ from elk.extensions.recursive_ccs.rccs import RecursiveCCS
 from elk.extensions.recursive_ccs.parser import get_rccs_training_parser
 
 
-@torch.autocast("cuda", enabled=torch.cuda.is_available())
+@torch.autocast("cuda", enabled=False)
 def train(args):
     # Reproducibility
     np.random.seed(args.seed)
@@ -49,7 +49,7 @@ def train(args):
     val_layers.reverse()
     train_layers.reverse()
 
-    pbar = tqdm(zip(train_layers, val_layers), total=L, unit="layer")
+    pbar = tqdm(zip(train_layers, val_layers), total=L, unit="layer", position=0)
     writer = csv.writer(open(cache_dir / "eval.csv", "w"))
     writer.writerow(
         [
@@ -69,9 +69,8 @@ def train(args):
 
         rccs = RecursiveCCS(device=args.device)
 
-        n_probes = 2
-        for i in range(n_probes):
-            pbar.set_description(f"Fitting RCCS it={i}")
+        inner_pbar = tqdm(range(args.num_recursive_iterations), unit="it", position=1)
+        for i in inner_pbar:
             probe, train_loss = rccs.fit_next_probe(
                 data=(x0, x1),
                 ccs_params={
@@ -89,19 +88,23 @@ def train(args):
                 (val_x0, val_x1),
                 torch.tensor(val_labels, device=args.device),
             )
-            pbar.set_postfix(ccs_auroc=val_result.auroc, it=i)
+            inner_pbar.set_postfix(ccs_auroc=val_result.auroc)
+            if i == 0:
+                pbar.set_postfix(first_ccs_auroc=val_result.auroc)
 
             stats = [train_loss, *val_result]
             writer.writerow([L - pbar.n] + [i] + [f"{s:.4f}" for s in stats])
 
-        rccs_models.append(rccs.probes)
+        rccs_models.append(rccs)
 
     rccs_models.reverse()
 
     path = elk_cache_dir() / args.name
-    torch.save(rccs_models, path / "rccs_models.pt")
+    RecursiveCCS.save(path / "rccs.pt", *rccs_models)
 
 
 if __name__ == "__main__":
     args = get_rccs_training_parser().parse_args()
+    if args.device is None:
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
     train(args)
