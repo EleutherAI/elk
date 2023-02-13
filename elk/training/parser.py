@@ -27,8 +27,14 @@ def add_train_args(parser: ArgumentParser):
         "--init",
         type=str,
         default="default",
-        choices=("default", "spherical"),
+        choices=("default", "spherical", "zero"),
         help="Initialization for CCS probe.",
+    )
+    parser.add_argument(
+        "--label-frac",
+        type=float,
+        default=0.0,
+        help="Fraction of labeled data to use for training.",
     )
     parser.add_argument(
         "--loss",

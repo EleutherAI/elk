@@ -1,4 +1,24 @@
+from torch import Tensor
 from typing import Callable, Mapping, TypeVar
+import torch.distributed as dist
+
+
+def maybe_all_cat(x: Tensor) -> Tensor:
+    if not dist.is_initialized():
+        return x
+
+    buffer = x.new_empty([dist.get_world_size() * x.shape[0], *x.shape[1:]])
+    dist.all_gather_into_tensor(buffer, x)
+    return buffer
+
+
+def maybe_all_gather_lists(lst: list) -> list:
+    if not dist.is_initialized():
+        return lst
+
+    lists = [[] for _ in range(dist.get_world_size())]
+    dist.all_gather_object(lists, lst)
+    return sum(lists, [])
 
 
 TreeType = TypeVar("TreeType")

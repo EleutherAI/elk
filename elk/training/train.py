@@ -1,20 +1,18 @@
-import csv
-import pickle
-import random
-
-import numpy as np
-import torch
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, roc_auc_score
-from tqdm.auto import tqdm
-
 from ..files import elk_cache_dir
 from .ccs import CCS
 from .parser import get_training_parser
 from .preprocessing import load_hidden_states, normalize
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, roc_auc_score
+from tqdm.auto import tqdm
+import csv
+import numpy as np
+import pickle
+import random
+import torch
 
 
-@torch.autocast("cuda", enabled=torch.cuda.is_available())
+# @torch.autocast("cuda", enabled=torch.cuda.is_available())
 def train(args):
     # Reproducibility
     np.random.seed(args.seed)
@@ -65,25 +63,25 @@ def train(args):
     )
 
     for train_h, val_h in pbar:
-        # TODO: Once we implement cross-validation for CCS, we should benchmark against
-        # LogisticRegressionCV here.
-        pbar.set_description("Fitting LR")
-        lr_model = LogisticRegression(max_iter=10000, n_jobs=1, C=0.1)
-        lr_model.fit(train_h, train_labels)
+        x0, x1 = train_h.to(args.device).float().chunk(2, dim=-1)
+        val_x0, val_x1 = val_h.to(args.device).float().chunk(2, dim=-1)
 
-        lr_preds = lr_model.predict_proba(val_h)[:, 1]
-        lr_acc = accuracy_score(val_labels, lr_preds > 0.5)
-        lr_auroc = roc_auc_score(val_labels, lr_preds)
+        train_labels_aug = train_labels + [1 - label for label in train_labels]
+        val_labels_aug = val_labels + [1 - label for label in val_labels]
 
         pbar.set_description("Fitting CCS")
-        x0, x1 = train_h.to(args.device).chunk(2, dim=-1)
-        val_x0, val_x1 = val_h.to(args.device).chunk(2, dim=-1)
-
         ccs_model = CCS(
             in_features=x0.shape[-1], device=args.device, init=args.init, loss=args.loss
         )
+        if args.label_frac:
+            num_labels = round(args.label_frac * len(train_labels))
+            labels = torch.tensor(train_labels[:num_labels], device=args.device)
+        else:
+            labels = None
+
         train_loss = ccs_model.fit(
-            data=(x0, x1),
+            contrast_pair=(x0, x1),
+            labels=labels,
             num_tries=args.num_tries,
             optimizer=args.optimizer,
             weight_decay=args.weight_decay,
@@ -92,7 +90,21 @@ def train(args):
             (val_x0, val_x1),
             torch.tensor(val_labels, device=args.device),
         )
-        pbar.set_postfix(ccs_auroc=val_result.auroc, lr_auroc=lr_auroc)
+        pbar.set_postfix(train_loss=train_loss, ccs_auroc=val_result.auroc)
+
+        # TODO: Once we implement cross-validation for CCS, we should benchmark against
+        # LogisticRegressionCV here.
+        pbar.set_description("Fitting LR")
+        lr_model = LogisticRegression(max_iter=10_000)
+        lr_model.fit(torch.cat([x0, x1]).cpu(), train_labels_aug)
+
+        lr_preds = lr_model.predict_proba(torch.cat([val_x0, val_x1]).cpu())[:, 1]
+        lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
+        lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
+        pbar.set_postfix(
+            train_loss=train_loss, ccs_auroc=val_result.auroc, lr_auroc=lr_auroc
+        )
+
         stats = [train_loss, *val_result, lr_auroc, lr_acc]
         writer.writerow([L - pbar.n] + [f"{s:.4f}" for s in stats])
 

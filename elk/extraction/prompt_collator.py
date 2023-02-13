@@ -4,6 +4,7 @@ from promptsource.templates import DatasetTemplates
 from random import Random
 from typing import Literal, Optional
 import numpy as np
+import torch.distributed as dist
 
 
 @dataclass
@@ -38,10 +39,8 @@ class PromptCollator:
         if not others:
             print("Creating a train-test split...")
             data = data[train_name].train_test_split(
-                seed=seed, stratify_by_column=label_column
+                seed=seed, shuffle=False, stratify_by_column=label_column
             )
-        else:
-            data = data.shuffle(seed)
 
         if split not in data and split == "validation":
             print("No validation split found, using test split instead")
@@ -54,7 +53,10 @@ class PromptCollator:
             raise ValueError(f"Dataset {path}/{name} has only one label")
         if max_examples:
             self.dataset = self.dataset.select(range(max_examples))
+        if dist.is_initialized():
+            self.dataset = self.dataset.shard(dist.get_world_size(), dist.get_rank())
 
+        self.dataset = self.dataset.shuffle(seed=seed)
         self.label_column = label_column
         self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
         self.rng = Random(seed)
