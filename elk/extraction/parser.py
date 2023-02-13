@@ -107,6 +107,12 @@ def add_unsaveable_args(parser):
         type=str,
         help="PyTorch device to use. Default is cuda:0 if available.",
     )
+    parser.add_argument(
+        "--balance",
+        type=bool,
+        default=False,
+        help="Whether to balance the training set by class.",
+    )
     return parser
 
 
