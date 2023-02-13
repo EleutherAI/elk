@@ -34,25 +34,6 @@ class RecursiveCCS:
         """Scores all probes."""
         return [probe.score(data, labels) for probe in self.probes]
 
-    def save_last_probe(self, path: Path):
-        i = len(self.probes) - 1
-        save_probe(self.probes[i], path, i)
-
-    def save(self, path: Path):
-        """Saves the probes to a file."""
-        # torch.save(self.probes, path) # can't use this because of parametrization
-        for i, probe in enumerate(self.probes):
-            save_probe(probe, path, i)
-
-    def load(self, path: str):
-        """Loads the probes from a file."""
-        for i in count():
-            try:
-                probe = load_probe(path, i).to(self.device)
-                self.probes.append(probe)
-            except FileNotFoundError:
-                break
-
     def get_directions(self) -> Tensor:
         """Returns the directions of the current probes."""
         directions = torch.cat(
@@ -100,19 +81,3 @@ def assert_orthogonal(directions: torch.Tensor, atol: float = 1e-6) -> None:
     assert torch.allclose(
         inner_products, torch.eye(len(directions)).to(directions.device), atol=atol
     )
-
-
-def save_probe(probe: CCS, path: Path, i: int):
-    path = Path(path)  # just in case path is a string
-    path.mkdir(parents=True, exist_ok=True)
-    probe_path = path / f"probe_{i}.pt"
-    # TODO: remove parametrization to save space
-    torch.save(probe.state_dict(), probe_path)
-
-
-def load_probe(path: Path, i: int) -> CCS:
-    path = Path(path)  # just in case path is a string
-    probe_path = path / f"probe_{i}.pt"
-    probe = CCS()
-    probe.load_state_dict(torch.load(probe_path))
-    return probe
