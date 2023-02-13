@@ -30,7 +30,6 @@ class CCS(nn.Module):
         loss: Literal["js", "squared"] = "squared",
         num_layers: int = 1,
         pre_ln: bool = False,
-        first_linear_parametrization: Optional[nn.Module] = None,
     ):
         super().__init__()
 
@@ -61,11 +60,6 @@ class CCS(nn.Module):
                     bias=bias,
                     device=device,
                 )
-            )
-
-        if first_linear_parametrization is not None:
-            P.register_parametrization(
-                self.probe[0], "weight", first_linear_parametrization
             )
 
         self.init = init

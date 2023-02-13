@@ -23,14 +23,16 @@ class RecursiveCCS:
         parametrization = self.get_next_parametrization()
         in_features = data[0].shape[1]
 
-        probe = CCS(
+        ccs = CCS(
             in_features=in_features,
-            first_linear_parametrization=parametrization,
             **ccs_params,
         )
-        train_loss = probe.fit(data, **train_params)
-        self.probes.append(probe)
-        return probe, train_loss
+        if parametrization is not None:
+            P.register_parametrization(ccs.probe[0], "weight", parametrization)
+
+        train_loss = ccs.fit(data, **train_params)
+        self.probes.append(ccs)
+        return ccs, train_loss
 
     def score(self, data: tuple[Tensor, Tensor], labels: Tensor) -> list[EvalResult]:
         """Scores all probes."""
