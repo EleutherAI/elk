@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 def get_rccs_training_parser() -> ArgumentParser:
     parser = get_training_parser()
     parser.add_argument(
-        "--num-recursive-iterations",
+        "--num-iterations",
         type=int,
         help="Number of recursive iterations in RCCS",
     )

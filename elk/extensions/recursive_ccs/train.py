@@ -69,7 +69,7 @@ def train(args):
 
         rccs = RecursiveCCS(device=args.device)
 
-        inner_pbar = tqdm(range(args.num_recursive_iterations), unit="it", position=1)
+        inner_pbar = tqdm(range(args.num_iterations), unit="it", position=1)
         for i in inner_pbar:
             probe, train_loss = rccs.fit_next_probe(
                 data=(x0, x1),
