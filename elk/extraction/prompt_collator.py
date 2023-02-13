@@ -53,13 +53,14 @@ class PromptCollator:
         self.dataset = data[split]
 
         if balance:
-            self.dataset = undersample(self.dataset, label_column)
+            self.dataset = undersample(self.dataset, seed, label_column)
 
         self.labels, counts = np.unique(self.dataset[label_column], return_counts=True)
         self.label_fracs = counts / counts.sum()
 
         print(f"Class balance '{split}': {[f'{x:.2%}' for x in self.label_fracs]}")
-        if self.label_fracs[0] != self.label_fracs[1]:
+        pivot, *rest = self.label_fracs
+        if not all(x == pivot for x in rest):
             print("Use arg --balance to force class balance")
 
         if len(self.labels) < 2:

@@ -2,7 +2,7 @@ import numpy as np
 from datasets import DatasetDict, concatenate_datasets
 
 
-def undersample(dataset: DatasetDict, label_column: str = "label"):
+def undersample(dataset: DatasetDict, seed: int, label_column: str = "label"):
     """
     Balance a dataset by undersampling the majority class.
 
@@ -25,4 +25,4 @@ def undersample(dataset: DatasetDict, label_column: str = "label"):
             )
         )
 
-    return concatenate_datasets(subsets).shuffle()
+    return concatenate_datasets(subsets).shuffle(seed)
