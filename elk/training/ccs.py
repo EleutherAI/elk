@@ -5,6 +5,7 @@ from sklearn.metrics import roc_auc_score
 from typing import cast, Literal, NamedTuple, Optional, Type, Union
 import torch
 import torch.nn as nn
+import torch.nn.utils.parametrize as P
 
 
 class EvalResult(NamedTuple):
@@ -102,7 +103,17 @@ class CCS(nn.Module):
         return self.probe(x)
 
     def validate_data(self, data):
-        assert len(data) == 2 and data[0].shape == data[1].shape
+        assert (
+            len(data) == 2
+            and data[0].shape == data[1].shape
+            and data[0].dtype == data[1].dtype == self.dtype
+        ), "Data must be a tuple of two tensors of the same shape and dtype"
+
+    def correct_dtypes(
+        self, data: tuple[torch.Tensor, torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        x0, x1 = data
+        return x0.to(dtype=self.dtype), x1.to(dtype=self.dtype)
 
     def fit(
         self,
@@ -114,6 +125,7 @@ class CCS(nn.Module):
         verbose: bool = False,
         weight_decay: float = 0.01,
     ) -> float:
+        data = self.correct_dtypes(data)
         self.validate_data(data)
         if verbose:
             print(f"Fitting CCS probe; {num_epochs=}, {num_tries=}, {lr=}")
@@ -149,6 +161,7 @@ class CCS(nn.Module):
         data: tuple[torch.Tensor, torch.Tensor],
         labels: torch.Tensor,
     ) -> EvalResult:
+        data = self.correct_dtypes(data)
         self.validate_data(data)
 
         logit0, logit1 = map(self, data)
@@ -224,3 +237,7 @@ class CCS(nn.Module):
 
         optimizer.step(closure)
         return float(loss)
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.probe[0].weight.dtype
