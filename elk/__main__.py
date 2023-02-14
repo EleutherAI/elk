@@ -70,7 +70,9 @@ def run():
                 "Cannot use both --layers and --layer-stride. Please use only one."
             )
         elif args.layer_stride > 1:
-            args.layers = list(range(0, num_layers, args.layer_stride))
+            # the last layer is often the most interesting
+            # layers = [..., num_layers - 1 - layer_stride, num_layers - 1]
+            args.layers = list(range(num_layers - 1, -1, -args.layer_stride)).reverse()
 
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))
