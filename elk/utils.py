@@ -1,6 +1,6 @@
 from torch import Tensor
 from torch.nn.parallel import DistributedDataParallel as DDP
-from typing import cast, Callable, Mapping, TypeVar
+from typing import Callable, Mapping, TypeVar
 import torch.distributed as dist
 import torch.nn as nn
 

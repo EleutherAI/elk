@@ -4,10 +4,8 @@ from .training.parser import get_training_parser
 from .training.train import train
 from argparse import ArgumentParser
 from contextlib import nullcontext, redirect_stdout
-from elk.files import args_to_uuid, elk_cache_dir
-from pathlib import Path
+from elk.files import args_to_uuid
 from transformers import AutoConfig, PretrainedConfig
-import json
 import os
 import torch.distributed as dist
 
@@ -45,14 +43,7 @@ def run():
     args = parser.parse_args()
 
     if model := getattr(args, "model", None):
-        config_path = Path(__file__).parent / "default_config.json"
-        with open(config_path, "r") as f:
-            default_config = json.load(f)
-            model_shortcuts = default_config["model_shortcuts"]
-
-        # Dereference shortcut
-        args.model = model_shortcuts.get(model, model)
-        config = AutoConfig.from_pretrained(args.model)
+        config = AutoConfig.from_pretrained(model)
         assert isinstance(config, PretrainedConfig)
 
         num_layers = getattr(config, "num_layers", config.num_hidden_layers)
@@ -92,16 +83,17 @@ def run():
             train(args)
         elif args.command == "elicit":
             args.name = args_to_uuid(args)
-            cache_dir = elk_cache_dir() / args.name
-
-            if not cache_dir.exists():
+            try:
+                train(args)
+            except (EOFError, FileNotFoundError):
                 run_extraction(args)
-            else:
-                print(
-                    f"Cache dir \033[1m{cache_dir}\033[0m exists, "
-                    "skipping extraction of hidden states"
-                )  # bold
-            train(args)
+
+                # Ensure the extraction is finished before starting training
+                if dist.is_initialized():
+                    dist.barrier()
+
+                train(args)
+
         elif args.command == "eval":
             raise NotImplementedError
         else:

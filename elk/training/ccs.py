@@ -1,5 +1,5 @@
 from .losses import ccs_squared_loss, js_loss
-from ..utils import maybe_ddp_wrap, maybe_all_cat
+from ..utils import maybe_ddp_wrap, maybe_all_cat, maybe_all_reduce
 from copy import deepcopy
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
@@ -202,18 +202,18 @@ class CCS(nn.Module):
         labels = maybe_all_cat(labels)
 
         # Calibrated accuracy
-        cal_thresh = pred_probs.float().quantile(labels.float.mean())
-        cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(int)
-        raw_preds = pred_probs.gt(0.5).squeeze(1).to(int)
+        cal_thresh = pred_probs.float().quantile(labels.float().mean())
+        cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
+        raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
 
-        auroc = float(roc_auc_score(labels.tolist(), pred_probs.tolist()))
+        auroc = 0.0  # float(roc_auc_score(labels.cpu(), pred_probs.cpu()))
         cal_acc = cal_preds.eq(labels.reshape(-1)).float().mean()
         raw_acc = raw_preds.eq(labels.reshape(-1)).float().mean()
 
         return EvalResult(
-            loss=self.loss(logit0, logit1, labels).item(),
-            acc=torch.max(raw_acc, 1 - raw_acc).item(),
-            cal_acc=torch.max(cal_acc, 1 - cal_acc).item(),
+            loss=self.loss(logit0, logit1),
+            acc=torch.max(raw_acc, 1 - raw_acc),
+            cal_acc=torch.max(cal_acc, 1 - cal_acc),
             auroc=max(auroc, 1 - auroc),
         )
 
@@ -229,18 +229,13 @@ class CCS(nn.Module):
         """Adam train loop, returning the final loss. Modifies params in-place."""
 
         probe = maybe_ddp_wrap(self)
-        optimizer = torch.optim.AdamW(
-            probe.parameters(),
-            lr=lr,
-            weight_decay=wd,
-        )
+        optimizer = torch.optim.AdamW(probe.parameters(), lr=lr, weight_decay=wd)
 
         loss = torch.inf
         for _ in range(num_epochs):
             optimizer.zero_grad()
 
             loss = self.loss(probe(x0), probe(x1), labels)
-
             loss.backward()
             optimizer.step()
 
@@ -251,9 +246,8 @@ class CCS(nn.Module):
     ) -> float:
         """LBFGS train loop, returning the final loss. Modifies params in-place."""
 
-        probe = maybe_ddp_wrap(self)
         optimizer = torch.optim.LBFGS(
-            probe.parameters(),
+            self.parameters(),
             line_search_fn="strong_wolfe",
             max_iter=max_iter,
             tolerance_change=torch.finfo(x0.dtype).eps,
@@ -266,19 +260,20 @@ class CCS(nn.Module):
             nonlocal loss
             optimizer.zero_grad()
 
-            loss = self.loss(probe(x0), probe(x1), labels)
+            loss = self.loss(self(x0), self(x1), labels)
             regularizer = 0.0
 
             # We explicitly add L2 regularization to the loss, since LBFGS
             # doesn't have a weight_decay parameter
-            for param in probe.parameters():
+            for param in self.parameters():
                 regularizer += l2_penalty * param.norm() ** 2 / 2
 
             regularized = loss + regularizer
-            if regularized.isfinite():
-                regularized.backward()
-            else:
-                print("Got NaN loss; skipping backward pass")
+            regularized.backward()
+
+            for p in self.parameters():
+                if p.grad is not None:
+                    maybe_all_reduce(p.grad)
 
             return float(regularized)
 

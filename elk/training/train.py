@@ -1,6 +1,5 @@
 from ..files import elk_cache_dir
 from .ccs import CCS
-from .parser import get_training_parser
 from .preprocessing import load_hidden_states, normalize
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
@@ -55,15 +54,14 @@ def train(args):
     val_layers.reverse()
     train_layers.reverse()
 
-    cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
-    if not args.skip_baseline:
-        cols += ["lr_auroc", "lr_acc"]
+    iterator = zip(train_layers, val_layers)
+    pbar = None
+    if rank == 0:
+        pbar = tqdm(iterator, total=L, unit="layer")
+        iterator = pbar
 
-    writer = csv.writer(open(cache_dir / "eval.csv", "w"))
-    writer.writerow(cols)
-
-    pbar = tqdm(zip(train_layers, val_layers), total=L, unit="layer")
-    for train_h, val_h in pbar:
+    statistics = []
+    for i, (train_h, val_h) in enumerate(iterator):
         # Note: currently we're just upcasting to float32 so we don't have to deal with
         # grad scaling (which isn't supported for LBFGS), while the hidden states are
         # saved in float16 to save disk space. In the future we could try to use mixed
@@ -74,13 +72,14 @@ def train(args):
         train_labels_aug = torch.cat([train_labels, 1 - train_labels])
         val_labels_aug = torch.cat([val_labels, 1 - val_labels])
 
-        pbar.set_description("Fitting CCS")
+        if pbar:
+            pbar.set_description("Fitting CCS")
         ccs_model = CCS(
             in_features=x0.shape[-1], device=args.device, init=args.init, loss=args.loss
         )
         if args.label_frac:
             num_labels = round(args.label_frac * len(train_labels))
-            labels = torch.tensor(train_labels[:num_labels], device=args.device)
+            labels = train_labels[:num_labels].to(args.device)
         else:
             labels = None
 
@@ -93,28 +92,31 @@ def train(args):
         )
         val_result = ccs_model.score(
             (val_x0, val_x1),
-            torch.tensor(val_labels, device=args.device),
+            val_labels.to(args.device),
         )
-        pbar.set_postfix(train_loss=train_loss, ccs_auroc=val_result.auroc)
+        if pbar:
+            pbar.set_postfix(train_loss=train_loss, ccs_auroc=val_result.auroc)
         stats = [train_loss, *val_result]
 
         if not args.skip_baseline and not dist.is_initialized():
             # TODO: Once we implement cross-validation for CCS, we should benchmark
             # against LogisticRegressionCV here.
-            pbar.set_description("Fitting LR")
+            if pbar:
+                pbar.set_description("Fitting LR")
             lr_model = LogisticRegression(max_iter=10_000)
             lr_model.fit(torch.cat([x0, x1]).cpu(), train_labels_aug)
 
             lr_preds = lr_model.predict_proba(torch.cat([val_x0, val_x1]).cpu())[:, 1]
             lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
             lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
-            pbar.set_postfix(
-                train_loss=train_loss, ccs_auroc=val_result.auroc, lr_auroc=lr_auroc
-            )
+            if pbar:
+                pbar.set_postfix(
+                    train_loss=train_loss, ccs_auroc=val_result.auroc, lr_auroc=lr_auroc
+                )
             lr_models.append(lr_model)
             stats += [lr_auroc, lr_acc]
 
-        writer.writerow([L - pbar.n] + [f"{s:.4f}" for s in stats])
+        statistics.append(stats)
         ccs_models.append(ccs_model)
 
     ccs_models.reverse()
@@ -122,13 +124,18 @@ def train(args):
 
     path = elk_cache_dir() / args.name
     if rank == 0:
+        cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
+        if not args.skip_baseline:
+            cols += ["lr_auroc", "lr_acc"]
+
+        with open(cache_dir / "eval.csv", "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(cols)
+
+            for i, stats in enumerate(statistics):
+                writer.writerow([L - i] + [f"{s:.4f}" for s in stats])
+
         torch.save(ccs_models, path / "ccs_models.pt")
-
-    if lr_models and rank == 0:
-        with open(path / "lr_models.pkl", "wb") as file:
-            pickle.dump(lr_models, file)
-
-
-if __name__ == "__main__":
-    args = get_training_parser().parse_args()
-    train(args)
+        if lr_models:
+            with open(path / "lr_models.pkl", "wb") as file:
+                pickle.dump(lr_models, file)
