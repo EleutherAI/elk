@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from datasets import DatasetDict, load_dataset
+from datasets import DatasetDict, load_dataset  # type: ignore
 from promptsource.templates import DatasetTemplates
 from random import Random
 from typing import Literal, Optional
 import numpy as np
+from torch.utils.data import Dataset
 import torch.distributed as dist
 
 
@@ -19,7 +20,7 @@ class Prompt:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
 
 
-class PromptCollator:
+class PromptCollator(Dataset):
     def __init__(
         self,
         path: str,

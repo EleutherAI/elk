@@ -9,7 +9,7 @@ import torch
 import torch.distributed as dist
 
 
-@torch.autocast("cuda", enabled=torch.cuda.is_available())
+@torch.autocast("cuda", enabled=torch.cuda.is_available())  # type: ignore
 @torch.no_grad()
 def extract_hiddens(
     model: PreTrainedModel,
