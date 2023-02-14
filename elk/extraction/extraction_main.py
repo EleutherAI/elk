@@ -1,3 +1,4 @@
+from pathlib import Path
 from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
@@ -42,11 +43,16 @@ def run(args):
         ]
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        with open(save_dir / f"{split}_hiddens.pt", "wb") as f:
-            hidden_batches, label_batches = zip(*items)
-            hiddens = torch.cat(hidden_batches)  # type: ignore
-            labels = sum(label_batches, [])
-            torch.save((hiddens, labels), f)
+        hidden_batches, label_batches = zip(*items)
+        hiddens = torch.cat(hidden_batches)  # type: ignore
+        labels = sum(label_batches, [])
+
+        for layer in args.layers:
+            hiddens_at_l = hiddens[:, layer, :, :]
+            with open(get_hiddens_path(save_dir, split, layer), "wb") as f:
+                torch.save(hiddens_at_l, f)
+        with open(get_labels_path(save_dir, split), "wb") as f:
+            torch.save(labels, f)
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
@@ -80,3 +86,11 @@ def run(args):
 
     with open(save_dir / "model_config.json", "w") as f:
         json.dump(model.config.to_dict(), f)
+
+
+def get_hiddens_path(dir: Path, split: str, layer: int):
+    return dir / f"{split}_hiddens_l{layer}.pt"
+
+
+def get_labels_path(dir: Path, split: str):
+    return dir / f"{split}_labels.pt"

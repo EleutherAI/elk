@@ -3,6 +3,8 @@ import logging
 from typing import Literal
 import torch
 
+from elk.extraction.extraction_main import get_hiddens_path, get_labels_path
+
 
 def normalize(
     train_hiddens: torch.Tensor,
@@ -37,8 +39,11 @@ def normalize(
     return train_hiddens, val_hiddens
 
 
-def load_hidden_states(path: Path):
-    hiddens, labels = torch.load(path, map_location="cpu")
+def load_hidden_states(dir: Path, split: str, layers: list[int]):
+    labels = torch.load(get_labels_path(dir, split))
+    hiddens_list = [torch.load(get_hiddens_path(dir, split, layer)) for layer in layers]
+
+    hiddens = torch.stack(hiddens_list, dim=1)
 
     # Concatenate the positive and negative examples together.
     return hiddens.flatten(start_dim=-2), labels

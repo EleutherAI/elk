@@ -24,10 +24,10 @@ def train(args):
     # load the hidden states extracted from the model
     cache_dir = elk_cache_dir() / args.name
     train_hiddens, train_labels = load_hidden_states(
-        path=cache_dir / "train_hiddens.pt"
+        dir=cache_dir, split="train", layers=args.layers
     )
     val_hiddens, val_labels = load_hidden_states(
-        path=cache_dir / "validation_hiddens.pt"
+        dir=cache_dir, split="validation", layers=args.layers
     )
     assert len(set(train_labels)) > 1
     assert len(set(val_labels)) > 1
