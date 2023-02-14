@@ -21,7 +21,6 @@ def run(args):
             split=split,
             label_column=args.label_column,
             strategy=args.prompts,
-            balance=args.balance,
         )
 
         if split == "train":
