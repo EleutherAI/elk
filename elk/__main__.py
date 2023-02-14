@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 from contextlib import nullcontext, redirect_stdout
 from elk.files import args_to_uuid
 from transformers import AutoConfig, PretrainedConfig
+import logging
 import os
 import torch.distributed as dist
 
@@ -75,6 +76,9 @@ def run():
     with redirect_stdout(None) if local_rank != 0 else nullcontext():
         for key in list(vars(args).keys()):
             print("{}: {}".format(key, vars(args)[key]))
+
+        if local_rank != 0:
+            logging.getLogger("transformers").setLevel(logging.ERROR)
 
         # TODO: Implement the rest of the CLI
         if args.command == "extract":
