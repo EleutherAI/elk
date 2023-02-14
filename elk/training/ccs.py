@@ -206,7 +206,7 @@ class CCS(nn.Module):
         cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
         raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
 
-        auroc = 0.0  # float(roc_auc_score(labels.cpu(), pred_probs.cpu()))
+        auroc = float(roc_auc_score(labels.cpu(), pred_probs.cpu()))
         cal_acc = cal_preds.eq(labels.reshape(-1)).float().mean()
         raw_acc = raw_preds.eq(labels.reshape(-1)).float().mean()
 
