@@ -16,13 +16,13 @@ First install the package with `pip install -e .` in the root directory, or `pip
 To extract the hidden states for one model `model` and the dataset `dataset` *and* train a probe on these extracted hidden states, run:
 
 ```bash
-elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --max-examples 1000
+elk elicit microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
 To only extract the hidden states for one model `model` and the dataset `dataset`, run:
 
 ```bash
-elk extract microsoft/deberta-v2-xxlarge-mnli imdb --max-examples 1000
+elk extract microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
 To only train a CCS model and a logistic regression model
@@ -34,6 +34,16 @@ elk train microsoft/deberta-v2-xxlarge-mnli imdb
 and evaluate on different datasets: [WIP]
 
 Once finished, results will be saved in `~/.cache/elk/{model}_{prefix}_{seed}.csv`
+
+### Distributed hidden state extraction
+
+You can run the hidden state extraction in parallel on multiple GPUs with `torchrun`. Specifically, you can run the hidden state extraction using all GPUs on a node with:
+
+```bash
+torchrun --nproc_per_node gpu elk extract microsoft/deberta-v2-xxlarge-mnli imdb
+```
+
+Currently, our code doesn't quite support distributed training of the probes. Running `elk train` under `torchrun` tends to hang. We're working on fixing this.
 
 ### Development
 
