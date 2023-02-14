@@ -1,16 +1,15 @@
-from elk.files import args_to_uuid, elk_cache_dir
 from .extraction.extraction_main import run as run_extraction
-from .extraction.parser import (
-    add_saveable_args,
-    add_unsaveable_args,
-    get_extraction_parser,
-)
-from .training.parser import add_train_args, get_training_parser
+from .extraction.parser import get_extraction_parser
+from .training.parser import get_training_parser
 from .training.train import train
 from argparse import ArgumentParser
+from contextlib import nullcontext, redirect_stdout
+from elk.files import args_to_uuid, elk_cache_dir
 from pathlib import Path
 from transformers import AutoConfig, PretrainedConfig
 import json
+import os
+import torch.distributed as dist
 
 
 def run():
@@ -45,12 +44,6 @@ def run():
     )
     args = parser.parse_args()
 
-    # Default to CUDA iff available
-    if args.device is None:
-        import torch
-
-        args.device = "cuda" if torch.cuda.is_available() else "cpu"
-
     if model := getattr(args, "model", None):
         config_path = Path(__file__).parent / "default_config.json"
         with open(config_path, "r") as f:
@@ -72,29 +65,47 @@ def run():
         elif args.layer_stride > 1:
             args.layers = list(range(0, num_layers, args.layer_stride))
 
-    for key in list(vars(args).keys()):
-        print("{}: {}".format(key, vars(args)[key]))
+    # Support both distributed and non-distributed training
+    local_rank = os.environ.get("LOCAL_RANK")
+    if local_rank is not None:
+        dist.init_process_group("nccl")
+        local_rank = int(local_rank)
 
-    # TODO: Implement the rest of the CLI
-    if args.command == "extract":
-        run_extraction(args)
-    elif args.command == "train":
-        train(args)
-    elif args.command == "elicit":
-        args.name = args_to_uuid(args)
-        cache_dir = elk_cache_dir() / args.name
-        if not cache_dir.exists():
-            run_extraction(args)
+    # Default to CUDA iff available
+    if args.device is None:
+        import torch
+
+        if not torch.cuda.is_available():
+            args.device = "cpu"
         else:
-            print(
-                f"Cache dir \033[1m{cache_dir}\033[0m exists, "
-                "skip extraction of hidden states"
-            )  # bold
-        train(args)
-    elif args.command == "eval":
-        raise NotImplementedError
-    else:
-        raise ValueError(f"Unknown command {args.command}")
+            args.device = f"cuda:{local_rank or 0}"
+
+    # Prevent printing from processes other than the first one
+    with redirect_stdout(None) if local_rank != 0 else nullcontext():
+        for key in list(vars(args).keys()):
+            print("{}: {}".format(key, vars(args)[key]))
+
+        # TODO: Implement the rest of the CLI
+        if args.command == "extract":
+            run_extraction(args)
+        elif args.command == "train":
+            train(args)
+        elif args.command == "elicit":
+            args.name = args_to_uuid(args)
+            cache_dir = elk_cache_dir() / args.name
+
+            if not cache_dir.exists():
+                run_extraction(args)
+            else:
+                print(
+                    f"Cache dir \033[1m{cache_dir}\033[0m exists, "
+                    "skipping extraction of hidden states"
+                )  # bold
+            train(args)
+        elif args.command == "eval":
+            raise NotImplementedError
+        else:
+            raise ValueError(f"Unknown command {args.command}")
 
 
 if __name__ == "__main__":

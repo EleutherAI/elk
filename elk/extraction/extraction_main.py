@@ -1,7 +1,7 @@
 from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
-from ..utils import maybe_all_cat, maybe_all_gather_lists
+from ..utils import maybe_all_cat
 from transformers import AutoModel, AutoTokenizer
 import json
 import torch
@@ -32,7 +32,7 @@ def run(args):
                 raise ValueError(f"Unknown prompt strategy: {args.prompts}")
 
         items = [
-            (features.cpu(), labels)
+            (features, labels)
             for features, labels in extract_hiddens(
                 model,
                 tokenizer,
@@ -48,10 +48,13 @@ def run(args):
         with open(save_dir / f"{split}_hiddens.pt", "wb") as f:
             hidden_batches, label_batches = zip(*items)
             hiddens = maybe_all_cat(torch.cat(hidden_batches))  # type: ignore
-            labels = maybe_all_gather_lists(sum(label_batches, []))  # type: ignore
+
+            # Moving labels to GPU just to be able to use maybe_all_cat
+            labels = torch.tensor(sum(label_batches, []), device=hiddens.device)
+            labels = maybe_all_cat(labels)  # type: ignore
 
             if rank == 0:
-                torch.save((hiddens, labels), f)
+                torch.save((hiddens.cpu(), labels.cpu()), f)
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.

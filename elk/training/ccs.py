@@ -1,4 +1,5 @@
 from .losses import ccs_squared_loss, js_loss
+from ..utils import maybe_ddp_wrap, maybe_all_cat
 from copy import deepcopy
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
@@ -25,12 +26,13 @@ class CCS(nn.Module):
         *,
         activation: Type[nn.Module] = nn.GELU,
         bias: bool = True,
-        device: str = "cuda",
+        device: Optional[str] = None,
         hidden_size: Optional[int] = None,
         init: Literal["default", "spherical", "zero"] = "zero",
         loss: Literal["js", "squared"] = "squared",
         num_layers: int = 1,
         pre_ln: bool = False,
+        supervised_weight: float = 0.0,
     ):
         super().__init__()
 
@@ -66,6 +68,7 @@ class CCS(nn.Module):
         self.init = init
         self.device = device
         self.unsupervised_loss = js_loss if loss == "js" else ccs_squared_loss
+        self.supervised_weight = supervised_weight
 
     def reset_parameters(self):
         # Mathematically equivalent to the unusual initialization scheme used in the
@@ -115,15 +118,22 @@ class CCS(nn.Module):
         """Return the loss of the probe on the contrast pair `(x0, x1)`."""
         loss = self.unsupervised_loss(logit0, logit1)
 
+        # If labels are provided, use them to compute a supervised loss
         if labels is not None:
-            # If labels are provided, use them to compute a supervised loss
             num_labels = len(labels)
-            label_frac = num_labels / len(logit0)
-            assert label_frac <= 1.0, "Too many labels provided"
+            assert num_labels <= len(logit0), "Too many labels provided"
             p0 = logit0[:num_labels].sigmoid()
             p1 = logit1[:num_labels].sigmoid()
-            preds = 0.5 * (p0 + (1 - p1))
-            loss += bce(preds.squeeze(-1), labels.type_as(preds))
+
+            alpha = self.supervised_weight
+            preds = p0.add(1 - p1).mul(0.5).squeeze(-1)
+            bce_loss = bce(preds, labels.type_as(preds))
+            loss = alpha * bce_loss + (1 - alpha) * loss
+
+        elif self.supervised_weight > 0:
+            raise ValueError(
+                "Supervised weight > 0 but no labels provided to compute loss"
+            )
 
         return loss
 
@@ -188,8 +198,11 @@ class CCS(nn.Module):
         p0, p1 = logit0.sigmoid(), logit1.sigmoid()
         pred_probs = 0.5 * (p0 + (1 - p1))
 
+        pred_probs = maybe_all_cat(pred_probs)
+        labels = maybe_all_cat(labels)
+
         # Calibrated accuracy
-        cal_thresh = pred_probs.float().quantile(labels.float().mean())
+        cal_thresh = pred_probs.float().quantile(labels.float.mean())
         cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(int)
         raw_preds = pred_probs.gt(0.5).squeeze(1).to(int)
 
@@ -214,8 +227,10 @@ class CCS(nn.Module):
         wd: float,
     ) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
+
+        probe = maybe_ddp_wrap(self)
         optimizer = torch.optim.AdamW(
-            self.parameters(),
+            probe.parameters(),
             lr=lr,
             weight_decay=wd,
         )
@@ -224,7 +239,7 @@ class CCS(nn.Module):
         for _ in range(num_epochs):
             optimizer.zero_grad()
 
-            loss = self.loss(self(x0), self(x1), labels)
+            loss = self.loss(probe(x0), probe(x1), labels)
 
             loss.backward()
             optimizer.step()
@@ -236,8 +251,9 @@ class CCS(nn.Module):
     ) -> float:
         """LBFGS train loop, returning the final loss. Modifies params in-place."""
 
+        probe = maybe_ddp_wrap(self)
         optimizer = torch.optim.LBFGS(
-            self.parameters(),
+            probe.parameters(),
             line_search_fn="strong_wolfe",
             max_iter=max_iter,
             tolerance_change=torch.finfo(x0.dtype).eps,
@@ -250,12 +266,12 @@ class CCS(nn.Module):
             nonlocal loss
             optimizer.zero_grad()
 
-            loss = self.loss(self(x0), self(x1), labels)
+            loss = self.loss(probe(x0), probe(x1), labels)
             regularizer = 0.0
 
             # We explicitly add L2 regularization to the loss, since LBFGS
             # doesn't have a weight_decay parameter
-            for param in self.parameters():
+            for param in probe.parameters():
                 regularizer += l2_penalty * param.norm() ** 2 / 2
 
             regularized = loss + regularizer

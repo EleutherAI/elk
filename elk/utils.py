@@ -1,6 +1,8 @@
 from torch import Tensor
-from typing import Callable, Mapping, TypeVar
+from torch.nn.parallel import DistributedDataParallel as DDP
+from typing import cast, Callable, Mapping, TypeVar
 import torch.distributed as dist
+import torch.nn as nn
 
 
 def maybe_all_cat(x: Tensor) -> Tensor:
@@ -12,13 +14,20 @@ def maybe_all_cat(x: Tensor) -> Tensor:
     return buffer
 
 
-def maybe_all_gather_lists(lst: list) -> list:
+def maybe_all_reduce(x: Tensor) -> Tensor:
     if not dist.is_initialized():
-        return lst
+        return x
 
-    lists = [[] for _ in range(dist.get_world_size())]
-    dist.all_gather_object(lists, lst)
-    return sum(lists, [])
+    dist.all_reduce(x, op=dist.ReduceOp.SUM)
+    x /= dist.get_world_size()
+    return x
+
+
+def maybe_ddp_wrap(model: nn.Module) -> nn.Module:
+    if not dist.is_initialized():
+        return model
+
+    return DDP(model, device_ids=[dist.get_rank()])
 
 
 TreeType = TypeVar("TreeType")

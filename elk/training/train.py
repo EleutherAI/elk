@@ -10,10 +10,14 @@ import numpy as np
 import pickle
 import random
 import torch
+import torch.distributed as dist
 
 
-# @torch.autocast("cuda", enabled=torch.cuda.is_available())
 def train(args):
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    if dist.is_initialized() and not args.skip_baseline and rank == 0:
+        print("Skipping LR baseline during distributed training.")
+
     # Reproducibility
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -30,12 +34,16 @@ def train(args):
     assert len(set(train_labels)) > 1
     assert len(set(val_labels)) > 1
 
-    assert isinstance(val_hiddens, torch.Tensor)
-    assert isinstance(train_hiddens, torch.Tensor)
-
     train_hiddens, val_hiddens = normalize(
         train_hiddens, val_hiddens, args.normalization
     )
+    if dist.is_initialized():
+        world_size = dist.get_world_size()
+        train_hiddens = train_hiddens.chunk(world_size)[rank]
+        train_labels = train_labels.chunk(world_size)[rank]
+
+        val_hiddens = val_hiddens.chunk(world_size)[rank]
+        val_labels = val_labels.chunk(world_size)[rank]
 
     ccs_models = []
     lr_models = []
@@ -47,27 +55,24 @@ def train(args):
     val_layers.reverse()
     train_layers.reverse()
 
-    pbar = tqdm(zip(train_layers, val_layers), total=L, unit="layer")
-    writer = csv.writer(open(cache_dir / "eval.csv", "w"))
-    writer.writerow(
-        [
-            "layer",
-            "train_loss",
-            "loss",
-            "acc",
-            "cal_acc",
-            "auroc",
-            "lr_auroc",
-            "lr_acc",
-        ]
-    )
+    cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
+    if not args.skip_baseline:
+        cols += ["lr_auroc", "lr_acc"]
 
+    writer = csv.writer(open(cache_dir / "eval.csv", "w"))
+    writer.writerow(cols)
+
+    pbar = tqdm(zip(train_layers, val_layers), total=L, unit="layer")
     for train_h, val_h in pbar:
+        # Note: currently we're just upcasting to float32 so we don't have to deal with
+        # grad scaling (which isn't supported for LBFGS), while the hidden states are
+        # saved in float16 to save disk space. In the future we could try to use mixed
+        # precision training in at least some cases.
         x0, x1 = train_h.to(args.device).float().chunk(2, dim=-1)
         val_x0, val_x1 = val_h.to(args.device).float().chunk(2, dim=-1)
 
-        train_labels_aug = train_labels + [1 - label for label in train_labels]
-        val_labels_aug = val_labels + [1 - label for label in val_labels]
+        train_labels_aug = torch.cat([train_labels, 1 - train_labels])
+        val_labels_aug = torch.cat([val_labels, 1 - val_labels])
 
         pbar.set_description("Fitting CCS")
         ccs_model = CCS(
@@ -91,34 +96,37 @@ def train(args):
             torch.tensor(val_labels, device=args.device),
         )
         pbar.set_postfix(train_loss=train_loss, ccs_auroc=val_result.auroc)
+        stats = [train_loss, *val_result]
 
-        # TODO: Once we implement cross-validation for CCS, we should benchmark against
-        # LogisticRegressionCV here.
-        pbar.set_description("Fitting LR")
-        lr_model = LogisticRegression(max_iter=10_000)
-        lr_model.fit(torch.cat([x0, x1]).cpu(), train_labels_aug)
+        if not args.skip_baseline and not dist.is_initialized():
+            # TODO: Once we implement cross-validation for CCS, we should benchmark
+            # against LogisticRegressionCV here.
+            pbar.set_description("Fitting LR")
+            lr_model = LogisticRegression(max_iter=10_000)
+            lr_model.fit(torch.cat([x0, x1]).cpu(), train_labels_aug)
 
-        lr_preds = lr_model.predict_proba(torch.cat([val_x0, val_x1]).cpu())[:, 1]
-        lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
-        lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
-        pbar.set_postfix(
-            train_loss=train_loss, ccs_auroc=val_result.auroc, lr_auroc=lr_auroc
-        )
+            lr_preds = lr_model.predict_proba(torch.cat([val_x0, val_x1]).cpu())[:, 1]
+            lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
+            lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
+            pbar.set_postfix(
+                train_loss=train_loss, ccs_auroc=val_result.auroc, lr_auroc=lr_auroc
+            )
+            lr_models.append(lr_model)
+            stats += [lr_auroc, lr_acc]
 
-        stats = [train_loss, *val_result, lr_auroc, lr_acc]
         writer.writerow([L - pbar.n] + [f"{s:.4f}" for s in stats])
-
-        lr_models.append(lr_model)
         ccs_models.append(ccs_model)
 
     ccs_models.reverse()
     lr_models.reverse()
 
     path = elk_cache_dir() / args.name
-    with open(path / "lr_models.pkl", "wb") as file:
-        pickle.dump(lr_models, file)
+    if rank == 0:
+        torch.save(ccs_models, path / "ccs_models.pt")
 
-    torch.save(ccs_models, path / "ccs_models.pt")
+    if lr_models and rank == 0:
+        with open(path / "lr_models.pkl", "wb") as file:
+            pickle.dump(lr_models, file)
 
 
 if __name__ == "__main__":
