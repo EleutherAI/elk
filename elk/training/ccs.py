@@ -211,9 +211,9 @@ class CCS(nn.Module):
         raw_acc = raw_preds.eq(labels.reshape(-1)).float().mean()
 
         return EvalResult(
-            loss=self.loss(logit0, logit1),
-            acc=torch.max(raw_acc, 1 - raw_acc),
-            cal_acc=torch.max(cal_acc, 1 - cal_acc),
+            loss=self.loss(logit0, logit1).item(),
+            acc=torch.max(raw_acc, 1 - raw_acc).item(),
+            cal_acc=torch.max(cal_acc, 1 - cal_acc).item(),
             auroc=max(auroc, 1 - auroc),
         )
 
