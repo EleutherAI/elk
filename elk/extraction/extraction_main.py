@@ -1,7 +1,7 @@
 from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
-from ..utils import maybe_all_cat
+from ..utils import maybe_all_gather
 from transformers import AutoModel, AutoTokenizer
 import json
 import torch
@@ -47,11 +47,11 @@ def run(args):
 
         with open(save_dir / f"{split}_hiddens.pt", "wb") as f:
             hidden_batches, label_batches = zip(*items)
-            hiddens = maybe_all_cat(torch.cat(hidden_batches))  # type: ignore
+            hiddens = maybe_all_gather(torch.cat(hidden_batches))  # type: ignore
 
-            # Moving labels to GPU just to be able to use maybe_all_cat
+            # Moving labels to GPU just to be able to use maybe_all_gather
             labels = torch.tensor(sum(label_batches, []), device=hiddens.device)
-            labels = maybe_all_cat(labels)  # type: ignore
+            labels = maybe_all_gather(labels)  # type: ignore
 
             if rank == 0:
                 torch.save((hiddens.cpu(), labels.cpu()), f)

@@ -5,7 +5,7 @@ import torch.distributed as dist
 import torch.nn as nn
 
 
-def maybe_all_cat(x: Tensor) -> Tensor:
+def maybe_all_gather(x: Tensor) -> Tensor:
     if not dist.is_initialized():
         return x
 

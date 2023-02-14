@@ -1,5 +1,5 @@
 from .losses import ccs_squared_loss, js_loss
-from ..utils import maybe_ddp_wrap, maybe_all_cat, maybe_all_reduce
+from ..utils import maybe_ddp_wrap, maybe_all_gather, maybe_all_reduce
 from copy import deepcopy
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
@@ -198,8 +198,8 @@ class CCS(nn.Module):
         p0, p1 = logit0.sigmoid(), logit1.sigmoid()
         pred_probs = 0.5 * (p0 + (1 - p1))
 
-        pred_probs = maybe_all_cat(pred_probs)
-        labels = maybe_all_cat(labels)
+        pred_probs = maybe_all_gather(pred_probs)
+        labels = maybe_all_gather(labels)
 
         # Calibrated accuracy
         cal_thresh = pred_probs.float().quantile(labels.float().mean())
