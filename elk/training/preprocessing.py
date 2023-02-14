@@ -42,8 +42,11 @@ def normalize(
 def load_hidden_states(
     dir: Path, split: str, layers: list[int]
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    labels = torch.load(get_labels_path(dir, split))
-    hiddens_list = [torch.load(get_hiddens_path(dir, split, layer)) for layer in layers]
+    labels = torch.load(get_labels_path(dir, split), map_location="cpu")
+    hiddens_list = [
+        torch.load(get_hiddens_path(dir, split, layer), map_location="cpu")
+        for layer in layers
+    ]
 
     hiddens = torch.stack(hiddens_list, dim=1)
 
