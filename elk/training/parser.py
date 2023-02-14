@@ -62,6 +62,12 @@ def add_train_args(parser: ArgumentParser):
         help="Skip training the logistic regression baseline.",
     )
     parser.add_argument(
+        "--supervised-weight",
+        type=float,
+        default=0.0,
+        help="Weight of the supervised loss in the CCS objective.",
+    )
+    parser.add_argument(
         "--weight-decay",
         type=float,
         default=0.01,

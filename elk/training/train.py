@@ -71,11 +71,15 @@ def train(args):
 
         train_labels_aug = torch.cat([train_labels, 1 - train_labels])
         val_labels_aug = torch.cat([val_labels, 1 - val_labels])
-
         if pbar:
             pbar.set_description("Fitting CCS")
+
         ccs_model = CCS(
-            in_features=x0.shape[-1], device=args.device, init=args.init, loss=args.loss
+            in_features=x0.shape[-1],
+            device=args.device,
+            init=args.init,
+            loss=args.loss,
+            supervised_weight=args.supervised_weight,
         )
         if args.label_frac:
             num_labels = round(args.label_frac * len(train_labels))
@@ -99,10 +103,11 @@ def train(args):
         stats = [train_loss, *val_result]
 
         if not args.skip_baseline and not dist.is_initialized():
-            # TODO: Once we implement cross-validation for CCS, we should benchmark
-            # against LogisticRegressionCV here.
             if pbar:
                 pbar.set_description("Fitting LR")
+
+            # TODO: Once we implement cross-validation for CCS, we should benchmark
+            # against LogisticRegressionCV here.
             lr_model = LogisticRegression(max_iter=10_000)
             lr_model.fit(torch.cat([x0, x1]).cpu(), train_labels_aug)
 
@@ -113,6 +118,7 @@ def train(args):
                 pbar.set_postfix(
                     train_loss=train_loss, ccs_auroc=val_result.auroc, lr_auroc=lr_auroc
                 )
+
             lr_models.append(lr_model)
             stats += [lr_auroc, lr_acc]
 
