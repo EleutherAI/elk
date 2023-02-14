@@ -40,10 +40,10 @@ Once finished, results will be saved in `~/.cache/elk/{model}_{prefix}_{seed}.cs
 You can run the hidden state extraction in parallel on multiple GPUs with `torchrun`. Specifically, you can run the hidden state extraction using all GPUs on a node with:
 
 ```bash
-torchrun --nproc_per_node gpu elk extract microsoft/deberta-v2-xxlarge-mnli imdb
+torchrun --nproc_per_node gpu elk extract -m microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
-Currently, our code doesn't quite support distributed training of the probes. Running `elk train` under `torchrun` tends to hang. We're working on fixing this.
+Currently, our code doesn't quite support distributed training of the probe. Running `elk train` under `torchrun` tends to hang. We're working on fixing this.
 
 ### Development
 
