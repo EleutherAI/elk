@@ -1,5 +1,5 @@
 from elk.files import args_to_uuid, elk_cache_dir
-from .extraction.extraction_main import run as run_extraction
+from .extraction.extraction_main import get_hiddens_path, run as run_extraction
 from .extraction.parser import (
     add_saveable_args,
     add_unsaveable_args,
@@ -45,6 +45,47 @@ def run():
     )
     args = parser.parse_args()
 
+    normalize_args_inplace(args)
+
+    for key in list(vars(args).keys()):
+        print("{}: {}".format(key, vars(args)[key]))
+
+    # TODO: Implement the rest of the CLI
+    if args.command == "extract":
+        run_extraction(args)
+    elif args.command == "train":
+        train(args)
+    elif args.command == "elicit":
+        # Extract the hidden states if they're not already there
+        args.name = args_to_uuid(args)
+        cache_dir = elk_cache_dir() / args.name
+        missing_layers = find_missing_layers(args)
+        if missing_layers:
+            if cache_dir.exists():
+                print(
+                    f"Found cache dir \033[1m{cache_dir}\033[0m"
+                    f" but it's missing layers {', '.join(missing_layers)}"
+                )
+
+            old_layers = args.layers
+            args.layers = missing_layers
+            run_extraction(args)
+            args.layers = old_layers
+        else:
+            print(
+                f"Cache dir \033[1m{cache_dir}\033[0m exists, "
+                "skip extraction of hidden states"
+            )  # bold
+
+        # Train the probes
+        train(args)
+    elif args.command == "eval":
+        raise NotImplementedError
+    else:
+        raise ValueError(f"Unknown command {args.command}")
+
+
+def normalize_args_inplace(args):
     # Default to CUDA iff available
     if args.device is None:
         import torch
@@ -74,29 +115,16 @@ def run():
             # layers = [..., num_layers - 1 - layer_stride, num_layers - 1]
             args.layers = list(range(num_layers - 1, -1, -args.layer_stride)).reverse()
 
-    for key in list(vars(args).keys()):
-        print("{}: {}".format(key, vars(args)[key]))
 
-    # TODO: Implement the rest of the CLI
-    if args.command == "extract":
-        run_extraction(args)
-    elif args.command == "train":
-        train(args)
-    elif args.command == "elicit":
-        args.name = args_to_uuid(args)
+def find_missing_layers(args):
+    missing_layers = []
+    for layer in args.layers:
         cache_dir = elk_cache_dir() / args.name
-        if not cache_dir.exists():
-            run_extraction(args)
-        else:
-            print(
-                f"Cache dir \033[1m{cache_dir}\033[0m exists, "
-                "skip extraction of hidden states"
-            )  # bold
-        train(args)
-    elif args.command == "eval":
-        raise NotImplementedError
-    else:
-        raise ValueError(f"Unknown command {args.command}")
+        train_layer_path = get_hiddens_path(cache_dir, "train", layer)
+        validation_layer_path = get_hiddens_path(cache_dir, "validation", layer)
+        if not train_layer_path.exists() or not validation_layer_path.exists():
+            missing_layers.append(layer)
+    return missing_layers
 
 
 if __name__ == "__main__":
