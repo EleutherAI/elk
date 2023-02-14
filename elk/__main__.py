@@ -13,6 +13,15 @@ from transformers import AutoConfig, PretrainedConfig
 import json
 
 
+def sweep(model, datasets):
+    """
+    Train and evaluate ccs and lr model on a set of datasets.
+    """
+    # just run a for loop over the datasets... 
+    # TODO: extract, train, eval
+
+
+
 def run():
     parser = ArgumentParser(add_help=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -92,7 +101,7 @@ def run():
             )  # bold
         train(args)
     elif args.command == "eval":
-        raise NotImplementedError
+        sweep(args.model, args.datasets)
     else:
         raise ValueError(f"Unknown command {args.command}")
 
