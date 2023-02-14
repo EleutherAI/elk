@@ -6,9 +6,10 @@ from tqdm.auto import tqdm
 from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
 from typing import cast, Iterable, Literal, Sequence
 import torch
+import torch.distributed as dist
 
 
-@torch.autocast("cuda", enabled=torch.cuda.is_available())
+@torch.autocast("cuda", enabled=torch.cuda.is_available())  # type: ignore
 @torch.no_grad()
 def extract_hiddens(
     model: PreTrainedModel,
@@ -125,7 +126,8 @@ def extract_hiddens(
     )
 
     # Iterating over questions
-    for batch in tqdm(dl):
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    for batch in tqdm(dl, position=rank):
         # Condition 1: Encoder-decoder transformer, with answer in the decoder
         if not should_concat:
             questions, answers, labels = batch

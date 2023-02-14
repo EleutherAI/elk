@@ -39,11 +39,16 @@ def normalize(
     return train_hiddens, val_hiddens
 
 
-def load_hidden_states(dir: Path, split: str, layers: list[int]):
+def load_hidden_states(
+    dir: Path, split: str, layers: list[int]
+) -> tuple[torch.Tensor, torch.Tensor]:
     labels = torch.load(get_labels_path(dir, split))
     hiddens_list = [torch.load(get_hiddens_path(dir, split, layer)) for layer in layers]
 
     hiddens = torch.stack(hiddens_list, dim=1)
+
+    assert isinstance(hiddens, torch.Tensor)
+    assert isinstance(labels, torch.Tensor)
 
     # Concatenate the positive and negative examples together.
     return hiddens.flatten(start_dim=-2), labels

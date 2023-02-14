@@ -1,9 +1,11 @@
 from dataclasses import dataclass
-from datasets import DatasetDict, load_dataset
+from datasets import DatasetDict, load_dataset  # type: ignore
 from promptsource.templates import DatasetTemplates
 from random import Random
 from typing import Literal, Optional
 import numpy as np
+from torch.utils.data import Dataset
+import torch.distributed as dist
 
 from elk.extraction.dataset_preprocessing import undersample
 
@@ -20,7 +22,7 @@ class Prompt:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
 
 
-class PromptCollator:
+class PromptCollator(Dataset):
     def __init__(
         self,
         path: str,
@@ -41,10 +43,8 @@ class PromptCollator:
         if not others:
             print("Creating a train-test split...")
             data = data[train_name].train_test_split(
-                seed=seed, stratify_by_column=label_column
+                seed=seed, shuffle=False, stratify_by_column=label_column
             )
-        else:
-            data = data.shuffle(seed)
 
         if split not in data and split == "validation":
             print("No validation split found, using test split instead")
@@ -67,6 +67,10 @@ class PromptCollator:
             raise ValueError(f"Dataset {path}/{name} has only one label")
         if max_examples:
             self.dataset = self.dataset.select(range(max_examples))
+
+        self.dataset = self.dataset.shuffle(seed=seed)
+        if dist.is_initialized():
+            self.dataset = self.dataset.shard(dist.get_world_size(), dist.get_rank())
 
         self.label_column = label_column
         self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
