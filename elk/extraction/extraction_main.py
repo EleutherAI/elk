@@ -1,12 +1,16 @@
 from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
+from ..utils import maybe_all_gather
 from transformers import AutoModel, AutoTokenizer
 import json
 import torch
+import torch.distributed as dist
 
 
 def run(args):
+    rank = dist.get_rank() if dist.is_initialized() else 0
+
     def extract(args, split: str):
         frac = 1 - args.val_frac if split == "train" else args.val_frac
 
@@ -29,7 +33,7 @@ def run(args):
                 raise ValueError(f"Unknown prompt strategy: {args.prompts}")
 
         items = [
-            (features.cpu(), labels)
+            (features, labels)
             for features, labels in extract_hiddens(
                 model,
                 tokenizer,
@@ -44,9 +48,14 @@ def run(args):
 
         with open(save_dir / f"{split}_hiddens.pt", "wb") as f:
             hidden_batches, label_batches = zip(*items)
-            hiddens = torch.cat(hidden_batches)  # type: ignore
-            labels = sum(label_batches, [])
-            torch.save((hiddens, labels), f)
+            hiddens = maybe_all_gather(torch.cat(hidden_batches))  # type: ignore
+
+            # Moving labels to GPU just to be able to use maybe_all_gather
+            labels = torch.tensor(sum(label_batches, []), device=hiddens.device)
+            labels = maybe_all_gather(labels)  # type: ignore
+
+            if rank == 0:
+                torch.save((hiddens.cpu(), labels.cpu()), f)
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
@@ -75,8 +84,9 @@ def run(args):
     extract(args, "train")
     extract(args, "validation")
 
-    with open(save_dir / "args.json", "w") as f:
-        json.dump(vars(args), f)
+    if rank == 0:
+        with open(save_dir / "args.json", "w") as f:
+            json.dump(vars(args), f)
 
-    with open(save_dir / "model_config.json", "w") as f:
-        json.dump(model.config.to_dict(), f)
+        with open(save_dir / "model_config.json", "w") as f:
+            json.dump(model.config.to_dict(), f)
