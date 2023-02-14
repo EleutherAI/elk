@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from datasets import DatasetDict, load_dataset  # type: ignore
+from datasets import DatasetDict, load_dataset, Dataset as HFDataset  # type: ignore
 from promptsource.templates import DatasetTemplates
 from random import Random
-from typing import Literal, Optional
+from typing import Literal, Optional, cast
 import numpy as np
 from torch.utils.data import Dataset
 import torch.distributed as dist
@@ -50,10 +50,17 @@ class PromptCollator(Dataset):
             print("No validation split found, using test split instead")
             split = "test"
 
-        self.dataset = data[split]
+        self.dataset: HFDataset = data[split]
 
         if balance:
-            self.dataset = undersample(self.dataset, seed, label_column)
+            self.dataset = cast(
+                HFDataset,
+                undersample(
+                    self.dataset,
+                    seed,
+                    label_column,
+                ),
+            )  # type: ignore
 
         self.labels, counts = np.unique(self.dataset[label_column], return_counts=True)
         self.label_fracs = counts / counts.sum()

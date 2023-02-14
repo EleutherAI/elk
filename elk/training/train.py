@@ -69,9 +69,6 @@ def train(args):
         x0, x1 = train_h.to(args.device).float().chunk(2, dim=-1)
         val_x0, val_x1 = val_h.to(args.device).float().chunk(2, dim=-1)
 
-        train_labels_aug = torch.cat([train_labels, 1 - train_labels])
-        val_labels_aug = torch.cat([val_labels, 1 - val_labels])
-
         if pbar:
             pbar.set_description("Fitting CCS")
         ccs_model = CCS(
@@ -101,6 +98,10 @@ def train(args):
         if not args.skip_baseline and not dist.is_initialized():
             # TODO: Once we implement cross-validation for CCS, we should benchmark
             # against LogisticRegressionCV here.
+
+            train_labels_aug = torch.cat([train_labels, 1 - train_labels]).cpu()
+            val_labels_aug = torch.cat([val_labels, 1 - val_labels]).cpu()
+
             if pbar:
                 pbar.set_description("Fitting LR")
             lr_model = LogisticRegression(max_iter=10_000)
