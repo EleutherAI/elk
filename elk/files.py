@@ -24,3 +24,11 @@ def elk_cache_dir() -> Path:
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
+
+
+def get_hiddens_path(dir: Path, split: str, layer: int):
+    return dir / f"{split}_hiddens_l{layer}.pt"
+
+
+def get_labels_path(dir: Path, split: str):
+    return dir / f"{split}_labels.pt"

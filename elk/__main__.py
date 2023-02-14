@@ -1,5 +1,6 @@
-from elk.files import args_to_uuid, elk_cache_dir
-from .extraction.extraction_main import get_hiddens_path, run as run_extraction
+from typing import Optional
+from elk.files import args_to_uuid, elk_cache_dir, get_hiddens_path
+from .extraction.extraction_main import run as run_extraction
 from .extraction.parser import (
     add_saveable_args,
     add_unsaveable_args,
@@ -114,6 +115,19 @@ def normalize_args_inplace(args):
             # the last layer is often the most interesting
             # layers = [..., num_layers - 1 - layer_stride, num_layers - 1]
             args.layers = list(range(num_layers - 1, -1, -args.layer_stride)).reverse()
+    else:
+        assert (
+            args.name is not None
+        )  # If the model is not provided, it means we are using the name
+        config = json.load(open(elk_cache_dir() / args.name / "model_config.json", "r"))
+        num_layers = config.get("num_layers", config.get("num_hidden_layers"))
+
+    args.layers = normalized_layers(args.layers, num_layers)
+
+
+def normalized_layers(layers: Optional[list[int]], num_layers: int) -> list[int]:
+    layers = layers or list(range(num_layers))
+    return [layer if layer >= 0 else num_layers + layer for layer in layers]
 
 
 def find_missing_layers(args):

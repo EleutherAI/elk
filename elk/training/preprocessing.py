@@ -3,7 +3,7 @@ import logging
 from typing import Literal
 import torch
 
-from elk.extraction.extraction_main import get_hiddens_path, get_labels_path
+from elk.files import get_hiddens_path, get_labels_path
 
 
 def normalize(

@@ -1,6 +1,6 @@
 from pathlib import Path
 from .extraction import extract_hiddens, PromptCollator
-from ..files import args_to_uuid, elk_cache_dir
+from ..files import args_to_uuid, elk_cache_dir, get_hiddens_path, get_labels_path
 from ..training.preprocessing import silence_datasets_messages
 from transformers import AutoModel, AutoTokenizer
 import json
@@ -86,11 +86,3 @@ def run(args):
 
     with open(save_dir / "model_config.json", "w") as f:
         json.dump(model.config.to_dict(), f)
-
-
-def get_hiddens_path(dir: Path, split: str, layer: int):
-    return dir / f"{split}_hiddens_l{layer}.pt"
-
-
-def get_labels_path(dir: Path, split: str):
-    return dir / f"{split}_labels.pt"
