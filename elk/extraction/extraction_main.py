@@ -1,9 +1,11 @@
 from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
+from ..utils import maybe_all_gather
 from transformers import AutoModel, AutoTokenizer
 import json
 from datasets import Dataset
+import torch
 
 
 def run(args):
@@ -16,8 +18,9 @@ def run(args):
             split=split,
             label_column=args.label_column,
             strategy=args.prompts,
+            balance=args.balance,
         )
-        print(f"Class balance '{split}': {[f'{x:.2%}' for x in collator.label_fracs]}")
+
         if split == "train":
             prompt_names = collator.prompter.all_template_names
             if args.prompts == "all":
@@ -39,7 +42,7 @@ def run(args):
 
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        # save the hiddens dataset to disk
+        # save the hiddens dataset to disk (only in one process)
         hiddens.save_to_disk(save_dir / f"{split}_hiddens")
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually

@@ -37,3 +37,6 @@ elk = "elk.__main__:run"
 
 [tool.setuptools]
 packages = ["elk"]
+
+[tool.pytest.ini_options]
+markers = ["cpu: Marker for tests that do not depend on GPUs"]

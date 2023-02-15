@@ -27,7 +27,6 @@ def add_saveable_args(parser):
     )
     parser.add_argument(
         "--max-examples",
-        default=1000,
         type=int,
         help="Maximum number of examples to use from each dataset.",
     )
@@ -106,6 +105,12 @@ def add_unsaveable_args(parser):
         "--device",
         type=str,
         help="PyTorch device to use. Default is cuda:0 if available.",
+    )
+    parser.add_argument(
+        "--balance",
+        type=bool,
+        default=False,
+        help="Whether to balance the training set by class.",
     )
     return parser
 

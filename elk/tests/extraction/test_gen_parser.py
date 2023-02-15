@@ -1,6 +1,8 @@
+import pytest
 from elk.extraction.parser import get_extraction_parser
 
 
+@pytest.mark.cpu
 def test_args_no_underscores():
     """
     Assert that there are no underscores in the CLI parameter names. We wish

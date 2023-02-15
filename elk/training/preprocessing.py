@@ -1,6 +1,6 @@
 from pathlib import Path
-import logging
 from typing import Literal
+import logging
 import torch
 from datasets import load_from_disk
 
@@ -45,9 +45,12 @@ def load_hidden_states(path: Path):
 
     # load the huggingface dataset
     dataset = load_from_disk(path).flatten()
-    labels = dataset["label"]
+    labels = torch.tensor(dataset["label"])
     hiddens = torch.tensor(dataset["hiddens.hiddens"], device="cpu")
 
+    # TODO add assertions to make sure the dataset is valid
+    assert isinstance(labels, torch.Tensor)
+    assert isinstance(hiddens, torch.Tensor)
     # Concatenate the positive and negative examples together.
     return hiddens.flatten(start_dim=-2), labels
 

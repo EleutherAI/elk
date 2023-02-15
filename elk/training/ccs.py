@@ -1,9 +1,11 @@
 from .losses import ccs_squared_loss, js_loss
+from ..utils import maybe_ddp_wrap, maybe_all_gather, maybe_all_reduce
 from copy import deepcopy
-from dataclasses import dataclass
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
+from torch.nn.functional import binary_cross_entropy as bce
 from typing import cast, Literal, NamedTuple, Optional, Type, Union
+import math
 import torch
 import torch.nn as nn
 
@@ -17,15 +19,6 @@ class EvalResult(NamedTuple):
     auroc: float
 
 
-@dataclass
-class TrainParams:
-    num_epochs: int = 1000
-    num_tries: int = 10
-    lr: float = 1e-2
-    weight_decay: float = 0.01
-    optimizer: Literal["adam", "lbfgs"] = "adam"
-
-
 class CCS(nn.Module):
     def __init__(
         self,
@@ -33,12 +26,13 @@ class CCS(nn.Module):
         *,
         activation: Type[nn.Module] = nn.GELU,
         bias: bool = True,
-        device: str = "cuda",
+        device: Optional[str] = None,
         hidden_size: Optional[int] = None,
-        init: Literal["default", "spherical"] = "default",
+        init: Literal["default", "spherical", "zero"] = "zero",
         loss: Literal["js", "squared"] = "squared",
         num_layers: int = 1,
         pre_ln: bool = False,
+        supervised_weight: float = 0.0,
     ):
         super().__init__()
 
@@ -73,7 +67,8 @@ class CCS(nn.Module):
 
         self.init = init
         self.device = device
-        self.loss = js_loss if loss == "js" else ccs_squared_loss
+        self.unsupervised_loss = js_loss if loss == "js" else ccs_squared_loss
+        self.supervised_weight = supervised_weight
 
     def reset_parameters(self):
         # Mathematically equivalent to the unusual initialization scheme used in the
@@ -95,6 +90,9 @@ class CCS(nn.Module):
             for layer in self.probe:
                 if isinstance(layer, nn.Linear):
                     layer.reset_parameters()
+        elif self.init == "zero":
+            for param in self.parameters():
+                param.data.zero_()
         else:
             raise ValueError(f"Unknown init: {self.init}")
 
@@ -111,25 +109,42 @@ class CCS(nn.Module):
         """Return the raw score output of the probe on `x`."""
         return self.probe(x)
 
-    def fit_once(self, x0, x1, train_params: TrainParams):
-        """
-        Do a single training run of num_epochs epochs
-        """
-        if train_params.optimizer == "lbfgs":
-            loss = self.train_loop_lbfgs(x0, x1, train_params)
-        elif train_params.optimizer == "adam":
-            loss = self.train_loop_adam(x0, x1, train_params)
-        else:
-            raise ValueError(f"Optimizer {train_params.optimizer} is not supported")
+    def loss(
+        self,
+        logit0: torch.Tensor,
+        logit1: torch.Tensor,
+        labels: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Return the loss of the probe on the contrast pair `(x0, x1)`."""
+        loss = self.unsupervised_loss(logit0, logit1)
 
-        return float(loss)
+        # If labels are provided, use them to compute a supervised loss
+        if labels is not None:
+            num_labels = len(labels)
+            assert num_labels <= len(logit0), "Too many labels provided"
+            p0 = logit0[:num_labels].sigmoid()
+            p1 = logit1[:num_labels].sigmoid()
+
+            alpha = self.supervised_weight
+            preds = p0.add(1 - p1).mul(0.5).squeeze(-1)
+            bce_loss = bce(preds, labels.type_as(preds))
+            loss = alpha * bce_loss + (1 - alpha) * loss
+
+        elif self.supervised_weight > 0:
+            raise ValueError(
+                "Supervised weight > 0 but no labels provided to compute loss"
+            )
+
+        return loss
 
     def validate_data(self, data):
         assert len(data) == 2 and data[0].shape == data[1].shape
 
     def fit(
         self,
-        data: tuple[torch.Tensor, torch.Tensor],
+        contrast_pair: tuple[torch.Tensor, torch.Tensor],
+        labels: Optional[torch.Tensor] = None,
+        *,
         lr: float = 1e-2,
         num_epochs: int = 1000,
         num_tries: int = 10,
@@ -137,55 +152,61 @@ class CCS(nn.Module):
         verbose: bool = False,
         weight_decay: float = 0.01,
     ) -> float:
-        self.validate_data(data)
+        self.validate_data(contrast_pair)
         if verbose:
             print(f"Fitting CCS probe; {num_epochs=}, {num_tries=}, {lr=}")
-
-        train_params = TrainParams(
-            num_epochs=num_epochs,
-            num_tries=num_tries,
-            lr=lr,
-            weight_decay=weight_decay,
-            optimizer=optimizer,
-        )
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf
         best_state: dict[str, torch.Tensor] = {}  # State dict of the best run
-        x0, x1 = data
+        x0, x1 = contrast_pair
 
-        for _ in range(train_params.num_tries):
+        for _ in range(num_tries):
             self.reset_parameters()
 
-            loss = self.fit_once(x0, x1, train_params)
+            if optimizer == "lbfgs":
+                loss = self.train_loop_lbfgs(x0, x1, labels, num_epochs, weight_decay)
+            elif optimizer == "adam":
+                loss = self.train_loop_adam(
+                    x0, x1, labels, lr, num_epochs, weight_decay
+                )
+            else:
+                raise ValueError(f"Optimizer {optimizer} is not supported")
+
             if loss < best_loss:
                 if verbose:
                     print(f"Found new best params; loss: {loss:.4f}")
 
                 best_loss = loss
-                best_state = deepcopy(self.probe.state_dict())
+                best_state = deepcopy(self.state_dict())
 
-        self.probe.load_state_dict(best_state)
+        if not math.isfinite(best_loss):
+            raise RuntimeError("Got NaN/infinite loss during training")
+
+        self.load_state_dict(best_state)
         return best_loss
 
     @torch.no_grad()
     def score(
         self,
-        data: tuple[torch.Tensor, torch.Tensor],
+        contrast_pair: tuple[torch.Tensor, torch.Tensor],
         labels: torch.Tensor,
     ) -> EvalResult:
-        self.validate_data(data)
+        self.validate_data(contrast_pair)
 
-        logit0, logit1 = map(self, data)
+        logit0, logit1 = map(self, contrast_pair)
         p0, p1 = logit0.sigmoid(), logit1.sigmoid()
         pred_probs = 0.5 * (p0 + (1 - p1))
 
+        pred_probs = maybe_all_gather(pred_probs)
+        labels = maybe_all_gather(labels)
+
         # Calibrated accuracy
         cal_thresh = pred_probs.float().quantile(labels.float().mean())
-        cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(int)
-        raw_preds = pred_probs.gt(0.5).squeeze(1).to(int)
+        cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
+        raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
 
-        auroc = float(roc_auc_score(labels.tolist(), pred_probs.tolist()))
+        auroc = float(roc_auc_score(labels.cpu(), pred_probs.cpu()))
         cal_acc = cal_preds.eq(labels.reshape(-1)).float().mean()
         raw_acc = raw_preds.eq(labels.reshape(-1)).float().mean()
 
@@ -196,33 +217,39 @@ class CCS(nn.Module):
             auroc=max(auroc, 1 - auroc),
         )
 
-    def train_loop_adam(self, x0, x1, train_params: TrainParams) -> float:
+    def train_loop_adam(
+        self,
+        x0,
+        x1,
+        labels: Optional[torch.Tensor],
+        lr: float,
+        num_epochs: int,
+        wd: float,
+    ) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
-        optimizer = torch.optim.AdamW(
-            self.parameters(),
-            lr=train_params.lr,
-            weight_decay=train_params.weight_decay,
-        )
+
+        probe = maybe_ddp_wrap(self)
+        optimizer = torch.optim.AdamW(probe.parameters(), lr=lr, weight_decay=wd)
 
         loss = torch.inf
-        for _ in range(train_params.num_epochs):
+        for _ in range(num_epochs):
             optimizer.zero_grad()
 
-            logit0, logit1 = self(x0), self(x1)
-            loss = self.loss(logit0, logit1)
-
+            loss = self.loss(probe(x0), probe(x1), labels)
             loss.backward()
             optimizer.step()
 
         return float(loss)
 
-    def train_loop_lbfgs(self, x0, x1, train_params: TrainParams) -> float:
+    def train_loop_lbfgs(
+        self, x0, x1, labels: Optional[torch.Tensor], max_iter: int, l2_penalty: float
+    ) -> float:
         """LBFGS train loop, returning the final loss. Modifies params in-place."""
 
         optimizer = torch.optim.LBFGS(
             self.parameters(),
             line_search_fn="strong_wolfe",
-            max_iter=train_params.num_epochs,
+            max_iter=max_iter,
             tolerance_change=torch.finfo(x0.dtype).eps,
             tolerance_grad=torch.finfo(x0.dtype).eps,
         )
@@ -233,17 +260,20 @@ class CCS(nn.Module):
             nonlocal loss
             optimizer.zero_grad()
 
-            logit0, logit1 = self(x0), self(x1)
-            loss = self.loss(logit0, logit1)
+            loss = self.loss(self(x0), self(x1), labels)
             regularizer = 0.0
 
             # We explicitly add L2 regularization to the loss, since LBFGS
             # doesn't have a weight_decay parameter
             for param in self.parameters():
-                regularizer += train_params.weight_decay * param.norm() ** 2 / 2
+                regularizer += l2_penalty * param.norm() ** 2 / 2
 
             regularized = loss + regularizer
             regularized.backward()
+
+            for p in self.parameters():
+                if p.grad is not None:
+                    maybe_all_reduce(p.grad)
 
             return float(regularized)
 

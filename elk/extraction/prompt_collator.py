@@ -1,9 +1,13 @@
 from dataclasses import dataclass
-from datasets import Sequence, DatasetDict, Features, Value, load_dataset
+from datasets import Sequence, DatasetDict, Features, Value
+from datasets import load_dataset  # type: ignore
 from promptsource.templates import DatasetTemplates
 from random import Random
 from typing import Literal, Optional
 import numpy as np
+from torch.utils.data import Dataset
+
+from elk.extraction.dataset_preprocessing import undersample
 
 
 @dataclass
@@ -18,7 +22,7 @@ class Prompt:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
 
 
-class PromptCollator:
+class PromptCollator(Dataset):
     def __init__(
         self,
         path: str,
@@ -29,6 +33,7 @@ class PromptCollator:
         max_examples: int = 0,
         seed: int = 42,
         strategy: Literal["all", "randomize"] = "randomize",
+        balance: bool = False,
     ):
         """Create a prompt collator.
         @param strategy: "all" will generate all prompts for all examples, while
@@ -41,20 +46,30 @@ class PromptCollator:
         if not others:
             print("Creating a train-test split...")
             data = data[train_name].train_test_split(
-                seed=seed, stratify_by_column=label_column
+                seed=seed, shuffle=False, stratify_by_column=label_column
             )
-        else:
-            data = data.shuffle(seed)
 
         if split not in data and split == "validation":
             print("No validation split found, using test split instead")
             split = "test"
 
         self.dataset = data[split]
+
+        if balance:
+            self.dataset = undersample(self.dataset, seed, label_column)
+
         self.labels, counts = np.unique(self.dataset[label_column], return_counts=True)
         self.label_fracs = counts / counts.sum()
+
+        print(f"Class balance '{split}': {[f'{x:.2%}' for x in self.label_fracs]}")
+        pivot, *rest = self.label_fracs
+        if not all(x == pivot for x in rest):
+            print("Use arg --balance to force class balance")
+
         if len(self.labels) < 2:
             raise ValueError(f"Dataset {path}/{name} has only one label")
+
+        self.dataset = self.dataset.shuffle(seed=seed)
         if max_examples:
             self.dataset = self.dataset.select(range(max_examples))
 

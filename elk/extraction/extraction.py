@@ -1,7 +1,6 @@
 from ..utils import pytree_map
 from .prompt_collator import Prompt, PromptCollator
 from einops import rearrange
-from tqdm.auto import tqdm
 from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
 from typing import cast, Literal, Sequence
 import torch
@@ -9,7 +8,7 @@ from datasets import Array2D, Dataset, Features, Value
 from datasets import Sequence as DatasetSequence
 
 
-@torch.autocast("cuda", enabled=torch.cuda.is_available())
+@torch.autocast("cuda", enabled=torch.cuda.is_available())  # type: ignore
 @torch.no_grad()
 def extract_hiddens(
     model: PreTrainedModel,
@@ -34,6 +33,8 @@ def extract_hiddens(
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
     tokenizer.truncation_side = "left"
+    if not tokenizer.pad_token:
+        tokenizer.pad_token = tokenizer.eos_token
 
     def tokenize(strings: list[str]):
         return pytree_map(
@@ -161,6 +162,7 @@ def extract_hiddens(
         get_hiddens,
         batched=True,
         batch_size=batch_size,
+        # num_proc=torch.cuda.device_count(),
         features=Features(
             {
                 "hiddens": DatasetSequence(

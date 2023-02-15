@@ -1,4 +1,42 @@
+from .files import elk_cache_dir
+from torch import Tensor
+from torch.nn.parallel import DistributedDataParallel as DDP
 from typing import Callable, Mapping, TypeVar
+import torch.distributed as dist
+import torch.nn as nn
+import os
+
+
+def exists_hiddens(args) -> bool:
+    cache_dir = elk_cache_dir() / args.name
+    return os.path.exists(cache_dir / "train_hiddens") and os.path.exists(
+        cache_dir / "validation_hiddens"
+    )
+
+
+def maybe_all_gather(x: Tensor) -> Tensor:
+    if not dist.is_initialized():
+        return x
+
+    buffer = x.new_empty([dist.get_world_size() * x.shape[0], *x.shape[1:]])
+    dist.all_gather_into_tensor(buffer, x)
+    return buffer
+
+
+def maybe_all_reduce(x: Tensor) -> Tensor:
+    if not dist.is_initialized():
+        return x
+
+    dist.all_reduce(x, op=dist.ReduceOp.SUM)
+    x /= dist.get_world_size()
+    return x
+
+
+def maybe_ddp_wrap(model: nn.Module) -> nn.Module:
+    if not dist.is_initialized():
+        return model
+
+    return DDP(model, device_ids=[dist.get_rank()])
 
 
 TreeType = TypeVar("TreeType")

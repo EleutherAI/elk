@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-from ..extraction.parser import add_saveable_args
 
 
 def get_training_parser(name=True) -> ArgumentParser:
@@ -27,8 +26,14 @@ def add_train_args(parser: ArgumentParser):
         "--init",
         type=str,
         default="default",
-        choices=("default", "spherical"),
+        choices=("default", "spherical", "zero"),
         help="Initialization for CCS probe.",
+    )
+    parser.add_argument(
+        "--label-frac",
+        type=float,
+        default=0.0,
+        help="Fraction of labeled data to use for training.",
     )
     parser.add_argument(
         "--loss",
@@ -38,6 +43,12 @@ def add_train_args(parser: ArgumentParser):
         help="Loss function used for CCS.",
     )
     parser.add_argument(
+        "--num-tries",
+        type=int,
+        default=10,
+        help="Number of random initializations to try.",
+    )
+    parser.add_argument(
         "--optimizer",
         type=str,
         default="lbfgs",
@@ -45,6 +56,17 @@ def add_train_args(parser: ArgumentParser):
         help="Optimizer for CCS. Should be adam or lbfgs.",
     )
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--skip-baseline",
+        action="store_true",
+        help="Skip training the logistic regression baseline.",
+    )
+    parser.add_argument(
+        "--supervised-weight",
+        type=float,
+        default=0.0,
+        help="Weight of the supervised loss in the CCS objective.",
+    )
     parser.add_argument(
         "--weight-decay",
         type=float,
