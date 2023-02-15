@@ -27,7 +27,7 @@ def add_train_args(parser: ArgumentParser):
         type=str,
         default="default",
         choices=("default", "spherical", "zero"),
-        help="Initialization for CCS probe.",
+        help="Initialization for reporter.",
     )
     parser.add_argument(
         "--label-frac",
@@ -40,7 +40,7 @@ def add_train_args(parser: ArgumentParser):
         type=str,
         default="squared",
         choices=("js", "squared"),
-        help="Loss function used for CCS.",
+        help="Loss function used for reporter.",
     )
     parser.add_argument(
         "--num-tries",
@@ -53,7 +53,7 @@ def add_train_args(parser: ArgumentParser):
         type=str,
         default="lbfgs",
         choices=("adam", "lbfgs"),
-        help="Optimizer for CCS. Should be adam or lbfgs.",
+        help="Optimizer for reporter. Should be adam or lbfgs.",
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
@@ -65,14 +65,14 @@ def add_train_args(parser: ArgumentParser):
         "--supervised-weight",
         type=float,
         default=0.0,
-        help="Weight of the supervised loss in the CCS objective.",
+        help="Weight of the supervised loss in the reporter objective.",
     )
     parser.add_argument(
         "--weight-decay",
         type=float,
         default=0.01,
         help=(
-            "Weight decay for CCS when using Adam. Used as L2 regularization in LBFGS."
+            "Weight decay for reporter when using Adam. Used as L2 penalty in LBFGS."
         ),
     )
     return parser
