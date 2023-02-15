@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 from datasets import DatasetDict, load_dataset  # type: ignore
 from promptsource.templates import DatasetTemplates
 from random import Random
@@ -32,7 +33,11 @@ class PromptCollator(Dataset):
         seed: int = 42,
         strategy: Literal["all", "randomize"] = "randomize",
     ):
-        data = load_dataset(path, name)
+        try:
+            data = load_dataset(path, name)
+        except Exception:
+            data_dir = str(Path(__file__).parent.parent / "datasets" / "rawdata")
+            data = load_dataset(path, name, data_dir=data_dir)
         assert isinstance(data, DatasetDict)
 
         # Create a train-test split if needed
@@ -43,6 +48,17 @@ class PromptCollator(Dataset):
                 seed=seed, shuffle=False, stratify_by_column=label_column
             )
 
+        # For datasets of the form (validation, test)
+        if "train" not in data:
+            if split == "train":
+                print("No train split found, using validation split instead")
+                split = "validation"
+            else:
+                assert split == "validation"
+                print("No train split found, using test split instead of validation")
+                split = "test"
+
+        # For datasets of the form (train, test)
         if split not in data and split == "validation":
             print("No validation split found, using test split instead")
             split = "test"
@@ -57,24 +73,47 @@ class PromptCollator(Dataset):
 
         self.dataset = self.dataset.shuffle(seed=seed)
         if max_examples:
-            self.dataset = self.dataset.select(range(max_examples))
+            num_examples = min(max_examples, len(self.dataset))
+            self.dataset = self.dataset.select(range(num_examples))
 
         self.label_column = label_column
-        self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
+
+        self.prompters = []
+        templates = DatasetTemplates(
+            path,
+            subset_name=name,  # type: ignore
+        ).templates.values()
+        for i, prompter in enumerate(templates):
+            if self.is_template_valid(prompter):
+                self.prompters.append(prompter)
+            else:
+                print(f"Template {prompter.name} is invalid")
+
         self.rng = Random(seed)
         self.strategy = strategy
 
+    def is_template_valid(self, template) -> bool:
+        try:
+            for example in self.dataset:
+                questions = set()
+                for fake_label in self.labels:
+                    example[self.label_column] = fake_label  # type: ignore
+                    q, a = template.apply(example)
+                    questions.add(q)
+                if len(questions) > 1:
+                    raise ValueError("Multiple questions generated")
+        except Exception:
+            return False
+        return True
+
     def __getitem__(self, index: int) -> Prompt:
-        prompts = list(self.prompter.templates.values())
-
         if self.strategy == "all":
-            example_idx, prompt_idx = divmod(index, len(prompts))
+            example_idx, prompt_idx = divmod(index, len(self.prompters))
             example = self.dataset[example_idx]
-            template = prompts[prompt_idx]
-
+            template = self.prompters[prompt_idx]
         elif self.strategy == "randomize":
             example = self.dataset[index]
-            template = self.rng.choice(prompts)
+            template = self.rng.choice(self.prompters)
         else:
             raise ValueError(f"Unknown strategy {self.strategy}")
 
@@ -89,7 +128,7 @@ class PromptCollator(Dataset):
             answers.append(a)
             questions.add(q)
 
-        assert len(questions) == 1
+        assert len(questions) == 1, f"Multiple questions generated: {questions}"
         return Prompt(question=questions.pop(), answers=answers, label=true_label)
 
     def __iter__(self):
@@ -98,6 +137,6 @@ class PromptCollator(Dataset):
     def __len__(self):
         N = len(self.dataset)
         if self.strategy == "all":
-            N *= len(self.prompter.templates)
+            N *= len(self.prompters)
 
         return N

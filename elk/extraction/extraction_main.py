@@ -24,7 +24,7 @@ def run(args):
         )
 
         if split == "train":
-            prompt_names = collator.prompter.all_template_names
+            prompt_names = [template.name for template in collator.prompters]
             if args.prompts == "all":
                 print(f"Using {len(prompt_names)} prompts per example: {prompt_names}")
             elif args.prompts == "randomize":
@@ -54,8 +54,8 @@ def run(args):
         labels = maybe_all_gather(labels)  # type: ignore
 
         if rank == 0:
-            for layer in args.layers:
-                hiddens_at_l = hiddens[:, layer, :, :]
+            for i, layer in enumerate(args.layers):
+                hiddens_at_l = hiddens[:, i, :, :]
                 with open(get_hiddens_path(save_dir, split, layer), "wb") as f:
                     torch.save(hiddens_at_l, f)
             with open(get_labels_path(save_dir, split), "wb") as f:
@@ -68,9 +68,10 @@ def run(args):
     print(f"Done. Model class: '{model.__class__.__name__}'")
 
     if args.use_encoder_states and not model.config.is_encoder_decoder:
-        raise ValueError(
-            "--use_encoder_states is only compatible with encoder-decoder models."
-        )
+        args.use_encoder_states = False
+        # raise ValueError(
+        #     "--use_encoder_states is only compatible with encoder-decoder models."
+        # )
 
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)

@@ -11,7 +11,7 @@ from elk.files import args_to_uuid, elk_cache_dir, get_hiddens_path
 from elk.original_runs import run_extraction_origin
 
 from .extraction.extraction_main import run as run_extraction
-from .extraction.parser import get_extraction_parser
+from .extraction.parser import get_extraction_parser, get_layer_parser
 from .training.parser import get_training_parser
 from .training.train import train
 
@@ -35,7 +35,7 @@ def run():
             "Train a set of ELK probes on hidden states from `elk extract`. "
             "The first argument has to be the name you gave to the extraction."
         ),
-        parents=[get_training_parser()],
+        parents=[get_training_parser(), get_layer_parser()],
     )
     subparsers.add_parser(
         "elicit",

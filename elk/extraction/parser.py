@@ -4,7 +4,14 @@ from argparse import ArgumentParser
 def get_extraction_parser():
     parser = ArgumentParser(add_help=False)
     add_saveable_args(parser)
+    add_layer_args(parser)
     add_unsaveable_args(parser)
+    return parser
+
+
+def get_layer_parser():
+    parser = ArgumentParser(add_help=False)
+    add_layer_args(parser)
     return parser
 
 
@@ -70,6 +77,9 @@ def add_saveable_args(parser):
             " states across different answers to the same question."
         ),
     )
+
+
+def add_layer_args(parser):
     parser.add_argument(
         "--layers",
         type=int,
@@ -83,6 +93,7 @@ def add_saveable_args(parser):
         type=int,
         help="Stride between layers to extract. Default is 1.",
     )
+    return parser
 
 
 def add_unsaveable_args(parser):
