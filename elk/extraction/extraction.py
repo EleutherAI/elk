@@ -6,6 +6,7 @@ from typing import cast, Literal, Sequence
 import torch
 from datasets import Array2D, Dataset, Features, Value
 from datasets import Sequence as DatasetSequence
+import os
 
 
 @torch.autocast("cuda", enabled=torch.cuda.is_available())  # type: ignore
@@ -118,7 +119,9 @@ def extract_hiddens(
     # If False pass them to the encoder and decoder separately.
     should_concat = not is_enc_dec or use_encoder_states
 
-    def get_hiddens(examples: dict) -> dict:
+    def get_hiddens(examples: dict, rank: int) -> dict:
+        rank = rank if rank is not None else 0
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(rank % torch.cuda.device_count())
         batch_size = len(examples["predicate"])
         prompts = [
             Prompt(
@@ -162,7 +165,8 @@ def extract_hiddens(
         get_hiddens,
         batched=True,
         batch_size=batch_size,
-        # num_proc=torch.cuda.device_count(),
+        with_rank=True,
+        num_proc=torch.cuda.device_count(),
         features=Features(
             {
                 "hiddens": DatasetSequence(

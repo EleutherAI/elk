@@ -6,6 +6,7 @@ from transformers import AutoModel, AutoTokenizer
 import json
 from datasets import Dataset
 import torch
+from multiprocess import set_start_method
 
 
 def run(args):
@@ -69,6 +70,7 @@ def run(args):
     print("Loading datasets")
     silence_datasets_messages()
 
+    set_start_method("spawn")  # without this we get CUDA errors in parallel code
     extract(args, "train")
     extract(args, "validation")
 
