@@ -3,7 +3,7 @@ from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
 from transformers import AutoModel, AutoTokenizer
 import json
-import torch
+from datasets import Dataset
 
 
 def run(args):
@@ -27,7 +27,7 @@ def run(args):
             else:
                 raise ValueError(f"Unknown prompt strategy: {args.prompts}")
 
-        dataset_with_hiddens = extract_hiddens(
+        hiddens: Dataset = extract_hiddens(
             model,
             tokenizer,
             collator,
@@ -40,7 +40,7 @@ def run(args):
         save_dir.mkdir(parents=True, exist_ok=True)
 
         # save the hiddens dataset to disk
-        dataset_with_hiddens.save_to_disk(save_dir / f"{split}_hiddens")
+        hiddens.save_to_disk(save_dir / f"{split}_hiddens")
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.

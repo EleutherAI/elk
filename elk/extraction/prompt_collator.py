@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datasets import DatasetDict, load_dataset
+from datasets import Sequence, DatasetDict, Features, Value, load_dataset
 from promptsource.templates import DatasetTemplates
 from random import Random
 from typing import Literal, Optional
@@ -64,15 +64,16 @@ class PromptCollator:
         self.strategy = strategy
         self._apply_prompts()
 
-    def _apply_prompts(self):
-        """Modify the dataset"""
-        self.dataset = self.dataset.map(self._apply_batch, batched=True, batch_size=100)
-
     def _apply_batch(self, examples: dict) -> dict:
         """@param examples: a dict of lists of examples"""
         batch_size = len(examples[self.label_column])
 
-        out_examples = {"template_name": [], "question": [], "answers": [], "label": []}
+        out_examples = {
+            "template_name": [],
+            "predicate": [],
+            "answers": [],
+            "label": [],
+        }
         for i in range(batch_size):
             example = {k: v[i] for k, v in examples.items()}
             if self.strategy == "all":
@@ -97,11 +98,30 @@ class PromptCollator:
                     question=questions.pop(), answers=answers, label=true_label
                 )
                 out_examples["template_name"].append(template_name)
-                out_examples["question"].append(prompt.question)
+                out_examples["predicate"].append(prompt.question)
                 out_examples["answers"].append(prompt.answers)
                 out_examples["label"].append(prompt.label)
 
         return out_examples
+
+    def _apply_prompts(self):
+        """Modify the dataset"""
+        self.dataset = self.dataset.map(
+            self._apply_batch,
+            batched=True,
+            batch_size=100,
+            features=Features(
+                {
+                    "template_name": Value("string"),
+                    "predicate": Value("string"),
+                    "answers": Sequence(
+                        feature=Value("string"), length=len(self.labels)
+                    ),
+                    "label": Value("int32"),
+                    "text": Value("string"),
+                }
+            ),
+        )
 
     def __getitem__(self, index: int) -> dict:
         return self.dataset[index]

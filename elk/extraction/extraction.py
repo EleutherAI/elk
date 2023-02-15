@@ -5,7 +5,8 @@ from tqdm.auto import tqdm
 from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
 from typing import cast, Literal, Sequence
 import torch
-from datasets import Dataset
+from datasets import Array2D, Dataset, Features, Value
+from datasets import Sequence as DatasetSequence
 
 
 @torch.autocast("cuda", enabled=torch.cuda.is_available())
@@ -117,10 +118,10 @@ def extract_hiddens(
     should_concat = not is_enc_dec or use_encoder_states
 
     def get_hiddens(examples: dict) -> dict:
-        batch_size = len(examples["question"])
+        batch_size = len(examples["predicate"])
         prompts = [
             Prompt(
-                question=examples["question"][i],
+                question=examples["predicate"][i],
                 label=examples["label"][i],
                 answers=examples["answers"][i],
             )
@@ -136,29 +137,48 @@ def extract_hiddens(
                 output_hidden_states=True,
             )
             # [batch_size, num_layers, num_choices, hidden_size]
-            hiddens = torch.stack(
-                outputs.decoder_hidden_states, dim=2
-            ).tolist()  # TODO clean up the casting
+            hiddens = torch.stack(outputs.decoder_hidden_states, dim=2)
 
         # Either a decoder-only transformer or a transformer encoder
         else:
             choices, labels = collate(prompts)
             # Skip the input embeddings which are unlikely to be interesting
             h = model(**choices, output_hidden_states=True).hidden_states[1:]
-            hiddens = reduce_seqs(
-                h, choices["attention_mask"]
-            ).tolist()  # TODO clean up the casting
+            hiddens = reduce_seqs(h, choices["attention_mask"])
 
-        # convert the output into
+        output_layers = layers if layers else list(range(hiddens.shape[1]))
         out_dict = {
-            "hiddens": hiddens,
-            "labels": labels,
-            "questions": [prompt.question for prompt in prompts],
+            "hiddens": [
+                {"hiddens": hiddens[0].type(torch.float16), "layer": output_layers}
+            ],
+            "label": labels,
+            "predicate": [prompt.question for prompt in prompts],
             "answers": [prompt.answers for prompt in prompts],
         }
         return out_dict
 
     dataset_with_hiddens = collator.dataset.map(
-        get_hiddens, batched=True, batch_size=batch_size
+        get_hiddens,
+        batched=True,
+        batch_size=batch_size,
+        features=Features(
+            {
+                "hiddens": DatasetSequence(
+                    feature={
+                        "hiddens": Array2D(
+                            shape=(num_choices, model.config.hidden_size),
+                            dtype="float16",
+                        ),
+                        "layer": Value("int64"),
+                    },
+                    length=len(layers) if layers else model.config.num_hidden_layers,
+                ),
+                "label": Value("int32"),
+                "answers": DatasetSequence(feature=Value("string"), length=num_choices),
+                "template_name": Value("string"),
+                "text": Value("string"),
+                "predicate": Value("string"),
+            }
+        ),
     )
     return dataset_with_hiddens

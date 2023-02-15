@@ -40,14 +40,13 @@ def normalize(
 
 def load_hidden_states(path: Path):
     """Load the hidden states from a file."""
-    # TODO: the training code should be updated to use all the information
-    # in the dataset, not just the hidden states and labels. This is just
-    # a temporary link to the old code.
+    # TODO: use the whole dataset for training, don't just throw away
+    # the extra info. This is a temporary link to old code.
 
-    # load the huggingface dataset, then convert it to a torch tensor
-    dataset = load_from_disk(path)
-    labels = dataset["labels"]
-    hiddens = torch.tensor(dataset["hiddens"], device="cpu")
+    # load the huggingface dataset
+    dataset = load_from_disk(path).flatten()
+    labels = dataset["label"]
+    hiddens = torch.tensor(dataset["hiddens.hiddens"], device="cpu")
 
     # Concatenate the positive and negative examples together.
     return hiddens.flatten(start_dim=-2), labels
