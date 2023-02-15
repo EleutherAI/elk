@@ -70,6 +70,9 @@ class PromptCollator(Dataset):
 
         self.dataset = self.dataset.shuffle(seed=seed)
         if max_examples:
+            num_examples = len(self.dataset)
+            if max_examples > num_examples:
+                max_examples = num_examples
             self.dataset = self.dataset.select(range(max_examples))
 
         self.label_column = label_column
