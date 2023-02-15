@@ -52,12 +52,13 @@ class PromptCollator(Dataset):
         self.label_fracs = counts / counts.sum()
         if len(self.labels) < 2:
             raise ValueError(f"Dataset {path}/{name} has only one label")
-        if max_examples:
-            self.dataset = self.dataset.select(range(max_examples))
         if dist.is_initialized():
             self.dataset = self.dataset.shard(dist.get_world_size(), dist.get_rank())
 
         self.dataset = self.dataset.shuffle(seed=seed)
+        if max_examples:
+            self.dataset = self.dataset.select(range(max_examples))
+
         self.label_column = label_column
         self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
         self.rng = Random(seed)
