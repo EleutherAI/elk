@@ -11,7 +11,7 @@ import torch.nn as nn
 
 
 class EvalResult(NamedTuple):
-    """The result of evaluating a CCS model on a dataset."""
+    """The result of evaluating a reporter on a dataset."""
 
     loss: float
     acc: float
@@ -19,7 +19,7 @@ class EvalResult(NamedTuple):
     auroc: float
 
 
-class CCS(nn.Module):
+class Reporter(nn.Module):
     def __init__(
         self,
         in_features: int,
@@ -102,7 +102,7 @@ class CCS(nn.Module):
         return torch.load(path)
 
     def save(self, path: Union[Path, str]):
-        # TODO: Save separate JSON and PT files for the CCS model.
+        # TODO: Save separate JSON and PT files for the reporter.
         torch.save(self, path)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -154,7 +154,7 @@ class CCS(nn.Module):
     ) -> float:
         self.validate_data(contrast_pair)
         if verbose:
-            print(f"Fitting CCS probe; {num_epochs=}, {num_tries=}, {lr=}")
+            print(f"Fitting reporter; {num_epochs=}, {num_tries=}, {lr=}")
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf

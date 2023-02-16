@@ -1,19 +1,17 @@
-import os
-from argparse import ArgumentParser
-from contextlib import nullcontext, redirect_stdout
-
-import torch.distributed as dist
-from transformers import AutoConfig, PretrainedConfig
 from elk.evaluate.evaluate import evaluate
-
-from elk.files import args_to_uuid
-
-from .files import elk_cache_dir
+from elk.evaluate.parser import get_evaluate_parser
+from elk.files import args_to_uuid, elk_cache_dir
 from .extraction.extraction_main import run as run_extraction
 from .extraction.parser import get_extraction_parser
-from .evaluate.parser import get_evaluate_parser
 from .training.parser import get_training_parser
 from .training.train import train
+from argparse import ArgumentParser
+from contextlib import nullcontext, redirect_stdout
+from elk.files import args_to_uuid
+from transformers import AutoConfig, PretrainedConfig
+import logging
+import os
+import torch.distributed as dist
 
 
 # TODO: Move function to a better place...
@@ -119,11 +117,7 @@ def run():
         elif args.layer_stride > 1:
             args.layers = list(range(0, num_layers, args.layer_stride))
 
-    # Support both distributed and non-distributed training
     local_rank = os.environ.get("LOCAL_RANK")
-
-    breakpoint()
-
     if local_rank is not None:
         dist.init_process_group("nccl")
         local_rank = int(local_rank)
@@ -142,7 +136,10 @@ def run():
     # Prevent printing from processes other than the first one
     with redirect_stdout(None) if local_rank != 0 else nullcontext():
         for key in list(vars(args).keys()):
-            print("{}: {}".format(key, vars(args)[key]))
+                print("{}: {}".format(key, vars(args)[key]))
+
+        if local_rank != 0:
+            logging.getLogger("transformers").setLevel(logging.ERROR)
 
         # TODO: Implement the rest of the CLI
         if args.command == "extract":
@@ -159,7 +156,9 @@ def run():
                 # Ensure the extraction is finished before starting training
                 if dist.is_initialized():
                     dist.barrier()
+
                 train(args)
+
         elif args.command == "eval":
             # eval is a reserved keyword in python, therefore we use evaluate
             evaluate(args)
