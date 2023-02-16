@@ -7,7 +7,6 @@ from .training.parser import get_training_parser
 from .training.train import train
 from argparse import ArgumentParser
 from contextlib import nullcontext, redirect_stdout
-from elk.files import args_to_uuid
 from transformers import AutoConfig, PretrainedConfig
 import logging
 import os
@@ -63,11 +62,6 @@ def sweep(args):
     # hidden_states_paths = paths
     # evaluate(args) # args: models_path hidden_states_paths
 
-    # for path_model in paths:
-        # pass model to eval
-        # models_path = ...
-        # hidden_states_paths = paths
-        # evaluate(args) # args: models_path hidden_states_paths
 
 def run():
     parser = ArgumentParser(add_help=False)
@@ -136,7 +130,7 @@ def run():
     # Prevent printing from processes other than the first one
     with redirect_stdout(None) if local_rank != 0 else nullcontext():
         for key in list(vars(args).keys()):
-                print("{}: {}".format(key, vars(args)[key]))
+            print("{}: {}".format(key, vars(args)[key]))
 
         if local_rank != 0:
             logging.getLogger("transformers").setLevel(logging.ERROR)
