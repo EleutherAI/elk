@@ -16,6 +16,7 @@ dependencies = [
     "matplotlib==3.6.3",
     "numpy==1.23.5",
     "pandas==1.5.1",
+    "prettytable",
     "promptsource@git+https://github.com/NotodAI-Research/promptsource.git",
     "protobuf==3.20.*",
     "scikit-learn==1.2.0",
