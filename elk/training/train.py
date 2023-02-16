@@ -134,7 +134,7 @@ def train(args):
         if not args.skip_baseline:
             cols += ["lr_auroc", "lr_acc"]
 
-        with open(cache_dir / "eval.csv", "w") as f:
+        with open(cache_dir / "train_eval.csv", "w") as f:
             writer = csv.writer(f)
             writer.writerow(cols)
 
