@@ -18,7 +18,7 @@ def evaluate(args):
 
         ccs_models = torch.load(args.ccs_models_path)
         L = hiddens.shape[1]
-        
+
         statistics = []
         for ccs_model in ccs_models:
             ccs_model.eval()
