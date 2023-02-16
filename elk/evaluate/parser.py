@@ -2,12 +2,10 @@ from argparse import ArgumentParser
 from pathlib import Path
 from ..files import elk_cache_dir
 
-
 def get_evaluate_parser():
     parser = ArgumentParser(add_help=False)
     add_eval_args(parser)
     return parser
-
 
 def add_eval_args(parser):
     parser.add_argument(

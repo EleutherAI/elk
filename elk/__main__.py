@@ -65,6 +65,11 @@ def sweep(args):
     # hidden_states_paths = paths
     # evaluate(args) # args: models_path hidden_states_paths
 
+    # for path_model in paths:
+        # pass model to eval
+        # models_path = ...
+        # hidden_states_paths = paths
+        # evaluate(args) # args: models_path hidden_states_paths
 
 def run():
     parser = ArgumentParser(add_help=False)
