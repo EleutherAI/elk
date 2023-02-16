@@ -1,4 +1,4 @@
-"""Class for the reporter network."""
+"""An ELK reporter network."""
 
 from .losses import ccs_squared_loss, js_loss
 from ..utils import maybe_ddp_wrap, maybe_all_gather, maybe_all_reduce
@@ -26,7 +26,7 @@ class EvalResult(NamedTuple):
 
 
 class Reporter(nn.Module):
-    """Class for the reporter network."""
+    """An ELK reporter network."""
 
     def __init__(
         self,
@@ -42,7 +42,7 @@ class Reporter(nn.Module):
         pre_ln: bool = False,
         supervised_weight: float = 0.0,
     ):
-        """Builds Reporter.
+        """Builds an ELK reporter network.
 
         Args:
             in_features: The number of input features.
@@ -95,19 +95,17 @@ class Reporter(nn.Module):
     def reset_parameters(self):
         """Reset the parameters of the probe.
 
-        Mathematically equivalent to the unusual initialization scheme used in the
-        original paper. They sample a random Gaussian vector of dim in_features + 1,
-        normalize to the unit sphere, then add an extra all-ones dimension to the
-        input and compute the inner product. Here, we use nn.Linear with an explicit
-        bias term, but use the same initialization.
-
         If init is "spherical", use the spherical initialization scheme.
         If init is "default", use the default PyTorch initialization scheme for
         nn.Linear (Kaiming uniform).
         If init is "zero", initialize all parameters to zero.
         """
-
         if self.init == "spherical":
+            # Mathematically equivalent to the unusual initialization scheme used in
+            # the original paper. They sample a Gaussian vector of dim in_features + 1,
+            # normalize to the unit sphere, then add an extra all-ones dimension to the
+            # input and compute the inner product. Here, we use nn.Linear with an
+            # explicit bias term, but use the same initialization.
             assert len(self.probe) == 1, "Only linear probes can use spherical init"
             probe = cast(nn.Linear, self.probe[0])  # Pylance gets the type wrong here
 
@@ -129,7 +127,7 @@ class Reporter(nn.Module):
     # TODO: These methods will do something fancier in the future
     @classmethod
     def load(cls, path: Union[Path, str]):
-        """Load a Reporter from a file."""
+        """Load a reporter from a file."""
         return torch.load(path)
 
     def save(self, path: Union[Path, str]):
@@ -146,15 +144,15 @@ class Reporter(nn.Module):
         logit1: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Return the loss of the probe on the contrast pair (x0, x1).
+        """Return the loss of the reporter on the contrast pair (x0, x1).
 
         Args:
-            logit0: The raw score output of the probe on x0.
-            logit1: The raw score output of the probe on x1.
+            logit0: The raw score output of the reporter on x0.
+            logit1: The raw score output of the reporter on x1.
             labels: The labels of the contrast pair. Defaults to None.
 
         Returns:
-            loss: The loss of the probe on the contrast pair (x0, x1).
+            loss: The loss of the reporter on the contrast pair (x0, x1).
 
         Raises:
             ValueError: If `supervised_weight > 0` but `labels` is None.
