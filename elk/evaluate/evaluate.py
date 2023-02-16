@@ -16,7 +16,6 @@ def evaluate(args):
         # TODO: We actually don't need to normalize the train hidden states here (?)
         _, hiddens = normalize(hiddens, hiddens, args.normalization)
 
-        breakpoint()
         ccs_models = torch.load(args.ccs_models_path)
         L = hiddens.shape[1]
         
