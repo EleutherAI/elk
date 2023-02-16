@@ -1,11 +1,11 @@
 """Helper functions for dealing with files."""
 
+from .argparsers import get_saveable_args
 from argparse import Namespace
 from hashlib import md5
 from pathlib import Path
 import os
 import pickle
-from .extraction.parser import get_saveable_args
 
 
 def args_to_uuid(args: Namespace) -> str:
