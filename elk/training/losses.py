@@ -1,4 +1,4 @@
-"""Loss functions for training models."""
+"""Loss functions for training reporters."""
 
 from torch import Tensor
 import math
@@ -28,14 +28,15 @@ def js_loss(
 def ccs_squared_loss(logit0: Tensor, logit1: Tensor) -> Tensor:
     """CCS loss from original paper, with squared differences between probabilities.
 
+    The loss is symmetric, so it doesn't matter which argument is the original and
+    which is the negated proposition.
+
     Args:
-        logit0: The logits for the first model.
-        logit1: The logits for the second model.
+        logit0: The log odds for the original proposition.
+        logit1: The log odds for the negated proposition.
 
     Returns:
-        tuple containing the consistency and confidence loss.
-        The consistency is the squared difference between the probabilities.
-        The confidence is the squared minimum of the probabilities.
+        The sum of the consistency and confidence losses.
     """
     p0, p1 = logit0.sigmoid(), logit1.sigmoid()
 

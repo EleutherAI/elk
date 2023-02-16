@@ -15,8 +15,8 @@ import torch.nn as nn
 class EvalResult(NamedTuple):
     """The result of evaluating a reporter on a dataset.
 
-    The score function of a reporter returns an instance of this class,
-    which contains the loss, accuracy, calibration accuracy, and AUROC.
+    The `.score()` function of a reporter returns an instance of this class,
+    which contains the loss, accuracy, calibrated accuracy, and AUROC.
     """
 
     loss: float
