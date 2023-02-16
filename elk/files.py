@@ -1,3 +1,5 @@
+"""Helper functions for dealing with files."""
+
 from .argparsers import get_saveable_args
 from argparse import Namespace
 from hashlib import md5
@@ -7,7 +9,7 @@ import pickle
 
 
 def args_to_uuid(args: Namespace) -> str:
-    """Return a unique identifier for the given CLI args."""
+    """Generate a unique ID based on the input arguments."""
 
     identifying_args = get_saveable_args(args)
 

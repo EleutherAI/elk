@@ -1,7 +1,10 @@
+"""Functions for constructing CLI argument parsers."""
+
 from argparse import ArgumentParser
 
 
 def get_extraction_parser():
+    """Get parser for `elk extract`."""
     parser = ArgumentParser(add_help=False)
     add_saveable_args(parser)
     add_unsaveable_args(parser)
@@ -9,6 +12,11 @@ def get_extraction_parser():
 
 
 def add_saveable_args(parser):
+    """Add arguments that should be hashed into the UUID.
+
+    These arguments are used to generate a unique ID for the extraction
+    through the args_to_uuid function in elk/files.py.
+    """
     parser.add_argument(
         "model",
         type=str,
@@ -86,6 +94,8 @@ def add_saveable_args(parser):
 
 
 def add_unsaveable_args(parser):
+    """Add arguments that should not be hashed into the UUID."""
+
     parser.add_argument(
         "--name",
         type=str,
@@ -116,6 +126,7 @@ def add_unsaveable_args(parser):
 
 
 def get_saveable_args(args):
+    """Get all arguments that should be hashed into the UUID."""
     only_saveable_parser = ArgumentParser(add_help=False)
     add_saveable_args(only_saveable_parser)
 
@@ -133,6 +144,7 @@ def get_saveable_args(args):
 
 
 def get_training_parser(name=True) -> ArgumentParser:
+    """Add `elk train` arguments to parser."""
     parser = ArgumentParser(add_help=False)
     if name:
         parser.add_argument("name", type=str, help="Name of the experiment")

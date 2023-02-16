@@ -1,3 +1,5 @@
+"""Functions for extracting the hidden states of a model."""
+
 from ..utils import pytree_map
 from .prompt_collator import Prompt, PromptCollator
 from einops import rearrange
@@ -23,7 +25,22 @@ def extract_hiddens(
     token_loc: Literal["first", "last", "mean"] = "last",
     use_encoder_states: bool = False,
 ) -> Iterable[tuple[torch.Tensor, list[int]]]:
-    """Run inference on a model with a set of prompts, yielding the hidden states."""
+    """Run inference on a model with a set of prompts, yielding the hidden states.
+
+    Args:
+        model: The model to run inference on.
+        tokenizer: The tokenizer to use for tokenization.
+        collator: The PromptCollator to use for generating prompts.
+        batch_size: The batch size to use for inference.
+        layers (Sequence[int]): The layers to extract hidden states from.
+        prompt_suffix (str): A string to append to the end of each prompt.
+        token_loc: The location of the token to extract hidden states from.
+            can be either "first", "last", or "mean". Defaults to "last".
+        use_encoder_states: Whether to use the encoder states instead of the
+            decoder states. This allows simplification from an encoder-decoder
+            model to an encoder-only model. Defaults to False.
+    """
+
     device = model.device
     num_choices = len(collator.labels)
 
@@ -139,7 +156,7 @@ def extract_hiddens(
             # [batch_size, num_layers, num_choices, hidden_size]
             yield torch.stack(outputs.decoder_hidden_states, dim=2), labels
 
-        # Either a decoder-only transformer or a transformer encoder
+        # Condition 2: Either a decoder-only transformer or a transformer encoder
         else:
             choices, labels = batch
 

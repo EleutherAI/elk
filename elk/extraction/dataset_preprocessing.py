@@ -1,3 +1,4 @@
+"""Preprocessing functions for the datasets."""
 import numpy as np
 from datasets import DatasetDict, concatenate_datasets
 
@@ -8,9 +9,8 @@ def undersample(dataset: DatasetDict, seed: int, label_column: str = "label"):
 
     Args:
         dataset (DatasetDict): The dataset to balance.
-        label_column (str, optional):
-        The column containing the labels.
-        Defaults to "label".
+        label_column (str, optional): The column containing the labels.
+            Defaults to "label".
 
     Returns:
         DatasetDict: The balanced dataset.
