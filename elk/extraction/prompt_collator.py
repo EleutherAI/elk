@@ -1,3 +1,5 @@
+"""Collator for prompts."""
+
 from dataclasses import dataclass
 from datasets import DatasetDict, load_dataset  # type: ignore
 from promptsource.templates import DatasetTemplates
@@ -12,7 +14,10 @@ from elk.extraction.dataset_preprocessing import undersample
 
 @dataclass
 class Prompt:
-    """A prompt is a question, its possible answers, and a label."""
+    """Prompt object
+
+    Each prompt contains a question, a list of answers, and a label.
+    """
 
     question: str
     answers: list[str]
@@ -23,6 +28,24 @@ class Prompt:
 
 
 class PromptCollator(Dataset):
+    """Collator for prompts.
+
+    The collator turns a dataset into a dataset of prompts.
+
+    Args:
+        Dataset (Dataset): The dataset to collate.
+
+    Attributes:
+        path (str): The path to the dataset.
+        name (str): The name of the dataset. Optional.
+        split (str): The split to use. Can be "train", "validation", or "test".
+        label_column (str): The column containing the labels. Defaults to "label".
+        max_examples (int): The maximum number of examples to use. Defaults to 0.
+        seed (int): The seed to use for randomization. Defaults to 42.
+        strategy: Can either be "all" or "randomize". Defaults to "randomize".
+        balance (bool): Whether to balance the dataset. Defaults to False.
+    """
+
     def __init__(
         self,
         path: str,
@@ -81,6 +104,14 @@ class PromptCollator(Dataset):
         self.strategy = strategy
 
     def __getitem__(self, index: int) -> Prompt:
+        """Get a prompt given an index.
+
+        Args:
+            index (int): The index of the prompt.
+
+        Returns:
+            Prompt: An object containing the prompt, the answers, and the label.
+        """
         prompts = list(self.prompter.templates.values())
 
         if self.strategy == "all":
@@ -109,9 +140,11 @@ class PromptCollator(Dataset):
         return Prompt(question=questions.pop(), answers=answers, label=true_label)
 
     def __iter__(self):
+        """Allows iteration over the class."""
         return (self[i] for i in range(len(self.dataset)))
 
     def __len__(self):
+        """Get the number of prompts in the dataset."""
         N = len(self.dataset)
         if self.strategy == "all":
             N *= len(self.prompter.templates)

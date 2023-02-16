@@ -1,3 +1,5 @@
+"""Main entry point for ELK."""
+
 from .extraction.extraction_main import run as run_extraction
 from .extraction.parser import get_extraction_parser
 from .training.parser import get_training_parser
@@ -12,6 +14,12 @@ import torch.distributed as dist
 
 
 def run():
+    """Run ELK.
+
+    ELK is a tool for extracting and training probes on hidden states from a model.
+    Functionality is split into four subcommands: extract, train, elicit, and eval.
+    """
+
     parser = ArgumentParser(add_help=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
 

@@ -1,7 +1,10 @@
+"""Input parser for training arguments."""
+
 from argparse import ArgumentParser
 
 
 def get_training_parser(name=True) -> ArgumentParser:
+    """Get parser for training arguments. Allows for optional name argument."""
     parser = ArgumentParser(add_help=False)
     if name:
         parser.add_argument("name", type=str, help="Name of the experiment")
@@ -10,6 +13,7 @@ def get_training_parser(name=True) -> ArgumentParser:
 
 
 def add_train_args(parser: ArgumentParser):
+    """Add training arguments to parser."""
     parser.add_argument(
         "--device",
         type=str,

@@ -1,3 +1,5 @@
+"""Class for the reporter network."""
+
 from .losses import ccs_squared_loss, js_loss
 from ..utils import maybe_ddp_wrap, maybe_all_gather, maybe_all_reduce
 from copy import deepcopy
@@ -11,7 +13,11 @@ import torch.nn as nn
 
 
 class EvalResult(NamedTuple):
-    """The result of evaluating a reporter on a dataset."""
+    """The result of evaluating a reporter on a dataset.
+
+    The score function of a reporter returns an instance of this class,
+    which contains the loss, accuracy, calibration accuracy, and AUROC.
+    """
 
     loss: float
     acc: float
@@ -20,6 +26,8 @@ class EvalResult(NamedTuple):
 
 
 class Reporter(nn.Module):
+    """Class for the reporter network."""
+
     def __init__(
         self,
         in_features: int,
@@ -34,12 +42,27 @@ class Reporter(nn.Module):
         pre_ln: bool = False,
         supervised_weight: float = 0.0,
     ):
+        """Builds Reporter.
+
+        Args:
+            in_features: The number of input features.
+            activation: The activation function to use. Defaults to GELU.
+            bias: Whether to use a bias term in the linear layers. Defaults to True.
+            device: The device to use. Defaults to None, which means "current device".
+            hidden_size: The number of hidden units in the MLP. Defaults to None.
+                By default, use an MLP expansion ratio of 4/3. This ratio is used by
+                Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
+                MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
+                but this seems to lead to excessively large MLPs when num_layers > 2.
+            init: The initialization scheme to use. Defaults to "zero".
+            loss: The loss function to use. Defaults to "squared".
+            num_layers: The number of layers in the MLP. Defaults to 1.
+            pre_ln: Whether to include a LayerNorm module before the first linear
+                layer. Defaults to False.
+            supervised_weight: The weight of the supervised loss. Defaults to 0.0.
+        """
         super().__init__()
 
-        # By default, use an MLP expansion ratio of 4/3. This ratio is used by
-        # Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
-        # MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
-        # but this seems to lead to excessively large MLPs when num_layers > 2.
         hidden_size = hidden_size or 4 * in_features // 3
 
         self.probe = nn.Sequential(
@@ -51,7 +74,6 @@ class Reporter(nn.Module):
             ),
         )
         if pre_ln:
-            # Include a LayerNorm module before the first linear layer
             self.probe.insert(0, nn.LayerNorm(in_features, elementwise_affine=False))
 
         for i in range(1, num_layers):
@@ -71,11 +93,20 @@ class Reporter(nn.Module):
         self.supervised_weight = supervised_weight
 
     def reset_parameters(self):
-        # Mathematically equivalent to the unusual initialization scheme used in the
-        # original paper. They sample a random Gaussian vector of dim in_features + 1,
-        # normalize to the unit sphere, then add an extra all-ones dimension to the
-        # input and compute the inner product. Here, we use nn.Linear with an explicit
-        # bias term, but use the same initialization.
+        """Reset the parameters of the probe.
+
+        Mathematically equivalent to the unusual initialization scheme used in the
+        original paper. They sample a random Gaussian vector of dim in_features + 1,
+        normalize to the unit sphere, then add an extra all-ones dimension to the
+        input and compute the inner product. Here, we use nn.Linear with an explicit
+        bias term, but use the same initialization.
+
+        If init is "spherical", use the spherical initialization scheme.
+        If init is "default", use the default PyTorch initialization scheme for
+        nn.Linear (Kaiming uniform).
+        If init is "zero", initialize all parameters to zero.
+        """
+
         if self.init == "spherical":
             assert len(self.probe) == 1, "Only linear probes can use spherical init"
             probe = cast(nn.Linear, self.probe[0])  # Pylance gets the type wrong here
@@ -85,7 +116,6 @@ class Reporter(nn.Module):
             probe.weight.data = theta[:, :-1]
             probe.bias.data = theta[:, -1]
 
-        # Default PyTorch initialization (Kaiming uniform)
         elif self.init == "default":
             for layer in self.probe:
                 if isinstance(layer, nn.Linear):
@@ -96,9 +126,10 @@ class Reporter(nn.Module):
         else:
             raise ValueError(f"Unknown init: {self.init}")
 
-    # These methods will do something fancier in the future
+    # TODO: These methods will do something fancier in the future
     @classmethod
     def load(cls, path: Union[Path, str]):
+        """Load a Reporter from a file."""
         return torch.load(path)
 
     def save(self, path: Union[Path, str]):
@@ -115,7 +146,19 @@ class Reporter(nn.Module):
         logit1: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Return the loss of the probe on the contrast pair `(x0, x1)`."""
+        """Return the loss of the probe on the contrast pair (x0, x1).
+
+        Args:
+            logit0: The raw score output of the probe on x0.
+            logit1: The raw score output of the probe on x1.
+            labels: The labels of the contrast pair. Defaults to None.
+
+        Returns:
+            loss: The loss of the probe on the contrast pair (x0, x1).
+
+        Raises:
+            ValueError: If `supervised_weight > 0` but `labels` is None.
+        """
         loss = self.unsupervised_loss(logit0, logit1)
 
         # If labels are provided, use them to compute a supervised loss
@@ -138,6 +181,7 @@ class Reporter(nn.Module):
         return loss
 
     def validate_data(self, data):
+        """Validate that the data's shape is valid."""
         assert len(data) == 2 and data[0].shape == data[1].shape
 
     def fit(
@@ -152,6 +196,26 @@ class Reporter(nn.Module):
         verbose: bool = False,
         weight_decay: float = 0.01,
     ) -> float:
+        """Fit the probe to the contrast pair (x0, x1).
+
+        Args:
+            contrast_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+                contrastive representations.
+            labels: The labels of the contrast pair. Defaults to None.
+            lr: The learning rate for Adam. Defaults to 1e-2.
+            num_epochs: The number of epochs to train for. Defaults to 1000.
+            num_tries: The number of times to repeat the procedure. Defaults to 10.
+            optimizer: The optimizer to use. Defaults to "adam".
+            verbose: Whether to print out information at each step. Defaults to False.
+            weight_decay: The weight decay for Adam. Defaults to 0.01.
+
+        Returns:
+            best_loss: The best loss obtained.
+
+        Raises:
+            ValueError: If `optimizer` is not "adam" or "lbfgs".
+            RuntimeError: If the best loss is not finite.
+        """
         self.validate_data(contrast_pair)
         if verbose:
             print(f"Fitting reporter; {num_epochs=}, {num_tries=}, {lr=}")
@@ -192,6 +256,18 @@ class Reporter(nn.Module):
         contrast_pair: tuple[torch.Tensor, torch.Tensor],
         labels: torch.Tensor,
     ) -> EvalResult:
+        """Score the probe on the contrast pair (x0, x1).
+
+        Args:
+            contrast_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+                contrastive representations.
+            labels: The labels of the contrast pair.
+
+        Returns:
+            an instance of EvalResult containing the loss, accuracy, calibrated
+                accuracy, and AUROC of the probe on the contrast pair (x0, x1).
+        """
+
         self.validate_data(contrast_pair)
 
         logit0, logit1 = map(self, contrast_pair)
