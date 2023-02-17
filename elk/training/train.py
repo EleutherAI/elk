@@ -13,14 +13,37 @@ import random
 import torch
 import torch.multiprocessing as mp
 
+
 def train_task(queue, args, reporters, lr_models, statistics):
     while not queue.empty():
         i, train_h, val_h, train_labels, val_labels = queue.get()
         args.device = torch.device(f"cuda:{mp.current_process()._identity[0] - 1}")
-        train_probe(args, i, train_h, val_h, train_labels, val_labels, reporters, lr_models, statistics)
+        train_probe(
+            args,
+            i,
+            train_h,
+            val_h,
+            train_labels,
+            val_labels,
+            reporters,
+            lr_models,
+            statistics,
+        )
     return True
 
-def train_probe(args, index, train_h, val_h, train_labels, val_labels, reporters, lr_models, statistics, pbar=None):
+
+def train_probe(
+    args,
+    index,
+    train_h,
+    val_h,
+    train_labels,
+    val_labels,
+    reporters,
+    lr_models,
+    statistics,
+    pbar=None,
+):
     # Note: currently we're just upcasting to float32 so we don't have to deal with
     #     # grad scaling (which isn't supported for LBFGS), while the hidden states are
     #     # saved in float16 to save disk space. In the future we could try to use mixed
@@ -84,6 +107,7 @@ def train_probe(args, index, train_h, val_h, train_labels, val_labels, reporters
     statistics.append((index, stats))
     reporters.append((index, reporter))
 
+
 def train(args):
     # Reproducibility
     np.random.seed(args.seed)
@@ -126,7 +150,18 @@ def train(args):
         pbar = tqdm(iterator, total=L, unit="layer")
         iterator = pbar
         for i, (train_h, val_h) in enumerate(iterator):
-            train_probe(args, i, train_h, val_h, train_labels, val_labels, reporters, lr_models, statistics, pbar)
+            train_probe(
+                args,
+                i,
+                train_h,
+                val_h,
+                train_labels,
+                val_labels,
+                reporters,
+                lr_models,
+                statistics,
+                pbar,
+            )
 
     if args.num_devices > 1:
         queue = mp.Queue()
@@ -134,7 +169,9 @@ def train(args):
             queue.put((i, train_h, val_h, train_labels, val_labels))
         workers = []
         for _ in range(args.num_devices):
-            worker = mp.Process(target=train_task, args=(queue, args, reporters, lr_models, statistics))
+            worker = mp.Process(
+                target=train_task, args=(queue, args, reporters, lr_models, statistics)
+            )
             worker.start()
             workers.append(worker)
         for worker in workers:
