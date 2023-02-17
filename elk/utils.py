@@ -1,3 +1,5 @@
+"""Utility functions for ELK."""
+
 from torch import Tensor
 from torch.nn.parallel import DistributedDataParallel as DDP
 from typing import Callable, Mapping, TypeVar
@@ -6,6 +8,12 @@ import torch.nn as nn
 
 
 def maybe_all_gather(x: Tensor) -> Tensor:
+    """Gather the tensor across all processes if the distributed environment is
+    initialized.
+
+    Does nothing if torch.distributed.is_initialized() is False
+    """
+
     if not dist.is_initialized():
         return x
 
@@ -15,6 +23,12 @@ def maybe_all_gather(x: Tensor) -> Tensor:
 
 
 def maybe_all_reduce(x: Tensor) -> Tensor:
+    """Reduce the tensor across all processes if the distributed environment is
+    initialized.
+
+    Does nothing if torch.distributed.is_initialized() is False
+    """
+
     if not dist.is_initialized():
         return x
 
@@ -24,6 +38,10 @@ def maybe_all_reduce(x: Tensor) -> Tensor:
 
 
 def maybe_ddp_wrap(model: nn.Module) -> nn.Module:
+    """Wrap the model in DDP if the distributed environment is initialized.
+
+    Does nothing if torch.distributed.is_initialized() is False
+    """
     if not dist.is_initialized():
         return model
 

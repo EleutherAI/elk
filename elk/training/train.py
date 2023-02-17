@@ -1,3 +1,5 @@
+"""Main training loop. Invokes the reporter."""
+
 from ..files import elk_cache_dir
 from .preprocessing import load_hidden_states, normalize
 from .reporter import Reporter
@@ -88,17 +90,22 @@ def train(args):
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    # load the hidden states extracted from the model
+    # load the training hidden states.
     cache_dir = elk_cache_dir() / args.name
     train_hiddens, train_labels = load_hidden_states(
         path=cache_dir / "train_hiddens.pt"
     )
+
+    # load the validation hidden states.
     val_hiddens, val_labels = load_hidden_states(
         path=cache_dir / "validation_hiddens.pt"
     )
+
+    # Ensure that the states are valid.
     assert len(set(train_labels)) > 1
     assert len(set(val_labels)) > 1
 
+    # Normalize the hidden states with the specified method.
     train_hiddens, val_hiddens = normalize(
         train_hiddens, val_hiddens, args.normalization
     )
