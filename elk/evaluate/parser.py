@@ -11,15 +11,16 @@ def get_evaluate_parser():
 
 def add_eval_args(parser):
     parser.add_argument(
-        "ccs_models_path",
-        type=Path,
-        help="Path for hidden states you want to evaluate the model on.",
+        "reporters",
+        type=str,
+        help="Name of the experiment containing" "the reporters you want to evaluate.",
     )
     parser.add_argument(
-        "--hidden-states-path",
+        "--hidden-states",
         nargs="+",
-        type=Path,
-        help="Path for hidden states you want to evaluate the model on.",
+        type=str,
+        help="Name of the experiment containing the"
+        "hidden states you want to evaluate the reporters on.",
     )
     parser.add_argument(
         "--eval-dir",
