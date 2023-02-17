@@ -146,7 +146,6 @@ def train(args):
 
     L = train_hiddens.shape[1]
 
-    # Do the last layer first- useful for debugging, maybe change later
     val_layers = list(val_hiddens.unbind(1))
     train_layers = list(train_hiddens.unbind(1))
 
