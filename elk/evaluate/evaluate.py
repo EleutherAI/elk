@@ -38,7 +38,6 @@ def evaluate(args):
                         labels.to(args.device),
                     )
                     stats = [*result]
-                    stats.append(hidden_state)
                     statistics.append(stats)
 
         cols = [
@@ -56,13 +55,7 @@ def evaluate(args):
             writer = csv.writer(f)
             writer.writerow(cols)
 
-            # TODO: Fix stats, there are some problems with the tensors
             for i, stats in enumerate(statistics):
-                breakpoint()
-                a = []
-                for s in stats:
-                    breakpoint()
-                    a.append(s)
-                breakpoint()
-                # [f"{s:.4f}" for s in stats]
-                writer.writerow([L - i])
+                writer.writerow([L - i] + [f"{s:.4f}" for s in stats])
+
+        print("Evaluation done.")
