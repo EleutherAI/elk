@@ -159,6 +159,12 @@ def add_train_args(parser: ArgumentParser):
         help="PyTorch device to use. Default is cuda:0 if available.",
     )
     parser.add_argument(
+        "--num_devices",
+        type=int,
+        default=1,
+        help="Number of devices to use for training. Default is 1.",
+    )
+    parser.add_argument(
         "--normalization",
         type=str,
         default="meanonly",

@@ -12,9 +12,17 @@ import pickle
 import random
 import torch
 import torch.multiprocessing as mp
+from argparse import Namespace
+from typing import Optional, List, Tuple, Union
 
 
-def train_task(queue, args, reporters, lr_models, statistics):
+def train_task(
+    queue: mp.Queue,
+    args: Namespace,
+    reporters: List[Union[Tuple[int, Reporter], Reporter]],
+    lr_models: List[Union[Tuple[int, LogisticRegression], LogisticRegression]],
+    statistics: List[Union[Tuple[int, List[float]], List[float]]],
+):
     while not queue.empty():
         i, train_h, val_h, train_labels, val_labels = queue.get()
         args.device = torch.device(f"cuda:{mp.current_process()._identity[0] - 1}")
@@ -33,16 +41,16 @@ def train_task(queue, args, reporters, lr_models, statistics):
 
 
 def train_probe(
-    args,
-    index,
-    train_h,
-    val_h,
-    train_labels,
-    val_labels,
-    reporters,
-    lr_models,
-    statistics,
-    pbar=None,
+    args: Namespace,
+    index: int,
+    train_h: torch.Tensor,
+    val_h: torch.Tensor,
+    train_labels: torch.Tensor,
+    val_labels: torch.Tensor,
+    reporters: List[Union[Tuple[int, Reporter], Reporter]],
+    lr_models: List[Union[Tuple[int, LogisticRegression], LogisticRegression]],
+    statistics: List[Union[Tuple[int, List[float]], List[float]]],
+    pbar: Optional[tqdm] = None,
 ):
     # Note: currently we're just upcasting to float32 so we don't have to deal with
     #     # grad scaling (which isn't supported for LBFGS), while the hidden states are
@@ -98,7 +106,9 @@ def train_probe(
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
         if pbar:
             pbar.set_postfix(
-                train_loss=train_loss, ccs_auroc=val_result.auroc, lr_auroc=lr_auroc
+                train_loss=train_loss,
+                ccs_auroc=val_result.auroc,
+                lr_auroc=lr_auroc,
             )
 
         lr_models.append((index, lr_model))
@@ -170,7 +180,14 @@ def train(args):
         workers = []
         for _ in range(args.num_devices):
             worker = mp.Process(
-                target=train_task, args=(queue, args, reporters, lr_models, statistics)
+                target=train_task,
+                args=(
+                    queue,
+                    args,
+                    reporters,
+                    lr_models,
+                    statistics,
+                ),
             )
             worker.start()
             workers.append(worker)

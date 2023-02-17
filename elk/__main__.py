@@ -8,7 +8,6 @@ from contextlib import nullcontext, redirect_stdout
 import logging
 import os
 import torch.distributed as dist
-import torch.multiprocessing as mp
 
 
 def run():
