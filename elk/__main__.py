@@ -7,7 +7,6 @@ from argparse import ArgumentParser
 from contextlib import nullcontext, redirect_stdout
 import logging
 import os
-import torch.distributed as dist
 
 
 def run():
@@ -69,6 +68,8 @@ def run():
             )
         elif args.layer_stride > 1:
             args.layers = list(range(0, num_layers, args.layer_stride))
+
+    import torch.distributed as dist
 
     # Default to CUDA iff available
     if args.device is None:
