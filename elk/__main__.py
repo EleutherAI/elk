@@ -9,6 +9,7 @@ from transformers import AutoConfig, PretrainedConfig
 import logging
 import os
 import torch.distributed as dist
+import torch.multiprocessing as mp
 
 
 def run():
@@ -57,12 +58,6 @@ def run():
         elif args.layer_stride > 1:
             args.layers = list(range(0, num_layers, args.layer_stride))
 
-    # Support both distributed and non-distributed training
-    local_rank = os.environ.get("LOCAL_RANK")
-    if local_rank is not None:
-        dist.init_process_group("nccl")
-        local_rank = int(local_rank)
-
     # Default to CUDA iff available
     if args.device is None:
         import torch
@@ -70,38 +65,35 @@ def run():
         if not torch.cuda.is_available():
             args.device = "cpu"
         else:
-            args.device = f"cuda:{local_rank or 0}"
+            args.device = "cuda"
 
-    # Prevent printing from processes other than the first one
-    with redirect_stdout(None) if local_rank != 0 else nullcontext():
-        for key in list(vars(args).keys()):
-            print("{}: {}".format(key, vars(args)[key]))
+    for key in list(vars(args).keys()):
+        print("{}: {}".format(key, vars(args)[key]))
 
-        if local_rank != 0:
-            logging.getLogger("transformers").setLevel(logging.ERROR)
+    logging.getLogger("transformers").setLevel(logging.ERROR)
 
-        # TODO: Implement the rest of the CLI
-        if args.command == "extract":
-            run_extraction(args)
-        elif args.command == "train":
+    # TODO: Implement the rest of the CLI
+    if args.command == "extract":
+        run_extraction(args)
+    elif args.command == "train":
+        train(args)
+    elif args.command == "elicit":
+        args.name = args_to_uuid(args)
+        try:
             train(args)
-        elif args.command == "elicit":
-            args.name = args_to_uuid(args)
-            try:
-                train(args)
-            except (EOFError, FileNotFoundError):
-                run_extraction(args)
+        except (EOFError, FileNotFoundError):
+            run_extraction(args)
 
-                # Ensure the extraction is finished before starting training
-                if dist.is_initialized():
-                    dist.barrier()
+            # Ensure the extraction is finished before starting training
+            if dist.is_initialized():
+                dist.barrier()
 
-                train(args)
+            train(args)
 
-        elif args.command == "eval":
-            raise NotImplementedError
-        else:
-            raise ValueError(f"Unknown command {args.command}")
+    elif args.command == "eval":
+        raise NotImplementedError
+    else:
+        raise ValueError(f"Unknown command {args.command}")
 
 
 if __name__ == "__main__":
