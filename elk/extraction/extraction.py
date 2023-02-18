@@ -126,7 +126,7 @@ def _extract_hiddens_process(
 
     device_ids = get_device_ids(rank, num_procs)
 
-    print(f'Process rank {rank} using {len(device_ids)} GPUs.')
+    print(f'Process with rank={rank} using GPUs with ids={device_ids}')
 
     # TODO: multi-GPU processes (i.e., sharded models) support
     if len(device_ids) > 1:
@@ -235,7 +235,7 @@ def _extract_hiddens_process(
     )
 
     # Iterating over questions
-    for batch in tqdm(dl):
+    for batch in tqdm(dl, position=rank):
         # Condition 1: Encoder-decoder transformer, with answer in the decoder
         if not should_concat:
             questions, answers, labels = batch
