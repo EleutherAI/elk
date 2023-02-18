@@ -143,15 +143,6 @@ def get_saveable_args(args):
     return {k: v for k, v in vars(args).items() if k in only_saveable_args}
 
 
-def get_training_parser(name=True) -> ArgumentParser:
-    """Add `elk train` arguments to parser."""
-    parser = ArgumentParser(add_help=False)
-    if name:
-        parser.add_argument("name", type=str, help="Name of the experiment")
-    add_train_args(parser)
-    return parser
-
-
 def add_train_args(parser: ArgumentParser):
     parser.add_argument(
         "--device",

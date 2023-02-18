@@ -5,11 +5,9 @@ import os
 from argparse import ArgumentParser
 from contextlib import nullcontext, redirect_stdout
 
-from elk.evaluate.evaluate import evaluate
-from elk.files import args_to_uuid, elk_cache_dir
-from elk.list import list_runs
-
-from .argparsers import get_extraction_parser, get_training_parser, get_evaluate_parser
+from .argparsers import add_train_args, get_extraction_parser
+from .files import args_to_uuid
+from .list import list_runs
 
 
 def run():
@@ -27,23 +25,16 @@ def run():
         help="Extract hidden states from a model.",
         parents=[get_extraction_parser()],
     )
-    subparsers.add_parser(
-        "train",
-        help=(
-            "Train a set of ELK reporters on hidden states from `elk extract`. "
-            "The first argument has to be the name you gave to the extraction."
-        ),
-        parents=[get_training_parser()],
-    )
-    subparsers.add_parser(
+    elicit_parser = subparsers.add_parser(
         "elicit",
         help=(
             "Extract and train a set of ELK reporters "
             "on hidden states from `elk extract`. "
         ),
-        parents=[get_extraction_parser(), get_training_parser(name=False)],
+        parents=[get_extraction_parser()],
         conflict_handler="resolve",
     )
+    add_train_args(elicit_parser)
 
     subparsers.add_parser(
         "eval",
@@ -110,8 +101,6 @@ def run():
 
         if args.command == "extract":
             run_extraction(args)
-        elif args.command == "train":
-            train(args)
         elif args.command == "elicit":
             args.name = args_to_uuid(args)
             try:

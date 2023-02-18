@@ -25,15 +25,7 @@ To only extract the hidden states for one model `model` and the dataset `dataset
 elk extract microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
-To only train a CCS model and a logistic regression model
-
-```bash
-elk train microsoft/deberta-v2-xxlarge-mnli imdb
-```
-
 and evaluate on different datasets: [WIP]
-
-Once finished, results will be saved in `~/.cache/elk/{model}_{prefix}_{seed}.csv`
 
 ### Distributed hidden state extraction
 
@@ -43,7 +35,7 @@ You can run the hidden state extraction in parallel on multiple GPUs with `torch
 torchrun --nproc_per_node gpu -m elk extract microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
-Currently, our code doesn't quite support distributed training of the probe. Running `elk train` under `torchrun` tends to hang. We're working on fixing this.
+Currently, our code doesn't quite support distributed training of the probe. Running `elk elicit` under `torchrun` tends to hang during the training phase. We're working on fixing this.
 
 ## Caching
 
