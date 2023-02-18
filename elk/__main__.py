@@ -88,12 +88,12 @@ def run():
             args.device = f"cuda:{local_rank or 0}"
 
     # Prevent printing from processes other than the first one
-    with redirect_stdout(None) if local_rank != 0 else nullcontext():
+    with redirect_stdout(None) if local_rank else nullcontext():
         # Print all arguments
         for key in list(vars(args).keys()):
             print("{}: {}".format(key, vars(args)[key]))
 
-        if local_rank != 0:
+        if local_rank:
             logging.getLogger("transformers").setLevel(logging.ERROR)
 
         # Import here and not at the top to speed up `elk list`
