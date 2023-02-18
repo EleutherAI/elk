@@ -1,3 +1,11 @@
+"""Main training loop. Invokes the reporter."""
+
+from ..files import elk_cache_dir
+from .preprocessing import load_hidden_states, normalize
+from .reporter import Reporter
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, roc_auc_score
+from tqdm.auto import tqdm
 import csv
 import pickle
 import random
@@ -17,6 +25,16 @@ from .reporter import Reporter
 
 
 def train(args):
+    """Training function.
+
+    Contains the main training loop. Functionality varies based on
+    the arguments passed in.
+    Consult parser.py for more details on the arguments.
+
+    Args:
+        args: The arguments for training.
+    """
+
     rank = dist.get_rank() if dist.is_initialized() else 0
     if dist.is_initialized() and not args.skip_baseline and rank == 0:
         print("Skipping LR baseline during distributed training.")
@@ -30,20 +48,27 @@ def train(args):
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    # load the hidden states extracted from the model
+    # load the training hidden states.
     cache_dir = elk_cache_dir() / args.name
     train_hiddens, train_labels = load_hidden_states(
         path=cache_dir / "train_hiddens.pt"
     )
+
+    # load the validation hidden states.
     val_hiddens, val_labels = load_hidden_states(
         path=cache_dir / "validation_hiddens.pt"
     )
+
+    # Ensure that the states are valid.
     assert len(set(train_labels)) > 1
     assert len(set(val_labels)) > 1
 
+    # Normalize the hidden states with the specified method.
     train_hiddens, val_hiddens = normalize(
         train_hiddens, val_hiddens, args.normalization
     )
+
+    # If we're using distributed training, split the data across the ranks.
     if dist.is_initialized():
         world_size = dist.get_world_size()
         train_hiddens = train_hiddens.chunk(world_size)[rank]
@@ -82,6 +107,7 @@ def train(args):
         if pbar:
             pbar.set_description("Fitting CCS")
 
+        # Instantiate the reporter.
         reporter = Reporter(
             in_features=x0.shape[-1],
             device=args.device,

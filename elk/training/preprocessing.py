@@ -1,3 +1,5 @@
+"""Preprocessing functions for training."""
+
 from pathlib import Path
 from typing import Literal
 import logging
@@ -9,6 +11,21 @@ def normalize(
     val_hiddens: torch.Tensor,
     method: Literal["legacy", "elementwise", "meanonly"] = "legacy",
 ):
+    """Normalize the hidden states.
+
+    Normalize the hidden states with the specified method.
+    The "legacy" method is the same as the original ELK implementation.
+    The "elementwise" method normalizes each element.
+    The "meanonly" method normalizes the mean.
+
+    Args:
+        train_hiddens: The hidden states for the training set.
+        val_hiddens: The hidden states for the validation set.
+        method: The normalization method to use.
+
+    Returns:
+        tuple containing the training and validation hidden states.
+    """
     if method == "legacy":
         master = torch.cat([train_hiddens, val_hiddens], dim=0).float()
         means = master.mean(dim=0)
@@ -38,6 +55,19 @@ def normalize(
 
 
 def load_hidden_states(path: Path) -> tuple[torch.Tensor, torch.Tensor]:
+    """Load hidden states.
+
+    Load the hidden states and labels from a given path.
+    The map_location="cpu" argument is used to ensure that the tensors are
+    loaded on the CPU.
+    An assertion is used to ensure that the tensors are loaded correctly.
+
+    Args:
+        path: The path to the hidden states.
+
+    Returns:
+        tuple containing loaded hidden states and labels.
+    """
     hiddens, labels = torch.load(path, map_location="cpu")
     assert isinstance(hiddens, torch.Tensor)
     assert isinstance(labels, torch.Tensor)

@@ -45,7 +45,11 @@ torchrun --nproc_per_node gpu -m elk extract microsoft/deberta-v2-xxlarge-mnli i
 
 Currently, our code doesn't quite support distributed training of the probe. Running `elk train` under `torchrun` tends to hang. We're working on fixing this.
 
-### Development
+## Caching
+
+We cache the hidden states resulting from `elk extract` to avoid having to recompute them every time we want to train a probe. The cache is stored in `~/.cache/elk/{md5_hash_of_cli_args}`. Probes are also cached alongside the hidden states they were trained on. You can see a summary of all the cached hidden states by running `elk list`.
+
+## Development
 
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 
