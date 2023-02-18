@@ -76,7 +76,7 @@ def extract_hiddens(
         params = ExtractionParameters(
             model=model,
             tokenizer=tokenizer,
-            collator=None,
+            collator=collator,
             indices=proc_indices,
             batch_size=batch_size,
             layers=layers,

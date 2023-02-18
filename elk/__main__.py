@@ -56,13 +56,14 @@ def run():
             args.layers = list(range(0, num_layers, args.layer_stride))
 
     # Default to CUDA iff available
+    # TODO: args.device isn't used right now because model needs to be loaded on CPU first
     if args.device is None:
         import torch
 
         if not torch.cuda.is_available():
             args.device = "cpu"
         else:
-            args.device = f"cuda:{local_rank or 0}"
+            args.device = f"cuda"
 
     # Prevent printing from processes other than the first one
     for key in list(vars(args).keys()):
