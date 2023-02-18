@@ -1,11 +1,5 @@
 """Main training loop. Invokes the reporter."""
 
-from ..files import elk_cache_dir
-from .preprocessing import load_hidden_states, normalize
-from .reporter import Reporter
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, roc_auc_score
-from tqdm.auto import tqdm
 import csv
 import pickle
 import random
@@ -38,7 +32,7 @@ def train(args):
     rank = dist.get_rank() if dist.is_initialized() else 0
     if dist.is_initialized() and not args.skip_baseline and rank == 0:
         print("Skipping LR baseline during distributed training.")
-    
+
     if not args.reporter_name:
         args.reporter_name = args_to_uuid(args)
         print("args.reporter_name", args.reporter_name)
@@ -161,7 +155,7 @@ def train(args):
 
     reporters.reverse()
     lr_models.reverse()
-    
+
     path = elk_cache_dir() / args.name / "reporters" / args.reporter_name
     path.mkdir(parents=True, exist_ok=True)
 

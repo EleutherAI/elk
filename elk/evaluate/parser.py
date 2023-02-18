@@ -13,14 +13,12 @@ def add_eval_args(parser):
     parser.add_argument(
         "name",
         type=str,
-        help="Name of the experiment containing" 
-        "the reporters you want to evaluate.",
+        help="Name of the experiment containing" "the reporters you want to evaluate.",
     )
     parser.add_argument(
         "reporter_name",
         type=str,
-        help="Name of the reporter subfolder"
-        "to save the trained reporters to.",
+        help="Name of the reporter subfolder" "to save the trained reporters to.",
     )
     parser.add_argument(
         "--hidden-states",
