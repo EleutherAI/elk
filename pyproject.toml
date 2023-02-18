@@ -24,6 +24,7 @@ dependencies = [
     "torch",
     "tqdm==4.64.1",
     "transformers==4.25.1",
+    "omegaconf==2.3.0"
 ]
 version = "0.0.1"
 

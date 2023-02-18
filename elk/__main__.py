@@ -5,28 +5,30 @@ import os
 from argparse import ArgumentParser
 from contextlib import nullcontext, redirect_stdout
 
+from omegaconf import OmegaConf
+
 from elk.evaluate.evaluate import evaluate
 from elk.files import args_to_uuid, elk_cache_dir
 from elk.list import list_runs
 
-from .argparsers import get_extraction_parser, get_training_parser, get_evaluate_parser
+from .argparsers import (get_evaluate_parser, get_extraction_parser,
+                         get_training_parser)
 from .extraction.extraction_main import run as run_extraction
 from .training.train import train
 
 
 # TODO: Move function to a better place...
 def sweep(args):
-    """
-    Train and evaluate ccs and lr model on a set of datasets.
-    """
+    config = OmegaConf.load(args.yml)
 
     # extract and train
     names = []
-    for model in args.models:
+    for model in config.models:
         args.model = model
-        for dataset in args.datasets:
+        for dataset in config.datasets:
             args.dataset = dataset
             args.name = args_to_uuid(args)
+            
             # TODO: Set missing args...
             run_extraction(args)
             train(args)
@@ -42,16 +44,13 @@ def sweep(args):
 # TODO: Move function to a better place...
 def get_sweep_parser():
     parser = ArgumentParser(add_help=False)
-    add_sweep_args(parser)
-    return parser
-
-
-# TODO: Move function to a better place...
-def add_sweep_args(parser):
-    parser.add_argument("--models", nargs="+", type=str, help="Model to sweep over.")
     parser.add_argument(
-        "--datasets", nargs="+", type=str, help="Dataset to sweep over."
+        "--yml", 
+        type=str, 
+        default="./evaluate/sweep-default.yml",
+        help="Path to a YAML file with sweep arguments."
     )
+    return parser
 
 
 def run():

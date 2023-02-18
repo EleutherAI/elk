@@ -1,0 +1,11 @@
+experiment:
+  models:
+    - google/t5-v1_1-base 
+    - microsoft/deberta-v2-xxlarge-mn
+  datasets:
+    - imdb
+    - amazon_polarity
+  extraction:
+    use_encoder_states: True
+    
+  
