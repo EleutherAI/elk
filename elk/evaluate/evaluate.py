@@ -25,7 +25,6 @@ def evaluate(args):
         L = hiddens.shape[1]
 
         statistics = []
-        breakpoint()
         for reporter in reporters:
             reporter.eval()
 
