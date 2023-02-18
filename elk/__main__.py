@@ -5,7 +5,9 @@ import os
 from argparse import ArgumentParser
 from contextlib import nullcontext, redirect_stdout
 
-from .argparsers import add_train_args, get_extraction_parser
+from .argparsers import (add_train_args, get_evaluate_parser,
+                         get_extraction_parser)
+from .evaluation.evaluate import evaluate_reporters
 from .files import args_to_uuid
 from .list import list_runs
 
@@ -115,9 +117,7 @@ def run():
                 train(args)
 
         elif args.command == "eval":
-            # eval is a reserved keyword in python,
-            # therefore we use evaluate for the function name
-            evaluate(args)
+            evaluate_reporters(args)
         else:
             raise ValueError(f"Unknown command {args.command}")
 

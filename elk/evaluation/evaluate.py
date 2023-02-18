@@ -6,7 +6,7 @@ from elk.training.preprocessing import load_hidden_states, normalize
 from ..files import elk_cache_dir
 
 
-def evaluate(args):
+def evaluate_reporters(args):
     for hidden_state_dir in args.hidden_states:
         hiddens, labels = load_hidden_states(
             path=elk_cache_dir() / hidden_state_dir / "validation_hiddens.pt"
