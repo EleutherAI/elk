@@ -55,6 +55,47 @@ def add_sweep_args(parser):
     )
 
 
+# TODO: Move function to a better place...
+def sweep(args):
+    """
+    Train and evaluate ccs and lr model on a set of datasets.
+    Example: elk sweep --models google/t5-v1_1-base microsoft/deberta-v2-xxlarge-mnli --datasets imdb amazon_polarity --max-examples 100
+    """
+
+    # extract and train
+    names = []
+    for model in args.models:
+        args.model = model
+        for dataset in args.datasets:
+            args.dataset = dataset
+            args.name = args_to_uuid(args)
+            # TODO: Set missing args...
+            run_extraction(args)
+            train(args)
+
+            names.append(args.name)
+
+    for name in names:
+        args.reporters = name
+        args.hidden_states = names
+        evaluate(args)
+
+
+# TODO: Move function to a better place...
+def get_sweep_parser():
+    parser = ArgumentParser(add_help=False)
+    add_sweep_args(parser)
+    return parser
+
+
+# TODO: Move function to a better place...
+def add_sweep_args(parser):
+    parser.add_argument("--models", nargs="+", type=str, help="Model to sweep over.")
+    parser.add_argument(
+        "--datasets", nargs="+", type=str, help="Dataset to sweep over."
+    )
+
+
 def run():
     """Run `elk`.
 
