@@ -8,6 +8,7 @@ from typing import cast, Literal, Iterator, Sequence
 import torch
 from dataclasses import dataclass
 from datasets import Dataset
+import multiprocess as mp
 
 @dataclass
 class ExtractionParameters:
@@ -47,7 +48,6 @@ def uniform_split(elements: list, num_splits: int) -> Iterator[list]:
         start_idx += split_size
 
 
-@torch.no_grad()
 def extract_hiddens(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
@@ -94,6 +94,8 @@ def extract_hiddens(
         'wrapped_num_procs': [num_procs] * num_procs
     }
 
+    mp.set_start_method("spawn")
+
     return Dataset.from_generator(
         _extract_hiddens_process,
         gen_kwargs=multiprocess_kwargs,
@@ -101,6 +103,7 @@ def extract_hiddens(
     )
 
 
+@torch.no_grad()
 def _extract_hiddens_process(
     wrapped_params: list[ExtractionParameters],
     wrapped_rank: list[int],
