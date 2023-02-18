@@ -15,8 +15,12 @@ def evaluate(args):
 
         _, hiddens = normalize(hiddens, hiddens, args.normalization)
 
-        reporter_root_path = elk_cache_dir() / args.name / "reporters" / args.reporter_name
-        reporters = torch.load(reporter_root_path / "reporters.pt", map_location=args.device)
+        reporter_root_path = (
+            elk_cache_dir() / args.name / "reporters" / args.reporter_name
+        )
+        reporters = torch.load(
+            reporter_root_path / "reporters.pt", map_location=args.device
+        )
 
         L = hiddens.shape[1]
 

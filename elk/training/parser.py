@@ -13,9 +13,8 @@ def add_train_args(parser: ArgumentParser):
     parser.add_argument(
         "--reporter-name",
         type=str,
-        help="Name of the reporter subfolder"
-        "to save the trained reporters to.",
-        default=None
+        help="Name of the reporter subfolder" "to save the trained reporters to.",
+        default=None,
     )
     parser.add_argument(
         "--device",

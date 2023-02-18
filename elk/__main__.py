@@ -22,7 +22,6 @@ def sweep(args):
     Example: elk sweep --models google/t5-v1_1-base microsoft/deberta-v2-xxlarge-mnli --datasets imdb amazon_polarity --max-examples 100
     """
 
-
     # extract and train
     names = []
     for model in args.models:
@@ -41,25 +40,19 @@ def sweep(args):
         args.hidden_states = names
         evaluate(args)
 
+
 # TODO: Move function to a better place...
 def get_sweep_parser():
     parser = ArgumentParser(add_help=False)
     add_sweep_args(parser)
     return parser
 
+
 # TODO: Move function to a better place...
 def add_sweep_args(parser):
+    parser.add_argument("--models", nargs="+", type=str, help="Model to sweep over.")
     parser.add_argument(
-        "--models",
-        nargs="+",
-        type=str,
-        help="Model to sweep over."
-    )
-    parser.add_argument(
-        "--datasets",
-        nargs="+",
-        type=str,
-        help="Dataset to sweep over."
+        "--datasets", nargs="+", type=str, help="Dataset to sweep over."
     )
 
 
@@ -70,7 +63,6 @@ def sweep(args):
     Example: elk sweep --models google/t5-v1_1-base microsoft/deberta-v2-xxlarge-mnli --datasets imdb amazon_polarity --max-examples 100
     """
 
-
     # extract and train
     names = []
     for model in args.models:
@@ -89,25 +81,19 @@ def sweep(args):
         args.hidden_states = names
         evaluate(args)
 
+
 # TODO: Move function to a better place...
 def get_sweep_parser():
     parser = ArgumentParser(add_help=False)
     add_sweep_args(parser)
     return parser
 
+
 # TODO: Move function to a better place...
 def add_sweep_args(parser):
+    parser.add_argument("--models", nargs="+", type=str, help="Model to sweep over.")
     parser.add_argument(
-        "--models",
-        nargs="+",
-        type=str,
-        help="Model to sweep over."
-    )
-    parser.add_argument(
-        "--datasets",
-        nargs="+",
-        type=str,
-        help="Dataset to sweep over."
+        "--datasets", nargs="+", type=str, help="Dataset to sweep over."
     )
 
 
