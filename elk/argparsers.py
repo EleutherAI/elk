@@ -29,7 +29,6 @@ def add_saveable_args(parser):
     )
     parser.add_argument(
         "--label-column",
-        default="label",
         type=str,
         help="Column of the dataset to use as the label. Default is 'label'.",
     )
@@ -37,6 +36,12 @@ def add_saveable_args(parser):
         "--max-examples",
         type=int,
         help="Maximum number of examples to use from each dataset.",
+    )
+    parser.add_argument(
+        "--num-shots",
+        type=int,
+        default=0,
+        help="Number of examples to include in for few-shot prompts.",
     )
     parser.add_argument(
         "--prompts",

@@ -36,8 +36,11 @@ dev = [
 [project.scripts]
 elk = "elk.__main__:run"
 
-[tool.setuptools]
-packages = ["elk"]
+[tool.pyright]
+reportPrivateImportUsage = false
 
 [tool.pytest.ini_options]
 markers = ["cpu: Marker for tests that do not depend on GPUs"]
+
+[tool.setuptools]
+packages = ["elk"]

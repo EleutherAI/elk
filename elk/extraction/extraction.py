@@ -42,7 +42,7 @@ def extract_hiddens(
     """
 
     device = model.device
-    num_choices = len(collator.labels)
+    num_choices = collator.num_classes
 
     # TODO: Make this configurable or something
     # Token used to separate the question from the answer
