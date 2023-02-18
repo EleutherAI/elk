@@ -38,6 +38,7 @@ def evaluate(args):
                         labels.to(args.device),
                     )
                     stats = [*result]
+                    stats += [args.normalization, args.reporters, hidden_state_dir]
                     statistics.append(stats)
 
         cols = [
@@ -46,10 +47,9 @@ def evaluate(args):
             "cal_acc",
             "auroc",
             "normalization",
-            "traind on dataset",
-            "eval on dataset",
+            "reporters",
+            "hidden_states",
         ]
-
         args.eval_dir.mkdir(parents=True, exist_ok=True)
         with open(args.eval_dir / f"{hidden_state_dir}_eval.csv", "w") as f:
             writer = csv.writer(f)
