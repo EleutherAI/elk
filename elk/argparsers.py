@@ -1,7 +1,6 @@
 """Functions for constructing CLI argument parsers."""
 from argparse import ArgumentParser
 from pathlib import Path
-from ..files import elk_cache_dir
 
 
 def get_extraction_parser():
