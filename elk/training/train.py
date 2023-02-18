@@ -21,9 +21,9 @@ def train(args):
     if dist.is_initialized() and not args.skip_baseline and rank == 0:
         print("Skipping LR baseline during distributed training.")
     
-    if not args.reporters_dir:
-        args.reporters_dir = args_to_uuid(args)
-        print("args.reporters_dir", args.reporters_dir)
+    if not args.reporter_name:
+        args.reporter_name = args_to_uuid(args)
+        print("args.reporter_name", args.reporter_name)
 
     # Reproducibility
     np.random.seed(args.seed)
@@ -136,7 +136,7 @@ def train(args):
     reporters.reverse()
     lr_models.reverse()
     
-    path = elk_cache_dir() / args.name / "reporters" / args.reporters_dir
+    path = elk_cache_dir() / args.name / "reporters" / args.reporter_name
     path.mkdir(parents=True, exist_ok=True)
 
     if rank == 0:

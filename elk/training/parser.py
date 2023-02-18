@@ -11,8 +11,10 @@ def get_training_parser(name=True) -> ArgumentParser:
 
 def add_train_args(parser: ArgumentParser):
     parser.add_argument(
-        "--reporters_dir",
+        "--reporter_name",
         type=str,
+        help="Name of the reporter subfolder"
+        "to save the trained reporters to.",
         default=None
     )
     parser.add_argument(
