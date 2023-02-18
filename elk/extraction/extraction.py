@@ -15,7 +15,6 @@ class ExtractionParameters:
     model: PreTrainedModel
     tokenizer: PreTrainedTokenizerBase
     collator: PromptCollator
-    indices: int
     batch_size: int = 1
     layers: Sequence[int] = ()
     prompt_suffix: str = ""
@@ -59,7 +58,8 @@ def extract_hiddens(
     prompt_suffix: str = "",
     token_loc: Literal["first", "last", "mean"] = "last",
     use_encoder_states: bool = False,
-    num_procs: int = 1
+    num_procs: int = 1,
+    seed_start: int = 42
 ):
     """Run inference on a model with a set of prompts, yielding the hidden states."""
 
@@ -72,12 +72,14 @@ def extract_hiddens(
 
     all_params = []
 
+    # use different random seed for each process
+    curr_seed = seed_start
+
     for proc_indices in all_proc_indices:
         params = ExtractionParameters(
             model=model,
             tokenizer=tokenizer,
-            collator=collator,
-            indices=proc_indices,
+            collator=collator.split_and_copy(proc_indices, curr_seed),
             batch_size=batch_size,
             layers=layers,
             prompt_suffix=prompt_suffix,
@@ -86,6 +88,8 @@ def extract_hiddens(
         )
         
         all_params.append(params)
+
+        curr_seed += 1
     
     # each list needs to have length num_proc
     multiprocess_kwargs = {
@@ -94,6 +98,7 @@ def extract_hiddens(
         'wrapped_num_procs': [num_procs] * num_procs
     }
 
+    # CUDA needs os.spawn instead of the default os.fork (on Unix)
     mp.set_start_method("spawn")
 
     return Dataset.from_generator(

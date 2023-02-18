@@ -5,6 +5,7 @@ from random import Random
 from typing import Literal, Optional
 import numpy as np
 from torch.utils.data import Dataset
+import copy
 
 from elk.extraction.dataset_preprocessing import undersample
 
@@ -34,6 +35,8 @@ class PromptCollator(Dataset):
         strategy: Literal["all", "randomize"] = "randomize",
         balance: bool = False,
     ):
+        self.label_column = label_column
+
         data = load_dataset(path, name)
         assert isinstance(data, DatasetDict)
 
@@ -42,7 +45,7 @@ class PromptCollator(Dataset):
         if not others:
             print("Creating a train-test split...")
             data = data[train_name].train_test_split(
-                seed=seed, shuffle=False, stratify_by_column=label_column
+                seed=seed, shuffle=False, stratify_by_column=self.label_column
             )
 
         if split not in data and split == "validation":
@@ -52,10 +55,9 @@ class PromptCollator(Dataset):
         self.dataset = data[split]
 
         if balance:
-            self.dataset = undersample(self.dataset, seed, label_column)
+            self.dataset = undersample(self.dataset, seed, self.label_column)
 
-        self.labels, counts = np.unique(self.dataset[label_column], return_counts=True)
-        self.label_fracs = counts / counts.sum()
+        self.set_labels()
 
         print(f"Class balance '{split}': {[f'{x:.2%}' for x in self.label_fracs]}")
         pivot, *rest = self.label_fracs
@@ -69,7 +71,6 @@ class PromptCollator(Dataset):
         if max_examples:
             self.dataset = self.dataset.select(range(max_examples))
 
-        self.label_column = label_column
         self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
         self.rng = Random(seed)
         self.strategy = strategy
@@ -111,3 +112,27 @@ class PromptCollator(Dataset):
             N *= len(self.prompter.templates)
 
         return N
+
+    def set_labels(self):
+        self.labels, counts = np.unique(self.dataset[self.label_column], return_counts=True)
+        self.label_fracs = counts / counts.sum()
+
+    def split_and_copy(self, indices, new_seed):
+        """
+        To avoid copying entire dataest num_proccesses times when multiprocessing,
+        this makes a shallow copy of self, but with self.dataset split
+        according to given indices.
+        """
+        dataset_split = self.dataset.select(indices)
+        
+        # only shallow copy is needed -- multiprocess will pickle (dill) objects
+        self_copy = copy.copy(self)
+        self_copy.dataset = dataset_split
+
+        # redo counts based on new split
+        self_copy.set_labels()
+
+        # give copy a new rng
+        self_copy.rng = Random(new_seed)
+
+        return self_copy
