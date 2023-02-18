@@ -10,8 +10,6 @@ from elk.files import args_to_uuid, elk_cache_dir
 from elk.list import list_runs
 
 from .argparsers import get_extraction_parser, get_training_parser, get_evaluate_parser
-from .extraction.extraction_main import run as run_extraction
-from .training.train import train
 
 
 def run():
