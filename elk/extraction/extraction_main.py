@@ -5,12 +5,9 @@ from ..utils import maybe_all_gather
 from transformers import AutoModel, AutoTokenizer
 import json
 import torch
-import torch.distributed as dist
 
 
 def run(args):
-    rank = dist.get_rank() if dist.is_initialized() else 0
-
     def extract(args, split: str):
         frac = 1 - args.val_frac if split == "train" else args.val_frac
 
@@ -42,6 +39,7 @@ def run(args):
                 prompt_suffix=args.prompt_suffix,
                 token_loc=args.token_loc,
                 use_encoder_states=args.use_encoder_states,
+                num_procs=torch.cuda.device_count()
             )
         ]
         save_dir.mkdir(parents=True, exist_ok=True)
@@ -50,17 +48,14 @@ def run(args):
             hidden_batches, label_batches = zip(*items)
             hiddens = maybe_all_gather(torch.cat(hidden_batches))  # type: ignore
 
-            # Moving labels to GPU just to be able to use maybe_all_gather
-            labels = torch.tensor(sum(label_batches, []), device=hiddens.device)
-            labels = maybe_all_gather(labels)  # type: ignore
+            labels = torch.tensor(sum(label_batches, []))
 
-            if rank == 0:
-                torch.save((hiddens.cpu(), labels.cpu()), f)
+            torch.save((hiddens.cpu(), labels.cpu()), f)
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
     print(f"Loading model '{args.model}'...")
-    model = AutoModel.from_pretrained(args.model, torch_dtype="auto").to(args.device)
+    model = AutoModel.from_pretrained(args.model, torch_dtype="auto")
     print(f"Done. Model class: '{model.__class__.__name__}'")
 
     if args.use_encoder_states and not model.config.is_encoder_decoder:
@@ -84,9 +79,8 @@ def run(args):
     extract(args, "train")
     extract(args, "validation")
 
-    if rank == 0:
-        with open(save_dir / "args.json", "w") as f:
-            json.dump(vars(args), f)
+    with open(save_dir / "args.json", "w") as f:
+        json.dump(vars(args), f)
 
-        with open(save_dir / "model_config.json", "w") as f:
-            json.dump(model.config.to_dict(), f)
+    with open(save_dir / "model_config.json", "w") as f:
+        json.dump(model.config.to_dict(), f)

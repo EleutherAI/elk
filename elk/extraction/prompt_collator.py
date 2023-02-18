@@ -5,7 +5,6 @@ from random import Random
 from typing import Literal, Optional
 import numpy as np
 from torch.utils.data import Dataset
-import torch.distributed as dist
 
 from elk.extraction.dataset_preprocessing import undersample
 
@@ -65,8 +64,6 @@ class PromptCollator(Dataset):
 
         if len(self.labels) < 2:
             raise ValueError(f"Dataset {path}/{name} has only one label")
-        if dist.is_initialized():
-            self.dataset = self.dataset.shard(dist.get_world_size(), dist.get_rank())
 
         self.dataset = self.dataset.shuffle(seed=seed)
         if max_examples:
