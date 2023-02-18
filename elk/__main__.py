@@ -4,18 +4,10 @@ from .argparsers import get_extraction_parser, get_training_parser
 from .files import args_to_uuid
 from .list import list_runs
 from argparse import ArgumentParser
-from contextlib import nullcontext, redirect_stdout
 import logging
-import os
 
 
 def run():
-    """Run `elk`.
-
-    `elk` is a tool for extracting and training reporters on hidden states from an LM.
-    Functionality is split into four subcommands: extract, train, elicit, and eval.
-    """
-
     parser = ArgumentParser(add_help=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
