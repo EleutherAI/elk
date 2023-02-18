@@ -16,7 +16,6 @@ def evaluate(args):
         )
         assert len(set(labels)) > 1
 
-        # TODO: We actually don't need to normalize the train hidden states here (?)
         _, hiddens = normalize(hiddens, hiddens, args.normalization)
 
         reporters = torch.load(elk_cache_dir() / args.reporters / "reporters.pt")
@@ -56,6 +55,6 @@ def evaluate(args):
             writer.writerow(cols)
 
             for i, stats in enumerate(statistics):
-                writer.writerow([L - i] + [f"{s:.4f}" for s in stats])
+                writer.writerow([L - i] + [s for s in stats])
 
         print("Evaluation done.")
