@@ -21,9 +21,9 @@ def sweep(args):
     # TODO: load datasets and models from a file probably
     datasets = [
         "imdb",
-        "amazon-polarity",
-        "ag-news",
-        "dbpedia-14",
+        "super_glue amazon_polarity",
+        "ag_news",
+        "dbpedia_14",
         "copa",
         "rte",
         "boolq",
