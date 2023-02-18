@@ -39,11 +39,13 @@ def sweep(args):
         args.hidden_states = names
         evaluate(args)
 
+# TODO: Move function to a better place...
 def get_sweep_parser():
     parser = ArgumentParser(add_help=False)
     add_sweep_args(parser)
     return parser
 
+# TODO: Move function to a better place...
 def add_sweep_args(parser):
     parser.add_argument(
         "--models",
