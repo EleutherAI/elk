@@ -11,9 +11,16 @@ def get_evaluate_parser():
 
 def add_eval_args(parser):
     parser.add_argument(
-        "reporters",
+        "name",
         type=str,
-        help="Name of the experiment containing" "the reporters you want to evaluate.",
+        help="Name of the experiment containing" 
+        "the reporters you want to evaluate.",
+    )
+    parser.add_argument(
+        "reporter_name",
+        type=str,
+        help="Name of the reporter subfolder"
+        "to save the trained reporters to.",
     )
     parser.add_argument(
         "--hidden-states",
@@ -21,12 +28,6 @@ def add_eval_args(parser):
         type=str,
         help="Name of the experiment containing the"
         "hidden states you want to evaluate the reporters on.",
-    )
-    parser.add_argument(
-        "--eval-dir",
-        type=Path,
-        default=elk_cache_dir() / "eval_results",
-        help="Output path for the evaluation results.",
     )
     parser.add_argument(
         "--device",

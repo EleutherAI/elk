@@ -7,9 +7,6 @@ from ..files import elk_cache_dir
 
 
 def evaluate(args):
-    """
-    Note: eval is a reserved keyword in python, therefore we use evaluate instead
-    """
     for hidden_state_dir in args.hidden_states:
         hiddens, labels = load_hidden_states(
             path=elk_cache_dir() / hidden_state_dir / "validation_hiddens.pt"
@@ -18,10 +15,13 @@ def evaluate(args):
 
         _, hiddens = normalize(hiddens, hiddens, args.normalization)
 
-        reporters = torch.load(elk_cache_dir() / args.reporters / "reporters.pt")
+        reporter_root_path = elk_cache_dir() / args.name / "reporters" / args.reporter_name
+        reporters = torch.load(reporter_root_path / "reporters.pt", map_location=args.device)
+
         L = hiddens.shape[1]
 
         statistics = []
+        breakpoint()
         for reporter in reporters:
             reporter.eval()
 
@@ -37,7 +37,7 @@ def evaluate(args):
                         labels.to(args.device),
                     )
                     stats = [*result]
-                    stats += [args.normalization, args.reporters, hidden_state_dir]
+                    stats += [args.normalization, args.name, hidden_state_dir]
                     statistics.append(stats)
 
         cols = [
@@ -46,11 +46,13 @@ def evaluate(args):
             "cal_acc",
             "auroc",
             "normalization",
-            "reporters",
+            "name",
             "hidden_states",
         ]
-        args.eval_dir.mkdir(parents=True, exist_ok=True)
-        with open(args.eval_dir / f"{hidden_state_dir}_eval.csv", "w") as f:
+
+        transfer_eval = reporter_root_path / "transfer_eval"
+        transfer_eval.mkdir(parents=True, exist_ok=True)
+        with open(transfer_eval / f"{hidden_state_dir}.csv", "w") as f:
             writer = csv.writer(f)
             writer.writerow(cols)
 
