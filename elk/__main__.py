@@ -53,15 +53,6 @@ def run():
         elif args.layer_stride > 1:
             args.layers = list(range(0, num_layers, args.layer_stride))
 
-    # Default to CUDA iff available
-    if args.device is None:
-        import torch
-
-        if not torch.cuda.is_available():
-            args.device = "cpu"
-        else:
-            args.device = "cuda"
-
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))
 

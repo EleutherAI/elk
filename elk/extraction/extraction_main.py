@@ -3,7 +3,7 @@
 from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
-from ..utils import maybe_all_gather
+from ..utils import maybe_all_gather, select_usable_gpus
 from transformers import AutoModel, AutoTokenizer
 import json
 import torch
@@ -15,8 +15,6 @@ def run(args):
 
     This function is called upon running `elk extract`.
     """
-
-    rank = dist.get_rank() if dist.is_initialized() else 0
 
     def extract(args, split: str):
         """Extract hidden states for a given split.
@@ -68,14 +66,21 @@ def run(args):
             labels = torch.tensor(sum(label_batches, []), device=hiddens.device)
             labels = maybe_all_gather(labels)  # type: ignore
 
-            if rank == 0:
+            if not dist.is_initialized() or dist.get_rank() == 0:
                 torch.save((hiddens.cpu(), labels.cpu()), f)
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
     print(f"Loading model '{args.model}'...")
-    model = AutoModel.from_pretrained(args.model, torch_dtype="auto").to(args.device)
+    model = AutoModel.from_pretrained(args.model, torch_dtype="auto")
     print(f"Done. Model class: '{model.__class__.__name__}'")
+
+    # Intelligently select a GPU with enough memory
+    if not dist.is_initialized() and torch.cuda.is_available():
+        # We at least need enough VRAM to hold the model parameters
+        min_memory = sum(p.element_size() * p.numel() for p in model.parameters())
+        (device_idx,) = select_usable_gpus(max_gpus=1, min_memory=min_memory)
+        model.to(f"cuda:{device_idx}")
 
     if args.use_encoder_states and not model.config.is_encoder_decoder:
         raise ValueError(
@@ -98,7 +103,7 @@ def run(args):
     extract(args, "train")
     extract(args, "validation")
 
-    if rank == 0:
+    if dist.is_initialized() or dist.get_rank() == 0:
         with open(save_dir / "args.json", "w") as f:
             json.dump(vars(args), f)
 

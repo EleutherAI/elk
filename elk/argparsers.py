@@ -112,11 +112,6 @@ def add_unsaveable_args(parser):
         ),
     )
     parser.add_argument(
-        "--device",
-        type=str,
-        help="PyTorch device to use. Default is cuda:0 if available.",
-    )
-    parser.add_argument(
         "--balance",
         type=bool,
         default=False,
@@ -145,15 +140,10 @@ def get_saveable_args(args):
 
 def add_train_args(parser: ArgumentParser):
     parser.add_argument(
-        "--device",
-        type=str,
-        help="PyTorch device to use. Default is cuda:0 if available.",
-    )
-    parser.add_argument(
-        "--num-devices",
+        "--max-gpus",
         type=int,
-        default=1,
-        help="Number of devices to use for training. Default is 1.",
+        default=-1,
+        help="Maximum number of GPUs to use. Default is -1, or no limit.",
     )
     parser.add_argument(
         "--normalization",

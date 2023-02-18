@@ -1,6 +1,7 @@
 """Main training loop."""
 
 from ..files import elk_cache_dir
+from ..utils import select_usable_gpus
 from .preprocessing import load_hidden_states, normalize
 from .reporter import Reporter
 from argparse import Namespace
@@ -15,14 +16,14 @@ import torch
 import torch.multiprocessing as mp
 
 
-def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, rank: int = 0):
+def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, device: int = 0):
     """Worker function for training reporters in parallel."""
 
     while not input_q.empty():
-        args.device = torch.device(f"cuda:{rank}")
-
         i, *data = input_q.get()
-        out_q.put((i, *train_reporter(args, i, *data)))
+        out_q.put(
+            (i, *train_reporter(args, i, *data, f"cuda:{device}"))  # type: ignore
+        )
 
 
 def train_reporter(
@@ -32,6 +33,7 @@ def train_reporter(
     val_h: torch.Tensor,
     train_labels: torch.Tensor,
     val_labels: torch.Tensor,
+    device: str,
 ):
     """Train a single reporter on a single layer."""
 
@@ -39,22 +41,22 @@ def train_reporter(
     # grad scaling (which isn't supported for LBFGS), while the hidden states are
     # saved in float16 to save disk space. In the future we could try to use mixed
     # precision training in at least some cases.
-    x0, x1 = train_h.to(args.device).float().chunk(2, dim=-1)
-    val_x0, val_x1 = val_h.to(args.device).float().chunk(2, dim=-1)
+    x0, x1 = train_h.to(device).float().chunk(2, dim=-1)
+    val_x0, val_x1 = val_h.to(device).float().chunk(2, dim=-1)
 
     train_labels_aug = torch.cat([train_labels, 1 - train_labels])
     val_labels_aug = torch.cat([val_labels, 1 - val_labels])
 
     reporter = Reporter(
         in_features=x0.shape[-1],
-        device=args.device,
+        device=device,
         init=args.init,
         loss=args.loss,
         supervised_weight=args.supervised_weight,
     )
     if args.label_frac:
         num_labels = round(args.label_frac * len(train_labels))
-        labels = train_labels[:num_labels].to(args.device)
+        labels = train_labels[:num_labels].to(device)
     else:
         labels = None
 
@@ -67,7 +69,7 @@ def train_reporter(
     )
     val_result = reporter.score(
         (val_x0, val_x1),
-        val_labels.to(args.device),
+        val_labels.to(device),
     )
 
     output_dir = elk_cache_dir() / args.name
@@ -78,7 +80,7 @@ def train_reporter(
     reporter_dir.mkdir(parents=True, exist_ok=True)
     stats = [train_loss, *val_result]
 
-    if not args.skip_baseline and not args.num_devices > 1:
+    if not args.skip_baseline:
         # TODO: Once we implement cross-validation for CCS, we should benchmark
         # against LogisticRegressionCV here.
         lr_model = LogisticRegression(max_iter=10_000)
@@ -99,21 +101,23 @@ def train_reporter(
 
 
 def train(args):
-    # This is needed to use multiprocessing with CUDA.
-    mp.set_start_method("spawn")
+    # We use a multiprocessing context with "spawn" as the start method so CUDA works
+    ctx = mp.get_context("spawn")
 
     # Reproducibility
     np.random.seed(args.seed)
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    # load the training hidden states.
+    # Load the training hidden states.
+    print("Loading training hidden states...")
     cache_dir = elk_cache_dir() / args.name
     train_hiddens, train_labels = load_hidden_states(
         path=cache_dir / "train_hiddens.pt"
     )
 
-    # load the validation hidden states.
+    # Load the validation hidden states.
+    print("Loading validation hidden states...")
     val_hiddens, val_labels = load_hidden_states(
         path=cache_dir / "validation_hiddens.pt"
     )
@@ -129,9 +133,14 @@ def train(args):
 
     L = train_hiddens.shape[1]
 
-    train_layers = list(train_hiddens.share_memory_().unbind(1))
-    val_layers = list(val_hiddens.share_memory_().unbind(1))
+    train_layers = list(train_hiddens.unbind(1))
+    val_layers = list(val_hiddens.unbind(1))
     iterator = zip(train_layers, val_layers)
+
+    # Intelligently select device indices to use based on free memory.
+    # TODO: Set the min_memory argument to some heuristic lower bound
+    device_indices = select_usable_gpus(args.max_gpus)
+    devices = [f"cuda:{i}" for i in device_indices] if device_indices else ["cpu"]
 
     # Collect the results and update the progress bar.
     with open(cache_dir / "eval.csv", "w") as f:
@@ -143,7 +152,7 @@ def train(args):
         writer.writerow(cols)
 
         # Don't bother with multiprocessing if we're only using one device.
-        if args.num_devices == 1:
+        if len(devices) == 1:
             pbar = tqdm(iterator, total=L, unit="layer")
             for i, (train_h, val_h) in enumerate(pbar):
                 train_reporter(
@@ -153,12 +162,13 @@ def train(args):
                     val_h,
                     train_labels,
                     val_labels,
+                    device=devices[0],
                 )
         else:
             # Use one queue to distribute the work to the workers, and another to
             # collect the results.
-            data_queue = mp.Queue()
-            result_queue = mp.Queue()
+            data_queue = ctx.Queue()
+            result_queue = ctx.Queue()
             for i, (train_h, val_h) in enumerate(iterator):
                 data_queue.put((i, train_h, val_h, train_labels, val_labels))
 
@@ -169,17 +179,17 @@ def train(args):
 
             # Start the workers.
             workers = []
-            for i in range(args.num_devices):
-                worker = mp.Process(
+            for device in devices:
+                worker = ctx.Process(
                     target=train_task,
                     args=(data_queue, result_queue, args),
-                    kwargs=dict(rank=i),
+                    kwargs=dict(device=device),
                 )
                 worker.start()
                 workers.append(worker)
 
             pbar = tqdm(total=L, unit="layer")
-            while not data_queue.empty() or not result_queue.empty():
+            for _ in range(L):
                 i, *stats = result_queue.get()
                 pbar.update()
                 writer.writerow([L - i] + [f"{s:.4f}" for s in stats])
