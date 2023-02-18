@@ -1,21 +1,29 @@
-from ..files import elk_cache_dir
-from .preprocessing import load_hidden_states, normalize
-from .reporter import Reporter
+import csv
+import pickle
+import random
+
+import numpy as np
+import torch
+import torch.distributed as dist
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm.auto import tqdm
-import csv
-import numpy as np
-import pickle
-import random
-import torch
-import torch.distributed as dist
+
+from elk.files import args_to_uuid
+
+from ..files import elk_cache_dir
+from .preprocessing import load_hidden_states, normalize
+from .reporter import Reporter
 
 
 def train(args):
     rank = dist.get_rank() if dist.is_initialized() else 0
     if dist.is_initialized() and not args.skip_baseline and rank == 0:
         print("Skipping LR baseline during distributed training.")
+    
+    if not args.reporters_dir:
+        args.reporters_dir = args_to_uuid(args)
+        print("args.reporters_dir", args.reporters_dir)
 
     # Reproducibility
     np.random.seed(args.seed)
@@ -127,8 +135,10 @@ def train(args):
 
     reporters.reverse()
     lr_models.reverse()
+    
+    path = elk_cache_dir() / args.name / "reporters" / args.reporters_dir
+    path.mkdir(parents=True, exist_ok=True)
 
-    path = elk_cache_dir() / args.name
     if rank == 0:
         cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
         if not args.skip_baseline:

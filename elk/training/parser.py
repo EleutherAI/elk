@@ -11,6 +11,11 @@ def get_training_parser(name=True) -> ArgumentParser:
 
 def add_train_args(parser: ArgumentParser):
     parser.add_argument(
+        "--reporters_dir",
+        type=str,
+        default=None
+    )
+    parser.add_argument(
         "--device",
         type=str,
         help="PyTorch device to use. Default is cuda:0 if available.",
