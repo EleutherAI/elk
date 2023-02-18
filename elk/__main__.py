@@ -4,7 +4,6 @@ from .argparsers import add_train_args, get_extraction_parser
 from .files import args_to_uuid
 from .list import list_runs
 from argparse import ArgumentParser
-import logging
 
 
 def run():
@@ -54,8 +53,6 @@ def run():
         elif args.layer_stride > 1:
             args.layers = list(range(0, num_layers, args.layer_stride))
 
-    import torch.distributed as dist
-
     # Default to CUDA iff available
     if args.device is None:
         import torch
@@ -67,8 +64,6 @@ def run():
 
     for key in list(vars(args).keys()):
         print("{}: {}".format(key, vars(args)[key]))
-
-    logging.getLogger("transformers").setLevel(logging.ERROR)
 
     # Import here and not at the top to speed up `elk list`
     from .extraction.extraction_main import run as run_extraction
@@ -84,6 +79,8 @@ def run():
             run_extraction(args)
 
             # Ensure the extraction is finished before starting training
+            import torch.distributed as dist
+
             if dist.is_initialized():
                 dist.barrier()
 
