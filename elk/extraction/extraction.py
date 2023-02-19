@@ -5,9 +5,14 @@ from .prompt_collator import Prompt, PromptCollator
 from dataclasses import dataclass
 from einops import rearrange
 from torch.utils.data import DataLoader
-from tqdm.auto import tqdm
-from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase, AutoModel
-from typing import cast, Literal, Iterator, Sequence
+from transformers import (
+    BatchEncoding,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+    AutoModel,
+)
+from typing import cast, Literal, Sequence
+import logging
 import numpy as np
 import torch
 import torch.multiprocessing as mp
@@ -36,71 +41,66 @@ def extract_hiddens(
     prompt_suffix: str = "",
     token_loc: Literal["first", "last", "mean"] = "last",
     use_encoder_states: bool = False,
-    seed_start: int = 42,
 ):
     """Run inference on a model with a set of prompts, yielding the hidden states."""
 
     ctx = mp.get_context("spawn")
     queue = ctx.Queue()
 
-    # use different random seed for each process
-    curr_seed = seed_start
-    workers = []
-
-    # Start the workers.
     num_gpus = torch.cuda.device_count()
-    shards = np.array_split(np.arange(len(collator)), num_gpus)
-    for rank, proc_indices in enumerate(shards):
-        params = ExtractionParameters(
-            model_str=model_str,
-            tokenizer=tokenizer,
-            collator=collator.split_and_copy(proc_indices, curr_seed),
-            batch_size=batch_size,
-            layers=layers,
-            prompt_suffix=prompt_suffix,
-            token_loc=token_loc,
-            use_encoder_states=use_encoder_states,
-        )
+    params = ExtractionParameters(
+        model_str=model_str,
+        tokenizer=tokenizer,
+        collator=collator,
+        batch_size=batch_size,
+        layers=layers,
+        prompt_suffix=prompt_suffix,
+        token_loc=token_loc,
+        use_encoder_states=use_encoder_states,
+    )
 
-        worker = ctx.Process(
-            target=_extract_hiddens_process,
-            args=(queue, params, rank),
-        )
-        worker.start()
-        workers.append(worker)
+    # Spawn a process for each GPU
+    ctx = torch.multiprocessing.spawn(
+        _extract_hiddens_process,
+        args=(num_gpus, queue, params),
+        nprocs=num_gpus,
+        join=False,
+    )
+    assert ctx is not None
 
-        curr_seed += 1
-
-    # Consume the results from the queue
+    # Yield results from the queue
     for _ in range(len(collator)):
         yield queue.get()
 
     # Clean up
-    for worker in workers:
-        worker.join()
+    ctx.join()
 
 
 @torch.no_grad()
 def _extract_hiddens_process(
+    rank: int,
+    world_size: int,
     queue: mp.Queue,
     params: ExtractionParameters,
-    rank: int,
-) -> Iterator[dict]:
+):
     """
     Do inference on a model with a set of prompts on a single process.
     To be passed to Dataset.from_generator.
     """
     print(f"Process with rank={rank}")
+    if rank != 0:
+        logging.getLogger("transformers").setLevel(logging.CRITICAL)
+
+    shards = np.array_split(np.arange(len(params.collator)), world_size)
+    params.collator.select_(shards[rank])
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    print(f"Rank={rank}: Loading model '{params.model_str}'...")
     model = AutoModel.from_pretrained(params.model_str, torch_dtype="auto")
-    print(f"Rank={rank}: Done. Model class: '{model.__class__.__name__}'")
 
     if params.use_encoder_states and not model.config.is_encoder_decoder:
         raise ValueError(
-            "--use_encoder_states is only compatible with encoder-decoder models."
+            "use_encoder_states is only compatible with encoder-decoder models."
         )
 
     model = model.to(f"cuda:{rank}")
@@ -205,7 +205,7 @@ def _extract_hiddens_process(
     )
 
     # Iterating over questions
-    for batch in tqdm(dl, position=rank):
+    for batch in dl:
         # Condition 1: Encoder-decoder transformer, with answer in the decoder
         if not should_concat:
             questions, answers, labels = batch
@@ -219,7 +219,9 @@ def _extract_hiddens_process(
             # you get a ConnectionResetErrror
             queue.put(
                 {
-                    "hiddens": torch.stack(outputs.decoder_hidden_states, dim=2).cpu().numpy(),
+                    "hiddens": torch.stack(outputs.decoder_hidden_states, dim=2)
+                    .cpu()
+                    .numpy(),
                     "labels": labels,
                 }
             )
@@ -230,7 +232,7 @@ def _extract_hiddens_process(
 
             # Skip the input embeddings which are unlikely to be interesting
             h = model(**choices, output_hidden_states=True).hidden_states[1:]
-            
+
             # need to convert hidden states to numpy array first or
             # you get a ConnectionResetErrror
             queue.put(

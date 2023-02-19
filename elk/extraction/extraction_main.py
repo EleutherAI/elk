@@ -3,11 +3,10 @@
 from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
-from ..utils import maybe_all_gather
 from transformers import AutoConfig, AutoTokenizer
 import json
-import torch
 from datasets import Dataset
+
 
 def run(args):
     def extract(args, split: str):
@@ -37,18 +36,18 @@ def run(args):
                 print(f"Randomizing over {len(prompt_names)} prompts: {prompt_names}")
             else:
                 raise ValueError(f"Unknown prompt strategy: {args.prompts}")
-        
+
         return Dataset.from_generator(
             extract_hiddens,
-            gen_kwargs = {
-                'model_str': args.model,
-                'tokenizer': tokenizer,
-                'collator': collator,
-                'layers': args.layers,
-                'prompt_suffix': args.prompt_suffix,
-                'token_loc': args.token_loc,
-                'use_encoder_states': args.use_encoder_states,
-            }
+            gen_kwargs={
+                "model_str": args.model,
+                "tokenizer": tokenizer,
+                "collator": collator,
+                "layers": args.layers,
+                "prompt_suffix": args.prompt_suffix,
+                "token_loc": args.token_loc,
+                "use_encoder_states": args.use_encoder_states,
+            },
         )
 
     print("Loading tokenizer...")
@@ -70,9 +69,8 @@ def run(args):
     with open(save_dir / "args.json", "w") as f:
         json.dump(vars(args), f)
 
-    config = AutoConfig.from_pretrained(args.model)
-
     with open(save_dir / "model_config.json", "w") as f:
+        config = AutoConfig.from_pretrained(args.model)
         json.dump(config.to_dict(), f)
-    
+
     return train_dset, valid_dset

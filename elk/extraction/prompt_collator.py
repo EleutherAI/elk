@@ -155,22 +155,5 @@ class PromptCollator(Dataset):
         )
         self.label_fracs = counts / counts.sum()
 
-    def split_and_copy(self, indices, new_seed):
-        """
-        To avoid copying entire dataest num_proccesses times when multiprocessing,
-        this makes a shallow copy of self, but with self.dataset split
-        according to given indices.
-        """
-        dataset_split = self.dataset.select(indices)
-
-        # only shallow copy is needed -- multiprocess will pickle (dill) objects
-        self_copy = copy.copy(self)
-        self_copy.dataset = dataset_split
-
-        # redo counts based on new split
-        self_copy.set_labels()
-
-        # give copy a new rng
-        self_copy.rng = Random(new_seed)
-
-        return self_copy
+    def select_(self, indices):
+        self.dataset = self.dataset.select(indices)
