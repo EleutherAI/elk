@@ -204,10 +204,12 @@ def _extract_hiddens_process(
                 output_hidden_states=True,
             )
             # [batch_size, num_layers, num_choices, hidden_size]
-            yield {
-                "hiddens": torch.stack(outputs.decoder_hidden_states, dim=2),
-                "labels": labels,
-            }
+            queue.put(
+                {
+                    "hiddens": torch.stack(outputs.decoder_hidden_states, dim=2),
+                    "labels": labels,
+                }
+            )
 
         # Condition 2: Either a decoder-only transformer or a transformer encoder
         else:
