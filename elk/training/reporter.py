@@ -46,6 +46,7 @@ class ReporterConfig:
             layer. Defaults to False.
         supervised_weight: The weight of the supervised loss. Defaults to 0.0.
     """
+
     in_features: int
 
     activation: Type[nn.Module] = nn.GELU
@@ -67,7 +68,7 @@ class Reporter(nn.Module):
 
         Args:
             in_features: The number of input features.
-            
+
         """
         super().__init__()
 

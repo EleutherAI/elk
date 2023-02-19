@@ -49,6 +49,7 @@ class PromptCollatorConfig:
         strategy: The strategy to use for assigning prompt templates to examples. See
             above for details. Defaults to `"randomize"`.
     """
+
     path: str
     name: Optional[str] = None
     split: str = "validation"
@@ -142,7 +143,9 @@ class PromptCollator(TorchDataset):
         # NOTE: Should we actually support non-ClassLabel labels? The essential thing
         # is that we know the number of classes, and ClassLabel makes that easy.
         elif config.label_column not in features:
-            raise ValueError(f"Dataset {config.path} has no column '{config.label_column}'")
+            raise ValueError(
+                f"Dataset {config.path} has no column '{config.label_column}'"
+            )
         elif not isinstance(features[config.label_column], ClassLabel):
             raise ValueError(
                 f"Column '{config.label_column}' in dataset {config.path} is not a `ClassLabel`"

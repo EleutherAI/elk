@@ -25,6 +25,7 @@ class ExtractionConfig:
             decoder states. This allows simplification from an encoder-decoder
             model to an encoder-only model. Defaults to False.
     """
+
     prompts: PromptCollatorConfig
 
     # TODO: Bring back auto-batching when we have a good way to prevent excess padding
@@ -90,11 +91,9 @@ def extract_hiddens(
         tokenized_questions = tokenize(
             [prompt.question for prompt in prompts for _ in range(num_choices)]
         )
-        tokenized_answers = tokenize([
-            prompt.answers[i]
-            for prompt in prompts
-            for i in range(num_choices)
-        ])
+        tokenized_answers = tokenize(
+            [prompt.answers[i] for prompt in prompts for i in range(num_choices)]
+        )
         labels = [prompt.label for prompt in prompts]
         return tokenized_questions, tokenized_answers, labels
 
