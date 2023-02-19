@@ -9,6 +9,11 @@ from datasets import Dataset
 
 
 def run(args):
+    """Run the extraction subcommand for ELK.
+
+    This function is called upon running `elk extract`.
+    """
+
     def extract(args, split: str):
         """Extract hidden states for a given split.
 
