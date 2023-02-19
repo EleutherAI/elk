@@ -16,7 +16,7 @@ import torch
 import torch.multiprocessing as mp
 
 
-def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, device: int = 0):
+def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, device: str):
     """Worker function for training reporters in parallel."""
 
     # Reproducibility
@@ -26,9 +26,7 @@ def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, device: int 
 
     while not input_q.empty():
         i, *data = input_q.get()
-        out_q.put(
-            (i, *train_reporter(args, i, *data, f"cuda:{device}"))  # type: ignore
-        )
+        out_q.put((i, *train_reporter(args, i, *data, device)))  # type: ignore
 
 
 def train_reporter(
