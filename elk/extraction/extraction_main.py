@@ -105,10 +105,8 @@ def run(args):
     maybe_barrier()  # Not strictly necessary but makes the output cleaner
     extract(args, "train")
     maybe_barrier()
-    print("wow")
     extract(args, "validation")
 
-    print("hi")
     if not dist.is_initialized() or dist.get_rank() == 0:
         with open(save_dir / "args.json", "w") as f:
             json.dump(vars(args), f)
