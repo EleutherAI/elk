@@ -3,6 +3,7 @@
 from .losses import ccs_squared_loss, js_loss
 from ..utils import maybe_ddp_wrap, maybe_all_gather, maybe_all_reduce
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
 from torch.nn.functional import binary_cross_entropy as bce
@@ -25,72 +26,81 @@ class EvalResult(NamedTuple):
     auroc: float
 
 
+@dataclass
+class ReporterConfig:
+    """
+    Args:
+        in_features: The number of input features.
+        activation: The activation function to use. Defaults to GELU.
+        bias: Whether to use a bias term in the linear layers. Defaults to True.
+        device: The device to use. Defaults to None, which means "current device".
+        hidden_size: The number of hidden units in the MLP. Defaults to None.
+            By default, use an MLP expansion ratio of 4/3. This ratio is used by
+            Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
+            MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
+            but this seems to lead to excessively large MLPs when num_layers > 2.
+        init: The initialization scheme to use. Defaults to "zero".
+        loss: The loss function to use. Defaults to "squared".
+        num_layers: The number of layers in the MLP. Defaults to 1.
+        pre_ln: Whether to include a LayerNorm module before the first linear
+            layer. Defaults to False.
+        supervised_weight: The weight of the supervised loss. Defaults to 0.0.
+    """
+    in_features: int
+
+    activation: Type[nn.Module] = nn.GELU
+    bias: bool = True
+    device: Optional[str] = None
+    hidden_size: Optional[int] = None
+    init: Literal["default", "spherical", "zero"] = "zero"
+    loss: Literal["js", "squared"] = "squared"
+    num_layers: int = 1
+    pre_ln: bool = False
+    supervised_weight: float = 0.0
+
+
 class Reporter(nn.Module):
     """An ELK reporter network."""
 
-    def __init__(
-        self,
-        in_features: int,
-        *,
-        activation: Type[nn.Module] = nn.GELU,
-        bias: bool = True,
-        device: Optional[str] = None,
-        hidden_size: Optional[int] = None,
-        init: Literal["default", "spherical", "zero"] = "zero",
-        loss: Literal["js", "squared"] = "squared",
-        num_layers: int = 1,
-        pre_ln: bool = False,
-        supervised_weight: float = 0.0,
-    ):
+    def __init__(self, config: ReporterConfig):
         """Builds an ELK reporter network.
 
         Args:
             in_features: The number of input features.
-            activation: The activation function to use. Defaults to GELU.
-            bias: Whether to use a bias term in the linear layers. Defaults to True.
-            device: The device to use. Defaults to None, which means "current device".
-            hidden_size: The number of hidden units in the MLP. Defaults to None.
-                By default, use an MLP expansion ratio of 4/3. This ratio is used by
-                Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
-                MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
-                but this seems to lead to excessively large MLPs when num_layers > 2.
-            init: The initialization scheme to use. Defaults to "zero".
-            loss: The loss function to use. Defaults to "squared".
-            num_layers: The number of layers in the MLP. Defaults to 1.
-            pre_ln: Whether to include a LayerNorm module before the first linear
-                layer. Defaults to False.
-            supervised_weight: The weight of the supervised loss. Defaults to 0.0.
+            
         """
         super().__init__()
 
-        hidden_size = hidden_size or 4 * in_features // 3
+        hidden_size = config.hidden_size or 4 * config.in_features // 3
 
         self.probe = nn.Sequential(
             nn.Linear(
-                in_features,
-                1 if num_layers < 2 else hidden_size,
-                bias=bias,
-                device=device,
+                config.in_features,
+                1 if config.num_layers < 2 else hidden_size,
+                bias=config.bias,
+                device=config.device,
             ),
         )
-        if pre_ln:
-            self.probe.insert(0, nn.LayerNorm(in_features, elementwise_affine=False))
+        if config.pre_ln:
+            self.probe.insert(
+                0, nn.LayerNorm(config.in_features, elementwise_affine=False)
+            )
 
-        for i in range(1, num_layers):
-            self.probe.append(activation())
+        for i in range(1, config.num_layers):
+            self.probe.append(config.activation())
             self.probe.append(
                 nn.Linear(
                     hidden_size,
-                    1 if i == num_layers - 1 else hidden_size,
-                    bias=bias,
-                    device=device,
+                    1 if i == config.num_layers - 1 else hidden_size,
+                    bias=config.bias,
+                    device=config.device,
                 )
             )
 
-        self.init = init
-        self.device = device
-        self.unsupervised_loss = js_loss if loss == "js" else ccs_squared_loss
-        self.supervised_weight = supervised_weight
+        self.init = config.init
+        self.device = config.device
+        self.unsupervised_loss = js_loss if config.loss == "js" else ccs_squared_loss
+        self.supervised_weight = config.supervised_weight
 
     def reset_parameters(self):
         """Reset the parameters of the probe.

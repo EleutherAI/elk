@@ -52,7 +52,6 @@ def run(args):
                 tokenizer,
                 collator,
                 layers=args.layers,
-                prompt_suffix=args.prompt_suffix,
                 token_loc=args.token_loc,
                 use_encoder_states=args.use_encoder_states,
             )
