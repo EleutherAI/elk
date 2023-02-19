@@ -1,5 +1,5 @@
 import pytest
-from elk.extraction.parser import get_extraction_parser
+from elk.argparsers import get_extraction_parser
 
 
 @pytest.mark.cpu

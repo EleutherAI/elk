@@ -1,3 +1,5 @@
+"""Functions for extracting the hidden states of a model."""
+
 from ..utils import pytree_map
 from .prompt_collator import Prompt, PromptCollator
 from dataclasses import dataclass
@@ -235,7 +237,7 @@ def _extract_hiddens_process(
                 "labels": labels,
             }
 
-        # Either a decoder-only transformer or a transformer encoder
+        # Condition 2: Either a decoder-only transformer or a transformer encoder
         else:
             choices, labels = batch
 

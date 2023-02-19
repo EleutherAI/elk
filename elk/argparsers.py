@@ -1,7 +1,10 @@
+"""Functions for constructing CLI argument parsers."""
+
 from argparse import ArgumentParser
 
 
 def get_extraction_parser():
+    """Get parser for `elk extract`."""
     parser = ArgumentParser(add_help=False)
     add_saveable_args(parser)
     add_unsaveable_args(parser)
@@ -9,6 +12,11 @@ def get_extraction_parser():
 
 
 def add_saveable_args(parser):
+    """Add arguments that should be hashed into the UUID.
+
+    These arguments are used to generate a unique ID for the extraction
+    through the args_to_uuid function in elk/files.py.
+    """
     parser.add_argument(
         "model",
         type=str,
@@ -86,6 +94,8 @@ def add_saveable_args(parser):
 
 
 def add_unsaveable_args(parser):
+    """Add arguments that should not be hashed into the UUID."""
+
     parser.add_argument(
         "--name",
         type=str,
@@ -116,6 +126,7 @@ def add_unsaveable_args(parser):
 
 
 def get_saveable_args(args):
+    """Get all arguments that should be hashed into the UUID."""
     only_saveable_parser = ArgumentParser(add_help=False)
     add_saveable_args(only_saveable_parser)
 
@@ -130,3 +141,72 @@ def get_saveable_args(args):
         [],
     )
     return {k: v for k, v in vars(args).items() if k in only_saveable_args}
+
+
+def add_train_args(parser: ArgumentParser):
+    parser.add_argument(
+        "--device",
+        type=str,
+        help="PyTorch device to use. Default is cuda:0 if available.",
+    )
+    parser.add_argument(
+        "--normalization",
+        type=str,
+        default="meanonly",
+        choices=("legacy", "elementwise", "meanonly"),
+        help="Normalization method to use for CCS.",
+    )
+    parser.add_argument(
+        "--init",
+        type=str,
+        default="default",
+        choices=("default", "spherical", "zero"),
+        help="Initialization for reporter.",
+    )
+    parser.add_argument(
+        "--label-frac",
+        type=float,
+        default=0.0,
+        help="Fraction of labeled data to use for training.",
+    )
+    parser.add_argument(
+        "--loss",
+        type=str,
+        default="squared",
+        choices=("js", "squared"),
+        help="Loss function used for reporter.",
+    )
+    parser.add_argument(
+        "--num-tries",
+        type=int,
+        default=10,
+        help="Number of random initializations to try.",
+    )
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        default="lbfgs",
+        choices=("adam", "lbfgs"),
+        help="Optimizer for reporter. Should be adam or lbfgs.",
+    )
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--skip-baseline",
+        action="store_true",
+        help="Skip training the logistic regression baseline.",
+    )
+    parser.add_argument(
+        "--supervised-weight",
+        type=float,
+        default=0.0,
+        help="Weight of the supervised loss in the reporter objective.",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=0.01,
+        help=(
+            "Weight decay for reporter when using Adam. Used as L2 penalty in LBFGS."
+        ),
+    )
+    return parser
