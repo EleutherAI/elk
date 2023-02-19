@@ -3,15 +3,14 @@
 from ..utils import pytree_map
 from .prompt_collator import Prompt, PromptCollator
 from dataclasses import dataclass
-from datasets import Dataset
 from einops import rearrange
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
 from typing import cast, Literal, Iterator, Sequence
-import multiprocess as mp
 import numpy as np
 import torch
+import torch.multiprocessing as mp
 
 
 @dataclass
@@ -26,17 +25,6 @@ class ExtractionParameters:
     use_encoder_states: bool = False
 
 
-def get_device_ids(local_rank: int, local_world_size: int) -> list[int]:
-    """
-    Splits devices among local_world_size processes and returns their ids.
-    """
-    devices_per_proc = torch.cuda.device_count() // local_world_size
-    device_ids = list(
-        range(local_rank * devices_per_proc, (local_rank + 1) * devices_per_proc)
-    )
-    return device_ids
-
-
 def extract_hiddens(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
@@ -48,23 +36,21 @@ def extract_hiddens(
     prompt_suffix: str = "",
     token_loc: Literal["first", "last", "mean"] = "last",
     use_encoder_states: bool = False,
-    num_procs: int = 1,
     seed_start: int = 42,
 ):
     """Run inference on a model with a set of prompts, yielding the hidden states."""
 
-    # Dataset.from_generator expects a list >= num_procs
-    # This wraps given parameters into a list of ExtractionParameters with length
-    # num_procs
-    # Samples are split among processes here, instead of through Dataset.from_generator
-    all_proc_indices = np.array_split(np.arange(len(collator)), num_procs)
-
-    all_params = []
+    ctx = mp.get_context("spawn")
+    queue = ctx.Queue()
 
     # use different random seed for each process
     curr_seed = seed_start
+    workers = []
 
-    for proc_indices in all_proc_indices:
+    # Start the workers.
+    num_gpus = torch.cuda.device_count()
+    shards = np.array_split(np.arange(len(collator)), num_gpus)
+    for rank, proc_indices in enumerate(shards):
         params = ExtractionParameters(
             model=model,
             tokenizer=tokenizer,
@@ -76,51 +62,37 @@ def extract_hiddens(
             use_encoder_states=use_encoder_states,
         )
 
-        all_params.append(params)
+        worker = ctx.Process(
+            target=_extract_hiddens_process,
+            args=(queue, params, rank),
+        )
+        worker.start()
+        workers.append(worker)
 
         curr_seed += 1
 
-    # each list needs to have length num_proc
-    multiprocess_kwargs = {
-        "wrapped_params": all_params,
-        "wrapped_rank": list(range(num_procs)),
-        "wrapped_num_procs": [num_procs] * num_procs,
-    }
+    # Consume the results from the queue
+    for _ in range(len(collator)):
+        yield queue.get()
 
-    # CUDA needs os.spawn instead of the default os.fork (on Unix)
-    mp.set_start_method("spawn")
-
-    return Dataset.from_generator(
-        _extract_hiddens_process, gen_kwargs=multiprocess_kwargs, num_proc=num_procs
-    )
+    # Clean up
+    for worker in workers:
+        worker.join()
 
 
 @torch.no_grad()
 def _extract_hiddens_process(
-    wrapped_params: list[ExtractionParameters],
-    wrapped_rank: list[int],
-    wrapped_num_procs: list[int],
+    queue: mp.Queue,
+    params: ExtractionParameters,
+    rank: int,
 ) -> Iterator[dict]:
     """
     Do inference on a model with a set of prompts on a single process.
     To be passed to Dataset.from_generator.
     """
+    print(f"Process with rank={rank}")
 
-    # Dataset.from_generator splits input kwargs into lists
-    params = wrapped_params[0]
-    rank = wrapped_rank[0]
-    num_procs = wrapped_num_procs[0]
-
-    device_ids = get_device_ids(rank, num_procs)
-
-    print(f"Process with rank={rank} using GPUs with ids={device_ids}")
-
-    # TODO: multi-GPU processes (i.e., sharded models) support
-    if len(device_ids) > 1:
-        raise ValueError("Only one GPU per process is supported.")
-
-    model = params.model.to(device_ids[0])
-
+    model = params.model.to(f"cuda:{rank}")
     num_choices = len(params.collator.labels)
 
     # TODO: Make this configurable or something
@@ -135,7 +107,7 @@ def _extract_hiddens_process(
 
     def tokenize(strings: list[str]):
         return pytree_map(
-            lambda x: x.to(device_ids[0]),
+            lambda x: x.to(f"cuda:{rank}"),
             params.tokenizer(
                 strings,
                 padding=True,
@@ -243,7 +215,9 @@ def _extract_hiddens_process(
 
             # Skip the input embeddings which are unlikely to be interesting
             h = model(**choices, output_hidden_states=True).hidden_states[1:]
-            yield {
-                "hiddens": reduce_seqs(h, choices["attention_mask"]),
-                "labels": labels,
-            }
+            queue.put(
+                {
+                    "hiddens": reduce_seqs(h, choices["attention_mask"]),
+                    "labels": labels,
+                }
+            )

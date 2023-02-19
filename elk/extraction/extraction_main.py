@@ -48,7 +48,6 @@ def run(args):
                 prompt_suffix=args.prompt_suffix,
                 token_loc=args.token_loc,
                 use_encoder_states=args.use_encoder_states,
-                num_procs=torch.cuda.device_count(),
             )
         ]
         save_dir.mkdir(parents=True, exist_ok=True)
