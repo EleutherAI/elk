@@ -76,7 +76,9 @@ def run(args):
     print(f"Done. Model class: '{model.__class__.__name__}'")
 
     # Intelligently select a GPU with enough memory
-    if not dist.is_initialized() and torch.cuda.is_available():
+    if dist.is_initialized():
+        model.to(f"cuda:{dist.get_rank()}")
+    elif torch.cuda.is_available():
         # We at least need enough VRAM to hold the model parameters
         min_memory = sum(p.element_size() * p.numel() for p in model.parameters())
         (device_idx,) = select_usable_gpus(max_gpus=1, min_memory=min_memory)
@@ -99,6 +101,10 @@ def run(args):
 
     print("Loading datasets")
     silence_datasets_messages()
+
+    # Not strictly necessary but makes the output cleaner
+    if dist.is_initialized():
+        dist.barrier()
 
     extract(args, "train")
     extract(args, "validation")

@@ -19,6 +19,11 @@ import torch.multiprocessing as mp
 def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, device: int = 0):
     """Worker function for training reporters in parallel."""
 
+    # Reproducibility
+    np.random.seed(args.seed)
+    random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
     while not input_q.empty():
         i, *data = input_q.get()
         out_q.put(
@@ -104,11 +109,6 @@ def train(args):
     # We use a multiprocessing context with "spawn" as the start method so CUDA works
     ctx = mp.get_context("spawn")
 
-    # Reproducibility
-    np.random.seed(args.seed)
-    random.seed(args.seed)
-    torch.manual_seed(args.seed)
-
     # Load the training hidden states.
     print("Loading training hidden states...")
     cache_dir = elk_cache_dir() / args.name
@@ -133,8 +133,8 @@ def train(args):
 
     L = train_hiddens.shape[1]
 
-    train_layers = list(train_hiddens.unbind(1))
-    val_layers = list(val_hiddens.unbind(1))
+    train_layers = train_hiddens.unbind(1)
+    val_layers = val_hiddens.unbind(1)
     iterator = zip(train_layers, val_layers)
 
     # Intelligently select device indices to use based on free memory.
