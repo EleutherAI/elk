@@ -97,12 +97,6 @@ def add_unsaveable_args(parser):
     """Add arguments that should not be hashed into the UUID."""
 
     parser.add_argument(
-        "--name",
-        type=str,
-        help="Name of the experiment. If not provided, a name as a md5 hash "
-        "of the form c7f9cac6827745ec4d3ca2fcdbfde451 will be generated.",
-    )
-    parser.add_argument(
         "--val-frac",
         type=float,
         default=0.25,
@@ -171,6 +165,14 @@ def add_train_args(parser: ArgumentParser):
         default="squared",
         choices=("js", "squared"),
         help="Loss function used for reporter.",
+    )
+    parser.add_argument(
+        "--name",
+        type=str,
+        help=(
+            "Name of the experiment. If not provided, a random memorable name of the "
+            "form 'goofy-goodall' be generated."
+        ),
     )
     parser.add_argument(
         "--num-tries",

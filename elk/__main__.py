@@ -1,7 +1,7 @@
 """Main entry point for `elk`."""
 
 from .argparsers import add_train_args, get_extraction_parser
-from .files import args_to_uuid
+from .files import args_to_uuid, memorably_named_dir
 from .list import list_runs
 from argparse import ArgumentParser
 from contextlib import nullcontext, redirect_stdout
