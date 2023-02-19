@@ -3,11 +3,9 @@
 from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
-from ..utils import maybe_all_gather, maybe_barrier, select_usable_gpus
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoConfig, AutoTokenizer
 import json
-import torch
-import torch.distributed as dist
+from datasets import Dataset
 
 
 def run(args):
@@ -45,49 +43,17 @@ def run(args):
             else:
                 raise ValueError(f"Unknown prompt strategy: {args.prompts}")
 
-        items = [
-            (features, labels)
-            for features, labels in extract_hiddens(
-                model,
-                tokenizer,
-                collator,
-                layers=args.layers,
-                prompt_suffix=args.prompt_suffix,
-                token_loc=args.token_loc,
-                use_encoder_states=args.use_encoder_states,
-            )
-        ]
-        save_dir.mkdir(parents=True, exist_ok=True)
-
-        with open(save_dir / f"{split}_hiddens.pt", "wb") as f:
-            hidden_batches, label_batches = zip(*items)
-            hiddens = maybe_all_gather(torch.cat(hidden_batches))  # type: ignore
-
-            # Moving labels to GPU just to be able to use maybe_all_gather
-            labels = torch.tensor(sum(label_batches, []), device=hiddens.device)
-            labels = maybe_all_gather(labels)  # type: ignore
-
-            if not dist.is_initialized() or dist.get_rank() == 0:
-                torch.save((hiddens.cpu(), labels.cpu()), f)
-
-    # AutoModel should do the right thing here in nearly all cases. We don't actually
-    # care what head the model has, since we are just extracting hidden states.
-    print(f"Loading model '{args.model}'...")
-    model = AutoModel.from_pretrained(args.model, torch_dtype="auto")
-    print(f"Done. Model class: '{model.__class__.__name__}'")
-
-    # Intelligently select a GPU with enough memory
-    if dist.is_initialized():
-        model.to(f"cuda:{dist.get_rank()}")
-    elif torch.cuda.is_available():
-        # We at least need enough VRAM to hold the model parameters
-        min_memory = sum(p.element_size() * p.numel() for p in model.parameters())
-        (device_idx,) = select_usable_gpus(max_gpus=1, min_memory=min_memory)
-        model.to(f"cuda:{device_idx}")
-
-    if args.use_encoder_states and not model.config.is_encoder_decoder:
-        raise ValueError(
-            "--use_encoder_states is only compatible with encoder-decoder models."
+        return Dataset.from_generator(
+            extract_hiddens,
+            gen_kwargs={
+                "model_str": args.model,
+                "tokenizer": tokenizer,
+                "collator": collator,
+                "layers": args.layers,
+                "prompt_suffix": args.prompt_suffix,
+                "token_loc": args.token_loc,
+                "use_encoder_states": args.use_encoder_states,
+            },
         )
 
     print("Loading tokenizer...")
@@ -103,14 +69,14 @@ def run(args):
     print("Loading datasets")
     silence_datasets_messages()
 
-    maybe_barrier()  # Not strictly necessary but makes the output cleaner
-    extract(args, "train")
-    maybe_barrier()
-    extract(args, "validation")
+    train_dset = extract(args, "train")
+    valid_dset = extract(args, "validation")
 
-    if not dist.is_initialized() or dist.get_rank() == 0:
-        with open(save_dir / "args.json", "w") as f:
-            json.dump(vars(args), f)
+    with open(save_dir / "args.json", "w") as f:
+        json.dump(vars(args), f)
 
-        with open(save_dir / "model_config.json", "w") as f:
-            json.dump(model.config.to_dict(), f)
+    with open(save_dir / "model_config.json", "w") as f:
+        config = AutoConfig.from_pretrained(args.model)
+        json.dump(config.to_dict(), f)
+
+    return train_dset, valid_dset

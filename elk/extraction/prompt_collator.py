@@ -13,9 +13,8 @@ from numpy.typing import NDArray
 from promptsource.templates import DatasetTemplates
 from random import Random
 from torch.utils.data import Dataset as TorchDataset
-from typing import Literal, Optional, cast
+from typing import Literal, Optional
 import numpy as np
-import torch.distributed as dist
 
 
 @dataclass
@@ -102,6 +101,7 @@ class PromptCollator(TorchDataset):
             ds_dict = ds_dict[split_name].train_test_split(
                 seed=seed, shuffle=False, stratify_by_column=label_column
             )
+            assert isinstance(ds_dict, DatasetDict)
 
         # Lots of datasets have a validation split or a test split, but not both. If
         # the requested split doesn't exist, we try to use the other one instead.
@@ -166,37 +166,33 @@ class PromptCollator(TorchDataset):
             print(f"Undersampling classes to {smallest_size} examples each")
 
             # First group the active split by class
-            strata = [
+            strata = (
                 self.active_split.filter(lambda ex: ex[label_column] == i)
                 for i in range(self.num_classes)
-            ]
-            # Then randomly sample `smallest_size` examples from each class and merge
-            self.active_split = cast(
-                Dataset,
-                concatenate_datasets(
-                    [
-                        stratum.select(
-                            self.rng.sample(range(len(stratum)), k=smallest_size)
-                        )
-                        for stratum in strata
-                    ]
-                ),
             )
+            # Then randomly sample `smallest_size` examples from each class and merge
+            undersampled = concatenate_datasets(
+                [
+                    stratum.select(
+                        self.rng.sample(range(len(stratum)), k=smallest_size)
+                    )
+                    for stratum in strata
+                ]
+            )
+            assert isinstance(undersampled, Dataset)
+            self.active_split = undersampled
 
             # Sanity check that we successfully balanced the classes
             class_sizes = np.bincount(
-                self.active_split[label_column], minlength=self.num_classes
+                list(self.active_split[label_column]), minlength=self.num_classes
             )
             assert np.all(class_sizes == smallest_size)
 
         # Store the (possibly post-undersampling) empirical class balance for later
         self.class_fracs: NDArray[np.floating] = class_sizes / class_sizes.sum()
 
-        # Shard across ranks iff we're in a distributed setting
-        if dist.is_initialized():
-            self.active_split = self.active_split.shard(
-                dist.get_world_size(), dist.get_rank()
-            )
+        if self.num_classes < 2:
+            raise ValueError(f"Dataset {path}/{name} has only one label")
 
         # We use stratified sampling to create few-shot prompts that are as balanced as
         # possible. If needed, create the strata now so that we can use them later.
@@ -220,7 +216,7 @@ class PromptCollator(TorchDataset):
                 for i in range(self.num_classes)
             ]
         else:
-            self.fewshot_strata: list[Dataset] = []
+            self.fewshot_strata = []
 
         # Now shuffle the active split and truncate it if needed
         self.active_split = self.active_split.shuffle(seed=seed)
@@ -293,3 +289,6 @@ class PromptCollator(TorchDataset):
 
         # We piggyback on the ClassLabel feature type to get the number of classes
         return self.active_split.features[self.label_column].num_classes
+
+    def select_(self, indices):
+        self.dataset = self.dataset.select(indices)
