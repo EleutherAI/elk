@@ -3,7 +3,7 @@
 from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
-from ..utils import maybe_all_gather, select_usable_gpus
+from ..utils import maybe_all_gather, maybe_barrier, select_usable_gpus
 from transformers import AutoModel, AutoTokenizer
 import json
 import torch
@@ -102,14 +102,14 @@ def run(args):
     print("Loading datasets")
     silence_datasets_messages()
 
-    # Not strictly necessary but makes the output cleaner
-    if dist.is_initialized():
-        dist.barrier()
-
+    maybe_barrier()  # Not strictly necessary but makes the output cleaner
     extract(args, "train")
+    maybe_barrier()
+    print("wow")
     extract(args, "validation")
 
-    if dist.is_initialized() or dist.get_rank() == 0:
+    print("hi")
+    if not dist.is_initialized() or dist.get_rank() == 0:
         with open(save_dir / "args.json", "w") as f:
             json.dump(vars(args), f)
 

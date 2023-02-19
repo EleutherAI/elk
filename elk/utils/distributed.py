@@ -19,6 +19,15 @@ def maybe_all_gather(x: Tensor) -> Tensor:
     return buffer
 
 
+def maybe_barrier() -> None:
+    """Wait for all ranks to reach this point if needed.
+
+    Does nothing if `torch.distributed.is_initialized() is False`.
+    """
+    if dist.is_initialized():
+        dist.barrier()
+
+
 def maybe_all_reduce(x: Tensor) -> Tensor:
     """Average the tensor across all ranks if needed.
 
