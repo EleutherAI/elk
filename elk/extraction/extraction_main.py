@@ -7,7 +7,7 @@ from ..utils import maybe_all_gather
 from transformers import AutoConfig, AutoTokenizer
 import json
 import torch
-
+from datasets import Dataset
 
 def run(args):
     def extract(args, split: str):
@@ -37,28 +37,19 @@ def run(args):
                 print(f"Randomizing over {len(prompt_names)} prompts: {prompt_names}")
             else:
                 raise ValueError(f"Unknown prompt strategy: {args.prompts}")
-
-        items = [
-            (features, labels)
-            for features, labels in extract_hiddens(
-                args.model,
-                tokenizer,
-                collator,
-                layers=args.layers,
-                prompt_suffix=args.prompt_suffix,
-                token_loc=args.token_loc,
-                use_encoder_states=args.use_encoder_states,
-            )
-        ]
-        save_dir.mkdir(parents=True, exist_ok=True)
-
-        with open(save_dir / f"{split}_hiddens.pt", "wb") as f:
-            hidden_batches, label_batches = zip(*items)
-            hiddens = maybe_all_gather(torch.cat(hidden_batches))  # type: ignore
-
-            labels = torch.tensor(sum(label_batches, []))
-
-            torch.save((hiddens.cpu(), labels.cpu()), f)
+        
+        return Dataset.from_generator(
+            extract_hiddens,
+            gen_kwargs = {
+                'model_str': args.model,
+                'tokenizer': tokenizer,
+                'collator': collator,
+                'layers': args.layers,
+                'prompt_suffix': args.prompt_suffix,
+                'token_loc': args.token_loc,
+                'use_encoder_states': args.use_encoder_states,
+            }
+        )
 
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
@@ -73,8 +64,8 @@ def run(args):
     print("Loading datasets")
     silence_datasets_messages()
 
-    extract(args, "train")
-    extract(args, "validation")
+    train_dset = extract(args, "train")
+    valid_dset = extract(args, "validation")
 
     with open(save_dir / "args.json", "w") as f:
         json.dump(vars(args), f)
@@ -83,3 +74,5 @@ def run(args):
 
     with open(save_dir / "model_config.json", "w") as f:
         json.dump(config.to_dict(), f)
+    
+    return train_dset, valid_dset
