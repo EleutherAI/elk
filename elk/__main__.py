@@ -4,6 +4,8 @@ from .argparsers import add_train_args, get_extraction_parser
 from .files import args_to_uuid
 from .list import list_runs
 from argparse import ArgumentParser
+from contextlib import nullcontext, redirect_stdout
+import logging
 import warnings
 
 
@@ -38,7 +40,6 @@ def run():
         list_runs(args)
         return
 
-    # Import here and not at the top to speed up `elk list`
     from transformers import AutoConfig, PretrainedConfig
 
     config = AutoConfig.from_pretrained(args.model)
@@ -66,30 +67,47 @@ def run():
     # Import here and not at the top to speed up `elk list`
     from .extraction.extraction_main import run as run_extraction
     from .training.train import train
+    import os
+    import torch.distributed as dist
 
-    # Print CLI arguments to stdout
-    for key, value in vars(args).items():
-        print(f"{key}: {value}")
+    # Check if we were called with torchrun or not
+    local_rank = os.environ.get("LOCAL_RANK")
+    if local_rank is not None:
+        dist.init_process_group("nccl")
+        local_rank = int(local_rank)
 
-    if args.command == "extract":
-        run_extraction(args)
-    elif args.command == "elicit":
-        # The user can specify a name for the run, but by default we use the
-        # MD5 hash of the arguments to ensure the name is unique
-        if not args.name:
-            args.name = args_to_uuid(args)
+    with redirect_stdout(None) if local_rank else nullcontext():
+        # Print CLI arguments to stdout
+        for key, value in vars(args).items():
+            print(f"{key}: {value}")
 
-        try:
-            train(args)
-        except (EOFError, FileNotFoundError):
+        if local_rank:
+            logging.getLogger("transformers").setLevel(logging.CRITICAL)
+
+        if args.command == "extract":
             run_extraction(args)
-            train(args)
+        elif args.command == "elicit":
+            # The user can specify a name for the run, but by default we use the
+            # MD5 hash of the arguments to ensure the name is unique
+            if not args.name:
+                args.name = args_to_uuid(args)
 
-    elif args.command == "eval":
-        # TODO: Implement evaluation script
-        raise NotImplementedError
-    else:
-        raise ValueError(f"Unknown command {args.command}")
+            try:
+                train(args)
+            except (EOFError, FileNotFoundError):
+                run_extraction(args)
+
+                # Ensure the extraction is finished before starting training
+                if dist.is_initialized():
+                    dist.barrier()
+
+                train(args)
+
+        elif args.command == "eval":
+            # TODO: Implement evaluation script
+            raise NotImplementedError
+        else:
+            raise ValueError(f"Unknown command {args.command}")
 
 
 if __name__ == "__main__":
