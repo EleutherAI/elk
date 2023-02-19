@@ -4,7 +4,7 @@ from .extraction import extract_hiddens, PromptCollator
 from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
 from ..utils import maybe_all_gather
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoConfig, AutoTokenizer
 import json
 import torch
 
@@ -41,7 +41,7 @@ def run(args):
         items = [
             (features, labels)
             for features, labels in extract_hiddens(
-                model,
+                args.model,
                 tokenizer,
                 collator,
                 layers=args.layers,
@@ -59,17 +59,6 @@ def run(args):
             labels = torch.tensor(sum(label_batches, []))
 
             torch.save((hiddens.cpu(), labels.cpu()), f)
-
-    # AutoModel should do the right thing here in nearly all cases. We don't actually
-    # care what head the model has, since we are just extracting hidden states.
-    print(f"Loading model '{args.model}'...")
-    model = AutoModel.from_pretrained(args.model, torch_dtype="auto")
-    print(f"Done. Model class: '{model.__class__.__name__}'")
-
-    if args.use_encoder_states and not model.config.is_encoder_decoder:
-        raise ValueError(
-            "--use_encoder_states is only compatible with encoder-decoder models."
-        )
 
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
@@ -90,5 +79,7 @@ def run(args):
     with open(save_dir / "args.json", "w") as f:
         json.dump(vars(args), f)
 
+    config = AutoConfig.from_pretrained(args.model)
+
     with open(save_dir / "model_config.json", "w") as f:
-        json.dump(model.config.to_dict(), f)
+        json.dump(config.to_dict(), f)

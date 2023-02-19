@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from einops import rearrange
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase, AutoModel
 from typing import cast, Literal, Iterator, Sequence
 import numpy as np
 import torch
@@ -15,7 +15,7 @@ import torch.multiprocessing as mp
 
 @dataclass
 class ExtractionParameters:
-    model: PreTrainedModel
+    model_str: str
     tokenizer: PreTrainedTokenizerBase
     collator: PromptCollator
     batch_size: int = 1
@@ -26,7 +26,7 @@ class ExtractionParameters:
 
 
 def extract_hiddens(
-    model: PreTrainedModel,
+    model_str: str,
     tokenizer: PreTrainedTokenizerBase,
     collator: PromptCollator,
     *,
@@ -52,7 +52,7 @@ def extract_hiddens(
     shards = np.array_split(np.arange(len(collator)), num_gpus)
     for rank, proc_indices in enumerate(shards):
         params = ExtractionParameters(
-            model=model,
+            model_str=model_str,
             tokenizer=tokenizer,
             collator=collator.split_and_copy(proc_indices, curr_seed),
             batch_size=batch_size,
@@ -92,7 +92,18 @@ def _extract_hiddens_process(
     """
     print(f"Process with rank={rank}")
 
-    model = params.model.to(f"cuda:{rank}")
+    # AutoModel should do the right thing here in nearly all cases. We don't actually
+    # care what head the model has, since we are just extracting hidden states.
+    print(f"Rank={rank}: Loading model '{params.model_str}'...")
+    model = AutoModel.from_pretrained(params.model_str, torch_dtype="auto")
+    print(f"Rank={rank}: Done. Model class: '{model.__class__.__name__}'")
+
+    if params.use_encoder_states and not model.config.is_encoder_decoder:
+        raise ValueError(
+            "--use_encoder_states is only compatible with encoder-decoder models."
+        )
+
+    model = model.to(f"cuda:{rank}")
     num_choices = len(params.collator.labels)
 
     # TODO: Make this configurable or something
