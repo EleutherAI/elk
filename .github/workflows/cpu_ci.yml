@@ -19,6 +19,9 @@ jobs:
       - name: Install Dependencies
         run: pip install -e .[dev]
 
+      - name: Type Checking
+        uses: jakebailey/pyright-action@v1
+
       - name: Run CPU Tests
         run: pytest -m cpu
 
@@ -37,6 +40,9 @@ jobs:
 
       - name: Install Dependencies
         run: pip install -e .[dev]
+
+      - name: Type Checking
+        uses: jakebailey/pyright-action@v1
 
       - name: Run CPU Tests
         run: pytest -m cpu

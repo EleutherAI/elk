@@ -29,6 +29,7 @@ def run(args):
             max_examples=round(args.max_examples * frac) if args.max_examples else 0,
             split=split,
             label_column=args.label_column,
+            num_shots=args.num_shots,
             strategy=args.prompts,
             balance=args.balance,
         )

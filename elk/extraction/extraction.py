@@ -91,20 +91,20 @@ def _extract_hiddens_process(
     if rank != 0:
         logging.getLogger("transformers").setLevel(logging.CRITICAL)
 
+    num_choices = params.collator.num_classes
     shards = np.array_split(np.arange(len(params.collator)), world_size)
     params.collator.select_(shards[rank])
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(params.model_str, torch_dtype="auto")
+    model = AutoModel.from_pretrained(params.model_str, torch_dtype="auto").to(
+        f"cuda:{rank}"
+    )
 
     if params.use_encoder_states and not model.config.is_encoder_decoder:
         raise ValueError(
             "use_encoder_states is only compatible with encoder-decoder models."
         )
-
-    model = model.to(f"cuda:{rank}")
-    num_choices = len(params.collator.labels)
 
     # TODO: Make this configurable or something
     # Token used to separate the question from the answer
