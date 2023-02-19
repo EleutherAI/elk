@@ -215,9 +215,11 @@ def _extract_hiddens_process(
                 output_hidden_states=True,
             )
             # [batch_size, num_layers, num_choices, hidden_size]
+            # need to convert hidden states to numpy array first or
+            # you get a ConnectionResetErrror
             queue.put(
                 {
-                    "hiddens": torch.stack(outputs.decoder_hidden_states, dim=2),
+                    "hiddens": torch.stack(outputs.decoder_hidden_states, dim=2).cpu().numpy(),
                     "labels": labels,
                 }
             )
@@ -228,9 +230,12 @@ def _extract_hiddens_process(
 
             # Skip the input embeddings which are unlikely to be interesting
             h = model(**choices, output_hidden_states=True).hidden_states[1:]
+            
+            # need to convert hidden states to numpy array first or
+            # you get a ConnectionResetErrror
             queue.put(
                 {
-                    "hiddens": reduce_seqs(h, choices["attention_mask"]),
+                    "hiddens": reduce_seqs(h, choices["attention_mask"]).cpu().numpy(),
                     "labels": labels,
                 }
             )
