@@ -19,8 +19,11 @@ def list_runs(args):
     )
     for timestamp, run in subfolders:
         # Read the arguments used to run this experiment
-        with open(run / "args.json", "r") as f:
-            run_args = json.load(f)
+        try:
+            with open(run / "args.json", "r") as f:
+                run_args = json.load(f)
+        except FileNotFoundError:
+            continue
 
         date = datetime.fromtimestamp(timestamp).strftime("%X %x")
         num_bytes = sum(f.stat().st_size for f in run.glob("**/*") if f.is_file())

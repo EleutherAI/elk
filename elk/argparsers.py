@@ -117,11 +117,6 @@ def add_unsaveable_args(parser):
         ),
     )
     parser.add_argument(
-        "--device",
-        type=str,
-        help="PyTorch device to use. Default is cuda:0 if available.",
-    )
-    parser.add_argument(
         "--balance",
         type=bool,
         default=False,
@@ -148,20 +143,12 @@ def get_saveable_args(args):
     return {k: v for k, v in vars(args).items() if k in only_saveable_args}
 
 
-def get_training_parser(name=True) -> ArgumentParser:
-    """Add `elk train` arguments to parser."""
-    parser = ArgumentParser(add_help=False)
-    if name:
-        parser.add_argument("name", type=str, help="Name of the experiment")
-    add_train_args(parser)
-    return parser
-
-
 def add_train_args(parser: ArgumentParser):
     parser.add_argument(
-        "--device",
-        type=str,
-        help="PyTorch device to use. Default is cuda:0 if available.",
+        "--max-gpus",
+        type=int,
+        default=-1,
+        help="Maximum number of GPUs to use. Default is -1, or no limit.",
     )
     parser.add_argument(
         "--normalization",
