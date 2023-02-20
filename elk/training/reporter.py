@@ -54,6 +54,7 @@ class ReporterConfig(Serializable):
     loss: Literal["js", "squared"] = "squared"
     num_layers: int = 1
     pre_ln: bool = False
+    seed: int = 42
     supervised_weight: float = 0.0
 
 

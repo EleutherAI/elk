@@ -79,7 +79,6 @@ def run(cfg: ExtractionConfig):
             "--use_encoder_states is only compatible with encoder-decoder models."
         )
 
-    print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(cfg.model)
 
     save_dir = elk_cache_dir() / md5(pickle.dumps(cfg)).hexdigest()
@@ -93,7 +92,6 @@ def run(cfg: ExtractionConfig):
         with open(save_dir / "model_config.json", "w") as f:
             json.dump(model.config.to_dict(), f)
 
-    print("Loading datasets")
     silence_datasets_messages()
 
     maybe_barrier()  # Not strictly necessary but makes the output cleaner

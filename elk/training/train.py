@@ -5,13 +5,13 @@ from ..utils import select_usable_gpus
 from ..extraction import ExtractionConfig
 from .preprocessing import load_hidden_states, normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
-from argparse import Namespace
 from dataclasses import dataclass
 from hashlib import md5
+from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm.auto import tqdm
-from typing import Literal
+from typing import Literal, Optional
 import csv
 import numpy as np
 import pickle
@@ -40,17 +40,19 @@ class RunConfig:
     skip_baseline: bool = False
 
 
-def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, device: str):
+def train_task(
+    input_q: mp.Queue, out_q: mp.Queue, cfg: RunConfig, device: str, out_dir: Path
+):
     """Worker function for training reporters in parallel."""
 
     # Reproducibility
-    np.random.seed(args.seed)
-    random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    np.random.seed(cfg.net.seed)
+    random.seed(cfg.net.seed)
+    torch.manual_seed(cfg.net.seed)
 
     while not input_q.empty():
         i, *data = input_q.get()
-        out_q.put((i, *train_reporter(args, i, *data, device)))  # type: ignore
+        out_q.put((i, *train_reporter(cfg, i, *data, device, out_dir)))  # type: ignore
 
 
 def train_reporter(
@@ -61,6 +63,7 @@ def train_reporter(
     train_labels: torch.Tensor,
     val_labels: torch.Tensor,
     device: str,
+    out_dir: Path,
 ):
     """Train a single reporter on a single layer."""
 
@@ -74,7 +77,7 @@ def train_reporter(
     train_labels_aug = torch.cat([train_labels, 1 - train_labels])
     val_labels_aug = torch.cat([val_labels, 1 - val_labels])
 
-    reporter = Reporter(train_h.shape[-1], cfg.net)
+    reporter = Reporter(train_h.shape[-1] // 2, cfg.net, device=device)
     if cfg.label_frac:
         num_labels = round(cfg.label_frac * len(train_labels))
         labels = train_labels[:num_labels].to(device)
@@ -87,11 +90,8 @@ def train_reporter(
         val_labels.to(device),
     )
 
-    data_uuid = md5(pickle.dumps(cfg.data)).hexdigest()
-    output_dir = elk_cache_dir() / data_uuid
-
-    lr_dir = output_dir / "lr_models"
-    reporter_dir = output_dir / "reporters"
+    lr_dir = out_dir / "lr_models"
+    reporter_dir = out_dir / "reporters"
 
     lr_dir.mkdir(parents=True, exist_ok=True)
     reporter_dir.mkdir(parents=True, exist_ok=True)
@@ -117,24 +117,26 @@ def train_reporter(
     return stats
 
 
-def train(cfg: RunConfig):
+def train(cfg: RunConfig, out_dir: Optional[Path]):
     # We use a multiprocessing context with "spawn" as the start method so CUDA works
     ctx = mp.get_context("spawn")
 
     data_uuid = md5(pickle.dumps(cfg.data)).hexdigest()
-    cache_dir = elk_cache_dir() / data_uuid
+    data_dir = elk_cache_dir() / data_uuid
 
     # Load the training hidden states.
-    print("Loading training hidden states...")
-    train_hiddens, train_labels = load_hidden_states(
-        path=cache_dir / "train_hiddens.pt"
-    )
+    train_hiddens, train_labels = load_hidden_states(path=data_dir / "train_hiddens.pt")
 
     # Load the validation hidden states.
-    print("Loading validation hidden states...")
     val_hiddens, val_labels = load_hidden_states(
-        path=cache_dir / "validation_hiddens.pt"
+        path=data_dir / "validation_hiddens.pt"
     )
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        # Save the results in the same directory as the hidden states,
+        # if no output directory is specified.
+        out_dir = data_dir
 
     # Ensure that the states are valid.
     assert len(set(train_labels)) > 1
@@ -157,7 +159,7 @@ def train(cfg: RunConfig):
     devices = [f"cuda:{i}" for i in device_indices] if device_indices else ["cpu"]
 
     # Collect the results and update the progress bar.
-    with open(cache_dir / "eval.csv", "w") as f:
+    with open(out_dir / "eval.csv", "w") as f:
         cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
         if not cfg.skip_baseline:
             cols += ["lr_auroc", "lr_acc"]
@@ -177,6 +179,7 @@ def train(cfg: RunConfig):
                     train_labels,
                     val_labels,
                     device=devices[0],
+                    out_dir=out_dir,
                 )
         else:
             # Use one queue to distribute the work to the workers, and another to
@@ -197,7 +200,7 @@ def train(cfg: RunConfig):
                 worker = ctx.Process(
                     target=train_task,
                     args=(data_queue, result_queue, cfg),
-                    kwargs=dict(device=device),
+                    kwargs=dict(device=device, out_dir=out_dir),
                 )
                 worker.start()
                 workers.append(worker)

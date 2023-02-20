@@ -21,21 +21,17 @@ class ExtractionConfig(Serializable):
         model: HuggingFace model string identifying the language model to extract
             hidden states from.
         prompts: The configuration for the prompt prompts.
-        batch_size: The batch size to use for inference.
         layers: The layers to extract hidden states from.
         layer_stride: Shortcut for setting `layers` to `range(0, num_layers, stride)`.
-        token_loc: The location of the token to extract hidden states from can be
+        token_loc: The location of the token to extract hidden states from. Can be
             either "first", "last", or "mean". Defaults to "last".
-        use_encoder_states: Whether to use the encoder states instead of the decoder
-            states. This allows simplification from an encoder-decoder model to an
-            encoder-only model. Defaults to False.
+        use_encoder_states: Whether to extract hiddens from the encoder in
+            encoder-decoder models. Defaults to False.
     """
 
     prompts: PromptConfig
     model: str = field(positional=True)
 
-    # TODO: Bring back auto-batching when we have a good way to prevent excess padding
-    batch_size: int = 1
     layers: Sequence[int] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
@@ -75,6 +71,9 @@ def extract_hiddens(
     tokenizer: PreTrainedTokenizerBase,
     prompts: PromptDataset,
     config: ExtractionConfig,
+    *,
+    # TODO: Bring back auto-batching when we have a good way to prevent excess padding
+    batch_size: int = 1,
 ) -> Iterable[tuple[torch.Tensor, list[int]]]:
     """Run inference on a model with a set of prompts, yielding the hidden states.
 
@@ -177,7 +176,7 @@ def extract_hiddens(
 
     dl = DataLoader(
         prompts,
-        batch_size=config.batch_size,
+        batch_size=batch_size,
         collate_fn=collate if should_concat else collate_enc_dec,
     )
 
