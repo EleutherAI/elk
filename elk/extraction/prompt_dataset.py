@@ -12,6 +12,7 @@ from datasets import (
 from numpy.typing import NDArray
 from promptsource.templates import DatasetTemplates
 from random import Random
+from simple_parsing.helpers import field, Serializable
 from torch.utils.data import Dataset as TorchDataset
 from typing import Literal, Optional, cast
 import numpy as np
@@ -30,8 +31,8 @@ class Prompt:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
 
 
-@dataclass(frozen=True)
-class PromptConfig:
+@dataclass
+class PromptConfig(Serializable):
     """
     Args:
         dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
@@ -50,7 +51,7 @@ class PromptConfig:
             above for details. Defaults to `"randomize"`.
     """
 
-    dataset: str
+    dataset: str = field(positional=True)
     split: str = "validation"
     balance: bool = False
     label_column: Optional[str] = None

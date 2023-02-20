@@ -8,14 +8,6 @@ import os
 import pickle
 
 
-def args_to_uuid(args: Namespace) -> str:
-    """Generate a unique ID based on the input arguments."""
-
-    identifying_args = get_saveable_args(args)
-
-    return md5(pickle.dumps(identifying_args)).hexdigest()
-
-
 def elk_cache_dir() -> Path:
     """Return the path to the directory where files are stored."""
     env_dir = os.environ.get("ELK_CACHE_DIR", None)

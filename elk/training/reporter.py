@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
+from simple_parsing.helpers import Serializable
 from torch.nn.functional import binary_cross_entropy as bce
 from typing import cast, Literal, NamedTuple, Optional, Union
 import math
@@ -27,10 +28,9 @@ class EvalResult(NamedTuple):
 
 
 @dataclass
-class ReporterConfig:
+class ReporterConfig(Serializable):
     """
     Args:
-        in_features: The number of input features.
         activation: The activation function to use. Defaults to GELU.
         bias: Whether to use a bias term in the linear layers. Defaults to True.
         device: The device to use. Defaults to None, which means "current device".
@@ -47,8 +47,6 @@ class ReporterConfig:
         supervised_weight: The weight of the supervised loss. Defaults to 0.0.
     """
 
-    in_features: int
-
     activation: Literal["gelu", "relu", "swish"] = "gelu"
     bias: bool = True
     hidden_size: Optional[int] = None
@@ -59,8 +57,8 @@ class ReporterConfig:
     supervised_weight: float = 0.0
 
 
-@dataclass(frozen=True)
-class OptimConfig:
+@dataclass
+class OptimConfig(Serializable):
     """
     Args:
         lr: The learning rate to use. Ignored when `optimizer` is `"lbfgs"`.
@@ -79,25 +77,30 @@ class OptimConfig:
 
 
 class Reporter(nn.Module):
-    """An ELK reporter network."""
+    """An ELK reporter network.
 
-    def __init__(self, cfg: ReporterConfig, device: Optional[str] = None):
+    Args:
+        in_features: The number of input features.
+        cfg: The reporter configuration.
+    """
+
+    def __init__(
+        self, in_features: int, cfg: ReporterConfig, device: Optional[str] = None
+    ):
         super().__init__()
 
-        hidden_size = cfg.hidden_size or 4 * cfg.in_features // 3
+        hidden_size = cfg.hidden_size or 4 * in_features // 3
 
         self.probe = nn.Sequential(
             nn.Linear(
-                cfg.in_features,
+                in_features,
                 1 if cfg.num_layers < 2 else hidden_size,
                 bias=cfg.bias,
                 device=device,
             ),
         )
         if cfg.pre_ln:
-            self.probe.insert(
-                0, nn.LayerNorm(cfg.in_features, elementwise_affine=False)
-            )
+            self.probe.insert(0, nn.LayerNorm(in_features, elementwise_affine=False))
 
         act_cls = {
             "gelu": nn.GELU,

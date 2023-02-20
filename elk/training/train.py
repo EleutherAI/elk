@@ -2,6 +2,7 @@
 
 from ..files import elk_cache_dir
 from ..utils import select_usable_gpus
+from ..extraction import ExtractionConfig
 from .preprocessing import load_hidden_states, normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from argparse import Namespace
@@ -10,6 +11,7 @@ from hashlib import md5
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm.auto import tqdm
+from typing import Literal
 import csv
 import numpy as np
 import pickle
@@ -19,17 +21,22 @@ import torch.multiprocessing as mp
 
 
 @dataclass
-class TrainingConfig:
-    """
+class RunConfig:
+    """Full specification of a reporter training run.
+
     Args:
-        net: The configuration for the reporter network.
-        optim: The configuration for the optimizer.
+        data: Config specifying hidden states on which the reporter will be trained.
+        net: Config for building the reporter network.
+        optim: Config for the `.fit()` loop.
     """
 
+    data: ExtractionConfig
     net: ReporterConfig
     optim: OptimConfig
 
     label_frac: float = 0.0
+    max_gpus: int = -1
+    normalization: Literal["legacy", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
 
 
@@ -47,7 +54,7 @@ def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, device: str)
 
 
 def train_reporter(
-    cfg: TrainingConfig,
+    cfg: RunConfig,
     layer_index: int,
     train_h: torch.Tensor,
     val_h: torch.Tensor,
@@ -67,7 +74,7 @@ def train_reporter(
     train_labels_aug = torch.cat([train_labels, 1 - train_labels])
     val_labels_aug = torch.cat([val_labels, 1 - val_labels])
 
-    reporter = Reporter(cfg.net)
+    reporter = Reporter(train_h.shape[-1], cfg.net)
     if cfg.label_frac:
         num_labels = round(cfg.label_frac * len(train_labels))
         labels = train_labels[:num_labels].to(device)
@@ -80,7 +87,9 @@ def train_reporter(
         val_labels.to(device),
     )
 
-    output_dir = elk_cache_dir() / md5(pickle.dumps(cfg)).hexdigest()
+    data_uuid = md5(pickle.dumps(cfg.data)).hexdigest()
+    output_dir = elk_cache_dir() / data_uuid
+
     lr_dir = output_dir / "lr_models"
     reporter_dir = output_dir / "reporters"
 
@@ -108,13 +117,15 @@ def train_reporter(
     return stats
 
 
-def train(args):
+def train(cfg: RunConfig):
     # We use a multiprocessing context with "spawn" as the start method so CUDA works
     ctx = mp.get_context("spawn")
 
+    data_uuid = md5(pickle.dumps(cfg.data)).hexdigest()
+    cache_dir = elk_cache_dir() / data_uuid
+
     # Load the training hidden states.
     print("Loading training hidden states...")
-    cache_dir = elk_cache_dir() / args.name
     train_hiddens, train_labels = load_hidden_states(
         path=cache_dir / "train_hiddens.pt"
     )
@@ -131,7 +142,7 @@ def train(args):
 
     # Normalize the hidden states with the specified method.
     train_hiddens, val_hiddens = normalize(
-        train_hiddens, val_hiddens, args.normalization
+        train_hiddens, val_hiddens, cfg.normalization
     )
 
     L = train_hiddens.shape[1]
@@ -142,13 +153,13 @@ def train(args):
 
     # Intelligently select device indices to use based on free memory.
     # TODO: Set the min_memory argument to some heuristic lower bound
-    device_indices = select_usable_gpus(args.max_gpus)
+    device_indices = select_usable_gpus(cfg.max_gpus)
     devices = [f"cuda:{i}" for i in device_indices] if device_indices else ["cpu"]
 
     # Collect the results and update the progress bar.
     with open(cache_dir / "eval.csv", "w") as f:
         cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
-        if not args.skip_baseline:
+        if not cfg.skip_baseline:
             cols += ["lr_auroc", "lr_acc"]
 
         writer = csv.writer(f)
@@ -159,7 +170,7 @@ def train(args):
             pbar = tqdm(iterator, total=L, unit="layer")
             for i, (train_h, val_h) in enumerate(pbar):
                 train_reporter(
-                    args,
+                    cfg,
                     i,
                     train_h,
                     val_h,
@@ -185,7 +196,7 @@ def train(args):
             for device in devices:
                 worker = ctx.Process(
                     target=train_task,
-                    args=(data_queue, result_queue, args),
+                    args=(data_queue, result_queue, cfg),
                     kwargs=dict(device=device),
                 )
                 worker.start()

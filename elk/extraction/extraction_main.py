@@ -17,7 +17,6 @@ def run(cfg: ExtractionConfig):
 
     This function is called upon running `elk extract`.
     """
-    print(cfg)
 
     def extract(split: str):
         """Extract hidden states for a given split.
@@ -31,12 +30,12 @@ def run(cfg: ExtractionConfig):
         prompts = PromptDataset(cfg.prompts)
         if split == "train":
             prompt_names = prompts.prompter.all_template_names
-            if cfg.prompts == "all":
+            if cfg.prompts.strategy == "all":
                 print(f"Using {len(prompt_names)} prompts per example: {prompt_names}")
-            elif cfg.prompts == "randomize":
+            elif cfg.prompts.strategy == "randomize":
                 print(f"Randomizing over {len(prompt_names)} prompts: {prompt_names}")
             else:
-                raise ValueError(f"Unknown prompt strategy: {cfg.prompts}")
+                raise ValueError(f"Unknown prompt strategy: {cfg.prompts.strategy}")
 
         items = [
             (features, labels)
@@ -84,7 +83,15 @@ def run(cfg: ExtractionConfig):
     tokenizer = AutoTokenizer.from_pretrained(cfg.model)
 
     save_dir = elk_cache_dir() / md5(pickle.dumps(cfg)).hexdigest()
+    save_dir.mkdir(parents=True, exist_ok=True)
     print(f"Saving results to \033[1m{save_dir}\033[0m")  # bold
+
+    if not dist.is_initialized() or dist.get_rank() == 0:
+        with open(save_dir / "cfg.yaml", "w") as f:
+            cfg.dump_yaml(f)
+
+        with open(save_dir / "model_config.json", "w") as f:
+            json.dump(model.config.to_dict(), f)
 
     print("Loading datasets")
     silence_datasets_messages()
@@ -93,10 +100,3 @@ def run(cfg: ExtractionConfig):
     extract("train")
     maybe_barrier()
     extract("validation")
-
-    if not dist.is_initialized() or dist.get_rank() == 0:
-        with open(save_dir / "args.json", "w") as f:
-            json.dump(vars(cfg), f)
-
-        with open(save_dir / "model_config.json", "w") as f:
-            json.dump(model.config.to_dict(), f)
