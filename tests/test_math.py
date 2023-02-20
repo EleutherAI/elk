@@ -3,6 +3,7 @@ from hypothesis import given, strategies as st
 from random import Random
 import math
 import numpy as np
+import pytest
 
 
 @given(
@@ -11,6 +12,7 @@ import numpy as np
     # ...and the total sum of the floats
     st.integers(min_value=1, max_value=int(np.finfo(np.float32).max)),
 )
+@pytest.mark.cpu
 def test_stochastic_rounding(num_parts: int, total: int):
     # Randomly sample the breakdown of the total into floats
     rng = np.random.default_rng(42)
