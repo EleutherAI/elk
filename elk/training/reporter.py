@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
 from torch.nn.functional import binary_cross_entropy as bce
-from typing import cast, Literal, NamedTuple, Optional, Type, Union
+from typing import cast, Literal, NamedTuple, Optional, Union
 import math
 import torch
 import torch.nn as nn
@@ -49,9 +49,8 @@ class ReporterConfig:
 
     in_features: int
 
-    activation: Type[nn.Module] = nn.GELU
+    activation: Literal["gelu", "relu", "swish"] = "gelu"
     bias: bool = True
-    device: Optional[str] = None
     hidden_size: Optional[int] = None
     init: Literal["default", "spherical", "zero"] = "zero"
     loss: Literal["js", "squared"] = "squared"
@@ -60,48 +59,67 @@ class ReporterConfig:
     supervised_weight: float = 0.0
 
 
+@dataclass(frozen=True)
+class OptimConfig:
+    """
+    Args:
+        lr: The learning rate to use. Ignored when `optimizer` is `"lbfgs"`.
+            Defaults to 1e-2.
+        num_epochs: The number of epochs to train for. Defaults to 1000.
+        num_tries: The number of times to try training the reporter. Defaults to 10.
+        optimizer: The optimizer to use. Defaults to "adam".
+        weight_decay: The weight decay or L2 penalty to use. Defaults to 0.01.
+    """
+
+    lr: float = 1e-2
+    num_epochs: int = 1000
+    num_tries: int = 10
+    optimizer: Literal["adam", "lbfgs"] = "adam"
+    weight_decay: float = 0.01
+
+
 class Reporter(nn.Module):
     """An ELK reporter network."""
 
-    def __init__(self, config: ReporterConfig):
-        """Builds an ELK reporter network.
-
-        Args:
-            in_features: The number of input features.
-
-        """
+    def __init__(self, cfg: ReporterConfig, device: Optional[str] = None):
         super().__init__()
 
-        hidden_size = config.hidden_size or 4 * config.in_features // 3
+        hidden_size = cfg.hidden_size or 4 * cfg.in_features // 3
 
         self.probe = nn.Sequential(
             nn.Linear(
-                config.in_features,
-                1 if config.num_layers < 2 else hidden_size,
-                bias=config.bias,
-                device=config.device,
+                cfg.in_features,
+                1 if cfg.num_layers < 2 else hidden_size,
+                bias=cfg.bias,
+                device=device,
             ),
         )
-        if config.pre_ln:
+        if cfg.pre_ln:
             self.probe.insert(
-                0, nn.LayerNorm(config.in_features, elementwise_affine=False)
+                0, nn.LayerNorm(cfg.in_features, elementwise_affine=False)
             )
 
-        for i in range(1, config.num_layers):
-            self.probe.append(config.activation())
+        act_cls = {
+            "gelu": nn.GELU,
+            "relu": nn.ReLU,
+            "swish": nn.SiLU,
+        }[cfg.activation]
+
+        for i in range(1, cfg.num_layers):
+            self.probe.append(act_cls())
             self.probe.append(
                 nn.Linear(
                     hidden_size,
-                    1 if i == config.num_layers - 1 else hidden_size,
-                    bias=config.bias,
-                    device=config.device,
+                    1 if i == cfg.num_layers - 1 else hidden_size,
+                    bias=cfg.bias,
+                    device=device,
                 )
             )
 
-        self.init = config.init
-        self.device = config.device
-        self.unsupervised_loss = js_loss if config.loss == "js" else ccs_squared_loss
-        self.supervised_weight = config.supervised_weight
+        self.init = cfg.init
+        self.device = device
+        self.unsupervised_loss = js_loss if cfg.loss == "js" else ccs_squared_loss
+        self.supervised_weight = cfg.supervised_weight
 
     def reset_parameters(self):
         """Reset the parameters of the probe.
@@ -197,13 +215,7 @@ class Reporter(nn.Module):
         self,
         contrast_pair: tuple[torch.Tensor, torch.Tensor],
         labels: Optional[torch.Tensor] = None,
-        *,
-        lr: float = 1e-2,
-        num_epochs: int = 1000,
-        num_tries: int = 10,
-        optimizer: Literal["adam", "lbfgs"] = "adam",
-        verbose: bool = False,
-        weight_decay: float = 0.01,
+        cfg: OptimConfig = OptimConfig(),
     ) -> float:
         """Fit the probe to the contrast pair (x0, x1).
 
@@ -226,30 +238,23 @@ class Reporter(nn.Module):
             RuntimeError: If the best loss is not finite.
         """
         self.validate_data(contrast_pair)
-        if verbose:
-            print(f"Fitting reporter; {num_epochs=}, {num_tries=}, {lr=}")
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf
         best_state: dict[str, torch.Tensor] = {}  # State dict of the best run
         x0, x1 = contrast_pair
 
-        for _ in range(num_tries):
+        for _ in range(cfg.num_tries):
             self.reset_parameters()
 
-            if optimizer == "lbfgs":
-                loss = self.train_loop_lbfgs(x0, x1, labels, num_epochs, weight_decay)
-            elif optimizer == "adam":
-                loss = self.train_loop_adam(
-                    x0, x1, labels, lr, num_epochs, weight_decay
-                )
+            if cfg.optimizer == "lbfgs":
+                loss = self.train_loop_lbfgs(x0, x1, labels, cfg)
+            elif cfg.optimizer == "adam":
+                loss = self.train_loop_adam(x0, x1, labels, cfg)
             else:
-                raise ValueError(f"Optimizer {optimizer} is not supported")
+                raise ValueError(f"Optimizer {cfg.optimizer} is not supported")
 
             if loss < best_loss:
-                if verbose:
-                    print(f"Found new best params; loss: {loss:.4f}")
-
                 best_loss = loss
                 best_state = deepcopy(self.state_dict())
 
@@ -307,17 +312,17 @@ class Reporter(nn.Module):
         x0,
         x1,
         labels: Optional[torch.Tensor],
-        lr: float,
-        num_epochs: int,
-        wd: float,
+        cfg: OptimConfig,
     ) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
 
         probe = maybe_ddp_wrap(self)
-        optimizer = torch.optim.AdamW(probe.parameters(), lr=lr, weight_decay=wd)
+        optimizer = torch.optim.AdamW(
+            probe.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
+        )
 
         loss = torch.inf
-        for _ in range(num_epochs):
+        for _ in range(cfg.num_epochs):
             optimizer.zero_grad()
 
             loss = self.loss(probe(x0), probe(x1), labels)
@@ -327,14 +332,14 @@ class Reporter(nn.Module):
         return float(loss)
 
     def train_loop_lbfgs(
-        self, x0, x1, labels: Optional[torch.Tensor], max_iter: int, l2_penalty: float
+        self, x0, x1, labels: Optional[torch.Tensor], cfg: OptimConfig
     ) -> float:
         """LBFGS train loop, returning the final loss. Modifies params in-place."""
 
         optimizer = torch.optim.LBFGS(
             self.parameters(),
             line_search_fn="strong_wolfe",
-            max_iter=max_iter,
+            max_iter=cfg.num_epochs,
             tolerance_change=torch.finfo(x0.dtype).eps,
             tolerance_grad=torch.finfo(x0.dtype).eps,
         )
@@ -351,7 +356,7 @@ class Reporter(nn.Module):
             # We explicitly add L2 regularization to the loss, since LBFGS
             # doesn't have a weight_decay parameter
             for param in self.parameters():
-                regularizer += l2_penalty * param.norm() ** 2 / 2
+                regularizer += cfg.weight_decay * param.norm() ** 2 / 2
 
             regularized = loss + regularizer
             regularized.backward()

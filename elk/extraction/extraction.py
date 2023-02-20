@@ -1,7 +1,7 @@
 """Functions for extracting the hidden states of a model."""
 
 from ..utils import pytree_map
-from .prompt_collator import Prompt, PromptCollator, PromptCollatorConfig
+from .prompt_dataset import Prompt, PromptDataset, PromptConfig
 from dataclasses import dataclass
 from einops import rearrange
 from torch.utils.data import DataLoader
@@ -16,17 +16,20 @@ import torch.distributed as dist
 class ExtractionConfig:
     """
     Args:
-        prompts: The configuration for the prompt collator.
+        model: HuggingFace model string identifying the language model to extract
+            hidden states from.
+        prompts: The configuration for the prompt prompts.
         batch_size: The batch size to use for inference.
         layers (Sequence[int]): The layers to extract hidden states from.
-        token_loc: The location of the token to extract hidden states from.
-            can be either "first", "last", or "mean". Defaults to "last".
-        use_encoder_states: Whether to use the encoder states instead of the
-            decoder states. This allows simplification from an encoder-decoder
-            model to an encoder-only model. Defaults to False.
+        token_loc: The location of the token to extract hidden states from can be
+            either "first", "last", or "mean". Defaults to "last".
+        use_encoder_states: Whether to use the encoder states instead of the decoder
+            states. This allows simplification from an encoder-decoder model to an
+            encoder-only model. Defaults to False.
     """
 
-    prompts: PromptCollatorConfig
+    model: str
+    prompts: PromptConfig
 
     # TODO: Bring back auto-batching when we have a good way to prevent excess padding
     batch_size: int = 1
@@ -40,7 +43,7 @@ class ExtractionConfig:
 def extract_hiddens(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
-    collator: PromptCollator,
+    prompts: PromptDataset,
     config: ExtractionConfig,
 ) -> Iterable[tuple[torch.Tensor, list[int]]]:
     """Run inference on a model with a set of prompts, yielding the hidden states.
@@ -48,11 +51,11 @@ def extract_hiddens(
     Args:
         model: The model to run inference on.
         tokenizer: The tokenizer to use for tokenization.
-        collator: The PromptCollator to use for generating prompts.
+        prompts: The PromptDataset to use for generating prompts.
     """
 
     device = model.device
-    num_choices = collator.num_classes
+    num_choices = prompts.num_classes
 
     # TODO: Make this configurable or something
     # Token used to separate the question from the answer
@@ -143,7 +146,7 @@ def extract_hiddens(
     should_concat = not is_enc_dec or config.use_encoder_states
 
     dl = DataLoader(
-        collator,
+        prompts,
         batch_size=config.batch_size,
         collate_fn=collate if should_concat else collate_enc_dec,
     )

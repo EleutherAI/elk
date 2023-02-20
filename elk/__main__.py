@@ -1,7 +1,6 @@
 """Main entry point for `elk`."""
 
 from .extraction import ExtractionConfig
-from .files import args_to_uuid
 from .list import list_runs
 from .training import ReporterConfig
 from contextlib import nullcontext, redirect_stdout
@@ -78,25 +77,16 @@ def run():
         local_rank = int(local_rank)
 
     with redirect_stdout(None) if local_rank else nullcontext():
-        # Print CLI arguments to stdout
-        for key, value in vars(args).items():
-            print(f"{key}: {value}")
-
         if local_rank:
             logging.getLogger("transformers").setLevel(logging.CRITICAL)
 
         if args.command == "extract":
-            run_extraction(args)
+            run_extraction(args.extraction_config)
         elif args.command == "elicit":
-            # The user can specify a name for the run, but by default we use the
-            # MD5 hash of the arguments to ensure the name is unique
-            if not args.name:
-                args.name = args_to_uuid(args)
-
             try:
                 train(args)
             except (EOFError, FileNotFoundError):
-                run_extraction(args)
+                run_extraction(args.extraction_config)
 
                 # Ensure the extraction is finished before starting training
                 if dist.is_initialized():

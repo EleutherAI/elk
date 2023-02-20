@@ -3,8 +3,10 @@
 from ..files import elk_cache_dir
 from ..utils import select_usable_gpus
 from .preprocessing import load_hidden_states, normalize
-from .reporter import Reporter
+from .reporter import OptimConfig, Reporter, ReporterConfig
 from argparse import Namespace
+from dataclasses import dataclass
+from hashlib import md5
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm.auto import tqdm
@@ -14,6 +16,21 @@ import pickle
 import random
 import torch
 import torch.multiprocessing as mp
+
+
+@dataclass
+class TrainingConfig:
+    """
+    Args:
+        net: The configuration for the reporter network.
+        optim: The configuration for the optimizer.
+    """
+
+    net: ReporterConfig
+    optim: OptimConfig
+
+    label_frac: float = 0.0
+    skip_baseline: bool = False
 
 
 def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, device: str):
@@ -30,7 +47,7 @@ def train_task(input_q: mp.Queue, out_q: mp.Queue, args: Namespace, device: str)
 
 
 def train_reporter(
-    args: Namespace,
+    cfg: TrainingConfig,
     layer_index: int,
     train_h: torch.Tensor,
     val_h: torch.Tensor,
@@ -50,32 +67,20 @@ def train_reporter(
     train_labels_aug = torch.cat([train_labels, 1 - train_labels])
     val_labels_aug = torch.cat([val_labels, 1 - val_labels])
 
-    reporter = Reporter(
-        in_features=x0.shape[-1],
-        device=device,
-        init=args.init,
-        loss=args.loss,
-        supervised_weight=args.supervised_weight,
-    )
-    if args.label_frac:
-        num_labels = round(args.label_frac * len(train_labels))
+    reporter = Reporter(cfg.net)
+    if cfg.label_frac:
+        num_labels = round(cfg.label_frac * len(train_labels))
         labels = train_labels[:num_labels].to(device)
     else:
         labels = None
 
-    train_loss = reporter.fit(
-        contrast_pair=(x0, x1),
-        labels=labels,
-        num_tries=args.num_tries,
-        optimizer=args.optimizer,
-        weight_decay=args.weight_decay,
-    )
+    train_loss = reporter.fit((x0, x1), labels, cfg.optim)
     val_result = reporter.score(
         (val_x0, val_x1),
         val_labels.to(device),
     )
 
-    output_dir = elk_cache_dir() / args.name
+    output_dir = elk_cache_dir() / md5(pickle.dumps(cfg)).hexdigest()
     lr_dir = output_dir / "lr_models"
     reporter_dir = output_dir / "reporters"
 
@@ -83,7 +88,7 @@ def train_reporter(
     reporter_dir.mkdir(parents=True, exist_ok=True)
     stats = [train_loss, *val_result]
 
-    if not args.skip_baseline:
+    if not cfg.skip_baseline:
         # TODO: Once we implement cross-validation for CCS, we should benchmark
         # against LogisticRegressionCV here.
         lr_model = LogisticRegression(max_iter=10_000)

@@ -1,1 +1,1 @@
-from .extraction import PromptCollator
+from .extraction import PromptDataset
