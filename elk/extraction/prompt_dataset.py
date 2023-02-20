@@ -1,5 +1,3 @@
-"""prompts for prompts."""
-
 from ..math import stochastic_round_constrained
 from dataclasses import dataclass
 from datasets import (
