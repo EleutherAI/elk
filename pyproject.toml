@@ -41,6 +41,7 @@ version = "0.0.1"
 
 [project.optional-dependencies]
 dev = [
+    "hypothesis",
     "pre-commit",
     "pytest",
 ]
@@ -53,6 +54,7 @@ reportPrivateImportUsage = false
 
 [tool.pytest.ini_options]
 markers = ["cpu: Marker for tests that do not depend on GPUs"]
+testpaths = ["tests"]
 
 [tool.setuptools]
 packages = ["elk"]
