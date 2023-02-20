@@ -1,19 +1,7 @@
 """Helper functions for dealing with files."""
 
-from .argparsers import get_saveable_args
-from argparse import Namespace
-from hashlib import md5
 from pathlib import Path
 import os
-import pickle
-
-
-def args_to_uuid(args: Namespace) -> str:
-    """Generate a unique ID based on the input arguments."""
-
-    identifying_args = get_saveable_args(args)
-
-    return md5(pickle.dumps(identifying_args)).hexdigest()
 
 
 def elk_cache_dir() -> Path:

@@ -1,5 +1,3 @@
-"""Collator for prompts."""
-
 from ..math import stochastic_round_constrained
 from dataclasses import dataclass
 from datasets import (
@@ -12,6 +10,7 @@ from datasets import (
 from numpy.typing import NDArray
 from promptsource.templates import DatasetTemplates
 from random import Random
+from simple_parsing.helpers import field, Serializable
 from torch.utils.data import Dataset as TorchDataset
 from typing import Literal, Optional, cast
 import numpy as np
@@ -30,28 +29,12 @@ class Prompt:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
 
 
-class PromptCollator(TorchDataset):
-    """Wrapper for a HuggingFace dataset which generates prompts with `promptsource`.
-
-    Usually `promptsource` has multiple prompt templates for a given dataset. We handle
-    this in two ways. When `strategy` is set to `"randomize"` (the default), we sample
-    a random prompt template for each example on-the-fly when `__getitem__` is called,
-    using the seed passed to `__init__`. Note this means that the same example may be
-    assigned a different prompt template if `__getitem__` is called multiple times with
-    the same index.
-
-    When `strategy` is set to `"all"`, we "broadcast" the prompt templates across the
-    dataset, multiplying its effective size by the number of templates.
-
-    Example:
-    >>> collator = PromptCollator("super_glue", "boolq", split="train")
-    >>> prompt = collator[0]
-    >>> prompt.to_string(0)
-    "Henry Mills (Once Upon a Time) -- Henry Daniel Mills is a fictional character...
-
+@dataclass
+class PromptConfig(Serializable):
+    """
     Args:
-        path: First part of the dataset path, e.g. `"imdb"`.
-        name: Optional second part of the dataset path, e.g. `"boolq"`.
+        dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
+            `"super_glue boolq"` or `"imdb"`.
         split: The split to use.
         balance: Whether to force class balance in the dataset using undersampling.
         label_column: The column containing the labels. By default, we infer this from
@@ -66,32 +49,53 @@ class PromptCollator(TorchDataset):
             above for details. Defaults to `"randomize"`.
     """
 
-    def __init__(
-        self,
-        path: str,
-        name: Optional[str] = None,
-        *,
-        split: str,
-        balance: bool = False,
-        label_column: Optional[str] = None,
-        max_examples: int = 0,
-        num_shots: int = 0,
-        seed: int = 42,
-        strategy: Literal["all", "randomize"] = "randomize",
-    ):
-        self.num_shots = num_shots
-        self.prompter = DatasetTemplates(path, subset_name=name)  # type: ignore
-        self.rng = Random(seed)
-        self.strategy = strategy
+    dataset: str = field(positional=True)
+    split: str = "validation"
+    balance: bool = False
+    label_column: Optional[str] = None
+    max_examples: int = 0
+    num_shots: int = 0
+    seed: int = 42
+    strategy: Literal["all", "randomize"] = "randomize"
+
+
+class PromptDataset(TorchDataset):
+    """Wrapper for a HuggingFace dataset which generates prompts with `promptsource`.
+
+    Usually `promptsource` has multiple prompt templates for a given dataset. We handle
+    this in two ways. When `strategy` is set to `"randomize"` (the default), we sample
+    a random prompt template for each example on-the-fly when `__getitem__` is called,
+    using the seed passed to `__init__`. Note this means that the same example may be
+    assigned a different prompt template if `__getitem__` is called multiple times with
+    the same index.
+
+    When `strategy` is set to `"all"`, we "broadcast" the prompt templates across the
+    dataset, multiplying its effective size by the number of templates.
+
+    Example:
+    >>> prompts = PromptDataset("super_glue", "boolq", split="train")
+    >>> prompt = prompts[0]
+    >>> prompt.to_string(0)
+    "Henry Mills (Once Upon a Time) -- Henry Daniel Mills is a fictional character...
+    """
+
+    def __init__(self, cfg: PromptConfig):
+        data_path = cfg.dataset.split()
+        assert len(data_path) in (1, 2), f"Invalid dataset path {cfg.dataset}"
+
+        self.num_shots = cfg.num_shots
+        self.prompter = DatasetTemplates(*data_path)
+        self.rng = Random(cfg.seed)
+        self.strategy = cfg.strategy
 
         # TODO: Should we support IterableDataset?
-        ds_dict = load_dataset(path, name)
+        ds_dict = load_dataset(*data_path)  # type: ignore
         assert isinstance(ds_dict, DatasetDict)
 
         # By default we use the existing train-validation/test split in the dataset.
         # If it doesn't exist, we create our own 75/25 train-test split. Crucially,
         # because the RNG is always seeded, this split will be the same for independent
-        # instantiations of PromptCollator (unless you set the seed to something else).
+        # instantiations of PromptDataset (unless you set the seed to something else).
         # This allows you to just set split="train" and split="test" for any dataset
         # and not worry about train-test leakage.
         split_name, *others = ds_dict.keys()
@@ -100,11 +104,12 @@ class PromptCollator(TorchDataset):
 
             # Don't shuffle now because we're going to shuffle later
             ds_dict = ds_dict[split_name].train_test_split(
-                seed=seed, shuffle=False, stratify_by_column=label_column
+                seed=cfg.seed, shuffle=False, stratify_by_column=cfg.label_column
             )
 
         # Lots of datasets have a validation split or a test split, but not both. If
         # the requested split doesn't exist, we try to use the other one instead.
+        split = cfg.split
         if split not in ds_dict and split in ("validation", "test"):
             new_split = "test" if split == "validation" else "train"
             if new_split in ds_dict:
@@ -119,16 +124,17 @@ class PromptCollator(TorchDataset):
         features = self.active_split.features
 
         # We infer that the label is the unique ClassLabel column in the dataset
+        label_column = cfg.label_column
         if label_column is None:
             label_cols = [
                 col for col, dtype in features.items() if isinstance(dtype, ClassLabel)
             ]
             if not label_cols:
-                raise ValueError(f"Dataset {path} has no label column")
+                raise ValueError(f"Dataset {cfg.dataset} has no label column")
             elif len(label_cols) > 1:
                 raise ValueError(
-                    f"Dataset {path} has multiple label columns {label_cols}; specify "
-                    "--label-column to disambiguate"
+                    f"Dataset {cfg.dataset} has multiple label columns {label_cols}"
+                    f"; specify --label-column to disambiguate"
                 )
             else:
                 label_column = label_cols[0]
@@ -140,16 +146,17 @@ class PromptCollator(TorchDataset):
         # NOTE: Should we actually support non-ClassLabel labels? The essential thing
         # is that we know the number of classes, and ClassLabel makes that easy.
         elif label_column not in features:
-            raise ValueError(f"Dataset {path} has no column '{label_column}'")
-        elif not isinstance(features[label_column], ClassLabel):
+            raise ValueError(f"{cfg.dataset} has no column '{cfg.label_column}'")
+        elif not isinstance(features[cfg.label_column], ClassLabel):
             raise ValueError(
-                f"Column '{label_column}' in dataset {path} is not a `ClassLabel`"
+                f"Column '{cfg.label_column}' in {cfg.dataset} is not a "
+                f"`ClassLabel`"
             )
 
         # Sanity check the label column
         self.label_column = label_column
         if self.num_classes < 2:
-            raise ValueError(f"Dataset {path} should have more than one class")
+            raise ValueError(f"{cfg.dataset} should have more than 1 class")
 
         # Compute the empirical class balance in the active split. Sanity check that
         # all class mentioned in the ClassLabel datatype are represented.
@@ -158,10 +165,10 @@ class PromptCollator(TorchDataset):
         )
         if not np.all(class_sizes > 0):
             missing = np.flatnonzero(class_sizes == 0).tolist()
-            raise ValueError(f"Dataset {path} has missing classes: {missing}")
+            raise ValueError(f"{cfg.dataset} has missing classes: {missing}")
 
         # Enforce class balance if needed
-        if balance:
+        if cfg.balance:
             smallest_size = class_sizes.min()
             print(f"Undersampling classes to {smallest_size} examples each")
 
@@ -200,18 +207,18 @@ class PromptCollator(TorchDataset):
 
         # We use stratified sampling to create few-shot prompts that are as balanced as
         # possible. If needed, create the strata now so that we can use them later.
-        if num_shots > 0:
+        if cfg.num_shots > 0:
             # Sanity check that we can fit an example from every class in the prompt
-            if self.num_classes > num_shots:
+            if self.num_classes > cfg.num_shots:
                 raise ValueError(
                     f"Few-shot prompts should contain at least one example from each "
-                    f"class; got {num_shots} examples and {self.num_classes} classes"
+                    f"class; got {cfg.num_shots} examples, {self.num_classes} classes"
                 )
 
             # Sanity check to prevent train-test leakage via few-shot prompts
             if "train" not in ds_dict:
                 raise ValueError(
-                    f"Dataset {path} has no train split, so we can't create "
+                    f"Dataset {cfg.dataset} has no train split, so we can't create "
                     "few-shot prompts"
                 )
 
@@ -223,9 +230,9 @@ class PromptCollator(TorchDataset):
             self.fewshot_strata: list[Dataset] = []
 
         # Now shuffle the active split and truncate it if needed
-        self.active_split = self.active_split.shuffle(seed=seed)
-        if 0 < max_examples < len(self.active_split):
-            self.active_split = self.active_split.select(range(max_examples))
+        self.active_split = self.active_split.shuffle(seed=cfg.seed)
+        if 0 < cfg.max_examples < len(self.active_split):
+            self.active_split = self.active_split.select(range(cfg.max_examples))
 
     def __getitem__(self, index: int) -> Prompt:
         prompts = list(self.prompter.templates.values())
