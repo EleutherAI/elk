@@ -129,17 +129,17 @@ def _extract_hiddens_process(
 
     # This function returns the flattened questions and answers, and the labels for
     # each question-answer pair. After inference we need to reshape the results.
-    def collate(prompts: list[Prompt]) -> tuple[BatchEncoding, list[int]]:
+    def collate(prompts: list[Prompt]) -> tuple[BatchEncoding, list[int], list[Prompt]]:
         choices = [
             prompt.to_string(i, sep=sep_token) + params.prompt_suffix
             for prompt in prompts
             for i in range(num_choices)
         ]
-        return tokenize(choices), [prompt.label for prompt in prompts]
+        return tokenize(choices), [prompt.label for prompt in prompts], prompts
 
     def collate_enc_dec(
         prompts: list[Prompt],
-    ) -> tuple[BatchEncoding, BatchEncoding, list[int]]:
+    ) -> tuple[BatchEncoding, BatchEncoding, list[int], list[Prompt]]:
         tokenized_questions = tokenize(
             [prompt.question for prompt in prompts for _ in range(num_choices)]
         )
@@ -151,7 +151,7 @@ def _extract_hiddens_process(
             ]
         )
         labels = [prompt.label for prompt in prompts]
-        return tokenized_questions, tokenized_answers, labels
+        return tokenized_questions, tokenized_answers, labels, prompts
 
     def reduce_seqs(
         hiddens: list[torch.Tensor], attention_mask: torch.Tensor
@@ -208,7 +208,7 @@ def _extract_hiddens_process(
     for batch in dl:
         # Condition 1: Encoder-decoder transformer, with answer in the decoder
         if not should_concat:
-            questions, answers, labels = batch
+            questions, answers, labels, prompts = batch
             outputs = model(
                 **questions,
                 **{f"decoder_{k}": v for k, v in answers.items()},
@@ -217,27 +217,29 @@ def _extract_hiddens_process(
             # [batch_size, num_layers, num_choices, hidden_size]
             # need to convert hidden states to numpy array first or
             # you get a ConnectionResetErrror
-            queue.put(
-                {
-                    "hiddens": torch.stack(outputs.decoder_hidden_states, dim=2)
-                    .cpu()
-                    .numpy(),
-                    "labels": labels,
-                }
-            )
+            hiddens = torch.stack(outputs.decoder_hidden_states, dim=2).cpu().numpy()
 
         # Condition 2: Either a decoder-only transformer or a transformer encoder
         else:
-            choices, labels = batch
+            choices, labels, prompts = batch
 
             # Skip the input embeddings which are unlikely to be interesting
             h = model(**choices, output_hidden_states=True).hidden_states[1:]
 
             # need to convert hidden states to numpy array first or
             # you get a ConnectionResetErrror
+            hiddens = reduce_seqs(h, choices["attention_mask"]).cpu().numpy()
+
+        # from_generator doesn't deal with batched output, so we split it up here
+        for i in range(params.batch_size):
             queue.put(
                 {
-                    "hiddens": reduce_seqs(h, choices["attention_mask"]).cpu().numpy(),
-                    "labels": labels,
+                    "hiddens": hiddens[i].astype(np.float16),
+                    "layers": params.layers,
+                    "label": labels[i],
+                    "answers": prompts[i].answers,
+                    "template_name": prompts[i].template_name,
+                    "text": prompts[i].question,
+                    "predicate": prompts[i].predicate,
                 }
             )

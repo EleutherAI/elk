@@ -5,7 +5,7 @@ from ..files import args_to_uuid, elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
 from transformers import AutoConfig, AutoTokenizer
 import json
-from datasets import Dataset
+from datasets import Dataset, Features, Sequence, Value, Array2D
 
 
 def run(args):
@@ -43,6 +43,7 @@ def run(args):
             else:
                 raise ValueError(f"Unknown prompt strategy: {args.prompts}")
 
+        # TODO: add Feature spec--although this does use float16 as is
         return Dataset.from_generator(
             extract_hiddens,
             gen_kwargs={
@@ -71,6 +72,8 @@ def run(args):
 
     train_dset = extract(args, "train")
     valid_dset = extract(args, "validation")
+
+    save_dir.mkdir(parents=True, exist_ok=True)
 
     with open(save_dir / "args.json", "w") as f:
         json.dump(vars(args), f)

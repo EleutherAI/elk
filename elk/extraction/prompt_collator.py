@@ -19,11 +19,14 @@ import numpy as np
 
 @dataclass
 class Prompt:
-    """A question, its possible answers, and the correct answer."""
+    """A question, its possible answers, and the correct answer.
+    A question is a template applied to a predicate."""
 
     question: str
     answers: list[str]
     label: int
+    template_name: str
+    predicate: int  # index of a row from the original dataset
 
     def to_string(self, answer_idx: int, sep: str = "\n") -> str:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
@@ -224,18 +227,20 @@ class PromptCollator(TorchDataset):
             self.active_split = self.active_split.select(range(max_examples))
 
     def __getitem__(self, index: int) -> Prompt:
+        template_names = list(self.prompter.templates.keys())
         prompts = list(self.prompter.templates.values())
 
         if self.strategy == "all":
             example_idx, prompt_idx = divmod(index, len(prompts))
-            example = self.active_split[example_idx]
-            template = prompts[prompt_idx]
-
         elif self.strategy == "randomize":
-            example = self.active_split[index]
-            template = self.rng.choice(prompts)
+            example_idx = index
+            prompt_idx = self.rng.randint(0, len(prompts))
         else:
             raise ValueError(f"Unknown strategy {self.strategy}")
+
+        example = self.active_split[example_idx]
+        template = prompts[prompt_idx]
+        template_name = template_names[prompt_idx]
 
         true_label = example[self.label_column]
         answers = []
@@ -270,7 +275,13 @@ class PromptCollator(TorchDataset):
             self.rng.shuffle(examples)
             question = "\n\n".join(examples + [question])
 
-        return Prompt(question=question, answers=answers, label=true_label)
+        return Prompt(
+            question=question,
+            answers=answers,
+            label=true_label,
+            template_name=template_name,
+            predicate=example_idx,
+        )
 
     def __iter__(self):
         return (self[i] for i in range(len(self.active_split)))
@@ -291,4 +302,4 @@ class PromptCollator(TorchDataset):
         return self.active_split.features[self.label_column].num_classes
 
     def select_(self, indices):
-        self.dataset = self.dataset.select(indices)
+        self.active_split = self.active_split.select(indices)
