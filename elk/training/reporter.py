@@ -1,20 +1,19 @@
 """An ELK reporter network."""
-from torch import Tensor
-
-from .losses import ccs_squared_loss, js_loss
-from ..utils import maybe_ddp_wrap, maybe_all_gather, maybe_all_reduce
+import math
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from sklearn.metrics import roc_auc_score
-from simple_parsing.helpers import Serializable
-from torch.nn.functional import binary_cross_entropy as bce
 from typing import cast, Literal, NamedTuple, Optional, Union, Callable
-import math
+
 import torch
 import torch.nn as nn
+from simple_parsing.helpers import Serializable
+from sklearn.metrics import roc_auc_score
+from torch import Tensor
+from torch.nn.functional import binary_cross_entropy as bce
 
-from ..utils.types import raise_assertion_error
+from .losses import ccs_squared_loss, js_loss
+from ..utils import maybe_ddp_wrap, maybe_all_gather, maybe_all_reduce
 
 
 class EvalResult(NamedTuple):
@@ -125,10 +124,9 @@ class Reporter(nn.Module):
 
         self.init = cfg.init
         self.device = device
-        # se https://github.com/python/mypy/issues/10740#issuecomment-878622464
-        _js_loss: Callable[[Tensor, Tensor], Tensor] = js_loss
-        _ccs_squared_loss: Callable[[Tensor, Tensor], Tensor] = ccs_squared_loss
-        self.unsupervised_loss = _js_loss if cfg.loss == "js" else _ccs_squared_loss
+        self.unsupervised_loss: Callable[[Tensor, Tensor], Tensor] = (
+            js_loss if cfg.loss == "js" else ccs_squared_loss
+        )
         self.supervised_weight = cfg.supervised_weight
 
     def reset_parameters(self):

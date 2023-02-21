@@ -1,8 +1,4 @@
-from typing import NoReturn, Any, TypeVar, Type
-
-
-def raise_assertion_error(msg: str) -> NoReturn:
-    raise AssertionError(msg)
+from typing import Any, TypeVar, Type
 
 
 A = TypeVar("A")

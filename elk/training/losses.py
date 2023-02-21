@@ -1,8 +1,9 @@
 """Loss functions for training reporters."""
 
-from torch import Tensor
 import math
+
 import torch
+from torch import Tensor
 
 
 def H(p: Tensor) -> Tensor:
@@ -10,16 +11,26 @@ def H(p: Tensor) -> Tensor:
     return torch.nn.functional.binary_cross_entropy(p, p)
 
 
+# See to have the same exact type signature as ccs_squared_loss,
+# even if we have defaults
+# see https://github.com/python/mypy/issues/10740#issuecomment-878622464
 def js_loss(
     logit0: Tensor,
     logit1: Tensor,
-    confidence: float = 0.0,
-    base: float = 2.0,
 ) -> Tensor:
     """Consistency and confidence loss based on the Jensen-Shannon divergence.
 
     Note that by default we use the base 2 logarithm, so the value is measured in bits.
     This ensures the divergence is in the range [0, 1]."""
+    return _js_loss(logit0, logit1, confidence=0.0, base=2.0)
+
+
+def _js_loss(
+    logit0: Tensor,
+    logit1: Tensor,
+    confidence: float,
+    base: float,
+) -> Tensor:
     p0, neg_p1 = logit0.sigmoid(), 1 - logit1.sigmoid()
     nats = (1 + confidence) * H((p0 + neg_p1) / 2) - (H(p0) + H(neg_p1)) / 2
     return nats / math.log(base)
