@@ -1,4 +1,5 @@
 """Main entry point for `elk`."""
+from typing import Optional
 
 from .extraction import ExtractionConfig
 from .list import list_runs
@@ -49,10 +50,10 @@ def run():
     import torch.distributed as dist
 
     # Check if we were called with torchrun or not
-    local_rank = os.environ.get("LOCAL_RANK")
+    env_local_rank: Optional[str] = os.environ.get("LOCAL_RANK", None)
+    local_rank: Optional[int] = int(env_local_rank) if env_local_rank else None
     if local_rank is not None:
         dist.init_process_group("nccl")
-        local_rank = int(local_rank)
 
     with redirect_stdout(None) if local_rank else nullcontext():
         if local_rank:

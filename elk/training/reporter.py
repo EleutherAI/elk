@@ -1,4 +1,5 @@
 """An ELK reporter network."""
+from torch import Tensor
 
 from .losses import ccs_squared_loss, js_loss
 from ..utils import maybe_ddp_wrap, maybe_all_gather, maybe_all_reduce
@@ -8,10 +9,12 @@ from pathlib import Path
 from sklearn.metrics import roc_auc_score
 from simple_parsing.helpers import Serializable
 from torch.nn.functional import binary_cross_entropy as bce
-from typing import cast, Literal, NamedTuple, Optional, Union
+from typing import cast, Literal, NamedTuple, Optional, Union, Callable
 import math
 import torch
 import torch.nn as nn
+
+from ..utils.types import raise_assertion_error
 
 
 class EvalResult(NamedTuple):
@@ -122,7 +125,10 @@ class Reporter(nn.Module):
 
         self.init = cfg.init
         self.device = device
-        self.unsupervised_loss = js_loss if cfg.loss == "js" else ccs_squared_loss
+        # se https://github.com/python/mypy/issues/10740#issuecomment-878622464
+        _js_loss: Callable[[Tensor, Tensor], Tensor] = js_loss
+        _ccs_squared_loss: Callable[[Tensor, Tensor], Tensor] = ccs_squared_loss
+        self.unsupervised_loss = _js_loss if cfg.loss == "js" else _ccs_squared_loss
         self.supervised_weight = cfg.supervised_weight
 
     def reset_parameters(self):
@@ -325,7 +331,7 @@ class Reporter(nn.Module):
             probe.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
         )
 
-        loss = torch.inf
+        loss: Optional[Tensor] = None
         for _ in range(cfg.num_epochs):
             optimizer.zero_grad()
 
@@ -333,7 +339,9 @@ class Reporter(nn.Module):
             loss.backward()
             optimizer.step()
 
-        return float(loss)
+        return (
+            float(loss) if loss is not None else raise_assertion_error("Loss is None")
+        )
 
     def train_loop_lbfgs(
         self, x0, x1, labels: Optional[torch.Tensor], cfg: OptimConfig
@@ -348,7 +356,7 @@ class Reporter(nn.Module):
             tolerance_grad=torch.finfo(x0.dtype).eps,
         )
         # Raw unsupervised loss, WITHOUT regularization
-        loss = torch.inf
+        loss: Optional[Tensor] = None
 
         def closure():
             nonlocal loss
@@ -362,7 +370,7 @@ class Reporter(nn.Module):
             for param in self.parameters():
                 regularizer += cfg.weight_decay * param.norm() ** 2 / 2
 
-            regularized = loss + regularizer
+            regularized: Tensor = loss + regularizer
             regularized.backward()
 
             for p in self.parameters():
@@ -372,4 +380,6 @@ class Reporter(nn.Module):
             return float(regularized)
 
         optimizer.step(closure)
-        return float(loss)
+        return (
+            float(loss) if loss is not None else raise_assertion_error("Loss is None")
+        )

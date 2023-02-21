@@ -89,8 +89,10 @@ class PromptDataset(TorchDataset):
         self.strategy = cfg.strategy
 
         # TODO: Should we support IterableDataset?
-        ds_dict = load_dataset(*data_path)  # type: ignore
-        assert isinstance(ds_dict, DatasetDict)
+        _ds_dict = load_dataset(*data_path)  # type: ignore
+        assert isinstance(_ds_dict, DatasetDict)
+        ds_dict: DatasetDict = _ds_dict
+
 
         # By default we use the existing train-validation/test split in the dataset.
         # If it doesn't exist, we create our own 75/25 train-test split. Crucially,
@@ -222,12 +224,12 @@ class PromptDataset(TorchDataset):
                     "few-shot prompts"
                 )
 
-            self.fewshot_strata = [
+            self.fewshot_strata: list[Dataset] = [
                 ds_dict["train"].filter(lambda ex: ex[label_column] == i)
                 for i in range(self.num_classes)
             ]
         else:
-            self.fewshot_strata: list[Dataset] = []
+            self.fewshot_strata = []
 
         # Now shuffle the active split and truncate it if needed
         self.active_split = self.active_split.shuffle(seed=cfg.seed)
