@@ -22,7 +22,7 @@ jobs:
       - name: Pyright Type Checking
         uses: jakebailey/pyright-action@v1
 
-      - name: Mypy Tpe Checking
+      - name: Mypy Type Checking
       - run: dmypy run
 
       - name: Run CPU Tests
@@ -47,7 +47,7 @@ jobs:
       - name: Pyright Type Checking
         uses: jakebailey/pyright-action@v1
 
-      - name: Mypy Tpe Checking
+      - name: Mypy Type Checking
       - run: dmypy run
 
       - name: Run CPU Tests
