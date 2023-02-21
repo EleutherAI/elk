@@ -331,7 +331,8 @@ class Reporter(nn.Module):
             probe.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
         )
 
-        loss: Optional[Tensor] = None
+        loss: Union[Tensor, float] = torch.inf
+        assert cfg.num_epochs > 0, "Number of epochs must be positive"
         for _ in range(cfg.num_epochs):
             optimizer.zero_grad()
 
@@ -339,9 +340,7 @@ class Reporter(nn.Module):
             loss.backward()
             optimizer.step()
 
-        return (
-            float(loss) if loss is not None else raise_assertion_error("Loss is None")
-        )
+        return float(loss)
 
     def train_loop_lbfgs(
         self, x0, x1, labels: Optional[torch.Tensor], cfg: OptimConfig
@@ -356,7 +355,7 @@ class Reporter(nn.Module):
             tolerance_grad=torch.finfo(x0.dtype).eps,
         )
         # Raw unsupervised loss, WITHOUT regularization
-        loss: Optional[Tensor] = None
+        loss: Union[Tensor, float] = torch.inf
 
         def closure():
             nonlocal loss
@@ -380,6 +379,4 @@ class Reporter(nn.Module):
             return float(regularized)
 
         optimizer.step(closure)
-        return (
-            float(loss) if loss is not None else raise_assertion_error("Loss is None")
-        )
+        return float(loss)
