@@ -1,4 +1,5 @@
 from ..math import stochastic_round_constrained
+from ..utils.types import assert_is_instance
 from dataclasses import dataclass
 from datasets import (
     ClassLabel,
@@ -89,9 +90,7 @@ class PromptDataset(TorchDataset):
         self.strategy = cfg.strategy
 
         # TODO: Should we support IterableDataset?
-        _ds_dict = load_dataset(*data_path)  # type: ignore
-        assert isinstance(_ds_dict, DatasetDict)
-        ds_dict: DatasetDict = _ds_dict
+        ds_dict: DatasetDict = assert_is_instance(load_dataset(*data_path), DatasetDict)  # type: ignore[arg-type]
 
         # By default we use the existing train-validation/test split in the dataset.
         # If it doesn't exist, we create our own 75/25 train-test split. Crucially,
