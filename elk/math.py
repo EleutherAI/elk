@@ -27,8 +27,8 @@ def stochastic_round_constrained(x: list[float], rng: random.Random) -> list[int
     # but requires an RNG that supports weighted sampling without replacement- this
     # exists in NumPy but not in the Python standard library so we'd need to switch
     # this function to use NumPy (and maintain a NumPy RNG).
-    (index,) = rng.choices(range(len(x)), weights=fractional_parts)
-    rounded[index] += round(sum(fractional_parts))
+    if any(fractional_parts):
+        (index,) = rng.choices(range(len(x)), weights=fractional_parts)
+        rounded[index] += round(sum(fractional_parts))
 
-    assert math.isclose(sum(rounded), total), "Rounding error"
     return rounded
