@@ -93,7 +93,6 @@ class PromptDataset(TorchDataset):
         assert isinstance(_ds_dict, DatasetDict)
         ds_dict: DatasetDict = _ds_dict
 
-
         # By default we use the existing train-validation/test split in the dataset.
         # If it doesn't exist, we create our own 75/25 train-test split. Crucially,
         # because the RNG is always seeded, this split will be the same for independent
