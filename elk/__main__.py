@@ -1,41 +1,35 @@
 """Main entry point for `elk`."""
 
-import logging
-import os
-from argparse import ArgumentParser
-from contextlib import nullcontext, redirect_stdout
-
-from .argparsers import add_train_args, get_evaluate_parser, get_extraction_parser
-from .evaluation.evaluate import evaluate_reporters
-from .files import args_to_uuid
+from .extraction import ExtractionConfig
 from .list import list_runs
+from .training import RunConfig
+from contextlib import nullcontext, redirect_stdout
+from pathlib import Path
+from simple_parsing import ArgumentParser
+import logging
 
 
 def run():
-    """Run `elk`.
-
-    `elk` is a tool for extracting and training reporters on hidden states from an LM.
-    Functionality is split into four subcommands: extract, train, elicit, and eval.
-    """
-
     parser = ArgumentParser(add_help=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser(
         "extract",
         help="Extract hidden states from a model.",
-        parents=[get_extraction_parser()],
-    )
+    ).add_arguments(ExtractionConfig, dest="extraction")
+
     elicit_parser = subparsers.add_parser(
         "elicit",
         help=(
             "Extract and train a set of ELK reporters "
             "on hidden states from `elk extract`. "
         ),
-        parents=[get_extraction_parser()],
         conflict_handler="resolve",
     )
-    add_train_args(elicit_parser)
+    elicit_parser.add_arguments(RunConfig, dest="run")
+    elicit_parser.add_argument(
+        "--output", "-o", type=Path, help="Path to save checkpoints to."
+    )
 
     subparsers.add_parser(
         "eval",
@@ -51,69 +45,37 @@ def run():
         list_runs(args)
         return
 
-    from transformers import AutoConfig, PretrainedConfig
-
-    if model := getattr(args, "model", None):
-        config = AutoConfig.from_pretrained(model)
-        assert isinstance(config, PretrainedConfig)
-
-        num_layers = getattr(config, "num_layers", config.num_hidden_layers)
-        assert isinstance(num_layers, int)
-
-        if args.layers and args.layer_stride > 1:
-            raise ValueError(
-                "Cannot use both --layers and --layer-stride. Please use only one."
-            )
-        elif args.layer_stride > 1:
-            args.layers = list(range(0, num_layers, args.layer_stride))
-
-    # Support both distributed and non-distributed training
+    # Import here and not at the top to speed up `elk list`
+    from .extraction.extraction_main import run as run_extraction
+    from .training.train import train
+    import os
     import torch.distributed as dist
 
+    # Check if we were called with torchrun or not
     local_rank = os.environ.get("LOCAL_RANK")
-
     if local_rank is not None:
         dist.init_process_group("nccl")
         local_rank = int(local_rank)
     else:
         local_rank = 0
 
-    # Default to CUDA iff available
-    if args.device is None:
-        import torch
-
-        if not torch.cuda.is_available():
-            args.device = "cpu"
-        else:
-            args.device = f"cuda:{local_rank or 0}"
-
-    # Prevent printing from processes other than the first one
-    with redirect_stdout(None) if local_rank != 0 else nullcontext():
-        # Print all arguments
-        for key in list(vars(args).keys()):
-            print("{}: {}".format(key, vars(args)[key]))
-
-        if local_rank != 0:
-            logging.getLogger("transformers").setLevel(logging.ERROR)
-
-        # Import here and not at the top to speed up `elk list`
-        from .extraction.extraction_main import run as run_extraction
-        from .training.train import train
+    with redirect_stdout(None) if local_rank else nullcontext():
+        if local_rank:
+            logging.getLogger("transformers").setLevel(logging.CRITICAL)
 
         if args.command == "extract":
-            run_extraction(args)
+            run_extraction(args.run.data)
         elif args.command == "elicit":
-            args.name = args_to_uuid(args)
             try:
-                train(args)
+                train(args.run, args.output)
             except (EOFError, FileNotFoundError):
-                run_extraction(args)
+                run_extraction(args.run.data)
 
                 # Ensure the extraction is finished before starting training
                 if dist.is_initialized():
                     dist.barrier()
 
-                train(args)
+                train(args.run, args.output)
 
         elif args.command == "eval":
             evaluate_reporters(args)

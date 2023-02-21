@@ -1,57 +1,143 @@
-"""Main training loop. Invokes the reporter."""
+"""Main training loop."""
 
+from ..files import elk_cache_dir
+from ..utils import select_usable_gpus
+from ..extraction import ExtractionConfig
+from .preprocessing import load_hidden_states, normalize
+from .reporter import OptimConfig, Reporter, ReporterConfig
+from dataclasses import dataclass
+from hashlib import md5
+from pathlib import Path
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, roc_auc_score
+from tqdm.auto import tqdm
+from typing import Literal, Optional
 import csv
 import pickle
 import random
 
 import numpy as np
 import torch
-import torch.distributed as dist
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, roc_auc_score
-from tqdm.auto import tqdm
-
-from elk.files import args_to_uuid
-
-from ..files import elk_cache_dir
-from .preprocessing import load_hidden_states, normalize
-from .reporter import Reporter
+import torch.multiprocessing as mp
 
 
-def train(args):
-    """Training function.
-
-    Contains the main training loop. Functionality varies based on
-    the arguments passed in.
-    Consult parser.py for more details on the arguments.
+@dataclass
+class RunConfig:
+    """Full specification of a reporter training run.
 
     Args:
-        args: The arguments for training.
+        data: Config specifying hidden states on which the reporter will be trained.
+        net: Config for building the reporter network.
+        optim: Config for the `.fit()` loop.
     """
 
-    rank = dist.get_rank() if dist.is_initialized() else 0
-    if dist.is_initialized() and not args.skip_baseline and rank == 0:
-        print("Skipping LR baseline during distributed training.")
+    data: ExtractionConfig
+    net: ReporterConfig
+    optim: OptimConfig
 
-    if not args.reporter_name:
-        args.reporter_name = args_to_uuid(args)
-        print("args.reporter_name", args.reporter_name)
+    label_frac: float = 0.0
+    max_gpus: int = -1
+    normalization: Literal["legacy", "elementwise", "meanonly"] = "meanonly"
+    skip_baseline: bool = False
+
+
+def train_task(
+    input_q: mp.Queue, out_q: mp.Queue, cfg: RunConfig, device: str, out_dir: Path
+):
+    """Worker function for training reporters in parallel."""
 
     # Reproducibility
-    np.random.seed(args.seed)
-    random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    np.random.seed(cfg.net.seed)
+    random.seed(cfg.net.seed)
+    torch.manual_seed(cfg.net.seed)
 
-    # load the training hidden states.
-    cache_dir = elk_cache_dir() / args.name
-    train_hiddens, train_labels = load_hidden_states(
-        path=cache_dir / "train_hiddens.pt"
+    while not input_q.empty():
+        i, *data = input_q.get()
+        out_q.put((i, *train_reporter(cfg, i, *data, device, out_dir)))  # type: ignore
+
+
+def train_reporter(
+    cfg: RunConfig,
+    layer_index: int,
+    train_h: torch.Tensor,
+    val_h: torch.Tensor,
+    train_labels: torch.Tensor,
+    val_labels: torch.Tensor,
+    device: str,
+    out_dir: Path,
+):
+    """Train a single reporter on a single layer."""
+
+    # Note: currently we're just upcasting to float32 so we don't have to deal with
+    # grad scaling (which isn't supported for LBFGS), while the hidden states are
+    # saved in float16 to save disk space. In the future we could try to use mixed
+    # precision training in at least some cases.
+    x0, x1 = train_h.to(device).float().chunk(2, dim=-1)
+    val_x0, val_x1 = val_h.to(device).float().chunk(2, dim=-1)
+
+    train_labels_aug = torch.cat([train_labels, 1 - train_labels])
+    val_labels_aug = torch.cat([val_labels, 1 - val_labels])
+
+    reporter = Reporter(train_h.shape[-1] // 2, cfg.net, device=device)
+    if cfg.label_frac:
+        num_labels = round(cfg.label_frac * len(train_labels))
+        labels = train_labels[:num_labels].to(device)
+    else:
+        labels = None
+
+    train_loss = reporter.fit((x0, x1), labels, cfg.optim)
+    val_result = reporter.score(
+        (val_x0, val_x1),
+        val_labels.to(device),
     )
 
-    # load the validation hidden states.
+    lr_dir = out_dir / "lr_models"
+    reporter_dir = out_dir / "reporters"
+
+    lr_dir.mkdir(parents=True, exist_ok=True)
+    reporter_dir.mkdir(parents=True, exist_ok=True)
+    stats = [train_loss, *val_result]
+
+    if not cfg.skip_baseline:
+        # TODO: Once we implement cross-validation for CCS, we should benchmark
+        # against LogisticRegressionCV here.
+        lr_model = LogisticRegression(max_iter=10_000)
+        lr_model.fit(torch.cat([x0, x1]).cpu(), train_labels_aug)
+
+        lr_preds = lr_model.predict_proba(torch.cat([val_x0, val_x1]).cpu())[:, 1]
+        lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
+        lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
+
+        stats += [lr_auroc, lr_acc]
+        with open(lr_dir / f"layer_{layer_index}.pkl", "wb") as file:
+            pickle.dump(lr_model, file)
+
+    with open(reporter_dir / f"layer_{layer_index}.pt", "wb") as file:
+        torch.save(reporter, file)
+
+    return stats
+
+
+def train(cfg: RunConfig, out_dir: Optional[Path]):
+    # We use a multiprocessing context with "spawn" as the start method so CUDA works
+    ctx = mp.get_context("spawn")
+
+    data_uuid = md5(pickle.dumps(cfg.data)).hexdigest()
+    data_dir = elk_cache_dir() / data_uuid
+
+    # Load the training hidden states.
+    train_hiddens, train_labels = load_hidden_states(path=data_dir / "train_hiddens.pt")
+
+    # Load the validation hidden states.
     val_hiddens, val_labels = load_hidden_states(
-        path=cache_dir / "validation_hiddens.pt"
+        path=data_dir / "validation_hiddens.pt"
     )
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        # Save the results in the same directory as the hidden states,
+        # if no output directory is specified.
+        out_dir = data_dir
 
     # Ensure that the states are valid.
     assert len(set(train_labels)) > 1
@@ -59,119 +145,74 @@ def train(args):
 
     # Normalize the hidden states with the specified method.
     train_hiddens, val_hiddens = normalize(
-        train_hiddens, val_hiddens, args.normalization
+        train_hiddens, val_hiddens, cfg.normalization
     )
 
-    # If we're using distributed training, split the data across the ranks.
-    if dist.is_initialized():
-        world_size = dist.get_world_size()
-        train_hiddens = train_hiddens.chunk(world_size)[rank]
-        train_labels = train_labels.chunk(world_size)[rank]
-
-        val_hiddens = val_hiddens.chunk(world_size)[rank]
-        val_labels = val_labels.chunk(world_size)[rank]
-
-    reporters = []
-    lr_models = []
     L = train_hiddens.shape[1]
 
-    # Do the last layer first- useful for debugging, maybe change later
-    val_layers = list(val_hiddens.unbind(1))
-    train_layers = list(train_hiddens.unbind(1))
-    val_layers.reverse()
-    train_layers.reverse()
-
+    train_layers = train_hiddens.unbind(1)
+    val_layers = val_hiddens.unbind(1)
     iterator = zip(train_layers, val_layers)
-    pbar = None
-    if rank == 0:
-        pbar = tqdm(iterator, total=L, unit="layer")
-        iterator = pbar
 
-    statistics = []
-    for i, (train_h, val_h) in enumerate(iterator):
-        # Note: currently we're just upcasting to float32 so we don't have to deal with
-        # grad scaling (which isn't supported for LBFGS), while the hidden states are
-        # saved in float16 to save disk space. In the future we could try to use mixed
-        # precision training in at least some cases.
-        x0, x1 = train_h.to(args.device).float().chunk(2, dim=-1)
-        val_x0, val_x1 = val_h.to(args.device).float().chunk(2, dim=-1)
+    # Intelligently select device indices to use based on free memory.
+    # TODO: Set the min_memory argument to some heuristic lower bound
+    device_indices = select_usable_gpus(cfg.max_gpus)
+    devices = [f"cuda:{i}" for i in device_indices] if device_indices else ["cpu"]
 
-        train_labels_aug = torch.cat([train_labels, 1 - train_labels])
-        val_labels_aug = torch.cat([val_labels, 1 - val_labels])
-        if pbar:
-            pbar.set_description("Fitting CCS")
-
-        # Instantiate the reporter.
-        reporter = Reporter(
-            in_features=x0.shape[-1],
-            device=args.device,
-            init=args.init,
-            loss=args.loss,
-            supervised_weight=args.supervised_weight,
-        )
-        if args.label_frac:
-            num_labels = round(args.label_frac * len(train_labels))
-            labels = train_labels[:num_labels].to(args.device)
-        else:
-            labels = None
-
-        train_loss = reporter.fit(
-            contrast_pair=(x0, x1),
-            labels=labels,
-            num_tries=args.num_tries,
-            optimizer=args.optimizer,
-            weight_decay=args.weight_decay,
-        )
-        val_result = reporter.score(
-            (val_x0, val_x1),
-            val_labels.to(args.device),
-        )
-        if pbar:
-            pbar.set_postfix(train_loss=train_loss, ccs_auroc=val_result.auroc)
-        stats = [train_loss, *val_result]
-
-        if not args.skip_baseline and not dist.is_initialized():
-            if pbar:
-                pbar.set_description("Fitting LR")
-
-            # TODO: Once we implement cross-validation for CCS, we should benchmark
-            # against LogisticRegressionCV here.
-            lr_model = LogisticRegression(max_iter=10_000)
-            lr_model.fit(torch.cat([x0, x1]).cpu(), train_labels_aug)
-
-            lr_preds = lr_model.predict_proba(torch.cat([val_x0, val_x1]).cpu())[:, 1]
-            lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
-            lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
-            if pbar:
-                pbar.set_postfix(
-                    train_loss=train_loss, ccs_auroc=val_result.auroc, lr_auroc=lr_auroc
-                )
-
-            lr_models.append(lr_model)
-            stats += [lr_auroc, lr_acc]
-
-        statistics.append(stats)
-        reporters.append(reporter)
-
-    reporters.reverse()
-    lr_models.reverse()
-
-    path = elk_cache_dir() / args.name / "reporters" / args.reporter_name
-    path.mkdir(parents=True, exist_ok=True)
-
-    if rank == 0:
+    # Collect the results and update the progress bar.
+    with open(out_dir / "eval.csv", "w") as f:
         cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
-        if not args.skip_baseline:
+        if not cfg.skip_baseline:
             cols += ["lr_auroc", "lr_acc"]
 
-        with open(cache_dir / "eval.csv", "w") as f:
-            writer = csv.writer(f)
-            writer.writerow(cols)
+        writer = csv.writer(f)
+        writer.writerow(cols)
 
-            for i, stats in enumerate(statistics):
+        # Don't bother with multiprocessing if we're only using one device.
+        if len(devices) == 1:
+            pbar = tqdm(iterator, total=L, unit="layer")
+            for i, (train_h, val_h) in enumerate(pbar):
+                train_reporter(
+                    cfg,
+                    i,
+                    train_h,
+                    val_h,
+                    train_labels,
+                    val_labels,
+                    device=devices[0],
+                    out_dir=out_dir,
+                )
+        else:
+            # Use one queue to distribute the work to the workers, and another to
+            # collect the results.
+            data_queue = ctx.Queue()
+            result_queue = ctx.Queue()
+            for i, (train_h, val_h) in enumerate(iterator):
+                data_queue.put((i, train_h, val_h, train_labels, val_labels))
+
+            # Apparently the .put() command is non-blocking, so we need to wait
+            # until the queue is filled before starting the workers.
+            while data_queue.empty():
+                pass
+
+            # Start the workers.
+            workers = []
+            for device in devices:
+                worker = ctx.Process(
+                    target=train_task,
+                    args=(data_queue, result_queue, cfg),
+                    kwargs=dict(device=device, out_dir=out_dir),
+                )
+                worker.start()
+                workers.append(worker)
+
+            pbar = tqdm(total=L, unit="layer")
+            for _ in range(L):
+                i, *stats = result_queue.get()
+                pbar.update()
                 writer.writerow([L - i] + [f"{s:.4f}" for s in stats])
 
-        torch.save(reporters, path / "reporters.pt")
-        if lr_models:
-            with open(path / "lr_models.pkl", "wb") as file:
-                pickle.dump(lr_models, file)
+            # Workers should be done by now.
+            pbar.close()
+            for worker in workers:
+                worker.join()

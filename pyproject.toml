@@ -10,25 +10,38 @@ requires-python = ">=3.9"
 keywords = ["nlp", "interpretability", "language-models", "explainable-ai"]
 license = {text = "MIT License"}
 dependencies = [
-    "accelerate==0.16.0",
-    "datasets==2.8.0",
-    "einops==0.6.0",
-    "matplotlib==3.6.3",
-    "numpy==1.23.5",
-    "pandas==1.5.1",
-    "prettytable==3.6.0",
+    # Added Dataset.from_generator() method
+    "datasets>=2.5.0",
+    # TODO: consider removing this dependency since we only use it once
+    "einops",
+    # Introduced numpy.typing module
+    "numpy>=1.20.0",
+    # Introduced type annotations
+    "prettytable>=3.5.0",
+    # Our fork of the repo, enabling Python > 3.9 support
     "promptsource@git+https://github.com/NotodAI-Research/promptsource.git",
+    # This version is old, but it's needed for certain HF tokenizers to work.
     "protobuf==3.20.*",
-    "scikit-learn==1.2.0",
+    # Basically any version should work as long as it supports the user's CUDA version
+    "pynvml",
+    # Doesn't really matter but before 1.0.0 there might be weird breaking changes
+    "scikit-learn>=1.0.0",
+    # Needed for certain HF tokenizers
     "sentencepiece==0.1.97",
-    "torch",
-    "tqdm==4.64.1",
-    "transformers==4.25.1",
+    # Support for Literal types was added in 0.0.21
+    "simple-parsing>=0.0.21",
+    # Version 1.11 introduced Fully Sharded Data Parallel, which we plan to use soon
+    "torch>=1.11.0",
+    # Doesn't really matter but versions < 4.0 are very very old (pre-2016)
+    "tqdm>=4.0.0",
+    # 4.0 introduced the breaking change of using return_dict=True by default
+    "transformers>=4.0.0",
 ]
 version = "0.0.1"
 
 [project.optional-dependencies]
 dev = [
+    "hypothesis",
     "pre-commit",
     "pytest",
 ]
@@ -36,8 +49,12 @@ dev = [
 [project.scripts]
 elk = "elk.__main__:run"
 
-[tool.setuptools]
-packages = ["elk"]
+[tool.pyright]
+reportPrivateImportUsage = false
 
 [tool.pytest.ini_options]
 markers = ["cpu: Marker for tests that do not depend on GPUs"]
+testpaths = ["tests"]
+
+[tool.setuptools]
+packages = ["elk"]
