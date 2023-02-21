@@ -1,22 +1,42 @@
 """Main entry point for `elk`."""
 
-from .extraction import ExtractionConfig
+from dataclasses import dataclass
+from .extraction import Extraction
 from .list import list_runs
-from .training import RunConfig
+from .training import Run
 from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
+from typing import Union
 from simple_parsing import ArgumentParser
 import logging
 
 
-def run():
-    parser = ArgumentParser(add_help=False)
-    subparsers = parser.add_subparsers(dest="command", required=True)
+@dataclass
+class Program:
+    """Some top-level command"""
+    command: Union[Run, Extraction] = Run
+    verbose: bool = False   # log additional messages in the console.
 
+    def execute(self):
+        print(f"Executing Program (verbose: {self.verbose})")
+        return self.command.execute()
+
+
+def run():
+    parser = ArgumentParser(add_help=False, add_config_path_arg=True, config_path="config.yaml")
+    print("parser", parser)
+    parser.add_arguments(Program, dest="prog")
+    breakpoint()
+    args = parser.parse_args()
+    # prog: Program = args.prog
+    #prog.execute()
+
+    """
+    subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser(
         "extract",
         help="Extract hidden states from a model.",
-    ).add_arguments(ExtractionConfig, dest="extraction")
+    ).add_arguments(Extraction, dest="extraction")
 
     elicit_parser = subparsers.add_parser(
         "elicit",
@@ -26,7 +46,7 @@ def run():
         ),
         conflict_handler="resolve",
     )
-    elicit_parser.add_arguments(RunConfig, dest="run")
+    elicit_parser.add_arguments(Run, dest="run")
     elicit_parser.add_argument(
         "--output", "-o", type=Path, help="Path to save checkpoints to."
     )
@@ -77,6 +97,7 @@ def run():
             raise NotImplementedError
         else:
             raise ValueError(f"Unknown command {args.command}")
+    """
 
 
 if __name__ == "__main__":

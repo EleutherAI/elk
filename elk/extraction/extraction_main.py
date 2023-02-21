@@ -1,6 +1,6 @@
 """Extract hidden states from a model."""
 
-from .extraction import extract_hiddens, ExtractionConfig, PromptDataset
+from .extraction import extract_hiddens, Extraction, PromptDataset
 from ..files import elk_cache_dir
 from ..training.preprocessing import silence_datasets_messages
 from ..utils import maybe_all_gather, maybe_barrier, select_usable_gpus
@@ -12,7 +12,7 @@ import torch
 import torch.distributed as dist
 
 
-def run(cfg: ExtractionConfig):
+def run(cfg: Extraction):
     """Run the extraction subcommand for ELK.
 
     This function is called upon running `elk extract`.

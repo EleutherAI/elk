@@ -1,0 +1,5 @@
+run:
+  data:
+    model: "microsoft/deberta-v2-xxlarge-mnli"
+    prompts:
+      dataset: imdb

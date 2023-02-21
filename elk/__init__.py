@@ -1,1 +1,1 @@
-from .extraction import extract_hiddens, ExtractionConfig, PromptDataset
+from .extraction import extract_hiddens, Extraction, PromptDataset

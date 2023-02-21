@@ -15,7 +15,7 @@ import warnings
 
 
 @dataclass
-class ExtractionConfig(Serializable):
+class Extraction(Serializable):
     """
     Args:
         model: HuggingFace model string identifying the language model to extract
@@ -63,6 +63,9 @@ class ExtractionConfig(Serializable):
                 "when `--layer-stride` is 2. This will be fixed in a future release."
             )
 
+    def execute():
+        print("hi")
+
 
 @torch.autocast("cuda", enabled=torch.cuda.is_available())  # type: ignore
 @torch.no_grad()
@@ -70,7 +73,7 @@ def extract_hiddens(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
     prompts: PromptDataset,
-    config: ExtractionConfig,
+    config: Extraction,
     *,
     # TODO: Bring back auto-batching when we have a good way to prevent excess padding
     batch_size: int = 1,

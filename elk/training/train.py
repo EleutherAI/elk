@@ -2,7 +2,7 @@
 
 from ..files import elk_cache_dir
 from ..utils import select_usable_gpus
-from ..extraction import ExtractionConfig
+from ..extraction import Extraction
 from .preprocessing import load_hidden_states, normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
@@ -19,9 +19,12 @@ import random
 import torch
 import torch.multiprocessing as mp
 
+# from elk.extraction.extraction_main import run as run_extraction
+# import os
+# import torch.distributed as dist
 
 @dataclass
-class RunConfig:
+class Run:
     """Full specification of a reporter training run.
 
     Args:
@@ -30,7 +33,7 @@ class RunConfig:
         optim: Config for the `.fit()` loop.
     """
 
-    data: ExtractionConfig
+    data: Extraction
     net: ReporterConfig
     optim: OptimConfig
 
@@ -39,9 +42,33 @@ class RunConfig:
     normalization: Literal["legacy", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
 
+    # def execute(self):
+    #     # Check if we were called with torchrun or not
+    #     local_rank = os.environ.get("LOCAL_RANK")
+    #     if local_rank is not None:
+    #         dist.init_process_group("nccl")
+    #         local_rank = int(local_rank)
+
+    #     with redirect_stdout(None) if local_rank else nullcontext():
+    #         if local_rank:
+    #             logging.getLogger("transformers").setLevel(logging.CRITICAL)
+
+    #         try:
+    #             train(args.run, args.output)
+    #         except (EOFError, FileNotFoundError):
+    #             run_extraction(args.run.data)
+
+    #             # Ensure the extraction is finished before starting training
+    #             if dist.is_initialized():
+    #                 dist.barrier()
+
+    #             train(args.run, args.output)
+
+
+
 
 def train_task(
-    input_q: mp.Queue, out_q: mp.Queue, cfg: RunConfig, device: str, out_dir: Path
+    input_q: mp.Queue, out_q: mp.Queue, cfg: Run, device: str, out_dir: Path
 ):
     """Worker function for training reporters in parallel."""
 
@@ -56,7 +83,7 @@ def train_task(
 
 
 def train_reporter(
-    cfg: RunConfig,
+    cfg: Run,
     layer_index: int,
     train_h: torch.Tensor,
     val_h: torch.Tensor,
@@ -117,7 +144,7 @@ def train_reporter(
     return stats
 
 
-def train(cfg: RunConfig, out_dir: Optional[Path]):
+def train(cfg: Run, out_dir: Optional[Path]):
     # We use a multiprocessing context with "spawn" as the start method so CUDA works
     ctx = mp.get_context("spawn")
 
