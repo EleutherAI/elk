@@ -234,7 +234,7 @@ class PromptCollator(TorchDataset):
             example_idx, prompt_idx = divmod(index, len(prompts))
         elif self.strategy == "randomize":
             example_idx = index
-            prompt_idx = self.rng.randint(0, len(prompts))
+            prompt_idx = self.rng.randint(0, len(prompts) - 1)
         else:
             raise ValueError(f"Unknown strategy {self.strategy}")
 

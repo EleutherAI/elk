@@ -92,7 +92,7 @@ def _extract_hiddens_process(
         logging.getLogger("transformers").setLevel(logging.CRITICAL)
 
     num_choices = params.collator.num_classes
-    shards = np.array_split(np.arange(len(params.collator)), world_size)
+    shards = np.array_split(np.arange(len(params.collator.active_split)), world_size)
     params.collator.select_(shards[rank])
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
@@ -235,11 +235,12 @@ def _extract_hiddens_process(
             queue.put(
                 {
                     "hiddens": hiddens[i].astype(np.float16),
-                    "layers": params.layers,
+                    "layers": params.layers or list(range(len(hiddens[i]))),
                     "label": labels[i],
                     "answers": prompts[i].answers,
                     "template_name": prompts[i].template_name,
-                    "text": prompts[i].question,
+                    "text": prompts[i].to_string(0, sep=sep_token)
+                    + params.prompt_suffix,  # this arbitrarily inserts the first answer
                     "predicate": prompts[i].predicate,
                 }
             )

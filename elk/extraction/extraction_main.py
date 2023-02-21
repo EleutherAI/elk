@@ -68,7 +68,7 @@ def run(args):
     print(f"Saving results to \033[1m{save_dir}\033[0m")  # bold
 
     print("Loading datasets")
-    silence_datasets_messages()
+    # silence_datasets_messages()  TODO: fix this--it currently causes hangs on errors
 
     train_dset = extract(args, "train")
     valid_dset = extract(args, "validation")
