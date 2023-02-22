@@ -15,7 +15,6 @@ from ..utils import select_usable_gpus
 @dataclass
 class EvaluateConfig(Serializable):
     source: str
-    reporter_name: str
     targets: List[str]
     normalization: Literal["legacy", "elementwise", "meanonly"] = "meanonly"
     device: str = "cuda" 
@@ -31,11 +30,16 @@ def evaluate_reporters(cfg: EvaluateConfig):
         _, hiddens = normalize(hiddens, hiddens, cfg.normalization)
 
         reporter_root_path = (
-            elk_cache_dir() / cfg.source / "reporters" / cfg.reporter_name
+            elk_cache_dir() / cfg.source / "reporters" 
         )
-        reporters = torch.load(
-            reporter_root_path / "reporters.pt", map_location=cfg.device
-        )
+
+        reporters = []
+        for path in reporter_root_path.glob("*.pt"):
+            reporter = torch.load(
+                path, 
+                map_location=cfg.device
+            )
+            reporters.append(reporter)
 
         transfer_eval = reporter_root_path / "transfer_eval"
         transfer_eval.mkdir(parents=True, exist_ok=True)
