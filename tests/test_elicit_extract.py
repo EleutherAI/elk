@@ -13,6 +13,20 @@ import os
 @pytest.mark.cpu
 def test_elk_run():
     # run elicit - check that the command runs without error
-    os.system("elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --max_examples 1")
+    assert (
+        os.waitstatus_to_exitcode(
+            os.system(
+                "elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --max_examples 10"
+            )
+        )
+        == 0
+    ), "elicit command failed"
     # run extract - check that the command runs without error
-    os.system("elk extract microsoft/deberta-v2-xxlarge-mnli imdb --max_examples 1")
+    assert (
+        os.waitstatus_to_exitcode(
+            os.system(
+                "elk extract microsoft/deberta-v2-xxlarge-mnli imdb --max_examples 10"
+            )
+        )
+        == 0
+    ), "extract command failed"
