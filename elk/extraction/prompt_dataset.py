@@ -234,7 +234,6 @@ class PromptDataset(TorchDataset):
             self.fewshot_strata = []
 
         # Shard if needed
-        print("what")
         if world_size > 1:
             self.active_split = self.active_split.shard(world_size, rank)
 

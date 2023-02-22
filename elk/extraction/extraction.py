@@ -42,13 +42,13 @@ class ExtractionConfig(Serializable):
     use_encoder_states: bool = False
 
     def __post_init__(self, layer_stride: int):
-        from transformers import AutoConfig, PretrainedConfig
-
         if self.layers and layer_stride > 1:
             raise ValueError(
                 "Cannot use both --layers and --layer-stride. Please use only one."
             )
         elif layer_stride > 1:
+            from transformers import AutoConfig, PretrainedConfig
+
             # Look up the model config to get the number of layers
             config = AutoConfig.from_pretrained(self.model)
             assert isinstance(config, PretrainedConfig)

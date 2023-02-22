@@ -134,7 +134,7 @@ def train(cfg: RunConfig, out_dir: Path):
     ds = DatasetDict(
         {
             split_name: Dataset.from_generator(
-                extract_hiddens, gen_kwargs=dict(cfg=cfg, split=split_name)
+                extract_hiddens, gen_kwargs=dict(cfg=cfg.data, split=split_name)
             )
             for split_name in ["train", "validation"]
         }
