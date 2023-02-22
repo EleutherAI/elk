@@ -1,8 +1,3 @@
-from elk.math import stochastic_round_constrained
-from hypothesis import given, strategies as st
-from random import Random
-import math
-import numpy as np
 import pytest
 import os
 
@@ -16,7 +11,8 @@ def test_elk_run():
     assert (
         os.waitstatus_to_exitcode(
             os.system(
-                "elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --max_examples 10"
+                "NO_CUDA=1 elk elicit"
+                + " microsoft/deberta-v2-xxlarge-mnli imdb --max_examples 10"
             )
         )
         == 0
@@ -25,7 +21,8 @@ def test_elk_run():
     assert (
         os.waitstatus_to_exitcode(
             os.system(
-                "elk extract microsoft/deberta-v2-xxlarge-mnli imdb --max_examples 10"
+                "NO_CUDA=1 elk extract"
+                + " microsoft/deberta-v2-xxlarge-mnli imdb --max_examples 10"
             )
         )
         == 0

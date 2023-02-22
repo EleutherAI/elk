@@ -61,18 +61,24 @@ def run(cfg: ExtractionConfig):
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    print(f"Loading model '{cfg.model}'...")
-    model = AutoModel.from_pretrained(cfg.model, torch_dtype="auto")
-    print(f"Done. Model class: '{model.__class__.__name__}'")
 
     # Intelligently select a GPU with enough memory
-    if dist.is_initialized():
-        model.to(f"cuda:{dist.get_rank()}")
-    elif torch.cuda.is_available():
-        # We at least need enough VRAM to hold the model parameters
-        min_memory = sum(p.element_size() * p.numel() for p in model.parameters())
-        (device_idx,) = select_usable_gpus(max_gpus=1, min_memory=min_memory)
-        model.to(f"cuda:{device_idx}")
+    if dist.is_initialized() or torch.cuda.is_available():
+        print(f"Loading model '{cfg.model}'...")
+        model = AutoModel.from_pretrained(cfg.model, torch_dtype="auto")
+        print(f"Done. Model class: '{model.__class__.__name__}'")
+        if dist.is_initialized():
+            model.to(f"cuda:{dist.get_rank()}")
+        elif torch.cuda.is_available():
+            # We at least need enough VRAM to hold the model parameters
+            min_memory = sum(p.element_size() * p.numel() for p in model.parameters())
+            (device_idx,) = select_usable_gpus(max_gpus=1, min_memory=min_memory)
+            model.to(f"cuda:{device_idx}")
+    else:
+        print("No GPUs detected. Running on CPU.")
+        print(f"Loading model '{cfg.model}'...")
+        model = AutoModel.from_pretrained(cfg.model, torch_dtype=torch.float32)
+        print(f"Done. Model class: '{model.__class__.__name__}'")
 
     if cfg.use_encoder_states and not model.config.is_encoder_decoder:
         raise ValueError(
