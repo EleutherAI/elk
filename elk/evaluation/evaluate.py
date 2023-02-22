@@ -29,16 +29,11 @@ def evaluate_reporters(cfg: EvaluateConfig):
 
         _, hiddens = normalize(hiddens, hiddens, cfg.normalization)
 
-        reporter_root_path = (
-            elk_cache_dir() / cfg.source / "reporters" 
-        )
+        reporter_root_path = elk_cache_dir() / cfg.source / "reporters"
 
         reporters = []
         for path in reporter_root_path.glob("*.pt"):
-            reporter = torch.load(
-                path, 
-                map_location=cfg.device
-            )
+            reporter = torch.load(path, map_location=cfg.device)
             reporters.append(reporter)
 
         transfer_eval = reporter_root_path / "transfer_eval"
