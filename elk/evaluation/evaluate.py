@@ -1,26 +1,40 @@
 import csv
-
+import pickle
 import torch
 
+from dataclasses import dataclass
+from hashlib import md5
 from elk.training.preprocessing import load_hidden_states, normalize
-
+from simple_parsing.helpers import field, Serializable
+from typing import Literal, List
+from pathlib import Path
 from ..files import elk_cache_dir
+from ..utils import select_usable_gpus
 
 
-def evaluate_reporters(args):
-    for hidden_state_dir in args.hidden_states:
+@dataclass
+class EvaluateConfig(Serializable):
+    source: str
+    reporter_name: str
+    targets: List[str]
+    normalization: Literal["legacy", "elementwise", "meanonly"] = "meanonly"
+    device: str = "cuda" 
+
+
+def evaluate_reporters(cfg: EvaluateConfig):
+    for target in cfg.targets:
         hiddens, labels = load_hidden_states(
-            path=elk_cache_dir() / hidden_state_dir / "validation_hiddens.pt"
+            path=elk_cache_dir() / target / "validation_hiddens.pt"
         )
         assert len(set(labels)) > 1
 
-        _, hiddens = normalize(hiddens, hiddens, args.normalization)
+        _, hiddens = normalize(hiddens, hiddens, cfg.normalization)
 
         reporter_root_path = (
-            elk_cache_dir() / args.name / "reporters" / args.reporter_name
+            elk_cache_dir() / cfg.source / "reporters" / cfg.reporter_name
         )
         reporters = torch.load(
-            reporter_root_path / "reporters.pt", map_location=args.device
+            reporter_root_path / "reporters.pt", map_location=cfg.device
         )
 
         transfer_eval = reporter_root_path / "transfer_eval"
@@ -29,21 +43,21 @@ def evaluate_reporters(args):
         L = hiddens.shape[1]
         layers = list(hiddens.unbind(1))
         layers.reverse()
-        csv_file = transfer_eval / f"{hidden_state_dir}.csv"
+        csv_file = transfer_eval / f"{target}.csv"
 
         for reporter in reporters:
             reporter.eval()
 
             with torch.no_grad(), open(csv_file, "w") as f:
                 for layer_idx, hidden_state in enumerate(layers):
-                    x0, x1 = hidden_state.to(args.device).float().chunk(2, dim=-1)
 
+                    x0, x1 = hidden_state.to(cfg.device).float().chunk(2, dim=-1)
                     result = reporter.score(
                         (x0, x1),
-                        labels.to(args.device),
+                        labels.to(cfg.device),
                     )
                     stats = [*result]
-                    stats += [args.normalization, args.name, hidden_state_dir]
+                    stats += [cfg.normalization, cfg.source, target]
 
                     writer = csv.writer(f)
                     if not csv_file.exists():
@@ -55,7 +69,7 @@ def evaluate_reporters(args):
                             "auroc",
                             "normalization",
                             "name",
-                            "hidden_states",
+                            "targets",
                         ]
                         writer.writerow(cols)
                     writer.writerow([L - layer_idx] + [stats])
