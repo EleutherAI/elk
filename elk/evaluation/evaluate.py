@@ -18,7 +18,7 @@ class EvaluateConfig(Serializable):
     reporter_name: str
     targets: List[str]
     normalization: Literal["legacy", "elementwise", "meanonly"] = "meanonly"
-    device: str = "cuda" 
+    device: str = "cuda"
 
 
 def evaluate_reporters(cfg: EvaluateConfig):
