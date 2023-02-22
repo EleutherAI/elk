@@ -25,7 +25,11 @@ To only extract the hidden states for one model `model` and the dataset `dataset
 elk extract microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
-and evaluate on different datasets: [WIP]
+and evaluate on different datasets:
+
+```bash
+elk eval --source c92eb2ddd084b88e02b5dfe7c2054c36 --targets 4803c6f7262e13e256f6b0fd39cdd5cf
+```
 
 ### Distributed hidden state extraction
 
