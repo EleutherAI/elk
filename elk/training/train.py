@@ -1,18 +1,20 @@
 """Main training loop."""
 
-from ..files import elk_cache_dir
 from ..utils import select_usable_gpus
-from ..extraction import ExtractionConfig
-from .preprocessing import load_hidden_states, normalize
+from ..extraction import extract_hiddens, ExtractionConfig
+from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
-from hashlib import md5
+from datasets import Dataset, DatasetDict
 from pathlib import Path
+from simple_parsing import Serializable
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm.auto import tqdm
-from typing import Literal, Optional
+from transformers import AutoConfig
+from typing import Literal
 import csv
+import json
 import numpy as np
 import pickle
 import random
@@ -21,7 +23,7 @@ import torch.multiprocessing as mp
 
 
 @dataclass
-class RunConfig:
+class RunConfig(Serializable):
     """Full specification of a reporter training run.
 
     Args:
@@ -117,41 +119,37 @@ def train_reporter(
     return stats
 
 
-def train(cfg: RunConfig, out_dir: Optional[Path]):
+def train(cfg: RunConfig, out_dir: Path):
     # We use a multiprocessing context with "spawn" as the start method so CUDA works
     ctx = mp.get_context("spawn")
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    data_uuid = md5(pickle.dumps(cfg.data)).hexdigest()
-    data_dir = elk_cache_dir() / data_uuid
+    with open(out_dir / "cfg.yaml", "w") as f:
+        cfg.dump_yaml(f)
 
-    # Load the training hidden states.
-    train_hiddens, train_labels = load_hidden_states(path=data_dir / "train_hiddens.pt")
+    with open(out_dir / "model_config.json", "w") as f:
+        config = AutoConfig.from_pretrained(cfg.data.model)
+        json.dump(config.to_dict(), f)
 
-    # Load the validation hidden states.
-    val_hiddens, val_labels = load_hidden_states(
-        path=data_dir / "validation_hiddens.pt"
+    ds = DatasetDict(
+        {
+            split_name: Dataset.from_generator(
+                extract_hiddens, gen_kwargs=dict(cfg=cfg, split=split_name)
+            )
+            for split_name in ["train", "validation"]
+        }
     )
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        # Save the results in the same directory as the hidden states,
-        # if no output directory is specified.
-        out_dir = data_dir
 
-    # Ensure that the states are valid.
-    assert len(set(train_labels)) > 1
-    assert len(set(val_labels)) > 1
+    # TODO: Re-implement this in a way that doesn't require loading all the hidden
+    # states into memory at once.
+    # train_hiddens, val_hiddens = normalize(
+    #     train_hiddens, val_hiddens, cfg.normalization
+    # )
 
-    # Normalize the hidden states with the specified method.
-    train_hiddens, val_hiddens = normalize(
-        train_hiddens, val_hiddens, cfg.normalization
-    )
-
-    L = train_hiddens.shape[1]
-
-    train_layers = train_hiddens.unbind(1)
-    val_layers = val_hiddens.unbind(1)
-    iterator = zip(train_layers, val_layers)
+    L = config.num_hidden_layers
+    iterator = (ds.rename_column(f"hidden_{i}", "hiddens") for i in range(L))
 
     # Intelligently select device indices to use based on free memory.
     # TODO: Set the min_memory argument to some heuristic lower bound

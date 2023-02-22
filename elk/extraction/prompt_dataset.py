@@ -37,7 +37,6 @@ class PromptConfig(Serializable):
     Args:
         dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
             `"super_glue boolq"` or `"imdb"`.
-        split: The split to use.
         balance: Whether to force class balance in the dataset using undersampling.
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset; if there is only one column
@@ -52,7 +51,6 @@ class PromptConfig(Serializable):
     """
 
     dataset: str = field(positional=True)
-    split: str = "validation"
     balance: bool = False
     label_column: Optional[str] = None
     max_examples: int = 0
@@ -81,7 +79,14 @@ class PromptDataset(TorchDataset):
     "Henry Mills (Once Upon a Time) -- Henry Daniel Mills is a fictional character...
     """
 
-    def __init__(self, cfg: PromptConfig):
+    def __init__(
+        self,
+        cfg: PromptConfig,
+        rank: int = 0,
+        world_size: int = 1,
+        split: str = "validation",
+    ):
+        print("hey")
         data_path = cfg.dataset.split()
         assert len(data_path) in (1, 2), f"Invalid dataset path {cfg.dataset}"
 
@@ -91,6 +96,7 @@ class PromptDataset(TorchDataset):
         self.strategy = cfg.strategy
 
         # TODO: Should we support IterableDataset?
+        print(f"Loading dataset {cfg.dataset}...")
         ds_dict = load_dataset(*data_path)  # type: ignore
         assert isinstance(ds_dict, DatasetDict)
 
@@ -112,7 +118,6 @@ class PromptDataset(TorchDataset):
 
         # Lots of datasets have a validation split or a test split, but not both. If
         # the requested split doesn't exist, we try to use the other one instead.
-        split = cfg.split
         if split not in ds_dict and split in ("validation", "test"):
             new_split = "test" if split == "validation" else "train"
             if new_split in ds_dict:
@@ -228,6 +233,11 @@ class PromptDataset(TorchDataset):
         else:
             self.fewshot_strata = []
 
+        # Shard if needed
+        print("what")
+        if world_size > 1:
+            self.active_split = self.active_split.shard(world_size, rank)
+
         # Now shuffle the active split and truncate it if needed
         self.active_split = self.active_split.shuffle(seed=cfg.seed)
         if 0 < cfg.max_examples < len(self.active_split):
@@ -307,6 +317,3 @@ class PromptDataset(TorchDataset):
 
         # We piggyback on the ClassLabel feature type to get the number of classes
         return self.active_split.features[self.label_column].num_classes
-
-    def select_(self, indices):
-        self.active_split = self.active_split.select(indices)

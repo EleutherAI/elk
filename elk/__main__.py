@@ -26,7 +26,11 @@ def run():
     )
     elicit_parser.add_arguments(RunConfig, dest="run")
     elicit_parser.add_argument(
-        "--output", "-o", type=Path, help="Path to save checkpoints to."
+        "--output",
+        "-o",
+        type=Path,
+        help="Path to save checkpoints to.",
+        required=True,
     )
 
     subparsers.add_parser(
@@ -41,17 +45,13 @@ def run():
         return
 
     # Import here and not at the top to speed up `elk list`
-    from .extraction.extraction_main import run as run_extraction
     from .training.train import train
 
     if args.command == "extract":
-        run_extraction(args.extraction)
+        # TODO: Implement an extraction command that saves to a file
+        raise NotImplementedError
     elif args.command == "elicit":
-        try:
-            train(args.run, args.output)
-        except (EOFError, FileNotFoundError):
-            run_extraction(args.run.data)
-            train(args.run, args.output)
+        train(args.run, args.output)
 
     elif args.command == "eval":
         # TODO: Implement evaluation script
