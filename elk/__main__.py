@@ -59,7 +59,7 @@ def run():
             logging.getLogger("transformers").setLevel(logging.CRITICAL)
 
         if args.command == "extract":
-            run_extraction(args.run.data)
+            run_extraction(args.extraction)
         elif args.command == "elicit":
             try:
                 train(args.run, args.output)
