@@ -47,9 +47,9 @@ class RunConfig(Serializable):
 def train_reporter(
     cfg: RunConfig,
     dataset: DatasetDict,
-    devices: list[str],
     out_dir: Path,
     layer: int,
+    devices: list[str],
     world_size: int = 1,
 ):
     """Train a single reporter on a single layer."""
@@ -155,12 +155,14 @@ def train(cfg: RunConfig, out_dir: Path):
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
+    # Train reporters for each layer in parallel
     with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
-        fn = partial(train_reporter, cfg, ds, devices, out_dir, world_size=num_devices)
-        L = config.num_hidden_layers
-
+        fn = partial(
+            train_reporter, cfg, ds, out_dir, devices=devices, world_size=num_devices
+        )
         writer = csv.writer(f)
         writer.writerow(cols)
 
-        for layer, *stats in tqdm(pool.imap_unordered(fn, range(L))):
-            writer.writerow([L - layer] + [f"{s:.4f}" for s in stats])
+        L = config.num_hidden_layers
+        for i, *stats in tqdm(pool.imap_unordered(fn, range(L))):
+            writer.writerow([i] + [f"{s:.4f}" for s in stats])

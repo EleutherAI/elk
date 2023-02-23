@@ -1,6 +1,5 @@
 """Preprocessing functions for training."""
 
-from pathlib import Path
 from typing import Literal
 import logging
 import torch
@@ -52,28 +51,6 @@ def normalize(
         val_hiddens *= scale
 
     return train_hiddens, val_hiddens
-
-
-def load_hidden_states(path: Path) -> tuple[torch.Tensor, torch.Tensor]:
-    """Load hidden states.
-
-    Load the hidden states and labels from a given path.
-    The map_location="cpu" argument is used to ensure that the tensors are
-    loaded on the CPU.
-    An assertion is used to ensure that the tensors are loaded correctly.
-
-    Args:
-        path: The path to the hidden states.
-
-    Returns:
-        tuple containing loaded hidden states and labels.
-    """
-    hiddens, labels = torch.load(path, map_location="cpu")
-    assert isinstance(hiddens, torch.Tensor)
-    assert isinstance(labels, torch.Tensor)
-
-    # Concatenate the positive and negative examples together.
-    return hiddens.flatten(start_dim=-2), labels
 
 
 def silence_datasets_messages():
