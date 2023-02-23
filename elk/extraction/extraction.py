@@ -66,10 +66,6 @@ def extract_to_disk(cfg: ExtractionConfig, output_path: Path):
     extract_to_dataset(cfg).save_to_disk(output_path)
 
 
-def extract_to_dataset() -> DatasetDict:
-    pass
-
-
 def extract_hiddens(
     cfg: ExtractionConfig,
     *,
@@ -80,10 +76,8 @@ def extract_hiddens(
 ) -> Iterable[dict]:
     """Run inference on a model with a set of prompts, yielding the hidden states."""
 
-    breakpoint()
     ctx = mp.get_context("spawn")
     queue = ctx.Queue()
-    breakpoint()
 
     # TODO: Use a heuristic based on params to determine minimum VRAM
     gpu_indices = select_usable_gpus(max_gpus)
@@ -99,7 +93,6 @@ def extract_hiddens(
     assert ctx is not None
 
     # Yield results from the queue
-    breakpoint()
     procs_running = num_gpus
     while procs_running > 0:
         output = queue.get()
@@ -140,9 +133,6 @@ def extract_to_dataset(
             "string"
         ),  # exact input to the LM for one vairant+answer
     }
-    from datasets import disable_caching
-
-    disable_caching()
 
     return DatasetDict(
         {

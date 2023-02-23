@@ -86,7 +86,6 @@ class PromptDataset(TorchDataset):
         world_size: int = 1,
         split: str = "validation",
     ):
-        print("hey")
         data_path = cfg.dataset.split()
         assert len(data_path) in (1, 2), f"Invalid dataset path {cfg.dataset}"
 
