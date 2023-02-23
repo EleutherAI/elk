@@ -18,7 +18,8 @@ from typing import cast, Literal, Iterable
 import logging
 import torch
 import torch.multiprocessing as mp
-
+from pathlib import Path
+from datasets import DatasetDict
 
 @dataclass
 class ExtractionConfig(Serializable):
@@ -56,6 +57,17 @@ class ExtractionConfig(Serializable):
             assert isinstance(config, PretrainedConfig)
 
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
+
+
+def extract_to_disk(cfg: ExtractionConfig, output_path: Path):
+    if not output_path.exists():
+        output_path.mkdir()
+    
+    extract_to_dataset(cfg).save_to_disk(output_path)
+
+
+def extract_to_dataset() -> DatasetDict:
+    pass
 
 
 def extract_hiddens(

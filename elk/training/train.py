@@ -116,6 +116,10 @@ def train_reporter(
     return stats
 
 
+def test(cfg, split):
+    print(cfg, split)
+
+
 def train(cfg: RunConfig, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -124,6 +128,7 @@ def train(cfg: RunConfig, out_dir: Path):
 
     ds = extract_to_dataset(cfg.data, max_gpus=cfg.max_gpus)
     breakpoint()
+
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
 
