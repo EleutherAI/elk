@@ -116,10 +116,6 @@ def train_reporter(
     return stats
 
 
-def test(cfg, split):
-    print(cfg, split)
-
-
 def train(cfg: RunConfig, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
 
