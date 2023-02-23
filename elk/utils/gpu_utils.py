@@ -36,15 +36,13 @@ def select_usable_gpus(max_gpus: int = -1, *, min_memory: int = 0) -> list[int]:
         RuntimeError: If no GPUs are visible to PyTorch.
         ValueError: If `max_gpus` is greater than the number of visible GPUs.
     """
-    # Trivial case: no GPUs requested
-    if max_gpus == 0:
+    # Trivial case: no GPUs requested or available
+    num_visible = torch.cuda.device_count()
+    if max_gpus == 0 or num_visible:
         return []
 
     # Sanity checks
-    num_visible = torch.cuda.device_count()
-    if not num_visible:
-        raise RuntimeError("No GPUs visible to PyTorch.")
-    elif max_gpus > num_visible:
+    if max_gpus > num_visible:
         raise ValueError(
             f"Requested {max_gpus} GPUs, but only {num_visible} are visible."
         )
