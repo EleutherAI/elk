@@ -3,16 +3,18 @@
 from .prompt_dataset import Prompt, PromptDataset, PromptConfig
 from ..utils import select_usable_gpus
 from dataclasses import dataclass, InitVar
+from datasets import Array3D, Features, Dataset, DatasetDict, Sequence, Value
 from einops import rearrange
 from simple_parsing.helpers import field, Serializable
 from torch.utils.data import DataLoader
 from transformers import (
+    AutoConfig,
     AutoModel,
     AutoTokenizer,
     BatchEncoding,
     PreTrainedModel,
 )
-from typing import cast, Literal, Sequence, Iterable
+from typing import cast, Literal, Iterable
 import logging
 import torch
 import torch.multiprocessing as mp
@@ -36,7 +38,7 @@ class ExtractionConfig(Serializable):
     prompts: PromptConfig
     model: str = field(positional=True)
 
-    layers: Sequence[int] = ()
+    layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
     use_encoder_states: bool = False
@@ -53,7 +55,7 @@ class ExtractionConfig(Serializable):
             config = AutoConfig.from_pretrained(self.model)
             assert isinstance(config, PretrainedConfig)
 
-            self.layers = list(range(0, config.num_hidden_layers, layer_stride))
+            self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
 
 def extract_hiddens(
@@ -66,8 +68,10 @@ def extract_hiddens(
 ) -> Iterable[dict]:
     """Run inference on a model with a set of prompts, yielding the hidden states."""
 
+    breakpoint()
     ctx = mp.get_context("spawn")
     queue = ctx.Queue()
+    breakpoint()
 
     # TODO: Use a heuristic based on params to determine minimum VRAM
     gpu_indices = select_usable_gpus(max_gpus)
@@ -83,6 +87,7 @@ def extract_hiddens(
     assert ctx is not None
 
     # Yield results from the queue
+    breakpoint()
     procs_running = num_gpus
     while procs_running > 0:
         output = queue.get()
@@ -96,6 +101,47 @@ def extract_hiddens(
 
     # Clean up
     ctx.join()
+
+
+def extract_to_dataset(
+    cfg: ExtractionConfig,
+    max_gpus: int = -1,
+) -> DatasetDict:
+    config = AutoConfig.from_pretrained(cfg.model)
+    num_variants = 1
+
+    layer_cols = {
+        f"hidden_{i}": Array3D(
+            dtype="float16",
+            shape=(num_variants, 2, config.hidden_size),
+        )
+        for i in range(config.num_hidden_layers)
+    }
+    other_cols = {
+        "variant_ids": Sequence(
+            Value(dtype="string"),
+            length=num_variants,
+        ),
+        "predicate_id": Value("int32"),
+        "label": Value("int32"),
+        "example_input": Value(
+            "string"
+        ),  # exact input to the LM for one vairant+answer
+    }
+    from datasets import disable_caching
+
+    disable_caching()
+
+    return DatasetDict(
+        {
+            split_name: Dataset.from_generator(
+                extract_hiddens,
+                gen_kwargs=dict(cfg=cfg, split=split_name),
+                features=Features({**layer_cols, **other_cols}),
+            )
+            for split_name in ["train", "validation"]
+        }
+    )
 
 
 @torch.no_grad()
@@ -160,20 +206,18 @@ def _extract_hiddens_process(
 
     # This function returns the flattened questions and answers. After inference we
     # need to reshape the results.
-    def collate(prompts: list[Prompt]) -> BatchEncoding:
-        return tokenize(
-            [
-                prompt.to_string(i, sep=sep_token)
-                for prompt in prompts
-                for i in range(num_choices)
-            ]
-        )
+    def collate(prompts: list[Prompt]) -> tuple[BatchEncoding, Prompt, str]:
+        texts = [
+            prompt.to_string(i, sep=sep_token)
+            for prompt in prompts
+            for i in range(num_choices)
+        ]
+        return tokenize(texts), prompts[0], texts[0]
 
-    def collate_enc_dec(prompts: list[Prompt]) -> BatchEncoding:
-        return tokenize(
-            [prompt.question for prompt in prompts for _ in prompt.answers],
-            text_target=[answer for prompt in prompts for answer in prompt.answers],
-        )
+    def collate_enc_dec(prompts: list[Prompt]) -> tuple[BatchEncoding, Prompt, str]:
+        inputs = [prompt.question for prompt in prompts for _ in prompt.answers]
+        targets = [answer for prompt in prompts for answer in prompt.answers]
+        return tokenize(inputs, text_target=targets), prompts[0], inputs[0] + targets[0]
 
     # If this is an encoder-decoder model and we're passing the answer to the encoder,
     # we don't need to run the decoder at all. Just strip it off, making the problem
@@ -193,13 +237,13 @@ def _extract_hiddens_process(
     should_concat = not is_enc_dec or cfg.use_encoder_states
     dl = DataLoader(
         prompts,
-        batch_size=batch_size,
+        batch_size=1,
         collate_fn=collate if should_concat else collate_enc_dec,
     )
 
     # Iterating over questions
-    for batch in dl:
-        outputs = model(**batch, output_hidden_states=True)
+    for inputs, prompt, example_text in dl:
+        outputs = model(**inputs, output_hidden_states=True)
 
         raw_hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
         hiddens = raw_hiddens[1:]
@@ -216,7 +260,7 @@ def _extract_hiddens_process(
             # Because of padding, the last token is going to be at a different index
             # for each example, so we use gather.
             B, C, _, D = hiddens[0].shape
-            lengths = batch["attention_mask"].sum(dim=-1).view(B, C, 1, 1)
+            lengths = inputs["attention_mask"].sum(dim=-1).view(B, C, 1, 1)
             indices = lengths.sub(1).expand(B, C, 1, D)
             hiddens = [h.gather(index=indices, dim=-2).squeeze(-2) for h in hiddens]
         elif cfg.token_loc == "mean":
@@ -227,14 +271,15 @@ def _extract_hiddens_process(
         # [batch size, num choices, hidden size]
         hiddens = [h.half().cpu().numpy() for h in hiddens]
 
-        # Dict of lists
         hidden_dict = {
             f"hidden_{layer_idx}": hidden
             for layer_idx, hidden in zip(cfg.layers, hiddens)
         }
-        # List of dicts https://bit.ly/3Zcf1Rf
-        transposed = [dict(zip(hidden_dict, col)) for col in zip(*hidden_dict.values())]
-        queue.put(transposed)
+        hidden_dict["variant_ids"] = prompt.template_name
+        hidden_dict["example_input"] = example_text
+        hidden_dict["label"] = prompt.label
+        hidden_dict["predicate_id"] = prompt.predicate_id
+        queue.put(hidden_dict)
 
     # Signal to the consumer that we're done
     queue.put(None)

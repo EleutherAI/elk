@@ -25,7 +25,7 @@ class Prompt:
     answers: list[str]
     label: int
     template_name: str
-    predicate: int  # index of a row from the original dataset
+    predicate_id: int  # index of a row from the original dataset
 
     def to_string(self, answer_idx: int, sep: str = "\n") -> str:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
@@ -296,7 +296,7 @@ class PromptDataset(TorchDataset):
             answers=answers,
             label=true_label,
             template_name=template_name,
-            predicate=example_idx,
+            predicate_id=example_idx,
         )
 
     def __iter__(self):

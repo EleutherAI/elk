@@ -1,21 +1,19 @@
 """Main training loop."""
 
 from ..utils import select_usable_gpus
-from ..extraction import extract_hiddens, ExtractionConfig
+from ..extraction import extract_hiddens, extract_to_dataset, ExtractionConfig
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
-from datasets import Dataset, DatasetDict
+from datasets import Array3D, Features, Dataset, DatasetDict, Sequence, Value
 from functools import partial
 from pathlib import Path
 from simple_parsing import Serializable
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm.auto import tqdm
-from transformers import AutoConfig
 from typing import Literal
 import csv
-import json
 import numpy as np
 import os
 import pickle
@@ -124,18 +122,8 @@ def train(cfg: RunConfig, out_dir: Path):
     with open(out_dir / "cfg.yaml", "w") as f:
         cfg.dump_yaml(f)
 
-    with open(out_dir / "model_config.json", "w") as f:
-        config = AutoConfig.from_pretrained(cfg.data.model)
-        json.dump(config.to_dict(), f)
-
-    ds = DatasetDict(
-        {
-            split_name: Dataset.from_generator(
-                extract_hiddens, gen_kwargs=dict(cfg=cfg.data, split=split_name)
-            )
-            for split_name in ["train", "validation"]
-        }
-    )
+    ds = extract_to_dataset(cfg.data, max_gpus=cfg.max_gpus)
+    breakpoint()
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -145,7 +133,7 @@ def train(cfg: RunConfig, out_dir: Path):
     #     train_hiddens, val_hiddens, cfg.normalization
     # )
 
-    # Intelligently select device indices to use based on free memory.
+    # Intelligently select device retuindices to use based on free memory.
     # TODO: Set the min_memory argument to some heuristic lower bound
     gpu_indices = select_usable_gpus(cfg.max_gpus)
     devices = [f"cuda:{i}" for i in gpu_indices] if gpu_indices else ["cpu"]
@@ -163,6 +151,6 @@ def train(cfg: RunConfig, out_dir: Path):
         writer = csv.writer(f)
         writer.writerow(cols)
 
-        L = config.num_hidden_layers
+        L = ds["train"].features["hidden_0"].shape[0] // 2
         for i, *stats in tqdm(pool.imap_unordered(fn, range(L))):
             writer.writerow([i] + [f"{s:.4f}" for s in stats])
