@@ -38,7 +38,7 @@ def select_usable_gpus(max_gpus: int = -1, *, min_memory: int = 0) -> list[int]:
     """
     # Trivial case: no GPUs requested or available
     num_visible = torch.cuda.device_count()
-    if max_gpus == 0 or num_visible:
+    if max_gpus == 0 or num_visible == 0:
         return []
 
     # Sanity checks

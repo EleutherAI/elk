@@ -46,8 +46,8 @@ class PromptConfig(Serializable):
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot. Defaults to 0.
         seed: The seed to use for prompt randomization. Defaults to 42.
-        strategy: The strategy to use for assigning prompt templates to examples. See
-            above for details. Defaults to `"randomize"`.
+        num_variants: The number of prompt templates to apply to each predicate upon
+            call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
     """
 
     dataset: str = field(positional=True)
@@ -56,7 +56,7 @@ class PromptConfig(Serializable):
     max_examples: int = 0
     num_shots: int = 0
     seed: int = 42
-    strategy: Literal["all", "randomize"] = "randomize"
+    num_variants: int = 1
 
 
 class PromptDataset(TorchDataset):
@@ -67,7 +67,7 @@ class PromptDataset(TorchDataset):
     a random prompt template for each example on-the-fly when `__getitem__` is called,
     using the seed passed to `__init__`. Note this means that the same example may be
     assigned a different prompt template if `__getitem__` is called multiple times with
-    the same index.
+    the same index.  TODO redo this documentation
 
     When `strategy` is set to `"all"`, we "broadcast" the prompt templates across the
     dataset, multiplying its effective size by the number of templates.
@@ -86,14 +86,15 @@ class PromptDataset(TorchDataset):
         world_size: int = 1,
         split: str = "validation",
     ):
-        print("hey")
         data_path = cfg.dataset.split()
         assert len(data_path) in (1, 2), f"Invalid dataset path {cfg.dataset}"
 
         self.num_shots = cfg.num_shots
         self.prompter = DatasetTemplates(*data_path)
         self.rng = Random(cfg.seed)
-        self.strategy = cfg.strategy
+        self.num_variants = (
+            cfg.num_variants if cfg.num_variants > 0 else len(self.prompter.templates)
+        )
 
         # TODO: Should we support IterableDataset?
         print(f"Loading dataset {cfg.dataset}...")
@@ -238,77 +239,76 @@ class PromptDataset(TorchDataset):
             self.active_split = self.active_split.shard(world_size, rank)
 
         # Now shuffle the active split and truncate it if needed
+        self.active_split = self.active_split.add_column(
+            "predicate_id", list(range(len(self.active_split)))
+        )  # type: ignore
         self.active_split = self.active_split.shuffle(seed=cfg.seed)
         if 0 < cfg.max_examples < len(self.active_split):
             self.active_split = self.active_split.select(range(cfg.max_examples))
 
-    def __getitem__(self, index: int) -> Prompt:
-        template_names = list(self.prompter.templates.keys())
-        prompts = list(self.prompter.templates.values())
-
-        if self.strategy == "all":
-            example_idx, prompt_idx = divmod(index, len(prompts))
-        elif self.strategy == "randomize":
-            example_idx = index
-            prompt_idx = self.rng.randint(0, len(prompts) - 1)
-        else:
-            raise ValueError(f"Unknown strategy {self.strategy}")
-
-        example = self.active_split[example_idx]
-        template = prompts[prompt_idx]
-        template_name = template_names[prompt_idx]
-
-        true_label = example[self.label_column]
-        answers = []
-        questions = set()
-
-        for fake_label in range(self.num_classes):
-            example[self.label_column] = fake_label
-
-            q, a = template.apply(example)
-            answers.append(a)
-            questions.add(q)
-
-        assert len(questions) == 1
-        question = questions.pop()
-
-        if self.num_shots > 0:
-            # Use stratified sampling to get `num_shots` examples from the train set.
-            # If `num_shots` is not divisible by the number of classes, stochastic
-            # rounding is used to determine the number of examples per class.
-            example_counts = stochastic_round_constrained(
-                list(self.class_fracs * self.num_shots), self.rng
-            )
-            examples = []
-
-            for count, stratum in zip(example_counts, self.fewshot_strata):
-                indices = self.rng.sample(range(len(stratum)), count)
-
-                for idx in indices:
-                    q, a = template.apply(stratum[idx])
-                    examples.append(f"{q}\n{a}")
-
-            self.rng.shuffle(examples)
-            question = "\n\n".join(examples + [question])
-
-        return Prompt(
-            question=question,
-            answers=answers,
-            label=true_label,
-            template_name=template_name,
-            predicate_id=example_idx,
+    def __getitem__(self, index: int) -> list[Prompt]:
+        """Get a list of prompts for a given predicate"""
+        # get self.num_variants unique prompts from the template pool
+        template_names = self.rng.sample(
+            self.prompter.templates.keys(), self.num_variants
         )
+
+        example = self.active_split[index]
+
+        prompts = []
+        for template_name in template_names:
+            template = self.prompter.templates[template_name]
+
+            true_label = example[self.label_column]
+            answers = []
+            questions = set()
+
+            for fake_label in range(self.num_classes):
+                example[self.label_column] = fake_label
+
+                q, a = template.apply(example)
+                answers.append(a)
+                questions.add(q)
+
+            assert len(questions) == 1
+            question = questions.pop()
+
+            if self.num_shots > 0:
+                # Use stratified sampling to get `num_shots` examples from train set.
+                # If `num_shots` is not divisible by the number of classes, stochastic
+                # rounding is used to determine the number of examples per class.
+                example_counts = stochastic_round_constrained(
+                    list(self.class_fracs * self.num_shots), self.rng
+                )
+                examples = []
+
+                for count, stratum in zip(example_counts, self.fewshot_strata):
+                    indices = self.rng.sample(range(len(stratum)), count)
+
+                    for idx in indices:
+                        q, a = template.apply(stratum[idx])
+                        examples.append(f"{q}\n{a}")
+
+                self.rng.shuffle(examples)
+                question = "\n\n".join(examples + [question])
+
+            prompts.append(
+                Prompt(
+                    question=question,
+                    answers=answers,
+                    label=true_label,
+                    template_name=template_name,
+                    predicate_id=example["predicate_id"],
+                )
+            )
+        return prompts
 
     def __iter__(self):
         return (self[i] for i in range(len(self.active_split)))
 
     def __len__(self):
-        """Get the number of prompts in the dataset."""
-        N = len(self.active_split)
-        if self.strategy == "all":
-            N *= len(self.prompter.templates)
-
-        return N
+        """Get the number of predicates in the dataset."""
+        return len(self.active_split)
 
     @property
     def num_classes(self) -> int:

@@ -18,6 +18,7 @@ from typing import cast, Literal, Iterable
 import logging
 import torch
 import torch.multiprocessing as mp
+import numpy as np
 
 
 @dataclass
@@ -68,10 +69,8 @@ def extract_hiddens(
 ) -> Iterable[dict]:
     """Run inference on a model with a set of prompts, yielding the hidden states."""
 
-    breakpoint()
     ctx = mp.get_context("spawn")
     queue = ctx.Queue()
-    breakpoint()
 
     # TODO: Use a heuristic based on params to determine minimum VRAM
     gpu_indices = select_usable_gpus(max_gpus)
@@ -87,7 +86,6 @@ def extract_hiddens(
     assert ctx is not None
 
     # Yield results from the queue
-    breakpoint()
     procs_running = num_gpus
     while procs_running > 0:
         output = queue.get()
@@ -108,14 +106,14 @@ def extract_to_dataset(
     max_gpus: int = -1,
 ) -> DatasetDict:
     config = AutoConfig.from_pretrained(cfg.model)
-    num_variants = 1
+    num_variants = cfg.prompts.num_variants
 
     layer_cols = {
-        f"hidden_{i}": Array3D(
-            dtype="float16",
+        f"hidden_{layer}": Array3D(
+            dtype="int16",
             shape=(num_variants, 2, config.hidden_size),
         )
-        for i in range(config.num_hidden_layers)
+        for layer in cfg.layers or range(config.num_hidden_layers)
     }
     other_cols = {
         "variant_ids": Sequence(
@@ -160,15 +158,17 @@ def _extract_hiddens_process(
     local_gpu = gpu_indices[rank]
     world_size = len(gpu_indices)
 
-    prompts = PromptDataset(cfg.prompts, rank, world_size, split)
+    prompts_dataset = PromptDataset(cfg.prompts, rank, world_size, split)
     if rank == 0:
-        prompt_names = prompts.prompter.all_template_names
-        if cfg.prompts.strategy == "all":
-            print(f"Using {len(prompt_names)} prompts per example: {prompt_names}")
-        elif cfg.prompts.strategy == "randomize":
-            print(f"Randomizing over {len(prompt_names)} prompts: {prompt_names}")
+        prompt_names = prompts_dataset.prompter.all_template_names
+        if cfg.prompts.num_variants >= 1:
+            print(
+                f"Using {cfg.prompts.num_variants} prompts per example: {prompt_names}"
+            )
+        elif cfg.prompts.num_variants == -1:
+            print(f"Using all prompts per example: {prompt_names}")
         else:
-            raise ValueError(f"Unknown prompt strategy: {cfg.prompts.strategy}")
+            raise ValueError(f"Invalid prompt num_variants: {cfg.prompts.num_variants}")
     else:
         logging.getLogger("transformers").setLevel(logging.CRITICAL)
 
@@ -186,7 +186,7 @@ def _extract_hiddens_process(
 
     # TODO: Make this configurable or something
     # Token used to separate the question from the answer
-    num_choices = prompts.num_classes
+    num_choices = prompts_dataset.num_classes
     sep_token = tokenizer.sep_token or "\n"
 
     # TODO: Maybe also make this configurable?
@@ -206,18 +206,39 @@ def _extract_hiddens_process(
 
     # This function returns the flattened questions and answers. After inference we
     # need to reshape the results.
-    def collate(prompts: list[Prompt]) -> tuple[BatchEncoding, Prompt, str]:
-        texts = [
-            prompt.to_string(i, sep=sep_token)
-            for prompt in prompts
-            for i in range(num_choices)
-        ]
-        return tokenize(texts), prompts[0], texts[0]
+    def collate(
+        prompts_batch: list[list[Prompt]],
+    ) -> tuple[list[list[BatchEncoding]], list[Prompt], str]:
+        assert len(prompts_batch) == 1  # We're not batching
+        prompts = prompts_batch[0]
+        return (
+            [
+                [
+                    tokenize([prompt.to_string(i, sep=sep_token)])
+                    for i in range(num_choices)
+                ]
+                for prompt in prompts
+            ],
+            prompts,
+            prompts[0].to_string(0, sep=sep_token),
+        )
 
-    def collate_enc_dec(prompts: list[Prompt]) -> tuple[BatchEncoding, Prompt, str]:
-        inputs = [prompt.question for prompt in prompts for _ in prompt.answers]
-        targets = [answer for prompt in prompts for answer in prompt.answers]
-        return tokenize(inputs, text_target=targets), prompts[0], inputs[0] + targets[0]
+    def collate_enc_dec(
+        prompts_batch: list[list[Prompt]],
+    ) -> tuple[list[list[BatchEncoding]], list[Prompt], str]:
+        assert len(prompts_batch) == 1  # We're not batching
+        prompts = prompts_batch[0]
+        return (
+            [
+                [
+                    tokenize([prompt.question], text_target=[target])
+                    for target in prompt.answers
+                ]
+                for prompt in prompts
+            ],
+            prompts,
+            prompts[0].question + sep_token + prompts[0].answers[0],
+        )
 
     # If this is an encoder-decoder model and we're passing the answer to the encoder,
     # we don't need to run the decoder at all. Just strip it off, making the problem
@@ -236,49 +257,66 @@ def _extract_hiddens_process(
     # If False pass them to the encoder and decoder separately.
     should_concat = not is_enc_dec or cfg.use_encoder_states
     dl = DataLoader(
-        prompts,
+        prompts_dataset,
         batch_size=1,
         collate_fn=collate if should_concat else collate_enc_dec,
     )
 
     # Iterating over questions
-    for inputs, prompt, example_text in dl:
-        outputs = model(**inputs, output_hidden_states=True)
-
-        raw_hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-        hiddens = raw_hiddens[1:]
-
-        # Throw out layers we don't care about
-        if cfg.layers:
-            hiddens = [hiddens[i] for i in cfg.layers]
-
-        # Unflatten the hiddens
-        hiddens = [rearrange(h, "(b c) l d -> b c l d", c=num_choices) for h in hiddens]
-        if cfg.token_loc == "first":
-            hiddens = [h[..., 0, :] for h in hiddens]
-        elif cfg.token_loc == "last":
-            # Because of padding, the last token is going to be at a different index
-            # for each example, so we use gather.
-            B, C, _, D = hiddens[0].shape
-            lengths = inputs["attention_mask"].sum(dim=-1).view(B, C, 1, 1)
-            indices = lengths.sub(1).expand(B, C, 1, D)
-            hiddens = [h.gather(index=indices, dim=-2).squeeze(-2) for h in hiddens]
-        elif cfg.token_loc == "mean":
-            hiddens = [h.mean(dim=-2) for h in hiddens]
-        else:
-            raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
-
-        # [batch size, num choices, hidden size]
-        hiddens = [h.half().cpu().numpy() for h in hiddens]
+    for batch in dl:
+        inputs, prompts, example_text = batch
 
         hidden_dict = {
-            f"hidden_{layer_idx}": hidden
-            for layer_idx, hidden in zip(cfg.layers, hiddens)
+            f"hidden_{layer_idx}": np.empty(
+                (prompts_dataset.num_variants, num_choices, model.config.hidden_size),
+                dtype=np.int16,
+            )
+            for layer_idx in cfg.layers or range(model.config.num_hidden_layers)
         }
-        hidden_dict["variant_ids"] = prompt.template_name
+
+        variant_ids = []
+        # Iterate over variants
+        for variant_index, (variant_inputs, prompt) in enumerate(zip(inputs, prompts)):
+            # Iterate over answers
+            for answer_index, inpt in enumerate(variant_inputs):
+                outputs = model(**inpt, output_hidden_states=True)
+
+                raw_hiddens = (
+                    outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                )
+                hiddens = raw_hiddens[
+                    1:
+                ]  # First element of tuple is the input embeddings
+
+                # Throw out layers we don't care about
+                if cfg.layers:
+                    hiddens = [hiddens[i] for i in cfg.layers]
+
+                # Current shape of each element: (batch_size, seq_len, hidden_size)
+                if cfg.token_loc == "first":
+                    hiddens = [h[..., 0, :] for h in hiddens]
+                elif cfg.token_loc == "last":
+                    hiddens = [h[..., -1, :] for h in hiddens]
+                elif cfg.token_loc == "mean":
+                    hiddens = [h.mean(dim=-2) for h in hiddens]
+                else:
+                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+
+                for layer_idx, hidden in zip(
+                    cfg.layers or range(model.config.num_hidden_layers), hiddens
+                ):
+                    int_hidden = (
+                        hidden.cpu().numpy().astype(np.float16).view(dtype=np.int16)
+                    )
+                    hidden_dict[f"hidden_{layer_idx}"][
+                        variant_index, answer_index
+                    ] = int_hidden
+            variant_ids.append(prompt.template_name)
+
+        hidden_dict["variant_ids"] = variant_ids  # type: ignore
         hidden_dict["example_input"] = example_text
-        hidden_dict["label"] = prompt.label
-        hidden_dict["predicate_id"] = prompt.predicate_id
+        hidden_dict["label"] = prompt.label  # type: ignore
+        hidden_dict["predicate_id"] = prompt.predicate_id  # type: ignore
         queue.put(hidden_dict)
 
     # Signal to the consumer that we're done

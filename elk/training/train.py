@@ -68,22 +68,38 @@ def train_reporter(
     with dataset.formatted_as("torch"):
         train, val = dataset["train"], dataset["validation"]
 
-        x0, x1 = torch.stack(train[f"hidden_{layer}"]).float().chunk(2, dim=-1)
-        val_x0, val_x1 = torch.stack(val[f"hidden_{layer}"]).float().chunk(2, dim=-1)
-        train_labels = torch.stack(train["label"])
-        val_labels = torch.stack(val["label"])
+        x0, x1 = (
+            torch.Tensor(
+                np.array(train[f"hidden_{layer}"], dtype=np.int16).view(
+                    dtype=np.float16
+                )
+            )
+            .float()
+            .to(device)
+            .chunk(2, dim=-1)
+        )
+        val_x0, val_x1 = (
+            torch.Tensor(
+                np.array(val[f"hidden_{layer}"], dtype=np.int16).view(dtype=np.float16)
+            )
+            .float()
+            .to(device)
+            .chunk(2, dim=-1)
+        )
+        train_labels = train["label"].to(device)
+        val_labels = val["label"].to(device)
 
     reporter = Reporter(x0.shape[-1], cfg.net, device=device)
     if cfg.label_frac:
         num_labels = round(cfg.label_frac * len(train_labels))
-        labels = train_labels[:num_labels].to(device)
+        labels = train_labels[:num_labels]
     else:
         labels = None
 
     train_loss = reporter.fit((x0, x1), labels, cfg.optim)
     val_result = reporter.score(
         (val_x0, val_x1),
-        val_labels.to(device),
+        val_labels,
     )
 
     lr_dir = out_dir / "lr_models"
@@ -123,7 +139,6 @@ def train(cfg: RunConfig, out_dir: Path):
         cfg.dump_yaml(f)
 
     ds = extract_to_dataset(cfg.data, max_gpus=cfg.max_gpus)
-    breakpoint()
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -143,6 +158,11 @@ def train(cfg: RunConfig, out_dir: Path):
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
+    layers = [
+        int(feat[len("hidden_") :])
+        for feat in ds["train"].features
+        if feat.startswith("hidden_")
+    ]
     # Train reporters for each layer in parallel
     with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
         fn = partial(
@@ -151,6 +171,5 @@ def train(cfg: RunConfig, out_dir: Path):
         writer = csv.writer(f)
         writer.writerow(cols)
 
-        L = ds["train"].features["hidden_0"].shape[0] // 2
-        for i, *stats in tqdm(pool.imap_unordered(fn, range(L))):
+        for i, *stats in tqdm(pool.imap_unordered(fn, layers), total=len(layers)):
             writer.writerow([i] + [f"{s:.4f}" for s in stats])
