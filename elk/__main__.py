@@ -11,10 +11,18 @@ def run():
     parser = ArgumentParser(add_help=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser(
+    extract_parser = subparsers.add_parser(
         "extract",
         help="Extract hidden states from a model.",
-    ).add_arguments(ExtractionConfig, dest="extraction")
+    )
+    extract_parser.add_arguments(ExtractionConfig, dest="extraction")
+    extract_parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        help="Path to save hidden states to.",
+        required=True,
+    )
 
     elicit_parser = subparsers.add_parser(
         "elicit",
@@ -45,11 +53,11 @@ def run():
         return
 
     # Import here and not at the top to speed up `elk list`
+    from .extraction.extraction import extract_to_disk
     from .training.train import train
 
     if args.command == "extract":
-        # TODO: Implement an extraction command that saves to a file
-        raise NotImplementedError
+        extract_to_disk(args.extraction, args.output)
     elif args.command == "elicit":
         train(args.run, args.output)
 

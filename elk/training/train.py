@@ -139,6 +139,7 @@ def train(cfg: RunConfig, out_dir: Path):
         cfg.dump_yaml(f)
 
     ds = extract_to_dataset(cfg.data, max_gpus=cfg.max_gpus)
+
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
 

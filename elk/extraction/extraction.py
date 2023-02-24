@@ -4,7 +4,6 @@ from .prompt_dataset import Prompt, PromptDataset, PromptConfig
 from ..utils import select_usable_gpus
 from dataclasses import dataclass, InitVar
 from datasets import Array3D, Features, Dataset, DatasetDict, Sequence, Value
-from einops import rearrange
 from simple_parsing.helpers import field, Serializable
 from torch.utils.data import DataLoader
 from transformers import (
@@ -18,6 +17,7 @@ from typing import cast, Literal, Iterable
 import logging
 import torch
 import torch.multiprocessing as mp
+from pathlib import Path
 import numpy as np
 
 
@@ -57,6 +57,13 @@ class ExtractionConfig(Serializable):
             assert isinstance(config, PretrainedConfig)
 
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
+
+
+def extract_to_disk(cfg: ExtractionConfig, output_path: Path):
+    if not output_path.exists():
+        output_path.mkdir()
+
+    extract_to_dataset(cfg).save_to_disk(output_path)
 
 
 def extract_hiddens(
@@ -126,9 +133,6 @@ def extract_to_dataset(
             "string"
         ),  # exact input to the LM for one vairant+answer
     }
-    from datasets import disable_caching
-
-    disable_caching()
 
     return DatasetDict(
         {
