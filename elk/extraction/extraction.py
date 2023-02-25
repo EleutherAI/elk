@@ -14,6 +14,7 @@ from datasets import (
     Split,
     SplitDict,
     SplitGenerator,
+    SplitInfo,
     Value,
 )
 from simple_parsing.helpers import field, Serializable
@@ -233,10 +234,19 @@ class Extractor(GeneratorBasedBuilder):
     def splits(self) -> SplitDict:
         """Return the standard splits that are available in the dataset."""
         base_splits = assert_type(SplitDict, self.base_info.splits)
-        standard = {Split.TRAIN, Split.VALIDATION, Split.TEST}
+        splits = set(base_splits) & {Split.TRAIN, Split.VALIDATION, Split.TEST}
 
+        limit = self.cfg.prompts.max_examples
         return SplitDict(
-            {k: v for k, v in base_splits.items() if k in standard},
+            {
+                k: SplitInfo(
+                    name=k,
+                    num_examples=min(limit, v.num_examples) * len(self.gpus),
+                    dataset_name=v.dataset_name,
+                )
+                for k, v in base_splits.items()
+                if k in splits
+            },
             dataset_name=base_splits.dataset_name,
         )
 
@@ -264,7 +274,7 @@ class Extractor(GeneratorBasedBuilder):
             description=f"Hiddens for {self.cfg.model} on {self.cfg.prompts.dataset}",
             features=Features({**layer_cols, **other_cols}),
             citation=self.base_info.citation,
-            splits=self.base_info.splits,
+            splits=self.splits,
         )
 
     def _split_generators(self, _) -> list[SplitGenerator]:

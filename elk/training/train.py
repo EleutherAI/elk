@@ -11,8 +11,9 @@ from pathlib import Path
 from simple_parsing import Serializable
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
+from torch import Tensor
 from tqdm.auto import tqdm
-from typing import Literal
+from typing import cast, Literal
 import csv
 import numpy as np
 import os
@@ -65,23 +66,13 @@ def train_reporter(
     # grad scaling (which isn't supported for LBFGS), while the hidden states are
     # saved in float16 to save disk space. In the future we could try to use mixed
     # precision training in at least some cases.
-    with dataset.formatted_as("numpy"):
-        train, val = dataset["train"], dataset["validation"]
+    with dataset.formatted_as("torch", device=device):
+        train, val = dataset["train"], dataset.get("validation") or dataset["test"]
+        train_labels = cast(Tensor, train["label"])
+        val_labels = cast(Tensor, val["label"])
 
-        x0, x1 = (
-            torch.from_numpy(train[f"hidden_{layer}"])  # .view(dtype=np.float16))
-            .float()
-            .to(device)
-            .chunk(2, dim=-1)
-        )
-        val_x0, val_x1 = (
-            torch.from_numpy(val[f"hidden_{layer}"])  # .view(dtype=np.float16))
-            .float()
-            .to(device)
-            .chunk(2, dim=-1)
-        )
-        train_labels = torch.from_numpy(train["label"]).to(device)
-        val_labels = torch.from_numpy(val["label"]).to(device)
+        x0, x1 = cast(Tensor, train[f"hidden_{layer}"]).unbind(dim=-2)
+        val_x0, val_x1 = cast(Tensor, val[f"hidden_{layer}"]).unbind(dim=-2)
 
     reporter = Reporter(x0.shape[-1], cfg.net, device=device)
     if cfg.label_frac:
@@ -101,7 +92,7 @@ def train_reporter(
 
     lr_dir.mkdir(parents=True, exist_ok=True)
     reporter_dir.mkdir(parents=True, exist_ok=True)
-    stats = [train_loss, *val_result]
+    stats = [layer, train_loss, *val_result]
 
     if not cfg.skip_baseline:
         train_labels_aug = torch.cat([train_labels, 1 - train_labels])
@@ -109,8 +100,9 @@ def train_reporter(
 
         # TODO: Once we implement cross-validation for CCS, we should benchmark
         # against LogisticRegressionCV here.
+        X = torch.cat([x0, x1]).cpu()
         lr_model = LogisticRegression(max_iter=10_000)
-        lr_model.fit(torch.cat([x0, x1]).cpu(), train_labels_aug)
+        lr_model.fit(X.view(-1, X.shape[-1]), train_labels_aug)
 
         lr_preds = lr_model.predict_proba(torch.cat([val_x0, val_x1]).cpu())[:, 1]
         lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
@@ -144,10 +136,7 @@ def train(cfg: RunConfig, out_dir: Path):
     #     train_hiddens, val_hiddens, cfg.normalization
     # )
 
-    # Intelligently select device retuindices to use based on free memory.
-    # TODO: Set the min_memory argument to some heuristic lower bound
-    gpu_indices = select_usable_gpus(cfg.max_gpus)
-    devices = [f"cuda:{i}" for i in gpu_indices] if gpu_indices else ["cpu"]
+    devices = [f"cuda:{i}" for i in builder.gpus] if builder.gpus else ["cpu"]
     num_devices = len(devices)
 
     cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
@@ -167,5 +156,6 @@ def train(cfg: RunConfig, out_dir: Path):
         writer = csv.writer(f)
         writer.writerow(cols)
 
-        for i, *stats in tqdm(pool.imap_unordered(fn, layers), total=len(layers)):
+        mapper = pool.imap_unordered if num_devices > 1 else map
+        for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
             writer.writerow([i] + [f"{s:.4f}" for s in stats])

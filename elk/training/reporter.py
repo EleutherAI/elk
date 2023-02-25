@@ -168,7 +168,7 @@ class Reporter(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return the raw score output of the probe on `x`."""
-        return self.probe(x)
+        return self.probe(x).squeeze(-1)
 
     def loss(
         self,
