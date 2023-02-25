@@ -1,4 +1,5 @@
 from ..math import stochastic_round_constrained
+from ..utils import assert_type
 from dataclasses import dataclass
 from datasets import (
     ClassLabel,
@@ -12,7 +13,7 @@ from promptsource.templates import DatasetTemplates
 from random import Random
 from simple_parsing.helpers import field, Serializable
 from torch.utils.data import Dataset as TorchDataset
-from typing import Literal, Optional
+from typing import Optional
 import numpy as np
 
 
@@ -86,20 +87,19 @@ class PromptDataset(TorchDataset):
         world_size: int = 1,
         split: str = "validation",
     ):
-        data_path = cfg.dataset.split()
-        assert len(data_path) in (1, 2), f"Invalid dataset path {cfg.dataset}"
+        ds_name, _, config_name = cfg.dataset.partition(" ")
 
         self.num_shots = cfg.num_shots
-        self.prompter = DatasetTemplates(*data_path)
+        self.prompter = DatasetTemplates(ds_name, config_name or None)  # type: ignore
         self.rng = Random(cfg.seed)
         self.num_variants = (
             cfg.num_variants if cfg.num_variants > 0 else len(self.prompter.templates)
         )
 
-        # TODO: Should we support IterableDataset?
-        print(f"Loading dataset {cfg.dataset}...")
-        ds_dict = load_dataset(*data_path)  # type: ignore
-        assert isinstance(ds_dict, DatasetDict)
+        ds_dict = assert_type(
+            DatasetDict,  # TODO: Should we support IterableDataset?
+            load_dataset(ds_name, config_name or None),
+        )
 
         # By default we use the existing train-validation/test split in the dataset.
         # If it doesn't exist, we create our own 75/25 train-test split. Crucially,
@@ -146,8 +146,7 @@ class PromptDataset(TorchDataset):
                     f"; specify --label-column to disambiguate"
                 )
             else:
-                label_column = label_cols[0]
-                assert isinstance(label_column, str)
+                label_column = assert_type(str, label_cols[0])
 
                 print(f"Using label column '{label_column}'")
 
@@ -187,16 +186,11 @@ class PromptDataset(TorchDataset):
                 for i in range(self.num_classes)
             )
             # Then randomly sample `smallest_size` examples from each class and merge
-            undersampled = concatenate_datasets(
-                [
-                    stratum.select(
-                        self.rng.sample(range(len(stratum)), k=smallest_size)
-                    )
-                    for stratum in strata
-                ]
-            )
-            assert isinstance(undersampled, Dataset)
-            self.active_split = undersampled
+            strata = [
+                stratum.select(self.rng.sample(range(len(stratum)), k=smallest_size))
+                for stratum in strata
+            ]
+            self.active_split = assert_type(Dataset, concatenate_datasets(strata))
 
             # Sanity check that we successfully balanced the classes
             class_sizes = np.bincount(

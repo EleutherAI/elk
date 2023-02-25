@@ -65,29 +65,23 @@ def train_reporter(
     # grad scaling (which isn't supported for LBFGS), while the hidden states are
     # saved in float16 to save disk space. In the future we could try to use mixed
     # precision training in at least some cases.
-    with dataset.formatted_as("torch"):
+    with dataset.formatted_as("numpy"):
         train, val = dataset["train"], dataset["validation"]
 
         x0, x1 = (
-            torch.Tensor(
-                np.array(train[f"hidden_{layer}"], dtype=np.int16).view(
-                    dtype=np.float16
-                )
-            )
+            torch.from_numpy(train[f"hidden_{layer}"].view(dtype=np.float16))
             .float()
             .to(device)
             .chunk(2, dim=-1)
         )
         val_x0, val_x1 = (
-            torch.Tensor(
-                np.array(val[f"hidden_{layer}"], dtype=np.int16).view(dtype=np.float16)
-            )
+            torch.from_numpy(val[f"hidden_{layer}"].view(dtype=np.float16))
             .float()
             .to(device)
             .chunk(2, dim=-1)
         )
-        train_labels = train["label"].to(device)
-        val_labels = val["label"].to(device)
+        train_labels = torch.from_numpy(train["label"]).to(device)
+        val_labels = torch.from_numpy(val["label"]).to(device)
 
     reporter = Reporter(x0.shape[-1], cfg.net, device=device)
     if cfg.label_frac:
