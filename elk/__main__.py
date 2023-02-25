@@ -1,8 +1,8 @@
 """Main entry point for `elk`."""
 
-from .extraction import ExtractionConfig
-from .list import list_runs
+from .extraction import Extractor, ExtractionConfig
 from .training import RunConfig
+from .training.train import train
 from pathlib import Path
 from simple_parsing import ArgumentParser
 
@@ -47,17 +47,9 @@ def run():
     subparsers.add_parser("list", help="List all cached runs.")
     args = parser.parse_args()
 
-    # `elk list` is a special case
-    if args.command == "list":
-        list_runs(args)
-        return
-
-    # Import here and not at the top to speed up `elk list`
-    from .extraction.extraction import extract_to_disk
-    from .training.train import train
-
     if args.command == "extract":
-        extract_to_disk(args.extraction, args.output)
+        builder = Extractor(args.extraction)
+        builder.extract().save_to_disk(args.output)
     elif args.command == "elicit":
         train(args.run, args.output)
 

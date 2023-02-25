@@ -1,11 +1,11 @@
 """Main training loop."""
 
+from ..extraction import Extractor, ExtractionConfig
 from ..utils import select_usable_gpus
-from ..extraction import extract_hiddens, extract_to_dataset, ExtractionConfig
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
-from datasets import Array3D, Features, Dataset, DatasetDict, Sequence, Value
+from datasets import DatasetDict
 from functools import partial
 from pathlib import Path
 from simple_parsing import Serializable
@@ -69,13 +69,13 @@ def train_reporter(
         train, val = dataset["train"], dataset["validation"]
 
         x0, x1 = (
-            torch.from_numpy(train[f"hidden_{layer}"].view(dtype=np.float16))
+            torch.from_numpy(train[f"hidden_{layer}"])  # .view(dtype=np.float16))
             .float()
             .to(device)
             .chunk(2, dim=-1)
         )
         val_x0, val_x1 = (
-            torch.from_numpy(val[f"hidden_{layer}"].view(dtype=np.float16))
+            torch.from_numpy(val[f"hidden_{layer}"])  # .view(dtype=np.float16))
             .float()
             .to(device)
             .chunk(2, dim=-1)
@@ -132,7 +132,8 @@ def train(cfg: RunConfig, out_dir: Path):
     with open(out_dir / "cfg.yaml", "w") as f:
         cfg.dump_yaml(f)
 
-    ds = extract_to_dataset(cfg.data, max_gpus=cfg.max_gpus)
+    builder = Extractor(cfg.data, max_gpus=cfg.max_gpus)
+    ds = builder.extract()
 
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)

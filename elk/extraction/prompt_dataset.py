@@ -148,8 +148,6 @@ class PromptDataset(TorchDataset):
             else:
                 label_column = assert_type(str, label_cols[0])
 
-                print(f"Using label column '{label_column}'")
-
         # Make sure manually specified label columns exist and are ClassLabels.
         # NOTE: Should we actually support non-ClassLabel labels? The essential thing
         # is that we know the number of classes, and ClassLabel makes that easy.

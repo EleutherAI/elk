@@ -1,19 +1,21 @@
 """Functions for extracting the hidden states of a model."""
 
 from .prompt_dataset import Prompt, PromptDataset, PromptConfig
-from ..utils import assert_type, select_usable_gpus, silence_datasets_messages
+from ..utils import assert_type, select_usable_gpus
 from dataclasses import dataclass, InitVar
 from datasets import (
     Array3D,
-    Features,
-    Dataset,
     DatasetDict,
     DatasetInfo,
-    Sequence,
-    Value,
+    Features,
+    GeneratorBasedBuilder,
     get_dataset_config_info,
+    Sequence,
+    Split,
+    SplitDict,
+    SplitGenerator,
+    Value,
 )
-from pathlib import Path
 from simple_parsing.helpers import field, Serializable
 from transformers import (
     AutoConfig,
@@ -65,11 +67,6 @@ class ExtractionConfig(Serializable):
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
 
-def extract_to_disk(cfg: ExtractionConfig, output_path: Path):
-    output_path.mkdir(parents=True, exist_ok=True)
-    extract_to_dataset(cfg).save_to_disk(output_path)
-
-
 def extract_hiddens(
     cfg: ExtractionConfig,
     *,
@@ -78,8 +75,12 @@ def extract_hiddens(
     split: str,
     world_size: int = 1,
 ) -> Iterable[dict]:
-    """Run inference on a model with a set of prompts, yielding the hidden states."""
+    """Run inference on a model with a set of prompts, yielding the hidden states.
 
+    This is a lightweight, functional version of the `Extractor` API.
+    """
+
+    # Silence datasets logging messages from all but the first process
     if rank != 0:
         logging.disable(logging.CRITICAL)
 
@@ -202,57 +203,87 @@ def extract_hiddens(
         )
 
 
-def extract_to_dataset(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
-    silence_datasets_messages()
+class Extractor(GeneratorBasedBuilder):
+    """Builds a HuggingFace dataset containing hidden states extracted from a model."""
 
-    # TODO: Use a heuristic based on params to determine minimum VRAM
-    gpus = select_usable_gpus(max_gpus)
+    def __init__(self, cfg: ExtractionConfig, max_gpus: int = -1, **kwargs):
+        # Fetch metadata about the dataset without necessarily downloading it yet
+        ds_name, _, config_name = cfg.prompts.dataset.partition(" ")
+        info = get_dataset_config_info(ds_name, config_name or None)
 
-    model_cfg = AutoConfig.from_pretrained(cfg.model)
-    num_variants = cfg.prompts.num_variants
+        self.base_info = info
+        self.cfg = cfg
 
-    layer_cols = {
-        f"hidden_{layer}": Array3D(
-            dtype="float32",
-            shape=(num_variants, 2, model_cfg.hidden_size),
+        # TODO: Use a heuristic based on params to determine minimum VRAM
+        self.gpus = select_usable_gpus(max_gpus)
+
+        super().__init__(**kwargs)
+
+    def extract(self) -> DatasetDict:
+        """Extract hidden states and return a `DatasetDict` containing them."""
+        # "Download" is a misnomer here. We're running inference on a dataset and
+        # gathering the hidden states.
+        self.download_and_prepare(num_proc=len(self.gpus))
+
+        return DatasetDict(
+            {split: self.as_dataset(split=Split(split)) for split in self.splits}
         )
-        for layer in cfg.layers or range(model_cfg.num_hidden_layers)
-    }
-    other_cols = {
-        "variant_ids": Sequence(
-            Value(dtype="string"),
-            length=num_variants,
-        ),
-        "predicate_id": Value("int32"),
-        "label": Value("int32"),
-    }
 
-    # Fetch metadata about the dataset without necessarily downloading it yet
-    ds_name, _, config_name = cfg.prompts.dataset.partition(" ")
-    info = get_dataset_config_info(ds_name, config_name or None)
+    @property
+    def splits(self) -> SplitDict:
+        """Return the standard splits that are available in the dataset."""
+        base_splits = assert_type(SplitDict, self.base_info.splits)
+        standard = {Split.TRAIN, Split.VALIDATION, Split.TEST}
 
-    return DatasetDict(
-        {
-            split_name: Dataset.from_generator(
-                _extraction_worker,
-                features=Features({**layer_cols, **other_cols}),
-                gen_kwargs=dict(
-                    cfg=[cfg] * len(gpus),
-                    device=[f"cuda:{i}" for i in gpus],
-                    rank=list(range(len(gpus))),
-                    split=[split_name] * len(gpus),
-                    world_size=[len(gpus)] * len(gpus),
-                ),
-                info=DatasetInfo(
-                    description=f"Hiddens for {cfg.model} on {cfg.prompts.dataset}",
-                    citation=info.citation,
-                    splits=info.splits,
-                ),
-                num_proc=len(gpus),
+        return SplitDict(
+            {k: v for k, v in base_splits.items() if k in standard},
+            dataset_name=base_splits.dataset_name,
+        )
+
+    def _info(self) -> DatasetInfo:
+        model_cfg = AutoConfig.from_pretrained(self.cfg.model)
+        num_variants = self.cfg.prompts.num_variants
+
+        layer_cols = {
+            f"hidden_{layer}": Array3D(
+                dtype="float32",
+                shape=(num_variants, 2, model_cfg.hidden_size),
             )
-            for split_name in assert_type(dict, info.splits)
+            for layer in self.cfg.layers or range(model_cfg.num_hidden_layers)
         }
-    )
+        other_cols = {
+            "variant_ids": Sequence(
+                Value(dtype="string"),
+                length=num_variants,
+            ),
+            "predicate_id": Value("int32"),
+            "label": Value("int32"),
+        }
+
+        return DatasetInfo(
+            description=f"Hiddens for {self.cfg.model} on {self.cfg.prompts.dataset}",
+            features=Features({**layer_cols, **other_cols}),
+            citation=self.base_info.citation,
+            splits=self.base_info.splits,
+        )
+
+    def _split_generators(self, _) -> list[SplitGenerator]:
+        return [
+            SplitGenerator(
+                name=split,
+                gen_kwargs=dict(
+                    cfg=[self.cfg] * len(self.gpus),
+                    device=[f"cuda:{i}" for i in self.gpus],
+                    rank=list(range(len(self.gpus))),
+                    split=[split] * len(self.gpus),
+                    world_size=[len(self.gpus)] * len(self.gpus),
+                ),
+            )
+            for split in self.splits
+        ]
+
+    def _generate_examples(self, **gen_kwargs) -> Iterable[tuple[int, dict]]:
+        yield from enumerate(_extraction_worker(**gen_kwargs))
 
 
 # Dataset.from_generator wraps all the arguments in lists, so we unpack them here
