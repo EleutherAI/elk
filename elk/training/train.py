@@ -1,6 +1,7 @@
 """Main training loop."""
 
 from ..extraction import Extractor, ExtractionConfig
+from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import select_usable_gpus
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
@@ -13,7 +14,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 from tqdm.auto import tqdm
-from typing import cast, Literal
+from typing import cast, Literal, Optional
 import csv
 import numpy as np
 import os
@@ -95,16 +96,17 @@ def train_reporter(
     stats = [layer, train_loss, *val_result]
 
     if not cfg.skip_baseline:
-        train_labels_aug = torch.cat([train_labels, 1 - train_labels])
-        val_labels_aug = torch.cat([val_labels, 1 - val_labels])
+        train_labels_aug = torch.cat([train_labels, 1 - train_labels]).cpu()
+        val_labels_aug = torch.cat([val_labels, 1 - val_labels]).cpu()
 
         # TODO: Once we implement cross-validation for CCS, we should benchmark
         # against LogisticRegressionCV here.
-        X = torch.cat([x0, x1]).cpu()
+        X = torch.cat([x0, x1]).cpu().squeeze()
         lr_model = LogisticRegression(max_iter=10_000)
         lr_model.fit(X.view(-1, X.shape[-1]), train_labels_aug)
 
-        lr_preds = lr_model.predict_proba(torch.cat([val_x0, val_x1]).cpu())[:, 1]
+        X_val = torch.cat([val_x0, val_x1]).cpu().squeeze()
+        lr_preds = lr_model.predict_proba(X_val)[:, 1]
         lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
 
@@ -118,17 +120,21 @@ def train_reporter(
     return stats
 
 
-def train(cfg: RunConfig, out_dir: Path):
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    with open(out_dir / "cfg.yaml", "w") as f:
-        cfg.dump_yaml(f)
-
+def train(cfg: RunConfig, out_dir: Optional[Path] = None):
+    # Extract the hidden states first if necessary
     builder = Extractor(cfg.data, max_gpus=cfg.max_gpus)
     ds = builder.extract()
 
-    if out_dir:
+    if out_dir is None:
+        out_dir = memorably_named_dir(elk_reporter_dir())
+    else:
         out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Print the output directory in bold with escape codes
+    print(f"Saving results to \033[1m{out_dir}\033[0m")
+
+    with open(out_dir / "cfg.yaml", "w") as f:
+        cfg.dump_yaml(f)
 
     # TODO: Re-implement this in a way that doesn't require loading all the hidden
     # states into memory at once.

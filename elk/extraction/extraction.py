@@ -198,7 +198,6 @@ def extract_hiddens(
 
         yield dict(
             label=prompts[0].label,
-            predicate_id=prompts[0].predicate_id,
             variant_ids=variant_ids,
             **hidden_dict,
         )
@@ -236,12 +235,16 @@ class Extractor(GeneratorBasedBuilder):
         base_splits = assert_type(SplitDict, self.base_info.splits)
         splits = set(base_splits) & {Split.TRAIN, Split.VALIDATION, Split.TEST}
 
-        limit = self.cfg.prompts.max_examples
+        # If we're using the validation set, we need to remove the test set
+        if Split.VALIDATION in splits and Split.TEST in splits:
+            splits.remove(Split.TEST)
+
+        limit = self.cfg.prompts.max_examples or int(1e100)
         return SplitDict(
             {
                 k: SplitInfo(
                     name=k,
-                    num_examples=min(limit, v.num_examples) * len(self.gpus),
+                    num_examples=min(limit, v.num_examples),
                     dataset_name=v.dataset_name,
                 )
                 for k, v in base_splits.items()
@@ -266,7 +269,6 @@ class Extractor(GeneratorBasedBuilder):
                 Value(dtype="string"),
                 length=num_variants,
             ),
-            "predicate_id": Value("int32"),
             "label": Value("int32"),
         }
 

@@ -26,7 +26,6 @@ class Prompt:
     answers: list[str]
     label: int
     template_name: str
-    predicate_id: int  # index of a row from the original dataset
 
     def to_string(self, answer_idx: int, sep: str = "\n") -> str:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
@@ -226,17 +225,14 @@ class PromptDataset(TorchDataset):
         else:
             self.fewshot_strata = []
 
-        # Shard if needed
-        if world_size > 1:
-            self.active_split = self.active_split.shard(world_size, rank)
-
         # Now shuffle the active split and truncate it if needed
-        self.active_split = self.active_split.add_column(
-            "predicate_id", list(range(len(self.active_split)))
-        )  # type: ignore
         self.active_split = self.active_split.shuffle(seed=cfg.seed)
         if 0 < cfg.max_examples < len(self.active_split):
             self.active_split = self.active_split.select(range(cfg.max_examples))
+
+        # Shard if needed
+        if world_size > 1:
+            self.active_split = self.active_split.shard(world_size, rank)
 
     def __getitem__(self, index: int) -> list[Prompt]:
         """Get a list of prompts for a given predicate"""
@@ -290,7 +286,6 @@ class PromptDataset(TorchDataset):
                     answers=answers,
                     label=true_label,
                     template_name=template_name,
-                    predicate_id=example["predicate_id"],
                 )
             )
         return prompts
