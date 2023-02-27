@@ -49,7 +49,7 @@ class ReporterConfig(Serializable):
     activation: Literal["gelu", "relu", "swish"] = "gelu"
     bias: bool = True
     hidden_size: Optional[int] = None
-    init: Literal["default", "spherical", "zero"] = "zero"
+    init: Literal["default", "spherical", "zero"] = "default"
     loss: Literal["js", "squared"] = "squared"
     num_layers: int = 1
     pre_ln: bool = False
@@ -72,7 +72,7 @@ class OptimConfig(Serializable):
     lr: float = 1e-2
     num_epochs: int = 1000
     num_tries: int = 10
-    optimizer: Literal["adam", "lbfgs"] = "adam"
+    optimizer: Literal["adam", "lbfgs"] = "lbfgs"
     weight_decay: float = 0.01
 
 

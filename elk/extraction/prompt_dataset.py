@@ -110,27 +110,17 @@ class PromptDataset(TorchDataset):
             )
             assert isinstance(ds_dict, DatasetDict)
 
-        # Lots of datasets have a validation split or a test split, but not both. If
-        # the requested split doesn't exist, we try to use the other one instead.
-        if split not in ds_dict and split in ("validation", "test"):
-            new_split = "test" if split == "validation" else "train"
-            if new_split in ds_dict:
-                print(f"No {split} split found, using {new_split} split instead")
-                split = new_split
-            else:
-                raise ValueError(f"No {split} or {new_split} split found")
-
         # The 'active' split is the one that gets queried by __getitem__
         self.active_split = ds_dict[split]
-        label_column = cfg.label_column or infer_label_column(self.active_split)
-        self.label_column = label_column
+        label_col = cfg.label_column or infer_label_column(self.active_split.features)
+        self.label_column = label_col
 
         # Enforce class balance if needed
         if cfg.balance:
-            self.active_split = undersample(self.active_split, self.rng, label_column)
+            self.active_split = undersample(self.active_split, self.rng, label_col)
             self.class_fracs = np.ones(self.num_classes) / self.num_classes
         else:
-            class_sizes = compute_class_balance(self.active_split, label_column)
+            class_sizes = compute_class_balance(self.active_split, label_col)
             self.class_fracs: NDArray[np.floating] = class_sizes / class_sizes.sum()
 
         # We use stratified sampling to create few-shot prompts that are as balanced as
@@ -151,7 +141,7 @@ class PromptDataset(TorchDataset):
                 )
 
             self.fewshot_strata = [
-                ds_dict["train"].filter(lambda ex: ex[label_column] == i)
+                ds_dict["train"].filter(lambda ex: ex[label_col] == i)
                 for i in range(self.num_classes)
             ]
         else:

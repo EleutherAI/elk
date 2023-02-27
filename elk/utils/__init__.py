@@ -1,6 +1,7 @@
 from .data_utils import (
     compute_class_balance,
     get_columns_all_equal,
+    held_out_split,
     infer_label_column,
     undersample,
 )

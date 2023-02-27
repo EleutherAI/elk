@@ -2,7 +2,7 @@
 
 from ..extraction import Extractor, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import select_usable_devices
+from ..utils import assert_type, held_out_split, select_usable_devices
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
@@ -40,7 +40,7 @@ class RunConfig(Serializable):
 
     label_frac: float = 0.0
     max_gpus: int = -1
-    normalization: Literal["legacy", "elementwise", "meanonly"] = "meanonly"
+    normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
 
 
@@ -68,12 +68,17 @@ def train_reporter(
     # saved in float16 to save disk space. In the future we could try to use mixed
     # precision training in at least some cases.
     with dataset.formatted_as("torch", device=device):
-        train, val = dataset["train"], dataset.get("validation") or dataset["test"]
+        train, val = dataset["train"], held_out_split(dataset)
         train_labels = cast(Tensor, train["label"])
         val_labels = cast(Tensor, val["label"])
 
-        x0, x1 = cast(Tensor, train[f"hidden_{layer}"]).unbind(dim=-2)
-        val_x0, val_x1 = cast(Tensor, val[f"hidden_{layer}"]).unbind(dim=-2)
+        train_h, val_h = normalize(
+            assert_type(Tensor, train[f"hidden_{layer}"]),
+            assert_type(Tensor, val[f"hidden_{layer}"]),
+            method=cfg.normalization,
+        )
+        x0, x1 = train_h.unbind(dim=-2)
+        val_x0, val_x1 = val_h.unbind(dim=-2)
 
     reporter = Reporter(x0.shape[-1], cfg.net, device=device)
     if cfg.label_frac:

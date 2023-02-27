@@ -1,7 +1,8 @@
 """Functions for extracting the hidden states of a model."""
 
 from .prompt_dataset import Prompt, PromptDataset, PromptConfig
-from ..utils import assert_type, select_usable_devices
+from ..utils import assert_type, infer_label_column, select_usable_devices
+from contextlib import redirect_stdout
 from dataclasses import dataclass, InitVar
 from datasets import (
     Array3D,
@@ -223,10 +224,11 @@ class Extractor(GeneratorBasedBuilder):
         """Extract hidden states and return a `DatasetDict` containing them."""
         # "Download" is a misnomer here. We're running inference on a dataset and
         # gathering the hidden states.
-        self.download_and_prepare(num_proc=len(self.devices))
+        with redirect_stdout(None):
+            self.download_and_prepare(num_proc=len(self.devices))
 
         return DatasetDict(
-            {split: self.as_dataset(split=Split(split)) for split in self.splits}
+            {split: self.as_dataset(split=split) for split in self.splits}
         )
 
     @property
@@ -234,6 +236,8 @@ class Extractor(GeneratorBasedBuilder):
         """Return the standard splits that are available in the dataset."""
         base_splits = assert_type(SplitDict, self.base_info.splits)
         splits = set(base_splits) & {Split.TRAIN, Split.VALIDATION, Split.TEST}
+        if Split.VALIDATION in splits and Split.TEST in splits:
+            splits.remove(Split.TEST)
 
         limit = self.cfg.prompts.max_examples or int(1e100)
         return SplitDict(
@@ -253,6 +257,9 @@ class Extractor(GeneratorBasedBuilder):
         model_cfg = AutoConfig.from_pretrained(self.cfg.model)
         num_variants = self.cfg.prompts.num_variants
 
+        features = assert_type(Features, self.base_info.features)
+        label_col = self.cfg.prompts.label_column or infer_label_column(features)
+
         layer_cols = {
             f"hidden_{layer}": Array3D(
                 dtype="float32",
@@ -265,7 +272,7 @@ class Extractor(GeneratorBasedBuilder):
                 Value(dtype="string"),
                 length=num_variants,
             ),
-            "label": Value("int32"),
+            "label": features[label_col],
         }
 
         return DatasetInfo(

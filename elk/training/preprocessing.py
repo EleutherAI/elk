@@ -7,8 +7,8 @@ import torch
 def normalize(
     train_hiddens: torch.Tensor,
     val_hiddens: torch.Tensor,
-    method: Literal["legacy", "elementwise", "meanonly"] = "legacy",
-):
+    method: Literal["legacy", "none", "elementwise", "meanonly"] = "legacy",
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Normalize the hidden states.
 
     Normalize the hidden states with the specified method.
@@ -24,7 +24,9 @@ def normalize(
     Returns:
         tuple containing the training and validation hidden states.
     """
-    if method == "legacy":
+    if method == "none":
+        return train_hiddens, val_hiddens
+    elif method == "legacy":
         master = torch.cat([train_hiddens, val_hiddens], dim=0).float()
         means = master.mean(dim=0)
 
