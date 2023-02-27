@@ -141,12 +141,6 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     with open(out_dir / "cfg.yaml", "w") as f:
         cfg.dump_yaml(f)
 
-    # TODO: Re-implement this in a way that doesn't require loading all the hidden
-    # states into memory at once.
-    # train_hiddens, val_hiddens = normalize(
-    #     train_hiddens, val_hiddens, cfg.normalization
-    # )
-
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
