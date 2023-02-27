@@ -1,13 +1,7 @@
 from ..math import stochastic_round_constrained
-from ..utils import assert_type
+from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
 from dataclasses import dataclass
-from datasets import (
-    ClassLabel,
-    Dataset,
-    DatasetDict,
-    concatenate_datasets,
-    load_dataset,
-)
+from datasets import DatasetDict, load_dataset
 from numpy.typing import NDArray
 from promptsource.templates import DatasetTemplates
 from random import Random
@@ -126,80 +120,18 @@ class PromptDataset(TorchDataset):
             else:
                 raise ValueError(f"No {split} or {new_split} split found")
 
-        # The 'active' split is the one that gets queried by __getitem__ in the
-        # zero-shot case.
+        # The 'active' split is the one that gets queried by __getitem__
         self.active_split = ds_dict[split]
-        features = self.active_split.features
-
-        # We infer that the label is the unique ClassLabel column in the dataset
-        label_column = cfg.label_column
-        if label_column is None:
-            label_cols = [
-                col for col, dtype in features.items() if isinstance(dtype, ClassLabel)
-            ]
-            if not label_cols:
-                raise ValueError(f"Dataset {cfg.dataset} has no label column")
-            elif len(label_cols) > 1:
-                raise ValueError(
-                    f"Dataset {cfg.dataset} has multiple label columns {label_cols}"
-                    f"; specify --label-column to disambiguate"
-                )
-            else:
-                label_column = assert_type(str, label_cols[0])
-
-        # Make sure manually specified label columns exist and are ClassLabels.
-        # NOTE: Should we actually support non-ClassLabel labels? The essential thing
-        # is that we know the number of classes, and ClassLabel makes that easy.
-        elif label_column not in features:
-            raise ValueError(f"{cfg.dataset} has no column '{cfg.label_column}'")
-        elif not isinstance(features[cfg.label_column], ClassLabel):
-            raise ValueError(
-                f"Column '{cfg.label_column}' in {cfg.dataset} is not a "
-                f"`ClassLabel`"
-            )
-
-        # Sanity check the label column
+        label_column = cfg.label_column or infer_label_column(self.active_split)
         self.label_column = label_column
-        if self.num_classes < 2:
-            raise ValueError(f"{cfg.dataset} should have more than 1 class")
-
-        # Compute the empirical class balance in the active split. Sanity check that
-        # all class mentioned in the ClassLabel datatype are represented.
-        class_sizes = np.bincount(
-            self.active_split[label_column], minlength=self.num_classes
-        )
-        if not np.all(class_sizes > 0):
-            missing = np.flatnonzero(class_sizes == 0).tolist()
-            raise ValueError(f"{cfg.dataset} has missing classes: {missing}")
 
         # Enforce class balance if needed
         if cfg.balance:
-            smallest_size = class_sizes.min()
-            print(f"Undersampling classes to {smallest_size} examples each")
-
-            # First group the active split by class
-            strata = (
-                self.active_split.filter(lambda ex: ex[label_column] == i)
-                for i in range(self.num_classes)
-            )
-            # Then randomly sample `smallest_size` examples from each class and merge
-            strata = [
-                stratum.select(self.rng.sample(range(len(stratum)), k=smallest_size))
-                for stratum in strata
-            ]
-            self.active_split = assert_type(Dataset, concatenate_datasets(strata))
-
-            # Sanity check that we successfully balanced the classes
-            class_sizes = np.bincount(
-                list(self.active_split[label_column]), minlength=self.num_classes
-            )
-            assert np.all(class_sizes == smallest_size)
-
-        # Store the (possibly post-undersampling) empirical class balance for later
-        self.class_fracs: NDArray[np.floating] = class_sizes / class_sizes.sum()
-
-        if self.num_classes < 2:
-            raise ValueError(f"Dataset {cfg.dataset} has only one label")
+            self.active_split = undersample(self.active_split, self.rng, label_column)
+            self.class_fracs = np.ones(self.num_classes) / self.num_classes
+        else:
+            class_sizes = compute_class_balance(self.active_split, label_column)
+            self.class_fracs: NDArray[np.floating] = class_sizes / class_sizes.sum()
 
         # We use stratified sampling to create few-shot prompts that are as balanced as
         # possible. If needed, create the strata now so that we can use them later.

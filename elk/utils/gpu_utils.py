@@ -6,8 +6,8 @@ import torch
 import warnings
 
 
-def select_usable_gpus(max_gpus: int = -1, *, min_memory: int = 0) -> list[int]:
-    """Select a set of GPUs that have at least `min_memory` bytes of free memory.
+def select_usable_devices(max_gpus: int = -1, *, min_memory: int = 0) -> list[str]:
+    """Select a set of devices that have at least `min_memory` bytes of free memory.
 
     When there are more than enough GPUs to satisfy the request, the GPUs with the
     most free memory will be selected. With default arguments, this function will
@@ -30,16 +30,15 @@ def select_usable_gpus(max_gpus: int = -1, *, min_memory: int = 0) -> list[int]:
         min_memory: Minimum amount of free memory (in bytes) required to select a GPU.
 
     Returns:
-        A list of suitable GPU indices, in ascending numerical order.
+        A list of suitable PyTorch device strings, in ascending numerical order.
 
     Raises:
-        RuntimeError: If no GPUs are visible to PyTorch.
         ValueError: If `max_gpus` is greater than the number of visible GPUs.
     """
     # Trivial case: no GPUs requested or available
     num_visible = torch.cuda.device_count()
     if max_gpus == 0 or num_visible == 0:
-        return []
+        return ["cpu"]
 
     # Sanity checks
     if max_gpus > num_visible:
@@ -52,7 +51,7 @@ def select_usable_gpus(max_gpus: int = -1, *, min_memory: int = 0) -> list[int]:
     # No limits, so try to use all installed GPUs
     if max_gpus == num_visible and min_memory <= 0:
         print(f"Using all {num_visible} GPUs.")
-        return list(range(max_gpus))
+        return [f"cuda:{i}" for i in range(max_gpus)]
 
     # The user set CUDA_VISIBLE_DEVICES and also requested a specific number of GPUs.
     # The environment variable takes precedence, so we'll just use all visible GPUs.
@@ -62,7 +61,7 @@ def select_usable_gpus(max_gpus: int = -1, *, min_memory: int = 0) -> list[int]:
             f"Smart GPU selection not supported when CUDA_VISIBLE_DEVICES is set. "
             f"Will use {count_msg} visible devices."
         )
-        return list(range(max_gpus))
+        return [f"cuda:{i}" for i in range(max_gpus)]
 
     # pynvml.nvmlInit() will raise if we're using non-NVIDIA GPUs
     try:
@@ -72,7 +71,7 @@ def select_usable_gpus(max_gpus: int = -1, *, min_memory: int = 0) -> list[int]:
             f"Unable to initialize PyNVML; are you using non-NVIDIA GPUs? Will use "
             f"{count_msg} visible devices."
         )
-        return list(range(max_gpus))
+        return [f"cuda:{i}" for i in range(max_gpus)]
 
     try:
         # PyNVML and PyTorch device indices should agree when CUDA_VISIBLE_DEVICES is
@@ -111,4 +110,7 @@ def select_usable_gpus(max_gpus: int = -1, *, min_memory: int = 0) -> list[int]:
             f"({min_memory / 10 ** 9:.2f} GB needed)."
         )
 
-    return selection
+    if len(selection) > 0:
+        return [f"cuda:{i}" for i in selection]
+    else:
+        return ["cpu"]

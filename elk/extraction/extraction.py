@@ -1,7 +1,7 @@
 """Functions for extracting the hidden states of a model."""
 
 from .prompt_dataset import Prompt, PromptDataset, PromptConfig
-from ..utils import assert_type, select_usable_gpus
+from ..utils import assert_type, select_usable_devices
 from dataclasses import dataclass, InitVar
 from datasets import (
     Array3D,
@@ -215,7 +215,7 @@ class Extractor(GeneratorBasedBuilder):
         self.cfg = cfg
 
         # TODO: Use a heuristic based on params to determine minimum VRAM
-        self.gpus = select_usable_gpus(max_gpus)
+        self.devices = select_usable_devices(max_gpus)
 
         super().__init__(**kwargs)
 
@@ -223,7 +223,7 @@ class Extractor(GeneratorBasedBuilder):
         """Extract hidden states and return a `DatasetDict` containing them."""
         # "Download" is a misnomer here. We're running inference on a dataset and
         # gathering the hidden states.
-        self.download_and_prepare(num_proc=len(self.gpus))
+        self.download_and_prepare(num_proc=len(self.devices))
 
         return DatasetDict(
             {split: self.as_dataset(split=Split(split)) for split in self.splits}
@@ -234,10 +234,6 @@ class Extractor(GeneratorBasedBuilder):
         """Return the standard splits that are available in the dataset."""
         base_splits = assert_type(SplitDict, self.base_info.splits)
         splits = set(base_splits) & {Split.TRAIN, Split.VALIDATION, Split.TEST}
-
-        # If we're using the validation set, we need to remove the test set
-        if Split.VALIDATION in splits and Split.TEST in splits:
-            splits.remove(Split.TEST)
 
         limit = self.cfg.prompts.max_examples or int(1e100)
         return SplitDict(
@@ -284,11 +280,11 @@ class Extractor(GeneratorBasedBuilder):
             SplitGenerator(
                 name=split,
                 gen_kwargs=dict(
-                    cfg=[self.cfg] * len(self.gpus),
-                    device=[f"cuda:{i}" for i in self.gpus],
-                    rank=list(range(len(self.gpus))),
-                    split=[split] * len(self.gpus),
-                    world_size=[len(self.gpus)] * len(self.gpus),
+                    cfg=[self.cfg] * len(self.devices),
+                    device=self.devices,
+                    rank=list(range(len(self.devices))),
+                    split=[split] * len(self.devices),
+                    world_size=[len(self.devices)] * len(self.devices),
                 ),
             )
             for split in self.splits

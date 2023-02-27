@@ -2,7 +2,7 @@
 
 from ..extraction import Extractor, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import select_usable_gpus
+from ..utils import select_usable_devices
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
@@ -142,7 +142,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     #     train_hiddens, val_hiddens, cfg.normalization
     # )
 
-    devices = [f"cuda:{i}" for i in builder.gpus] if builder.gpus else ["cpu"]
+    devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
     cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
