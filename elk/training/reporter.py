@@ -226,18 +226,12 @@ class Reporter(nn.Module):
             contrast_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
                 contrastive representations.
             labels: The labels of the contrast pair. Defaults to None.
-            lr: The learning rate for Adam. Defaults to 1e-2.
-            num_epochs: The number of epochs to train for. Defaults to 1000.
-            num_tries: The number of times to repeat the procedure. Defaults to 10.
-            optimizer: The optimizer to use. Defaults to "adam".
-            verbose: Whether to print out information at each step. Defaults to False.
-            weight_decay: The weight decay for Adam. Defaults to 0.01.
+            cfg: The configuration for the optimizer.
 
         Returns:
             best_loss: The best loss obtained.
 
         Raises:
-            ValueError: If `optimizer` is not "adam" or "lbfgs".
             RuntimeError: If the best loss is not finite.
         """
         self.validate_data(contrast_pair)
