@@ -2,7 +2,7 @@
 
 from ..extraction import Extractor, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import assert_type, held_out_split, select_usable_devices
+from ..utils import assert_type, held_out_split, select_usable_devices, int16_to_float32
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
@@ -67,14 +67,14 @@ def train_reporter(
     # grad scaling (which isn't supported for LBFGS), while the hidden states are
     # saved in float16 to save disk space. In the future we could try to use mixed
     # precision training in at least some cases.
-    with dataset.formatted_as("torch", device=device):
+    with dataset.formatted_as("torch", device=device, dtype=torch.int16):
         train, val = dataset["train"], held_out_split(dataset)
         train_labels = cast(Tensor, train["label"])
         val_labels = cast(Tensor, val["label"])
 
         train_h, val_h = normalize(
-            assert_type(Tensor, train[f"hidden_{layer}"]),
-            assert_type(Tensor, val[f"hidden_{layer}"]),
+            int16_to_float32(assert_type(Tensor, train[f"hidden_{layer}"])),
+            int16_to_float32(assert_type(Tensor, val[f"hidden_{layer}"])),
             method=cfg.normalization,
         )
         x0, x1 = train_h.unbind(dim=-2)

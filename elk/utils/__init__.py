@@ -4,6 +4,8 @@ from .data_utils import (
     held_out_split,
     infer_label_column,
     undersample,
+    float32_to_int16,
+    int16_to_float32,
 )
 from .gpu_utils import select_usable_devices
 from .tree_utils import pytree_map

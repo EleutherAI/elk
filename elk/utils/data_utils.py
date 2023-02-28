@@ -3,6 +3,7 @@ from datasets import ClassLabel, Dataset, DatasetDict, Features, concatenate_dat
 from random import Random
 from typing import Optional
 import numpy as np
+import torch
 
 
 def compute_class_balance(
@@ -94,3 +95,13 @@ def undersample(
     assert np.all(class_sizes == smallest_size)
 
     return dataset
+
+
+def float32_to_int16(x: torch.Tensor) -> torch.Tensor:
+    """Converts float32 to float16, then reinterprets as int16."""
+    return x.type(torch.float16).view(torch.int16)
+
+
+def int16_to_float32(x: torch.Tensor) -> torch.Tensor:
+    """Converts int16 to float16, then reinterprets as float32."""
+    return x.view(torch.float16).type(torch.float32)
