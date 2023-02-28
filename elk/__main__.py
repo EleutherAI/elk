@@ -23,6 +23,13 @@ def run():
         help="Path to save hidden states to.",
         required=True,
     )
+    extract_parser.add_argument(
+        "--max_gpus",
+        type=int,
+        help="Maximum number of GPUs to use.",
+        required=False,
+        default=-1
+    )
 
     elicit_parser = subparsers.add_parser(
         "elicit",
@@ -46,7 +53,7 @@ def run():
     args = parser.parse_args()
 
     if args.command == "extract":
-        builder = Extractor(args.extraction)
+        builder = Extractor(args.extraction,max_gpus=args.max_gpus)
         builder.extract().save_to_disk(args.output)
     elif args.command == "elicit":
         train(args.run, args.output)
