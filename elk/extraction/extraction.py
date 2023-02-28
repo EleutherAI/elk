@@ -1,7 +1,12 @@
 """Functions for extracting the hidden states of a model."""
 
 from .prompt_dataset import Prompt, PromptDataset, PromptConfig
-from ..utils import assert_type, infer_label_column, select_usable_devices
+from ..utils import (
+    assert_type,
+    infer_label_column,
+    select_usable_devices,
+    float32_to_int16,
+)
 from contextlib import redirect_stdout
 from dataclasses import dataclass, InitVar
 from datasets import (
@@ -130,7 +135,9 @@ def extract_hiddens(
                 if should_concat
                 else [prompt.question]
             ),
-            text_target=[prompt.answers[idx]] if not should_concat else None,
+            text_target=(
+                [prompt.answers[idx]] if not should_concat else None
+            ),  # type: ignore
             padding=True,
             return_tensors="pt",
             truncation=True,
@@ -164,6 +171,7 @@ def extract_hiddens(
                 num_choices,
                 model.config.hidden_size,
                 device=device,
+                dtype=torch.int16,
             )
             for layer_idx in layer_indices
         }
@@ -195,7 +203,7 @@ def extract_hiddens(
                     raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
-                    hidden_dict[f"hidden_{layer_idx}"][i, j] = hidden
+                    hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
 
         yield dict(
             label=prompts[0].label,
@@ -224,8 +232,8 @@ class Extractor(GeneratorBasedBuilder):
         """Extract hidden states and return a `DatasetDict` containing them."""
         # "Download" is a misnomer here. We're running inference on a dataset and
         # gathering the hidden states.
-        with redirect_stdout(None):
-            self.download_and_prepare(num_proc=len(self.devices))
+        # with redirect_stdout(None):  # TODO: undo
+        self.download_and_prepare(num_proc=len(self.devices))
 
         return DatasetDict(
             {split: self.as_dataset(split=split) for split in self.splits}
@@ -262,7 +270,7 @@ class Extractor(GeneratorBasedBuilder):
 
         layer_cols = {
             f"hidden_{layer}": Array3D(
-                dtype="float32",
+                dtype="int16",
                 shape=(num_variants, 2, model_cfg.hidden_size),
             )
             for layer in self.cfg.layers or range(model_cfg.num_hidden_layers)
