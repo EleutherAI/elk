@@ -171,7 +171,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path]):
         if len(devices) == 1:
             pbar = tqdm(iterator, total=L, unit="layer")
             for i, (train_h, val_h) in enumerate(pbar):
-                train_reporter(
+                layer_stat = train_reporter(
                     cfg,
                     i,
                     train_h,
@@ -181,6 +181,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path]):
                     device=devices[0],
                     out_dir=out_dir,
                 )
+                writer.writerow([L - i, *layer_stat])
         else:
             # Use one queue to distribute the work to the workers, and another to
             # collect the results.
