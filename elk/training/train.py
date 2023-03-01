@@ -181,7 +181,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path]):
                     device=devices[0],
                     out_dir=out_dir,
                 )
-                writer.writerow([L - i, *layer_stat])
+                writer.writerow([L - i] + [f"{s:.4f}" for s in layer_stat])
         else:
             # Use one queue to distribute the work to the workers, and another to
             # collect the results.
