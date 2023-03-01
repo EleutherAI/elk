@@ -1,6 +1,6 @@
 """Main entry point for `elk`."""
 
-from .extraction import Extractor, ExtractionConfig
+from .extraction import extract, ExtractionConfig
 from .training import RunConfig
 from .training.train import train
 from pathlib import Path
@@ -46,8 +46,7 @@ def run():
     args = parser.parse_args()
 
     if args.command == "extract":
-        builder = Extractor(args.extraction)
-        builder.extract().save_to_disk(args.output)
+        extract(args.extraction).save_to_disk(args.output)  # TODO: max_gpus cla?
     elif args.command == "elicit":
         train(args.run, args.output)
 

@@ -7,10 +7,12 @@ from ..utils import (
     select_usable_devices,
     float32_to_int16,
 )
+from .generator import _GeneratorConfig, _GeneratorBuilder
 from contextlib import redirect_stdout
 from dataclasses import dataclass, InitVar
 from datasets import (
     Array3D,
+    BuilderConfig,
     DatasetDict,
     DatasetInfo,
     Features,
@@ -31,7 +33,7 @@ from transformers import (
     BatchEncoding,
     PreTrainedModel,
 )
-from typing import Iterable, Literal, Union
+from typing import Callable, Iterable, Literal, Union, Optional
 import logging
 import torch
 
@@ -212,42 +214,21 @@ def extract_hiddens(
         )
 
 
-class Extractor(GeneratorBasedBuilder):
-    """Builds a HuggingFace dataset containing hidden states extracted from a model."""
+# Dataset.from_generator wraps all the arguments in lists, so we unpack them here
+def _extraction_worker(**kwargs):
+    yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
-    def __init__(self, cfg: ExtractionConfig, max_gpus: int = -1, **kwargs):
-        # Fetch metadata about the dataset without necessarily downloading it yet
-        ds_name, _, config_name = cfg.prompts.dataset.partition(" ")
-        info = get_dataset_config_info(ds_name, config_name or None)
 
-        self.base_info = info
-        self.cfg = cfg
+def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
+    """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
-        # TODO: Use a heuristic based on params to determine minimum VRAM
-        self.devices = select_usable_devices(max_gpus)
-
-        super().__init__(**kwargs)
-
-    def extract(self) -> DatasetDict:
-        """Extract hidden states and return a `DatasetDict` containing them."""
-        # "Download" is a misnomer here. We're running inference on a dataset and
-        # gathering the hidden states.
-        # with redirect_stdout(None):  # TODO: undo
-        self.download_and_prepare(num_proc=len(self.devices))
-
-        return DatasetDict(
-            {split: self.as_dataset(split=split) for split in self.splits}
-        )
-
-    @property
-    def splits(self) -> SplitDict:
-        """Return the standard splits that are available in the dataset."""
-        base_splits = assert_type(SplitDict, self.base_info.splits)
+    def get_splits() -> SplitDict:
+        base_splits = assert_type(SplitDict, info.splits)
         splits = set(base_splits) & {Split.TRAIN, Split.VALIDATION, Split.TEST}
         if Split.VALIDATION in splits and Split.TEST in splits:
             splits.remove(Split.TEST)
 
-        limit = self.cfg.prompts.max_examples or int(1e100)
+        limit = cfg.prompts.max_examples or int(1e100)
         return SplitDict(
             {
                 k: SplitInfo(
@@ -261,54 +242,51 @@ class Extractor(GeneratorBasedBuilder):
             dataset_name=base_splits.dataset_name,
         )
 
-    def _info(self) -> DatasetInfo:
-        model_cfg = AutoConfig.from_pretrained(self.cfg.model)
-        num_variants = self.cfg.prompts.num_variants
+    model_cfg = AutoConfig.from_pretrained(cfg.model)
+    num_variants = cfg.prompts.num_variants
+    ds_name, _, config_name = cfg.prompts.dataset.partition(" ")
+    info = get_dataset_config_info(ds_name, config_name or None)
 
-        features = assert_type(Features, self.base_info.features)
-        label_col = self.cfg.prompts.label_column or infer_label_column(features)
+    features = assert_type(Features, info.features)
+    label_col = cfg.prompts.label_column or infer_label_column(features)
 
-        layer_cols = {
-            f"hidden_{layer}": Array3D(
-                dtype="int16",
-                shape=(num_variants, 2, model_cfg.hidden_size),
-            )
-            for layer in self.cfg.layers or range(model_cfg.num_hidden_layers)
-        }
-        other_cols = {
-            "variant_ids": Sequence(
-                Value(dtype="string"),
-                length=num_variants,
-            ),
-            "label": features[label_col],
-        }
+    splits = get_splits()
 
-        return DatasetInfo(
-            description=f"Hiddens for {self.cfg.model} on {self.cfg.prompts.dataset}",
-            features=Features({**layer_cols, **other_cols}),
-            citation=self.base_info.citation,
-            splits=self.splits,
+    layer_cols = {
+        f"hidden_{layer}": Array3D(
+            dtype="int16",
+            shape=(num_variants, 2, model_cfg.hidden_size),
         )
+        for layer in cfg.layers or range(model_cfg.num_hidden_layers)
+    }
+    other_cols = {
+        "variant_ids": Sequence(
+            Value(dtype="string"),
+            length=num_variants,
+        ),
+        "label": features[label_col],
+    }
+    devices = select_usable_devices(max_gpus)
+    builders = {
+        split: _GeneratorBuilder(
+            cache_dir=None,
+            features=Features({**layer_cols, **other_cols}),
+            generator=_extraction_worker,
+            split=split,
+            gen_kwargs=dict(
+                cfg=[cfg] * len(devices),
+                device=devices,
+                rank=list(range(len(devices))),
+                split=[split] * len(devices),
+                world_size=[len(devices)] * len(devices),
+            ),
+        )
+        for split in splits
+    }
 
-    def _split_generators(self, _) -> list[SplitGenerator]:
-        return [
-            SplitGenerator(
-                name=split,
-                gen_kwargs=dict(
-                    cfg=[self.cfg] * len(self.devices),
-                    device=self.devices,
-                    rank=list(range(len(self.devices))),
-                    split=[split] * len(self.devices),
-                    world_size=[len(self.devices)] * len(self.devices),
-                ),
-            )
-            for split in self.splits
-        ]
-
-    def _generate_examples(self, **gen_kwargs) -> Iterable[tuple[int, dict]]:
-        yield from enumerate(_extraction_worker(**gen_kwargs))
-
-
-# Dataset.from_generator wraps all the arguments in lists, so we unpack them here
-def _extraction_worker(**kwargs):
-    yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
+    ds = dict()
+    for split, builder in builders.items():
+        # TODO: we may need a barrier here?
+        builder.download_and_prepare(num_proc=len(devices))
+        ds[split] = builder.as_dataset(split=split)
+    return DatasetDict(ds)

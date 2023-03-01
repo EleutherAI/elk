@@ -1,6 +1,6 @@
 """Main training loop."""
 
-from ..extraction import Extractor, ExtractionConfig
+from ..extraction import extract, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import assert_type, held_out_split, select_usable_devices, int16_to_float32
 from .preprocessing import normalize
@@ -127,8 +127,7 @@ def train_reporter(
 
 def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     # Extract the hidden states first if necessary
-    builder = Extractor(cfg.data, max_gpus=cfg.max_gpus)
-    ds = builder.extract()
+    ds = extract(cfg.data, max_gpus=cfg.max_gpus)
 
     if out_dir is None:
         out_dir = memorably_named_dir(elk_reporter_dir())
