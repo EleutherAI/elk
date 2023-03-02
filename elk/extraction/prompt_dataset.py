@@ -1,29 +1,25 @@
 from ..math import stochastic_round_constrained
+from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
 from dataclasses import dataclass
-from datasets import (
-    ClassLabel,
-    Dataset,
-    DatasetDict,
-    concatenate_datasets,
-    load_dataset,
-)
+from datasets import DatasetDict, load_dataset
 from numpy.typing import NDArray
 from promptsource.templates import DatasetTemplates
 from random import Random
 from simple_parsing.helpers import field, Serializable
 from torch.utils.data import Dataset as TorchDataset
-from typing import Literal, Optional, cast
+from typing import Optional
 import numpy as np
-import torch.distributed as dist
 
 
 @dataclass
 class Prompt:
-    """A question, its possible answers, and the correct answer."""
+    """A question, its possible answers, and the correct answer.
+    A question is a template applied to a predicate."""
 
     question: str
     answers: list[str]
     label: int
+    template_name: str
 
     def to_string(self, answer_idx: int, sep: str = "\n") -> str:
         return f"{self.question}{sep}{self.answers[answer_idx]}"
@@ -35,7 +31,6 @@ class PromptConfig(Serializable):
     Args:
         dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
             `"super_glue boolq"` or `"imdb"`.
-        split: The split to use.
         balance: Whether to force class balance in the dataset using undersampling.
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset; if there is only one column
@@ -45,18 +40,17 @@ class PromptConfig(Serializable):
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot. Defaults to 0.
         seed: The seed to use for prompt randomization. Defaults to 42.
-        strategy: The strategy to use for assigning prompt templates to examples. See
-            above for details. Defaults to `"randomize"`.
+        num_variants: The number of prompt templates to apply to each predicate upon
+            call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
     """
 
     dataset: str = field(positional=True)
-    split: str = "validation"
     balance: bool = False
     label_column: Optional[str] = None
     max_examples: int = 0
     num_shots: int = 0
     seed: int = 42
-    strategy: Literal["all", "randomize"] = "randomize"
+    num_variants: int = 1
 
 
 class PromptDataset(TorchDataset):
@@ -67,7 +61,7 @@ class PromptDataset(TorchDataset):
     a random prompt template for each example on-the-fly when `__getitem__` is called,
     using the seed passed to `__init__`. Note this means that the same example may be
     assigned a different prompt template if `__getitem__` is called multiple times with
-    the same index.
+    the same index.  TODO redo this documentation
 
     When `strategy` is set to `"all"`, we "broadcast" the prompt templates across the
     dataset, multiplying its effective size by the number of templates.
@@ -79,18 +73,26 @@ class PromptDataset(TorchDataset):
     "Henry Mills (Once Upon a Time) -- Henry Daniel Mills is a fictional character...
     """
 
-    def __init__(self, cfg: PromptConfig):
-        data_path = cfg.dataset.split()
-        assert len(data_path) in (1, 2), f"Invalid dataset path {cfg.dataset}"
+    def __init__(
+        self,
+        cfg: PromptConfig,
+        rank: int = 0,
+        world_size: int = 1,
+        split: str = "validation",
+    ):
+        ds_name, _, config_name = cfg.dataset.partition(" ")
 
         self.num_shots = cfg.num_shots
-        self.prompter = DatasetTemplates(*data_path)
+        self.prompter = DatasetTemplates(ds_name, config_name or None)  # type: ignore
         self.rng = Random(cfg.seed)
-        self.strategy = cfg.strategy
+        self.num_variants = (
+            cfg.num_variants if cfg.num_variants > 0 else len(self.prompter.templates)
+        )
 
-        # TODO: Should we support IterableDataset?
-        ds_dict = load_dataset(*data_path)  # type: ignore
-        assert isinstance(ds_dict, DatasetDict)
+        ds_dict = assert_type(
+            DatasetDict,  # TODO: Should we support IterableDataset?
+            load_dataset(ds_name, config_name or None),
+        )
 
         # By default we use the existing train-validation/test split in the dataset.
         # If it doesn't exist, we create our own 75/25 train-test split. Crucially,
@@ -106,104 +108,20 @@ class PromptDataset(TorchDataset):
             ds_dict = ds_dict[split_name].train_test_split(
                 seed=cfg.seed, shuffle=False, stratify_by_column=cfg.label_column
             )
+            assert isinstance(ds_dict, DatasetDict)
 
-        # Lots of datasets have a validation split or a test split, but not both. If
-        # the requested split doesn't exist, we try to use the other one instead.
-        split = cfg.split
-        if split not in ds_dict and split in ("validation", "test"):
-            new_split = "test" if split == "validation" else "train"
-            if new_split in ds_dict:
-                print(f"No {split} split found, using {new_split} split instead")
-                split = new_split
-            else:
-                raise ValueError(f"No {split} or {new_split} split found")
-
-        # The 'active' split is the one that gets queried by __getitem__ in the
-        # zero-shot case.
+        # The 'active' split is the one that gets queried by __getitem__
         self.active_split = ds_dict[split]
-        features = self.active_split.features
-
-        # We infer that the label is the unique ClassLabel column in the dataset
-        label_column = cfg.label_column
-        if label_column is None:
-            label_cols = [
-                col for col, dtype in features.items() if isinstance(dtype, ClassLabel)
-            ]
-            if not label_cols:
-                raise ValueError(f"Dataset {cfg.dataset} has no label column")
-            elif len(label_cols) > 1:
-                raise ValueError(
-                    f"Dataset {cfg.dataset} has multiple label columns {label_cols}"
-                    f"; specify --label-column to disambiguate"
-                )
-            else:
-                label_column = label_cols[0]
-                assert isinstance(label_column, str)
-
-                print(f"Using label column '{label_column}'")
-
-        # Make sure manually specified label columns exist and are ClassLabels.
-        # NOTE: Should we actually support non-ClassLabel labels? The essential thing
-        # is that we know the number of classes, and ClassLabel makes that easy.
-        elif label_column not in features:
-            raise ValueError(f"{cfg.dataset} has no column '{cfg.label_column}'")
-        elif not isinstance(features[cfg.label_column], ClassLabel):
-            raise ValueError(
-                f"Column '{cfg.label_column}' in {cfg.dataset} is not a "
-                f"`ClassLabel`"
-            )
-
-        # Sanity check the label column
-        self.label_column = label_column
-        if self.num_classes < 2:
-            raise ValueError(f"{cfg.dataset} should have more than 1 class")
-
-        # Compute the empirical class balance in the active split. Sanity check that
-        # all class mentioned in the ClassLabel datatype are represented.
-        class_sizes = np.bincount(
-            self.active_split[label_column], minlength=self.num_classes
-        )
-        if not np.all(class_sizes > 0):
-            missing = np.flatnonzero(class_sizes == 0).tolist()
-            raise ValueError(f"{cfg.dataset} has missing classes: {missing}")
+        label_col = cfg.label_column or infer_label_column(self.active_split.features)
+        self.label_column = label_col
 
         # Enforce class balance if needed
         if cfg.balance:
-            smallest_size = class_sizes.min()
-            print(f"Undersampling classes to {smallest_size} examples each")
-
-            # First group the active split by class
-            strata = [
-                self.active_split.filter(lambda ex: ex[label_column] == i)
-                for i in range(self.num_classes)
-            ]
-            # Then randomly sample `smallest_size` examples from each class and merge
-            self.active_split = cast(
-                Dataset,
-                concatenate_datasets(
-                    [
-                        stratum.select(
-                            self.rng.sample(range(len(stratum)), k=smallest_size)
-                        )
-                        for stratum in strata
-                    ]
-                ),
-            )
-
-            # Sanity check that we successfully balanced the classes
-            class_sizes = np.bincount(
-                self.active_split[label_column], minlength=self.num_classes
-            )
-            assert np.all(class_sizes == smallest_size)
-
-        # Store the (possibly post-undersampling) empirical class balance for later
-        self.class_fracs: NDArray[np.floating] = class_sizes / class_sizes.sum()
-
-        # Shard across ranks iff we're in a distributed setting
-        if dist.is_initialized():
-            self.active_split = self.active_split.shard(
-                dist.get_world_size(), dist.get_rank()
-            )
+            self.active_split = undersample(self.active_split, self.rng, label_col)
+            self.class_fracs = np.ones(self.num_classes) / self.num_classes
+        else:
+            class_sizes = compute_class_balance(self.active_split, label_col)
+            self.class_fracs: NDArray[np.floating] = class_sizes / class_sizes.sum()
 
         # We use stratified sampling to create few-shot prompts that are as balanced as
         # possible. If needed, create the strata now so that we can use them later.
@@ -223,76 +141,83 @@ class PromptDataset(TorchDataset):
                 )
 
             self.fewshot_strata = [
-                ds_dict["train"].filter(lambda ex: ex[label_column] == i)
+                ds_dict["train"].filter(lambda ex: ex[label_col] == i)
                 for i in range(self.num_classes)
             ]
         else:
-            self.fewshot_strata: list[Dataset] = []
+            self.fewshot_strata = []
 
         # Now shuffle the active split and truncate it if needed
         self.active_split = self.active_split.shuffle(seed=cfg.seed)
         if 0 < cfg.max_examples < len(self.active_split):
             self.active_split = self.active_split.select(range(cfg.max_examples))
 
-    def __getitem__(self, index: int) -> Prompt:
-        prompts = list(self.prompter.templates.values())
+        # Shard if needed
+        if world_size > 1:
+            self.active_split = self.active_split.shard(world_size, rank)
 
-        if self.strategy == "all":
-            example_idx, prompt_idx = divmod(index, len(prompts))
-            example = self.active_split[example_idx]
-            template = prompts[prompt_idx]
+    def __getitem__(self, index: int) -> list[Prompt]:
+        """Get a list of prompts for a given predicate"""
+        # get self.num_variants unique prompts from the template pool
+        template_names = self.rng.sample(
+            self.prompter.templates.keys(), self.num_variants
+        )
 
-        elif self.strategy == "randomize":
-            example = self.active_split[index]
-            template = self.rng.choice(prompts)
-        else:
-            raise ValueError(f"Unknown strategy {self.strategy}")
+        example = self.active_split[index]
 
-        true_label = example[self.label_column]
-        answers = []
-        questions = set()
+        prompts = []
+        for template_name in template_names:
+            template = self.prompter.templates[template_name]
 
-        for fake_label in range(self.num_classes):
-            example[self.label_column] = fake_label
+            true_label = example[self.label_column]
+            answers = []
+            questions = set()
 
-            q, a = template.apply(example)
-            answers.append(a)
-            questions.add(q)
+            for fake_label in range(self.num_classes):
+                example[self.label_column] = fake_label
 
-        assert len(questions) == 1
-        question = questions.pop()
+                q, a = template.apply(example)
+                answers.append(a)
+                questions.add(q)
 
-        if self.num_shots > 0:
-            # Use stratified sampling to get `num_shots` examples from the train set.
-            # If `num_shots` is not divisible by the number of classes, stochastic
-            # rounding is used to determine the number of examples per class.
-            example_counts = stochastic_round_constrained(
-                list(self.class_fracs * self.num_shots), self.rng
+            assert len(questions) == 1
+            question = questions.pop()
+
+            if self.num_shots > 0:
+                # Use stratified sampling to get `num_shots` examples from train set.
+                # If `num_shots` is not divisible by the number of classes, stochastic
+                # rounding is used to determine the number of examples per class.
+                example_counts = stochastic_round_constrained(
+                    list(self.class_fracs * self.num_shots), self.rng
+                )
+                examples = []
+
+                for count, stratum in zip(example_counts, self.fewshot_strata):
+                    indices = self.rng.sample(range(len(stratum)), count)
+
+                    for idx in indices:
+                        q, a = template.apply(stratum[idx])
+                        examples.append(f"{q}\n{a}")
+
+                self.rng.shuffle(examples)
+                question = "\n\n".join(examples + [question])
+
+            prompts.append(
+                Prompt(
+                    question=question,
+                    answers=answers,
+                    label=true_label,
+                    template_name=template_name,
+                )
             )
-            examples = []
-
-            for count, stratum in zip(example_counts, self.fewshot_strata):
-                indices = self.rng.sample(range(len(stratum)), count)
-
-                for idx in indices:
-                    q, a = template.apply(stratum[idx])
-                    examples.append(f"{q}\n{a}")
-
-            self.rng.shuffle(examples)
-            question = "\n\n".join(examples + [question])
-
-        return Prompt(question=question, answers=answers, label=true_label)
+        return prompts
 
     def __iter__(self):
         return (self[i] for i in range(len(self.active_split)))
 
     def __len__(self):
-        """Get the number of prompts in the dataset."""
-        N = len(self.active_split)
-        if self.strategy == "all":
-            N *= len(self.prompter.templates)
-
-        return N
+        """Get the number of predicates in the dataset."""
+        return len(self.active_split)
 
     @property
     def num_classes(self) -> int:
