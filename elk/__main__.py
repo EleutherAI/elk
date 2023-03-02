@@ -53,7 +53,7 @@ def run():
     args = parser.parse_args()
 
     if args.command == "extract":
-        extract(args.extraction).save_to_disk(args.output)  # TODO: max_gpus cla?
+        extract(args.extraction, args.max_gpus).save_to_disk(args.output)
     elif args.command == "elicit":
         train(args.run, args.output)
 
