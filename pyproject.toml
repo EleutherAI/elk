@@ -44,6 +44,7 @@ dev = [
     "hypothesis",
     "pre-commit",
     "pytest",
+    "pyright"
 ]
 
 [project.scripts]

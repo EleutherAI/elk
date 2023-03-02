@@ -45,4 +45,14 @@ We cache the hidden states resulting from `elk extract` to avoid having to recom
 
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 
+### Run tests
+```bash
+pytest
+```
+### Run type checking
+We use [pyright](https://github.com/microsoft/pyright), which is built into the VSCode editor. If you'd like to run it as a standalone tool, it requires a [nodejs installation.](https://nodejs.org/en/download/).
+```bash
+pyright
+```
+
 If you work on a new feature / fix or some other code task, make sure to create an issue and assign it to yourself (Maybe, even share it in the elk channel of Eleuther's Discord with a small note). In this way, others know you are working on the issue and people won't do the same thing twice 👍 Also others can contact you easily.
