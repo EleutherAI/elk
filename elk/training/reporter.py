@@ -1,7 +1,6 @@
 """An ELK reporter network."""
 
 from .losses import ccs_squared_loss, js_loss
-from ..utils import maybe_ddp_wrap, maybe_all_gather, maybe_all_reduce
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,7 +49,7 @@ class ReporterConfig(Serializable):
     activation: Literal["gelu", "relu", "swish"] = "gelu"
     bias: bool = True
     hidden_size: Optional[int] = None
-    init: Literal["default", "spherical", "zero"] = "zero"
+    init: Literal["default", "spherical", "zero"] = "default"
     loss: Literal["js", "squared"] = "squared"
     num_layers: int = 1
     pre_ln: bool = False
@@ -73,7 +72,7 @@ class OptimConfig(Serializable):
     lr: float = 1e-2
     num_epochs: int = 1000
     num_tries: int = 10
-    optimizer: Literal["adam", "lbfgs"] = "adam"
+    optimizer: Literal["adam", "lbfgs"] = "lbfgs"
     weight_decay: float = 0.01
 
 
@@ -169,7 +168,7 @@ class Reporter(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Return the raw score output of the probe on `x`."""
-        return self.probe(x)
+        return self.probe(x).squeeze(-1)
 
     def loss(
         self,
@@ -292,9 +291,6 @@ class Reporter(nn.Module):
         p0, p1 = logit0.sigmoid(), logit1.sigmoid()
         pred_probs = 0.5 * (p0 + (1 - p1))
 
-        pred_probs = maybe_all_gather(pred_probs)
-        labels = maybe_all_gather(labels)
-
         # Calibrated accuracy
         cal_thresh = pred_probs.float().quantile(labels.float().mean())
         cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
@@ -320,16 +316,15 @@ class Reporter(nn.Module):
     ) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
 
-        probe = maybe_ddp_wrap(self)
         optimizer = torch.optim.AdamW(
-            probe.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
+            self.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
         )
 
         loss = torch.inf
         for _ in range(cfg.num_epochs):
             optimizer.zero_grad()
 
-            loss = self.loss(probe(x0), probe(x1), labels)
+            loss = self.loss(self(x0), self(x1), labels)
             loss.backward()
             optimizer.step()
 
@@ -364,10 +359,6 @@ class Reporter(nn.Module):
 
             regularized = loss + regularizer
             regularized.backward()
-
-            for p in self.parameters():
-                if p.grad is not None:
-                    maybe_all_reduce(p.grad)
 
             return float(regularized)
 
