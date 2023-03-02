@@ -263,20 +263,21 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
     }
     devices = select_usable_devices(max_gpus)
     builders = {
-        split: _GeneratorBuilder(
+        split_name: _GeneratorBuilder(
             cache_dir=None,
             features=Features({**layer_cols, **other_cols}),
             generator=_extraction_worker,
-            split=split,
+            split_name=split_name,
+            split_info=split_info,
             gen_kwargs=dict(
                 cfg=[cfg] * len(devices),
                 device=devices,
                 rank=list(range(len(devices))),
-                split=[split] * len(devices),
+                split=[split_name] * len(devices),
                 world_size=[len(devices)] * len(devices),
             ),
         )
-        for split in splits
+        for (split_name, split_info) in splits.items()
     }
 
     ds = dict()
