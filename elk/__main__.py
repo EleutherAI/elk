@@ -28,7 +28,7 @@ def run():
         type=int,
         help="Maximum number of GPUs to use.",
         required=False,
-        default=-1
+        default=-1,
     )
 
     elicit_parser = subparsers.add_parser(

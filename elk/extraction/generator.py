@@ -4,6 +4,7 @@ from typing import Callable, Optional, Any, Dict
 import datasets
 from datasets.splits import NamedSplit
 
+
 @dataclass
 class _GeneratorConfig(datasets.BuilderConfig):
     generator: Optional[Callable] = None
@@ -46,7 +47,7 @@ class _GeneratorBuilder(datasets.GeneratorBasedBuilder):
             _SplitGenerator(
                 name=self.split_name,
                 split_info=self.split_info,
-                gen_kwargs=self.config.gen_kwargs
+                gen_kwargs=self.config.gen_kwargs,
             )
         ]
 
