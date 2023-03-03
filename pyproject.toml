@@ -57,4 +57,4 @@ markers = ["cpu: Marker for tests that do not depend on GPUs"]
 testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
-include = ["elk*", "promptsource*"]
+include = ["elk*", "promptsource_module*"]
