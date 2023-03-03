@@ -35,7 +35,7 @@ dependencies = [
     # 4.0 introduced the breaking change of using return_dict=True by default
     "transformers>=4.0.0",
 ]
-version = "0.1"
+version = "0.1.2"
 
 [project.optional-dependencies]
 dev = [
@@ -55,5 +55,5 @@ reportPrivateImportUsage = false
 markers = ["cpu: Marker for tests that do not depend on GPUs"]
 testpaths = ["tests"]
 
-[tool.setuptools]
-packages = ["elk", "promptsource"]
+[tool.setuptools.packages.find]
+include = ["elk*", "promptsource*"]
