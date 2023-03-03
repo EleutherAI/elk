@@ -1,0 +1,3 @@
+[submodule "promptsource"]
+	path = promptsource
+	url = https://github.com/NotodAI-Research/promptsource.git

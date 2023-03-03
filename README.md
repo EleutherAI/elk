@@ -50,7 +50,7 @@ Use `pip install pre-commit && pre-commit install` in the root folder before you
 pytest
 ```
 ### Run type checking
-We use [pyright](https://github.com/microsoft/pyright), which is built into the VSCode editor. If you'd like to run it as a standalone tool, it requires a [nodejs installation.](https://nodejs.org/en/download/).
+We use [pyright](https://github.com/microsoft/pyright), which is built into the VSCode editor. If you'd like to run it as a standalone tool, it requires a [nodejs installation.](https://nodejs.org/en/download/)
 ```bash
 pyright
 ```
