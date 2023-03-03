@@ -35,7 +35,7 @@ jobs:
           submodules: recursive
 
       - name: Debug promptsource
-        run: ls promptsource
+        run: ls promptsource_module
 
       - name: Install Python
         uses: actions/setup-python@v4

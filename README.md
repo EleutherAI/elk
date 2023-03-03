@@ -42,6 +42,11 @@ Currently, our code doesn't quite support distributed training of the probe. Run
 We cache the hidden states resulting from `elk extract` to avoid having to recompute them every time we want to train a probe. The cache is stored in `~/.cache/elk/{md5_hash_of_cli_args}`. Probes are also cached alongside the hidden states they were trained on. You can see a summary of all the cached hidden states by running `elk list`.
 
 ## Development
+To clone the repo and its submodules
+```bash
+git clone --recurse-submodules https://github.com/EleutherAI/elk.git
+```
+
 
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 
