@@ -37,7 +37,7 @@ dependencies = [
     # required by promptsource, which doesn't specify a version
     "jinja2"
 ]
-version = "0.1.2"
+version = "0.1"
 
 [project.optional-dependencies]
 dev = [
