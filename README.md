@@ -46,6 +46,10 @@ To clone the repo and its submodules
 ```bash
 git clone --recurse-submodules https://github.com/EleutherAI/elk.git
 ```
+If you already cloned the repo but are missing the promptsource_module submodule, run
+```bash
+git submodule update --init --recursive
+```
 
 
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
