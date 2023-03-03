@@ -3,7 +3,7 @@ from ..utils import assert_type, compute_class_balance, infer_label_column, unde
 from dataclasses import dataclass
 from datasets import DatasetDict, load_dataset
 from numpy.typing import NDArray
-from promptsource.templates import DatasetTemplates
+from promptsource.templates import DatasetTemplates  # type: ignore[import]
 from random import Random
 from simple_parsing.helpers import field, Serializable
 from torch.utils.data import Dataset as TorchDataset

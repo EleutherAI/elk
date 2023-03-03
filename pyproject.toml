@@ -49,6 +49,7 @@ dev = [
 elk = "elk.__main__:run"
 
 [tool.pyright]
+include = ["elk*"]
 reportPrivateImportUsage = false
 
 [tool.pytest.ini_options]
