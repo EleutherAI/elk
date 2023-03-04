@@ -12,34 +12,25 @@ Our code is based on [PyTorch](http://pytorch.org) and [Huggingface Transformers
 
 First install the package with `pip install -e .` in the root directory, or `pip install -e .[dev]` if you'd like to contribute to the project (see **Development** section below). This should install all the necessary dependencies.
 
-
-To extract the hidden states for one model `model` and the dataset `dataset` *and* train a probe on these extracted hidden states, run:
+To fit reporters for the HuggingFace model `model` and dataset `dataset`, just run:
 
 ```bash
 elk elicit microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
-To only extract the hidden states for one model `model` and the dataset `dataset`, run:
-
-```bash
-elk extract microsoft/deberta-v2-xxlarge-mnli imdb
-```
-
-and evaluate on different datasets: [WIP]
-
-### Distributed hidden state extraction
-
-You can run the hidden state extraction in parallel on multiple GPUs with `torchrun`. Specifically, you can run the hidden state extraction using all GPUs on a node with:
-
-```bash
-torchrun --nproc_per_node gpu -m elk extract microsoft/deberta-v2-xxlarge-mnli imdb
-```
-
-Currently, our code doesn't quite support distributed training of the probe. Running `elk elicit` under `torchrun` tends to hang during the training phase. We're working on fixing this.
+This will automatically download the model and dataset, run the model and extract the relevant representations if they aren't cached on disk, fit reporters on them, and save the reporter checkpoints to the `elk-reporters` folder in your home directory. It will also evaluate the reporter classification performance on a held out test set and save it to a CSV file in the same folder.
 
 ## Caching
 
-We cache the hidden states resulting from `elk extract` to avoid having to recompute them every time we want to train a probe. The cache is stored in `~/.cache/elk/{md5_hash_of_cli_args}`. Probes are also cached alongside the hidden states they were trained on. You can see a summary of all the cached hidden states by running `elk list`.
+The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the  `~/.cache/elk/{md5_hash_of_cli_args}`.
+
+## Other commands
+
+To only extract the hidden states for the model `model` and the dataset `dataset` and save them to `my_output_dir`, without training any reporters, you can run:
+
+```bash
+elk extract microsoft/deberta-v2-xxlarge-mnli imdb -o my_output_dir
+```
 
 ## Development
 
