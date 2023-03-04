@@ -3,6 +3,7 @@
 from ..extraction import extract, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import assert_type, held_out_split, select_usable_devices, int16_to_float32
+from .classifier import Classifier
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
@@ -101,17 +102,19 @@ def train_reporter(
     stats = [layer, train_loss, *val_result]
 
     if not cfg.skip_baseline:
-        train_labels_aug = torch.cat([train_labels, 1 - train_labels]).cpu()
-        val_labels_aug = torch.cat([val_labels, 1 - val_labels]).cpu()
+        train_labels_aug = torch.cat([train_labels, 1 - train_labels])
+        val_labels_aug = torch.cat([val_labels, 1 - val_labels])
 
         # TODO: Once we implement cross-validation for CCS, we should benchmark
         # against LogisticRegressionCV here.
-        X = torch.cat([x0, x1]).cpu().squeeze()
-        lr_model = LogisticRegression(max_iter=10_000)
-        lr_model.fit(X.view(-1, X.shape[-1]), train_labels_aug)
+        X = torch.cat([x0, x1]).squeeze()
+        d = X.shape[-1]
+        # lr_model = LogisticRegression(max_iter=10_000)
+        lr_model = Classifier(d)
+        lr_model.fit(X.view(-1, d), train_labels_aug)
 
-        X_val = torch.cat([val_x0, val_x1]).cpu().squeeze()
-        lr_preds = lr_model.predict_proba(X_val)[:, 1]
+        X_val = torch.cat([val_x0, val_x1]).squeeze()
+        lr_preds = lr_model(X_val).sigmoid().cpu().numpy()
         lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
 
