@@ -1,9 +1,9 @@
 from ..math import stochastic_round_constrained
+from ..promptsource import DatasetTemplates
 from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
 from dataclasses import dataclass
 from datasets import DatasetDict, load_dataset
 from numpy.typing import NDArray
-from promptsource_module.promptsource.templates import DatasetTemplates
 from random import Random
 from simple_parsing.helpers import field, Serializable
 from torch.utils.data import Dataset as TorchDataset
