@@ -33,6 +33,15 @@ elk extract microsoft/deberta-v2-xxlarge-mnli imdb -o my_output_dir
 ```
 
 ## Development
+To clone the repo and its submodules
+```bash
+git clone --recurse-submodules https://github.com/EleutherAI/elk.git
+```
+If you already cloned the repo but are missing the promptsource_module submodule, run
+```bash
+git submodule update --init --recursive
+```
+
 
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 
@@ -41,7 +50,7 @@ Use `pip install pre-commit && pre-commit install` in the root folder before you
 pytest
 ```
 ### Run type checking
-We use [pyright](https://github.com/microsoft/pyright), which is built into the VSCode editor. If you'd like to run it as a standalone tool, it requires a [nodejs installation.](https://nodejs.org/en/download/).
+We use [pyright](https://github.com/microsoft/pyright), which is built into the VSCode editor. If you'd like to run it as a standalone tool, it requires a [nodejs installation.](https://nodejs.org/en/download/)
 ```bash
 pyright
 ```
