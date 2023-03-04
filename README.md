@@ -22,7 +22,7 @@ This will automatically download the model and dataset, run the model and extrac
 
 ## Caching
 
-The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the  `~/.cache/elk/{md5_hash_of_cli_args}`.
+The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the same place as all other HuggingFace datasets, which is usually `~/.cache/huggingface/datasets`.
 
 ## Other commands
 
