@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "elk"
+name = "eleuther-elk"
 description = "Keeping language models honest by directly eliciting knowledge encoded in their activations"
 readme = "README.md"
 requires-python = ">=3.9"
