@@ -42,6 +42,15 @@ Currently, our code doesn't quite support distributed training of the probe. Run
 We cache the hidden states resulting from `elk extract` to avoid having to recompute them every time we want to train a probe. The cache is stored in `~/.cache/elk/{md5_hash_of_cli_args}`. Probes are also cached alongside the hidden states they were trained on. You can see a summary of all the cached hidden states by running `elk list`.
 
 ## Development
+To clone the repo and its submodules
+```bash
+git clone --recurse-submodules https://github.com/EleutherAI/elk.git
+```
+If you already cloned the repo but are missing the promptsource_module submodule, run
+```bash
+git submodule update --init --recursive
+```
+
 
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 
@@ -50,7 +59,7 @@ Use `pip install pre-commit && pre-commit install` in the root folder before you
 pytest
 ```
 ### Run type checking
-We use [pyright](https://github.com/microsoft/pyright), which is built into the VSCode editor. If you'd like to run it as a standalone tool, it requires a [nodejs installation.](https://nodejs.org/en/download/).
+We use [pyright](https://github.com/microsoft/pyright), which is built into the VSCode editor. If you'd like to run it as a standalone tool, it requires a [nodejs installation.](https://nodejs.org/en/download/)
 ```bash
 pyright
 ```
