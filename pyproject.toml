@@ -37,7 +37,7 @@ dependencies = [
     # required by promptsource, which doesn't specify a version
     "jinja2"
 ]
-version = "0.1"
+version = "0.1.1"
 
 [project.optional-dependencies]
 dev = [
@@ -59,4 +59,4 @@ markers = ["cpu: Marker for tests that do not depend on GPUs"]
 testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
-include = ["elk*", "promptsource_module"]
+include = ["elk*"]

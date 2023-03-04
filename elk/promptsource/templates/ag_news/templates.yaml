@@ -1,0 +1,215 @@
+dataset: ag_news
+templates:
+  24e44a81-a18a-42dd-a71c-5b31b2d2cb39: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: 24e44a81-a18a-42dd-a71c-5b31b2d2cb39
+    jinja: "What label best describes this news article?\n{{text}} ||| \n{{answer_choices[label]\
+      \ }}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: classify_question_first
+    reference: ''
+  8fdc1056-1029-41a1-9c67-354fc2b8ceaf: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: 8fdc1056-1029-41a1-9c67-354fc2b8ceaf
+    jinja: "Is this a piece of news regarding {{\"world politics, sports, business,\
+      \ or science and technology\"}}?\n{{text}} \n||| \n{{answer_choices[label] }}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: classify_with_choices_question_first
+    reference: ''
+  918267e0-af68-4117-892d-2dbe66a58ce9: !Template
+    answer_choices: Politician ||| Athlete ||| Business executive ||| Scientist
+    id: 918267e0-af68-4117-892d-2dbe66a58ce9
+    jinja: 'Would you recommend the following article to a {{"politician"}}, an {{"athlete"}},
+      a {{"business executive"}}, or a {{"scientist"}}?
+
+
+      {{ text }}
+
+      |||
+
+      {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: recommend
+    reference: ''
+  9345df33-4f23-4944-a33c-eef94e626862: !Template
+    answer_choices: World News ||| Sports ||| Business ||| Science and Technology
+    id: 9345df33-4f23-4944-a33c-eef94e626862
+    jinja: "{{text}} \n\nWhich of the following sections of a newspaper would this\
+      \ article likely appear in? {{\"World News\"}}, {{\"Sports\"}}, {{\"Business\"\
+      }}, or {{\"Science and Technology\"}}? ||| \n{{answer_choices[label] }}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: which_section_choices
+    reference: ''
+  98534347-fff7-4c39-a795-4e69a44791f7: !Template
+    answer_choices: World News ||| Sports ||| Business ||| Science and Technology
+    id: 98534347-fff7-4c39-a795-4e69a44791f7
+    jinja: "{{text}} \n\nWhich section of a newspaper would this article likely appear\
+      \ in? ||| \n{{answer_choices[label] }}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: which_section
+    reference: ''
+  b1d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: b1d49782-dfd9-41a5-87a6-8fceab9c2198
+    jinja: 'Consider the following example: '''''' {{text}} ''''''\nChoice 1: {{answer_choices[label]}}.
+      Choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
+      random ]}}.Between choice 1 and choice 2, the topic of this example is |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_1
+    reference: Burns et al
+  b2d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: b2d49782-dfd9-41a5-87a6-8fceab9c2198
+    jinja: 'Consider the following example: '''''' {{text}} ''''''\nChoice 1: {{answer_choices[label]}}.
+      Choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
+      random ]}}.Between choice 1 and choice 2, what is the topic of this example? |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_2
+    reference: Burns et al
+  b3d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: b3d49782-dfd9-41a5-87a6-8fceab9c2198
+    jinja: 'Consider the following example: '''''' {{text}} ''''''\nWhich is the topic of this example, choice 1: {{answer_choices[label]}},
+      or choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
+      random ]}}? |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_3
+    reference: Burns et al
+  b4d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: b4d49782-dfd9-41a5-87a6-8fceab9c2198
+    jinja: '{{text}}\nChoice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
+      random ]}}. Between choice 1 and choice 2, the topic of this example is |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_4
+    reference: Burns et al
+  b5d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: b5d49782-dfd9-41a5-87a6-8fceab9c2198
+    jinja: '{{text}}\nChoice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
+      random ]}}. Between choice 1 and choice 2, what is the topic of this example? |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_5
+    reference: Burns et al
+  b6d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: b6d49782-dfd9-41a5-87a6-8fceab9c2198
+    jinja: '{{text}}\nWhich is the topic of this example, choice 1: {{answer_choices[label]}}, or choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
+      random ]}}? |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_6
+    reference: Burns et al
+  b7d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: b7d49782-dfd9-41a5-87a6-8fceab9c2198
+    jinja: '{{text}}\nWhat label best describes this news article, choice 1: {{answer_choices[label]}}, or choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
+      random ]}}? |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_7
+    reference: Burns et al
+  b8d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: b8d49782-dfd9-41a5-87a6-8fceab9c2198
+    jinja: '{{text}}\nWhich section of a newspaper would this article likely appear in, choice 1: {{answer_choices[label]}}, or choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
+      random ]}}? |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_8
+    reference: Burns et al
+  b401b0ee-6ffe-4a91-8e15-77ee073cd858: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: b401b0ee-6ffe-4a91-8e15-77ee073cd858
+    jinja: "{{text}} \nIs this a piece of news regarding {{\"world politics, sports,\
+      \ business, or science and technology\"}}? ||| \n{{answer_choices[label] }}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: classify_with_choices
+    reference: ''
+  cb355f33-7e8c-4455-a72b-48d315bd4f60: !Template
+    answer_choices: World politics ||| Sports ||| Business ||| Science and technology
+    id: cb355f33-7e8c-4455-a72b-48d315bd4f60
+    jinja: "{{text}} \nWhat label best describes this news article? ||| \n{{answer_choices[label]\
+      \ }}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: classify
+    reference: ''
