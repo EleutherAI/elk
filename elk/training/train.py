@@ -11,7 +11,6 @@ from datasets import DatasetDict
 from functools import partial
 from pathlib import Path
 from simple_parsing import Serializable
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 from tqdm.auto import tqdm
@@ -23,6 +22,7 @@ import pickle
 import random
 import torch
 import torch.multiprocessing as mp
+import warnings
 
 
 @dataclass
@@ -78,8 +78,29 @@ def train_reporter(
             int16_to_float32(assert_type(Tensor, val[f"hidden_{layer}"])),
             method=cfg.normalization,
         )
+
         x0, x1 = train_h.unbind(dim=-2)
         val_x0, val_x1 = val_h.unbind(dim=-2)
+
+        # Check how linearly separable the pseudo-labels are. If they're very
+        # separable, the algorithm may not converge to a good solution.
+        pseudo_clf = Classifier(train_h.shape[-1], device=device)
+        pseudo_labels = torch.cat(
+            [
+                torch.zeros_like(train_labels),
+                torch.ones_like(train_labels),
+            ]
+        )
+        pseudo_clf.fit(torch.cat([x0, x1]).squeeze(1), pseudo_labels)
+        with torch.no_grad():
+            pseudo_preds = pseudo_clf(torch.cat([val_x0, val_x1]).squeeze(1))
+            pseudo_auroc = roc_auc_score(pseudo_labels.cpu(), pseudo_preds.cpu())
+            if pseudo_auroc > 0.6:
+                warnings.warn(
+                    f"The pseudo-labels at layer {layer} are linearly separable with "
+                    f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
+                    f"algorithm will not converge to a good solution."
+                )
 
     reporter = Reporter(x0.shape[-1], cfg.net, device=device)
     if cfg.label_frac:
@@ -99,22 +120,21 @@ def train_reporter(
 
     lr_dir.mkdir(parents=True, exist_ok=True)
     reporter_dir.mkdir(parents=True, exist_ok=True)
-    stats = [layer, train_loss, *val_result]
+    stats = [layer, pseudo_auroc, train_loss, *val_result]
 
     if not cfg.skip_baseline:
         train_labels_aug = torch.cat([train_labels, 1 - train_labels])
-        val_labels_aug = torch.cat([val_labels, 1 - val_labels])
+        val_labels_aug = torch.cat([val_labels, 1 - val_labels]).cpu()
 
-        # TODO: Once we implement cross-validation for CCS, we should benchmark
-        # against LogisticRegressionCV here.
         X = torch.cat([x0, x1]).squeeze()
         d = X.shape[-1]
-        # lr_model = LogisticRegression(max_iter=10_000)
-        lr_model = Classifier(d)
+        lr_model = Classifier(d, device=device)
         lr_model.fit(X.view(-1, d), train_labels_aug)
 
         X_val = torch.cat([val_x0, val_x1]).squeeze()
-        lr_preds = lr_model(X_val).sigmoid().cpu().numpy()
+        with torch.no_grad():
+            lr_preds = lr_model(X_val).sigmoid().cpu()
+
         lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
 
@@ -146,7 +166,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
-    cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
+    cols = ["layer", "pseudo_auroc", "train_loss", "loss", "acc", "cal_acc", "auroc"]
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
@@ -163,6 +183,6 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
         writer = csv.writer(f)
         writer.writerow(cols)
 
-        mapper = pool.imap_unordered if num_devices > 1 else map
+        mapper = pool.imap if num_devices > 1 else map
         for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
             writer.writerow([i] + [f"{s:.4f}" for s in stats])
