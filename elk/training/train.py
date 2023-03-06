@@ -101,8 +101,14 @@ def train_reporter(
     stats = [layer, train_loss, *val_result]
 
     if not cfg.skip_baseline:
-        train_labels_aug = torch.cat([train_labels, 1 - train_labels]).repeat_interleave(x0.shape[1]).cpu()
-        val_labels_aug = torch.cat([val_labels, 1 - val_labels]).repeat_interleave(x0.shape[1]).cpu()
+        train_labels_aug = (
+            torch.cat([train_labels, 1 - train_labels])
+            .repeat_interleave(x0.shape[1])
+            .cpu()
+        )
+        val_labels_aug = (
+            torch.cat([val_labels, 1 - val_labels]).repeat_interleave(x0.shape[1]).cpu()
+        )
 
         # TODO: Once we implement cross-validation for CCS, we should benchmark
         # against LogisticRegressionCV here.
