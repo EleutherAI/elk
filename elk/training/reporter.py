@@ -1,6 +1,6 @@
 """An ELK reporter network."""
 
-from .losses import ccs_squared_loss, js_loss
+from .losses import ccs_squared_loss, js_loss, prompt_var_loss
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,7 +50,7 @@ class ReporterConfig(Serializable):
     bias: bool = True
     hidden_size: Optional[int] = None
     init: Literal["default", "spherical", "zero"] = "default"
-    loss: Literal["js", "squared"] = "squared"
+    loss: Literal["js", "squared", "prompt_var"] = "squared"
     num_layers: int = 1
     pre_ln: bool = False
     seed: int = 42
@@ -122,8 +122,9 @@ class Reporter(nn.Module):
         self.init = cfg.init
         self.device = device
         self.unsupervised_loss = {
-            "js": js_loss, 
-            "squared": ccs_squared_loss, 
+            "js": js_loss,
+            "squared": ccs_squared_loss,
+            "prompt_var": prompt_var_loss,
         }[cfg.loss]
         self.supervised_weight = cfg.supervised_weight
 
