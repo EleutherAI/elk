@@ -121,7 +121,10 @@ class Reporter(nn.Module):
 
         self.init = cfg.init
         self.device = device
-        self.unsupervised_loss = js_loss if cfg.loss == "js" else ccs_squared_loss
+        self.unsupervised_loss = {
+            "js": js_loss, 
+            "squared": ccs_squared_loss, 
+        }[cfg.loss]
         self.supervised_weight = cfg.supervised_weight
 
     def reset_parameters(self):
@@ -296,9 +299,10 @@ class Reporter(nn.Module):
         cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
         raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
 
-        auroc = float(roc_auc_score(labels.cpu(), pred_probs.cpu()))
-        cal_acc = cal_preds.eq(labels.reshape(-1)).float().mean()
-        raw_acc = raw_preds.eq(labels.reshape(-1)).float().mean()
+        tiled_labels = labels.repeat_interleave(pred_probs.shape[1])
+        auroc = float(roc_auc_score(tiled_labels.cpu(), pred_probs.cpu().flatten()))
+        cal_acc = cal_preds.flatten().eq(tiled_labels).float().mean()
+        raw_acc = raw_preds.flatten().eq(tiled_labels).float().mean()
 
         return EvalResult(
             loss=self.loss(logit0, logit1).item(),
