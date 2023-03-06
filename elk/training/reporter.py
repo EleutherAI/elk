@@ -122,8 +122,8 @@ class Reporter(nn.Module):
         self.init = cfg.init
         self.device = device
         self.unsupervised_loss = {
-            "js": js_loss, 
-            "squared": ccs_squared_loss, 
+            "js": js_loss,
+            "squared": ccs_squared_loss,
         }[cfg.loss]
         self.supervised_weight = cfg.supervised_weight
 
