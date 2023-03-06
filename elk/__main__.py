@@ -67,23 +67,6 @@ def run():
     else:
         local_rank = 0
 
-    with redirect_stdout(None) if local_rank else nullcontext():
-        if local_rank:
-            logging.getLogger("transformers").setLevel(logging.CRITICAL)
-
-        if args.command == "extract":
-            run_extraction(args.run.data)
-        elif args.command == "elicit":
-            try:
-                train(args.run, args.output)
-            except (EOFError, FileNotFoundError):
-                run_extraction(args.run.data)
-
-                # Ensure the extraction is finished before starting training
-                if dist.is_initialized():
-                    dist.barrier()
-
-                train(args.run, args.output)
     if args.command == "extract":
         extract(args.extraction).save_to_disk(args.output)  # TODO: max_gpus cla?
     elif args.command == "elicit":

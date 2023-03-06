@@ -8,7 +8,7 @@ from elk.training.preprocessing import load_hidden_states, normalize
 from simple_parsing.helpers import field, Serializable
 from typing import Literal, List
 from pathlib import Path
-from ..files import elk_cache_dir
+from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import select_usable_gpus
 
 
@@ -23,20 +23,15 @@ class EvaluateConfig(Serializable):
 def evaluate_reporters(cfg: EvaluateConfig):
     for target in cfg.targets:
         hiddens, labels = load_hidden_states(
-            path=elk_cache_dir() / target / "validation_hiddens.pt"
+            path=out_dir / target / "validation_hiddens.pt"
         )
         assert len(set(labels)) > 1
 
         _, hiddens = normalize(hiddens, hiddens, cfg.normalization)
 
-        reporter_root_path = elk_cache_dir() / cfg.source / "reporters"
+        reporter_root_path = elk_reporter_dir() / cfg.source / "reporters"
 
-        reporters = []
-        for path in reporter_root_path.glob("*.pt"):
-            reporter = torch.load(path, map_location=cfg.device)
-            reporters.append(reporter)
-
-        transfer_eval = reporter_root_path / "transfer_eval"
+        transfer_eval = elk_reporter_dir() / cfg.source / "transfer_eval"
         transfer_eval.mkdir(parents=True, exist_ok=True)
 
         L = hiddens.shape[1]
@@ -44,7 +39,8 @@ def evaluate_reporters(cfg: EvaluateConfig):
         layers.reverse()
         csv_file = transfer_eval / f"{target}.csv"
 
-        for reporter in reporters:
+        for path in reporter_root_path.glob("*.pt"):
+            reporter = torch.load(path, map_location=cfg.device)
             reporter.eval()
 
             with torch.no_grad(), open(csv_file, "w") as f:
