@@ -282,7 +282,6 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
 
     ds = dict()
     for split, builder in builders.items():
-        # TODO: we may need a barrier here?
         builder.download_and_prepare(num_proc=len(devices))
         ds[split] = builder.as_dataset(split=split)
     return DatasetDict(ds)
