@@ -129,11 +129,10 @@ def train_reporter(
         train_labels_aug = (
             torch.cat([train_labels, 1 - train_labels])
             .repeat_interleave(x0.shape[1])
-            .cpu()
         )
         val_labels_aug = (
             torch.cat([val_labels, 1 - val_labels]).repeat_interleave(x0.shape[1])
-        )
+        ).cpu()
 
         X = torch.cat([x0, x1]).squeeze()
         d = X.shape[-1]
