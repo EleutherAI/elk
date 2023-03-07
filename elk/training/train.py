@@ -126,10 +126,9 @@ def train_reporter(
         # repeat_interleave makes `num_variants` copies of each label, all within a
         # single dimension of size `num_variants * 2 * n`, such that the labels align
         # with X.view(-1, X.shape[-1])
-        train_labels_aug = (
-            torch.cat([train_labels, 1 - train_labels])
-            .repeat_interleave(x0.shape[1])
-        )
+        train_labels_aug = torch.cat(
+            [train_labels, 1 - train_labels]
+        ).repeat_interleave(x0.shape[1])
         val_labels_aug = (
             torch.cat([val_labels, 1 - val_labels]).repeat_interleave(x0.shape[1])
         ).cpu()
