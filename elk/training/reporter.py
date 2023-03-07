@@ -1,6 +1,6 @@
 """An ELK reporter network."""
 
-from .losses import ccs_squared_loss, js_loss
+from .losses import ccs_squared_loss, js_loss, prompt_var_loss
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +32,6 @@ class ReporterConfig(Serializable):
     Args:
         activation: The activation function to use. Defaults to GELU.
         bias: Whether to use a bias term in the linear layers. Defaults to True.
-        device: The device to use. Defaults to None, which means "current device".
         hidden_size: The number of hidden units in the MLP. Defaults to None.
             By default, use an MLP expansion ratio of 4/3. This ratio is used by
             Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
@@ -50,7 +49,7 @@ class ReporterConfig(Serializable):
     bias: bool = True
     hidden_size: Optional[int] = None
     init: Literal["default", "spherical", "zero"] = "default"
-    loss: Literal["js", "squared"] = "squared"
+    loss: Literal["js", "squared", "prompt_var"] = "squared"
     num_layers: int = 1
     pre_ln: bool = False
     seed: int = 42
@@ -124,6 +123,7 @@ class Reporter(nn.Module):
         self.unsupervised_loss = {
             "js": js_loss,
             "squared": ccs_squared_loss,
+            "prompt_var": prompt_var_loss,
         }[cfg.loss]
         self.supervised_weight = cfg.supervised_weight
 

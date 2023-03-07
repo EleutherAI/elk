@@ -8,6 +8,7 @@ from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
 from datasets import DatasetDict
+from einops import rearrange
 from functools import partial
 from pathlib import Path
 from simple_parsing import Serializable
@@ -90,10 +91,17 @@ def train_reporter(
                 torch.zeros_like(train_labels),
                 torch.ones_like(train_labels),
             ]
+        ).repeat_interleave(
+            x0.shape[1]
+        )  # make num_variants copies of each pseudo-label
+
+        pseudo_clf.fit(
+            rearrange(torch.cat([x0, x1]), "b v d -> (b v) d"), pseudo_labels
         )
-        pseudo_clf.fit(torch.cat([x0, x1]).squeeze(1), pseudo_labels)
         with torch.no_grad():
-            pseudo_preds = pseudo_clf(torch.cat([val_x0, val_x1]).squeeze(1))
+            pseudo_preds = pseudo_clf(
+                rearrange(torch.cat([val_x0, val_x1]), "b v d -> (b v) d")
+            )
             pseudo_auroc = roc_auc_score(pseudo_labels.cpu(), pseudo_preds.cpu())
             if pseudo_auroc > 0.6:
                 warnings.warn(
@@ -138,7 +146,7 @@ def train_reporter(
         lr_model = Classifier(d, device=device)
         lr_model.fit(X.view(-1, d), train_labels_aug)
 
-        X_val = torch.cat([val_x0, val_x1]).squeeze()
+        X_val = torch.cat([val_x0, val_x1]).view(-1, d)
         with torch.no_grad():
             lr_preds = lr_model(X_val).sigmoid().cpu()
 
