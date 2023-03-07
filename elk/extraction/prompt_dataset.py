@@ -149,11 +149,8 @@ class PromptDataset(TorchDataset):
 
         # Now shuffle the active split and truncate it if needed
         self.active_split = self.active_split.shuffle(seed=cfg.seed)
-        max_examples = (
-            cfg.max_examples_train if split == "train" else cfg.max_examples_val
-        )
-        if 0 < max_examples < len(self.active_split):
-            self.active_split = self.active_split.select(range(max_examples))
+        if 0 < cfg.max_examples < len(self.active_split):
+            self.active_split = self.active_split.select(range(cfg.max_examples))
 
         # Shard if needed
         if world_size > 1:

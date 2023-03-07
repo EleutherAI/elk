@@ -32,7 +32,6 @@ class ReporterConfig(Serializable):
     Args:
         activation: The activation function to use. Defaults to GELU.
         bias: Whether to use a bias term in the linear layers. Defaults to True.
-        device: The device to use. Defaults to None, which means "current device".
         hidden_size: The number of hidden units in the MLP. Defaults to None.
             By default, use an MLP expansion ratio of 4/3. This ratio is used by
             Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
