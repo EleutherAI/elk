@@ -300,10 +300,14 @@ class Reporter(nn.Module):
         cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
         raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
 
-        tiled_labels = labels.repeat_interleave(pred_probs.shape[1])
-        auroc = float(roc_auc_score(tiled_labels.cpu(), pred_probs.cpu().flatten()))
-        cal_acc = cal_preds.flatten().eq(tiled_labels).float().mean()
-        raw_acc = raw_preds.flatten().eq(tiled_labels).float().mean()
+        # makes `num_variants` copies of each label, all within a single
+        # dimension of size `num_variants * n`, such that the labels align
+        # with pred_probs.flatten()
+        broadcast_labels = labels.repeat_interleave(pred_probs.shape[1])
+        # roc_auc_score only takes flattened input
+        auroc = float(roc_auc_score(broadcast_labels.cpu(), pred_probs.cpu().flatten()))
+        cal_acc = cal_preds.flatten().eq(broadcast_labels).float().mean()
+        raw_acc = raw_preds.flatten().eq(broadcast_labels).float().mean()
 
         return EvalResult(
             loss=self.loss(logit0, logit1).item(),
