@@ -45,7 +45,6 @@ def evaluate_reporters(cfg: EvaluateConfig):
 
             with torch.no_grad(), open(csv_file, "w") as f:
                 for layer_idx, hidden_state in enumerate(layers):
-
                     x0, x1 = hidden_state.to(cfg.device).float().chunk(2, dim=-1)
                     result = reporter.score(
                         (x0, x1),

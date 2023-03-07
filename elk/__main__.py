@@ -65,6 +65,5 @@ def run():
         raise ValueError(f"Unknown command {args.command}")
 
 
-
 if __name__ == "__main__":
     run()
