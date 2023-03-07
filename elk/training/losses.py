@@ -149,6 +149,5 @@ def prompt_var_loss(logit0: Tensor, logit1: Tensor, coef: float = 1.0) -> Tensor
             "Only one variant provided. Prompt variance loss will equal CCS loss."
         )
     p0, p1 = logit0.sigmoid(), logit1.sigmoid()
-    mean_p0, mean_p1 = p0.mean(dim=-1, keepdim=True), p1.mean(dim=-1, keepdim=True)
-    prompt_variance = (mean_p0 - p0).square().mean() + (mean_p1 - p1).square().mean()
+    prompt_variance = p0.var(dim=-1).mean() + p1.var(dim=-1).mean()
     return coef * prompt_variance
