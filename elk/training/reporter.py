@@ -1,4 +1,8 @@
-from .losses import ccs_squared_loss, js_loss, prompt_var_loss
+"""An ELK reporter network."""
+
+from ..parsing import parse_loss
+from ..utils.typing import assert_type
+from .losses import LOSSES
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,8 +47,15 @@ class OptimConfig(Serializable):
 class ReporterConfig(Serializable):
     in_features: int = field(default=0, cmd=False)
     """The number of input features. If 0, we use `in_features` in `__init__`."""
-    loss: Literal["js", "squared", "prompt_var"] = "squared"
-    """The loss function to use. Defaults to "squared"."""
+    loss: list[str] = field(default_factory=lambda: ["ccs_prompt_var"])
+    """The loss function to use. list of strings, each of the form
+    "coef*name", where coef is a float and name is one of the keys in
+    `elk.training.losses.LOSSES`.
+    Example: `--loss 1.0*consistency_squared 0.5*prompt_var`
+    corresponds to the loss function `1.0*consistency_squared + 0.5*prompt_var`.
+    Defaults to `"ccs_prompt_var"`.
+    """
+    loss_dict: dict[str, float] = field(default_factory=dict, init=False)
     num_heads: int = 1
     """The number of independent predictions to output. Defaults to 1."""
     seed: int = 42
@@ -52,10 +63,17 @@ class ReporterConfig(Serializable):
     supervised_weight: float = 0.0
     """The weight of the supervised loss. Defaults to 0.0."""
 
+    def __post_init__(self):
+        self.loss_dict = parse_loss(self.loss)
+
+        # standardize the loss field
+        self.loss = [f"{coef}*{name}" for name, coef in self.loss_dict.items()]
+
 
 CONFIG_CLS_TO_REPORTER_CLS: dict[Type[ReporterConfig], Type["Reporter"]] = {}
 
 
+@abstractmethod
 class Reporter(nn.Module, ABC):
     # Subclasses must set this to the configuration class they use
     config_cls: ClassVar[Type[ReporterConfig]]
@@ -86,6 +104,15 @@ class Reporter(nn.Module, ABC):
             device: The device to instantiate the reporter on. Defaults to `None`.
         """
         super().__init__()
+
+    def unsupervised_loss(
+        self, logit0: torch.Tensor, logit1: torch.Tensor
+    ) -> torch.Tensor:
+        loss = sum(
+            LOSSES[name](logit0, logit1, coef)
+            for name, coef in self.config.loss_dict.items()
+        )
+        return assert_type(torch.Tensor, loss)
 
     @classmethod
     def load(
@@ -161,12 +188,7 @@ class Reporter(nn.Module, ABC):
         Raises:
             ValueError: If `supervised_weight > 0` but `labels` is None.
         """
-        loss_fn = {
-            "js": js_loss,
-            "squared": ccs_squared_loss,
-            "prompt_var": prompt_var_loss,
-        }[self.config.loss]
-        loss = loss_fn(logit0, logit1)
+        loss = self.unsupervised_loss(logit0, logit1)
 
         # If labels are provided, use them to compute a supervised loss
         if labels is not None:

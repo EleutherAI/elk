@@ -35,8 +35,10 @@ class PromptConfig(Serializable):
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset; if there is only one column
             with a `ClassLabel` datatype, we use that.
-        max_examples: The maximum number of examples to use from the each split of
-            the dataset. If zero, use all examples. Defaults to 0.
+        max_examples: The maximum number of examples to use from the val dataset.
+            If a single number, use at most that many examples for each split. If a list
+            of length 2, use the first element for the train split and the second for
+            the val split. If empty, use all examples. Defaults to empty.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot. Defaults to 0.
         seed: The seed to use for prompt randomization. Defaults to 42.
@@ -47,10 +49,17 @@ class PromptConfig(Serializable):
     dataset: str = field(positional=True)
     balance: bool = False
     label_column: Optional[str] = None
-    max_examples: int = 0
+    max_examples: list[int] = field(default_factory=list)
     num_shots: int = 0
     seed: int = 42
     num_variants: int = 1
+
+    def __post_init__(self):
+        if len(self.max_examples) > 2:
+            raise ValueError(
+                "max_examples should be a list of length 0, 1, or 2,"
+                f"but got {len(self.max_examples)}"
+            )
 
 
 class PromptDataset(TorchDataset):
@@ -149,8 +158,15 @@ class PromptDataset(TorchDataset):
 
         # Now shuffle the active split and truncate it if needed
         self.active_split = self.active_split.shuffle(seed=cfg.seed)
-        if 0 < cfg.max_examples < len(self.active_split):
-            self.active_split = self.active_split.select(range(cfg.max_examples))
+
+        if cfg.max_examples:
+            max_examples = (
+                cfg.max_examples[0]
+                if split == "train" or len(cfg.max_examples) == 1
+                else cfg.max_examples[1]
+            )
+            if 0 < max_examples < len(self.active_split):
+                self.active_split = self.active_split.select(range(max_examples))
 
         # Shard if needed
         if world_size > 1:
