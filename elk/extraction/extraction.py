@@ -227,10 +227,19 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
         val_split = Split.VALIDATION if Split.VALIDATION in splits else Split.TEST
 
         # grab the max number of examples from the config for each split
-        limit = {
-            Split.TRAIN: cfg.prompts.max_examples_train or int(1e100),
-            val_split: cfg.prompts.max_examples_val or int(1e100),
-        }
+        limit = (
+            {
+                Split.TRAIN: cfg.prompts.max_examples[0],
+                val_split: cfg.prompts.max_examples[0]
+                if len(cfg.prompts.max_examples) == 1
+                else cfg.prompts.max_examples[1],
+            }
+            if cfg.prompts.max_examples
+            else {
+                Split.TRAIN: int(1e100),
+                val_split: int(1e100),
+            }
+        )
         return SplitDict(
             {
                 k: SplitInfo(
