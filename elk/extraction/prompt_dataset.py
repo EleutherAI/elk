@@ -1,9 +1,9 @@
 from ..math import stochastic_round_constrained
+from ..promptsource import DatasetTemplates
 from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
 from dataclasses import dataclass
 from datasets import DatasetDict, load_dataset
 from numpy.typing import NDArray
-from promptsource.templates import DatasetTemplates
 from random import Random
 from simple_parsing.helpers import field, Serializable
 from torch.utils.data import Dataset as TorchDataset
@@ -35,8 +35,8 @@ class PromptConfig(Serializable):
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset; if there is only one column
             with a `ClassLabel` datatype, we use that.
-        max_examples: The maximum number of examples to use from the dataset. If zero,
-            use all examples. Defaults to 0.
+        max_examples: The maximum number of examples to use from the each split of
+            the dataset. If zero, use all examples. Defaults to 0.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot. Defaults to 0.
         seed: The seed to use for prompt randomization. Defaults to 42.

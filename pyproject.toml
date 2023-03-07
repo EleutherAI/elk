@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "elk"
+name = "eleuther-elk"
 description = "Keeping language models honest by directly eliciting knowledge encoded in their activations"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -18,8 +18,6 @@ dependencies = [
     "numpy>=1.20.0",
     # Introduced type annotations
     "prettytable>=3.5.0",
-    # Our fork of the repo, enabling Python > 3.9 support
-    "promptsource@git+https://github.com/NotodAI-Research/promptsource.git",
     # This version is old, but it's needed for certain HF tokenizers to work.
     "protobuf==3.20.*",
     # Basically any version should work as long as it supports the user's CUDA version
@@ -36,25 +34,29 @@ dependencies = [
     "tqdm>=4.0.0",
     # 4.0 introduced the breaking change of using return_dict=True by default
     "transformers>=4.0.0",
+    # required by promptsource, which doesn't specify a version
+    "jinja2"
 ]
-version = "0.0.1"
+version = "0.1.1"
 
 [project.optional-dependencies]
 dev = [
     "hypothesis",
     "pre-commit",
     "pytest",
+    "pyright"
 ]
 
 [project.scripts]
 elk = "elk.__main__:run"
 
 [tool.pyright]
+include = ["elk*"]
 reportPrivateImportUsage = false
 
 [tool.pytest.ini_options]
 markers = ["cpu: Marker for tests that do not depend on GPUs"]
 testpaths = ["tests"]
 
-[tool.setuptools]
-packages = ["elk"]
+[tool.setuptools.packages.find]
+include = ["elk*"]

@@ -24,6 +24,13 @@ def run():
         help="Path to save hidden states to.",
         required=True,
     )
+    extract_parser.add_argument(
+        "--max_gpus",
+        type=int,
+        help="Maximum number of GPUs to use.",
+        required=False,
+        default=-1,
+    )
 
     elicit_parser = subparsers.add_parser(
         "elicit",
@@ -48,33 +55,15 @@ def run():
 
     args = parser.parse_args()
 
-    # `elk list` is a special case
-    if args.command == "list":
-        list_runs(args)
-        return
-
-    # Import here and not at the top to speed up `elk list`
-    from .extraction.extraction_main import run as run_extraction
-    from .training.train import train
-    import os
-    import torch.distributed as dist
-
-    # Check if we were called with torchrun or not
-    local_rank = os.environ.get("LOCAL_RANK")
-    if local_rank is not None:
-        dist.init_process_group("nccl")
-        local_rank = int(local_rank)
-    else:
-        local_rank = 0
-
     if args.command == "extract":
-        extract(args.extraction).save_to_disk(args.output)  # TODO: max_gpus cla?
+        extract(args.extraction, args.max_gpus).save_to_disk(args.output)
     elif args.command == "elicit":
         train(args.run, args.output)
     elif args.command == "eval":
         evaluate_reporters(args.eval)
     else:
         raise ValueError(f"Unknown command {args.command}")
+
 
 
 if __name__ == "__main__":
