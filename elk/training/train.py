@@ -4,6 +4,8 @@ from ..extraction import extract, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import assert_type, held_out_split, select_usable_devices, int16_to_float32
 from .classifier import Classifier
+from .mlp_reporter import MlpReporter, MlpReporterConfig
+from .linear_reporter import LinearReporter, LinearReporterConfig
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
@@ -11,11 +13,11 @@ from datasets import DatasetDict
 from einops import rearrange
 from functools import partial
 from pathlib import Path
-from simple_parsing import Serializable
+from simple_parsing import subgroups, Serializable
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 from tqdm.auto import tqdm
-from typing import cast, Literal, Optional
+from typing import cast, Literal, Optional, Union
 import csv
 import numpy as np
 import os
@@ -37,8 +39,11 @@ class RunConfig(Serializable):
     """
 
     data: ExtractionConfig
-    net: ReporterConfig
-    optim: OptimConfig
+    net: ReporterConfig = subgroups(
+        {"linear": LinearReporterConfig, "mlp": MlpReporterConfig},
+        default=LinearReporterConfig(),  # type: ignore[arg-type]
+    )
+    optim: OptimConfig = OptimConfig()
 
     label_frac: float = 0.0
     max_gpus: int = -1
@@ -110,7 +115,7 @@ def train_reporter(
                     f"algorithm will not converge to a good solution."
                 )
 
-    reporter = Reporter(x0.shape[-1], cfg.net, device=device)
+    reporter = Reporter.instantiate(x0.shape[-1], cfg.net, device=device)
     if cfg.label_frac:
         num_labels = round(cfg.label_frac * len(train_labels))
         labels = train_labels[:num_labels]
@@ -118,7 +123,7 @@ def train_reporter(
         labels = None
 
     train_loss = reporter.fit((x0, x1), labels, cfg.optim)
-    val_result = reporter.score(
+    val_results = reporter.score(
         (val_x0, val_x1),
         val_labels,
     )
@@ -128,7 +133,7 @@ def train_reporter(
 
     lr_dir.mkdir(parents=True, exist_ok=True)
     reporter_dir.mkdir(parents=True, exist_ok=True)
-    stats = [layer, pseudo_auroc, train_loss, *val_result]
+    stats = [layer, pseudo_auroc, train_loss, *val_results]
 
     if not cfg.skip_baseline:
         # repeat_interleave makes `num_variants` copies of each label, all within a
