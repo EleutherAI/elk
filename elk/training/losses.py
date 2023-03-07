@@ -127,7 +127,7 @@ def confidence_squared_loss(
     return coef * torch.min(p0, p1).square().mean()
 
 
-@register("prompt_var")
+@register("prompt_var_squared")
 def prompt_var_loss(logit0: Tensor, logit1: Tensor, coef: float = 1.0) -> Tensor:
     """
     Prompt-variance loss: the squared difference between the probability
