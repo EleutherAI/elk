@@ -86,7 +86,7 @@ def train_reporter(
         # Check how linearly separable the pseudo-labels are. If they're very
         # separable, the algorithm may not converge to a good solution.
         pseudo_clf = Classifier(train_h.shape[-1], device=device)
-        pseudo_labels = torch.cat(
+        pseudo_train_labels = torch.cat(
             [
                 torch.zeros_like(train_labels),
                 torch.ones_like(train_labels),
@@ -94,15 +94,21 @@ def train_reporter(
         ).repeat_interleave(
             x0.shape[1]
         )  # make num_variants copies of each pseudo-label
+        pseudo_val_labels = torch.cat(
+            [
+                torch.zeros_like(val_labels),
+                torch.ones_like(val_labels),
+            ]
+        ).repeat_interleave(val_x0.shape[1])
 
         pseudo_clf.fit(
-            rearrange(torch.cat([x0, x1]), "b v d -> (b v) d"), pseudo_labels
+            rearrange(torch.cat([x0, x1]), "b v d -> (b v) d"), pseudo_train_labels
         )
         with torch.no_grad():
             pseudo_preds = pseudo_clf(
                 rearrange(torch.cat([val_x0, val_x1]), "b v d -> (b v) d")
             )
-            pseudo_auroc = roc_auc_score(pseudo_labels.cpu(), pseudo_preds.cpu())
+            pseudo_auroc = roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu())
             if pseudo_auroc > 0.6:
                 warnings.warn(
                     f"The pseudo-labels at layer {layer} are linearly separable with "
