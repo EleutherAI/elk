@@ -32,7 +32,6 @@ class ReporterConfig(Serializable):
     Args:
         activation: The activation function to use. Defaults to GELU.
         bias: Whether to use a bias term in the linear layers. Defaults to True.
-        device: The device to use. Defaults to None, which means "current device".
         hidden_size: The number of hidden units in the MLP. Defaults to None.
             By default, use an MLP expansion ratio of 4/3. This ratio is used by
             Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
@@ -300,10 +299,14 @@ class Reporter(nn.Module):
         cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
         raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
 
-        tiled_labels = labels.repeat_interleave(pred_probs.shape[1])
-        auroc = float(roc_auc_score(tiled_labels.cpu(), pred_probs.cpu().flatten()))
-        cal_acc = cal_preds.flatten().eq(tiled_labels).float().mean()
-        raw_acc = raw_preds.flatten().eq(tiled_labels).float().mean()
+        # makes `num_variants` copies of each label, all within a single
+        # dimension of size `num_variants * n`, such that the labels align
+        # with pred_probs.flatten()
+        broadcast_labels = labels.repeat_interleave(pred_probs.shape[1])
+        # roc_auc_score only takes flattened input
+        auroc = float(roc_auc_score(broadcast_labels.cpu(), pred_probs.cpu().flatten()))
+        cal_acc = cal_preds.flatten().eq(broadcast_labels).float().mean()
+        raw_acc = raw_preds.flatten().eq(broadcast_labels).float().mean()
 
         return EvalResult(
             loss=self.loss(logit0, logit1).item(),
