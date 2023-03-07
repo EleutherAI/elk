@@ -1,13 +1,15 @@
 """An ELK reporter network."""
 
-from .losses import ccs_squared_loss, js_loss, prompt_var_loss
+from elk.utils.typing import assert_type
+from ..parsing import parse_loss
+from .losses import LOSSES
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
-from simple_parsing.helpers import Serializable
+from simple_parsing.helpers import Serializable, dict_field
 from torch.nn.functional import binary_cross_entropy as bce
-from typing import cast, Literal, NamedTuple, Optional, Union
+from typing import cast, Literal, NamedTuple, Optional, Union, Dict
 import math
 import torch
 import torch.nn as nn
@@ -38,7 +40,12 @@ class ReporterConfig(Serializable):
             MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
             but this seems to lead to excessively large MLPs when num_layers > 2.
         init: The initialization scheme to use. Defaults to "zero".
-        loss: The loss function to use. Defaults to "squared".
+        loss: The loss function to use. list of strings, each of the form
+            "coef*name", where coef is a float and name is one of the keys in
+            `elk.training.losses.LOSSES`.
+            Example: --loss 1.0*consistency_squared 0.5*prompt_var
+            corresponds to the loss function 1.0*consistency_squared + 0.5*prompt_var.
+            Defaults to "ccs_prompt_var".
         num_layers: The number of layers in the MLP. Defaults to 1.
         pre_ln: Whether to include a LayerNorm module before the first linear
             layer. Defaults to False.
@@ -49,11 +56,18 @@ class ReporterConfig(Serializable):
     bias: bool = True
     hidden_size: Optional[int] = None
     init: Literal["default", "spherical", "zero"] = "default"
-    loss: Literal["js", "squared", "prompt_var"] = "squared"
+    loss: list[str] = field(default_factory=lambda: ["ccs_prompt_var"])
+    loss_dict: dict[str, float] = field(default_factory=dict, init=False)
     num_layers: int = 1
     pre_ln: bool = False
     seed: int = 42
     supervised_weight: float = 0.0
+
+    def __post_init__(self):
+        self.loss_dict = parse_loss(self.loss)
+
+        # standardize the loss field
+        self.loss = [f"{coef}*{name}" for name, coef in self.loss_dict.items()]
 
 
 @dataclass
@@ -120,12 +134,16 @@ class Reporter(nn.Module):
 
         self.init = cfg.init
         self.device = device
-        self.unsupervised_loss = {
-            "js": js_loss,
-            "squared": ccs_squared_loss,
-            "prompt_var": prompt_var_loss,
-        }[cfg.loss]
+        self.loss_dict = cfg.loss_dict
         self.supervised_weight = cfg.supervised_weight
+
+    def unsupervised_loss(
+        self, logit0: torch.Tensor, logit1: torch.Tensor
+    ) -> torch.Tensor:
+        loss = sum(
+            LOSSES[name](logit0, logit1, coef) for name, coef in self.loss_dict.items()
+        )
+        return assert_type(torch.Tensor, loss)
 
     def reset_parameters(self):
         """Reset the parameters of the probe.
