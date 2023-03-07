@@ -1,6 +1,6 @@
 """An ELK reporter network."""
 
-from .losses import ccs_squared_loss, js_loss
+from .losses import ccs_squared_loss, js_loss, prompt_var_loss
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +32,6 @@ class ReporterConfig(Serializable):
     Args:
         activation: The activation function to use. Defaults to GELU.
         bias: Whether to use a bias term in the linear layers. Defaults to True.
-        device: The device to use. Defaults to None, which means "current device".
         hidden_size: The number of hidden units in the MLP. Defaults to None.
             By default, use an MLP expansion ratio of 4/3. This ratio is used by
             Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
@@ -50,7 +49,7 @@ class ReporterConfig(Serializable):
     bias: bool = True
     hidden_size: Optional[int] = None
     init: Literal["default", "spherical", "zero"] = "default"
-    loss: Literal["js", "squared"] = "squared"
+    loss: Literal["js", "squared", "prompt_var"] = "squared"
     num_layers: int = 1
     pre_ln: bool = False
     seed: int = 42
@@ -121,7 +120,11 @@ class Reporter(nn.Module):
 
         self.init = cfg.init
         self.device = device
-        self.unsupervised_loss = js_loss if cfg.loss == "js" else ccs_squared_loss
+        self.unsupervised_loss = {
+            "js": js_loss,
+            "squared": ccs_squared_loss,
+            "prompt_var": prompt_var_loss,
+        }[cfg.loss]
         self.supervised_weight = cfg.supervised_weight
 
     def reset_parameters(self):
@@ -290,9 +293,14 @@ class Reporter(nn.Module):
         cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
         raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
 
-        auroc = float(roc_auc_score(labels.cpu(), pred_probs.cpu()))
-        cal_acc = cal_preds.eq(labels.reshape(-1)).float().mean()
-        raw_acc = raw_preds.eq(labels.reshape(-1)).float().mean()
+        # makes `num_variants` copies of each label, all within a single
+        # dimension of size `num_variants * n`, such that the labels align
+        # with pred_probs.flatten()
+        broadcast_labels = labels.repeat_interleave(pred_probs.shape[1])
+        # roc_auc_score only takes flattened input
+        auroc = float(roc_auc_score(broadcast_labels.cpu(), pred_probs.cpu().flatten()))
+        cal_acc = cal_preds.flatten().eq(broadcast_labels).float().mean()
+        raw_acc = raw_preds.flatten().eq(broadcast_labels).float().mean()
 
         return EvalResult(
             loss=self.loss(logit0, logit1).item(),

@@ -1,0 +1,224 @@
+dataset: dbpedia_14
+templates:
+  00fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 00fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: 'Consider the following example: '''''' {{content}} ''''''
+
+      Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 14)  |
+      reject("equalto", label) | list | random ]}}.Between choice 1 and choice 2,
+      the topic of this example is |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_1
+    reference: Burns et al.
+  01fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 01fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: 'Consider the following example: '''''' {{content}} ''''''
+
+      Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 14)  |
+      reject("equalto", label) | list | random ]}}.Between choice 1 and choice 2,
+      what is the topic of this example? |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_2
+    reference: Burns et al.
+  02fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 02fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: 'Consider the following example: '''''' {{content}} ''''''
+
+      Which is the topic of this example, choice 1: {{answer_choices[label]}}, or
+      choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
+      | random ]}} |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_3
+    reference: Burns et al.
+  03fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 03fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: 'Consider the following example: '''''' {{content}} ''''''
+
+      Which is the topic of this example, choice 1: {{answer_choices[label]}}, or
+      choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
+      | random ]}} |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_4
+    reference: Burns et al.
+  04fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 04fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: '{{content}}
+
+      Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 14)  |
+      reject("equalto", label) | list | random ]}}.Between choice 1 and choice 2,
+      the topic of this example is |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_5
+    reference: Burns et al.
+  05fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 05fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: '{{content}}
+
+      Which is the topic of this example, choice 1: {{answer_choices[label]}}, or
+      choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
+      | random ]}} |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_6
+    reference: Burns et al.
+  06fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 06fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: '{{content}}
+
+      What category does the paragraph belong to, choice 1: {{answer_choices[label]}},
+      or choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
+      | random ]}} |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_7
+    reference: Burns et al.
+  07fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 07fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: '{{content}}
+
+      What label best describes this paragraph, choice 1: {{answer_choices[label]}},
+      or choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
+      | random ]}} |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_8
+    reference: Burns et al.
+  824ecb55-ecad-40c2-8033-f2fa0add2ddf: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 824ecb55-ecad-40c2-8033-f2fa0add2ddf
+    jinja: '{{content}} Given a list of categories: {{"company, educational institution,
+      artist, athlete, office holder, mean of transportation, building, natural place,
+      village, animal, plant, album, film or written work"}}, what category does the
+      paragraph belong to? ||| {{ answer_choices[label] }}
+
+
+      '
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: given_list_what_category_does_the_paragraph_belong_to
+    reference: ''
+  8eda7e71-6734-486f-b883-e99d3f14c0bf: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 8eda7e71-6734-486f-b883-e99d3f14c0bf
+    jinja: Pick one category for the following text. The options are - {{"company,
+      educational institution, artist, athlete, office holder, mean of transportation,
+      building, natural place, village, animal, plant, album, film or written work"}}.
+      {{title}} - {{content}} ||| {{ answer_choices[label] }}
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: pick_one_category_for_the_following_text
+    reference: ''
+  9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: 9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67
+    jinja: '{{title}} - {{content}} Given a choice of categories {{"company, educational
+      institution, artist, athlete, office holder, mean of transportation, building,
+      natural place, village, animal, plant, album, film or written work"}}, the text
+      refers to which one? ||| {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: 'given_a_choice_of_categories '
+    reference: ''
+  f72fa410-3278-4f62-91f0-f9edf4a4e792: !Template
+    answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
+      Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
+      Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
+    id: f72fa410-3278-4f62-91f0-f9edf4a4e792
+    jinja: '"{{title}}", given a list of categories: {{"company, educational institution,
+      artist, athlete, office holder, mean of transportation, building, natural place,
+      village, animal, plant, album, film or written work"}}, what category does the
+      title belong to? ||| {{ answer_choices[label] }}
+
+
+      '
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: given_a_list_of_category_what_does_the_title_belong_to
+    reference: ''

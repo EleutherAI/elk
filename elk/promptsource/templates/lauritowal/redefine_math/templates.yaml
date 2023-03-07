@@ -1,0 +1,28 @@
+dataset: lauritowal/redefine_math
+templates:
+  02ff2949-0f45-4d97-941e-6fa4c0afbc2d: !Template
+    answer_choices: 0 ||| 1
+    id: 02ff2949-0f45-4d97-941e-6fa4c0afbc2f
+    jinja: Question... {{text}} ||| {{ answer_choices [label] }}
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Choices
+    reference: ''
+  b2ff2949-0f45-4d97-941e-6fa4c0afbc2d: !Template
+    answer_choices: 0 ||| 1
+    id: b2ff2949-0f45-4d97-941e-6fa4c0afbc2f
+    jinja: Test ||| {{ answer_choices [label] }}
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Bananas
+    reference: ''
