@@ -14,7 +14,7 @@ def H(p: Tensor) -> Tensor:
 def js_loss(
     logit0: Tensor,
     logit1: Tensor,
-    confidence: float = 0.0,  # TODO: If it's too large we get nans
+    confidence: float = 0.0,
     base: float = 2.0,
 ) -> Tensor:
     """Consistency and confidence loss based on the Jensen-Shannon divergence.
