@@ -1,4 +1,4 @@
-from ..math import stochastic_round_constrained
+from ..math_util import stochastic_round_constrained
 from ..promptsource import DatasetTemplates
 from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
 from dataclasses import dataclass

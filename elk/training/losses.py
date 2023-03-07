@@ -14,7 +14,7 @@ def H(p: Tensor) -> Tensor:
 def js_loss(
     logit0: Tensor,
     logit1: Tensor,
-    confidence: float = 0.0,
+    confidence: float = 0.0,  # TODO: If it's too large we get nans
     base: float = 2.0,
 ) -> Tensor:
     """Consistency and confidence loss based on the Jensen-Shannon divergence.
@@ -40,7 +40,6 @@ def ccs_squared_loss(logit0: Tensor, logit1: Tensor) -> Tensor:
         The sum of the consistency and confidence losses.
     """
     p0, p1 = logit0.sigmoid(), logit1.sigmoid()
-
     consistency = p0.sub(1 - p1).square().mean()
     confidence = torch.min(p0, p1).square().mean()
 
