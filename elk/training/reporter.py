@@ -1,15 +1,18 @@
 """An ELK reporter network."""
 
-from elk.utils.typing import assert_type
 from ..parsing import parse_loss
+from ..utils.typing import assert_type
+from .classifier import Classifier
 from .losses import LOSSES
 from copy import deepcopy
 from dataclasses import dataclass, field
+from einops import rearrange
 from pathlib import Path
+from simple_parsing.helpers import Serializable
 from sklearn.metrics import roc_auc_score
-from simple_parsing.helpers import Serializable, dict_field
+from torch import Tensor
 from torch.nn.functional import binary_cross_entropy as bce
-from typing import cast, Literal, NamedTuple, Optional, Union, Dict
+from typing import cast, Literal, NamedTuple, Optional, Union
 import math
 import torch
 import torch.nn as nn
@@ -136,6 +139,51 @@ class Reporter(nn.Module):
         self.device = device
         self.loss_dict = cfg.loss_dict
         self.supervised_weight = cfg.supervised_weight
+
+    @classmethod
+    def check_separability(
+        cls,
+        train_pair: tuple[Tensor, Tensor],
+        val_pair: tuple[Tensor, Tensor],
+    ) -> float:
+        """Measure how linearly separable the pseudo-labels are for a contrast pair.
+
+        Args:
+            train_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+                contrastive representations. Used for training the classifier.
+            val_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+                contrastive representations. Used for evaluating the classifier.
+
+        Returns:
+            The AUROC of a linear classifier fit on the pseudo-labels.
+        """
+        x0, x1 = train_pair
+        val_x0, val_x1 = val_pair
+
+        pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
+        pseudo_train_labels = torch.cat(
+            [
+                x0.new_zeros(x0.shape[0]),
+                x0.new_ones(x0.shape[0]),
+            ]
+        ).repeat_interleave(
+            x0.shape[1]
+        )  # make num_variants copies of each pseudo-label
+        pseudo_val_labels = torch.cat(
+            [
+                val_x0.new_zeros(val_x0.shape[0]),
+                val_x0.new_ones(val_x0.shape[0]),
+            ]
+        ).repeat_interleave(val_x0.shape[1])
+
+        pseudo_clf.fit(
+            rearrange(torch.cat([x0, x1]), "b v d -> (b v) d"), pseudo_train_labels
+        )
+        with torch.no_grad():
+            pseudo_preds = pseudo_clf(
+                rearrange(torch.cat([val_x0, val_x1]), "b v d -> (b v) d")
+            )
+            return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
 
     def unsupervised_loss(
         self, logit0: torch.Tensor, logit1: torch.Tensor
