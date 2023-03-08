@@ -1,4 +1,4 @@
-from elk.math import stochastic_round_constrained
+from elk.math_util import stochastic_round_constrained
 from hypothesis import given, strategies as st
 from random import Random
 import math
