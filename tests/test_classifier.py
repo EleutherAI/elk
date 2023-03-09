@@ -31,8 +31,8 @@ def test_classifier_roughly_same_sklearn():
 
     # check that on a new sample, the predictions are roughly the same
     new_sample = np.random.randn(input_dims).astype(np.float32)
-    # returns as a 2d array, so we need to index into the first row and the second column
+    # 2d array, need to index into the first row and the second column
     sklearn_pred = model.predict_proba(new_sample.reshape(1, -1))[0][1]
-    # returns as a 1d array, so we need to index into the first element
+    # 1d array, need to index into the first element
     torch_pred = classifier(torch.from_numpy(new_sample)).sigmoid().detach().numpy()[0]
     assert np.allclose(sklearn_pred, torch_pred, atol=1e-2)
