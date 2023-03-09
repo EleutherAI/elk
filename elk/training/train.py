@@ -3,6 +3,7 @@
 from ..extraction import extract, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import assert_type, held_out_split, select_usable_devices, int16_to_float32
+from .classifier import Classifier
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
@@ -10,7 +11,6 @@ from datasets import DatasetDict
 from functools import partial
 from pathlib import Path
 from simple_parsing import Serializable
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 from tqdm.auto import tqdm
@@ -23,6 +23,7 @@ import random
 import torch
 import torch.multiprocessing as mp
 from typing import Union
+import warnings
 
 
 @dataclass
@@ -88,8 +89,20 @@ def train_reporter(
             int16_to_float32(assert_type(Tensor, val_hiddens)),
             method=cfg.normalization,
         )
+
         x0, x1 = train_h.unbind(dim=-2)
         val_x0, val_x1 = val_h.unbind(dim=-2)
+
+        with torch.no_grad():
+            pseudo_auroc = Reporter.check_separability(
+                train_pair=(x0, x1), val_pair=(val_x0, val_x1)
+            )
+            if pseudo_auroc > 0.6:
+                warnings.warn(
+                    f"The pseudo-labels at layer {layer} are linearly separable with "
+                    f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
+                    f"algorithm will not converge to a good solution."
+                )
 
     reporter = Reporter(x0.shape[-1], cfg.net, device=device)
     if cfg.label_frac:
@@ -109,29 +122,28 @@ def train_reporter(
 
     lr_dir.mkdir(parents=True, exist_ok=True)
     reporter_dir.mkdir(parents=True, exist_ok=True)
-    stats = [layer, train_loss, *val_result]
+    stats = [layer, pseudo_auroc, train_loss, *val_result]
 
     if not cfg.skip_baseline:
         # repeat_interleave makes `num_variants` copies of each label, all within a
         # single dimension of size `num_variants * 2 * n`, such that the labels align
         # with X.view(-1, X.shape[-1])
-        train_labels_aug = (
-            torch.cat([train_labels, 1 - train_labels])
-            .repeat_interleave(x0.shape[1])
-            .cpu()
-        )
+        train_labels_aug = torch.cat(
+            [train_labels, 1 - train_labels]
+        ).repeat_interleave(x0.shape[1])
         val_labels_aug = (
-            torch.cat([val_labels, 1 - val_labels]).repeat_interleave(x0.shape[1]).cpu()
-        )
+            torch.cat([val_labels, 1 - val_labels]).repeat_interleave(x0.shape[1])
+        ).cpu()
 
-        # TODO: Once we implement cross-validation for CCS, we should benchmark
-        # against LogisticRegressionCV here.
-        X = torch.cat([x0, x1]).cpu().squeeze()
-        lr_model = LogisticRegression(max_iter=10_000)
-        lr_model.fit(X.view(-1, X.shape[-1]), train_labels_aug)
+        X = torch.cat([x0, x1]).squeeze()
+        d = X.shape[-1]
+        lr_model = Classifier(d, device=device)
+        lr_model.fit(X.view(-1, d), train_labels_aug)
 
-        X_val = torch.cat([val_x0, val_x1]).cpu().squeeze()
-        lr_preds = lr_model.predict_proba(X_val.view(-1, X_val.shape[-1]))[:, 1]
+        X_val = torch.cat([val_x0, val_x1]).view(-1, d)
+        with torch.no_grad():
+            lr_preds = lr_model(X_val).sigmoid().cpu()
+
         lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
 
@@ -163,7 +175,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
-    cols = ["layer", "train_loss", "loss", "acc", "cal_acc", "auroc"]
+    cols = ["layer", "pseudo_auroc", "train_loss", "loss", "acc", "cal_acc", "auroc"]
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
@@ -187,5 +199,11 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
         writer.writerow(cols)
 
         mapper = pool.imap_unordered if num_devices > 1 else map
-        for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
-            writer.writerow([i] + [f"{s:.4f}" for s in stats])
+        row_buf = []
+        try:
+            for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
+                row_buf.append([i] + [f"{s:.4f}" for s in stats])
+        finally:
+            # Make sure the CSV is written even if we crash or get interrupted
+            for row in sorted(row_buf):
+                writer.writerow(row)

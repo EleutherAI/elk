@@ -1,11 +1,16 @@
 """An ELK reporter network."""
 
-from .losses import ccs_squared_loss, js_loss
+from ..parsing import parse_loss
+from ..utils.typing import assert_type
+from .classifier import Classifier
+from .losses import LOSSES
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from einops import rearrange
 from pathlib import Path
-from sklearn.metrics import roc_auc_score
 from simple_parsing.helpers import Serializable
+from sklearn.metrics import roc_auc_score
+from torch import Tensor
 from torch.nn.functional import binary_cross_entropy as bce
 from typing import cast, Literal, NamedTuple, Optional, Union
 import math
@@ -32,14 +37,18 @@ class ReporterConfig(Serializable):
     Args:
         activation: The activation function to use. Defaults to GELU.
         bias: Whether to use a bias term in the linear layers. Defaults to True.
-        device: The device to use. Defaults to None, which means "current device".
         hidden_size: The number of hidden units in the MLP. Defaults to None.
             By default, use an MLP expansion ratio of 4/3. This ratio is used by
             Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
             MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
             but this seems to lead to excessively large MLPs when num_layers > 2.
         init: The initialization scheme to use. Defaults to "zero".
-        loss: The loss function to use. Defaults to "squared".
+        loss: The loss function to use. list of strings, each of the form
+            "coef*name", where coef is a float and name is one of the keys in
+            `elk.training.losses.LOSSES`.
+            Example: --loss 1.0*consistency_squared 0.5*prompt_var
+            corresponds to the loss function 1.0*consistency_squared + 0.5*prompt_var.
+            Defaults to "ccs_prompt_var".
         num_layers: The number of layers in the MLP. Defaults to 1.
         pre_ln: Whether to include a LayerNorm module before the first linear
             layer. Defaults to False.
@@ -49,12 +58,19 @@ class ReporterConfig(Serializable):
     activation: Literal["gelu", "relu", "swish"] = "gelu"
     bias: bool = True
     hidden_size: Optional[int] = None
-    init: Literal["default", "spherical", "zero"] = "default"
-    loss: Literal["js", "squared"] = "squared"
+    init: Literal["default", "pca", "spherical", "zero"] = "default"
+    loss: list[str] = field(default_factory=lambda: ["ccs_prompt_var"])
+    loss_dict: dict[str, float] = field(default_factory=dict, init=False)
     num_layers: int = 1
     pre_ln: bool = False
     seed: int = 42
     supervised_weight: float = 0.0
+
+    def __post_init__(self):
+        self.loss_dict = parse_loss(self.loss)
+
+        # standardize the loss field
+        self.loss = [f"{coef}*{name}" for name, coef in self.loss_dict.items()]
 
 
 @dataclass
@@ -121,11 +137,61 @@ class Reporter(nn.Module):
 
         self.init = cfg.init
         self.device = device
-        self.unsupervised_loss = {
-            "js": js_loss,
-            "squared": ccs_squared_loss,
-        }[cfg.loss]
+        self.loss_dict = cfg.loss_dict
         self.supervised_weight = cfg.supervised_weight
+
+    @classmethod
+    def check_separability(
+        cls,
+        train_pair: tuple[Tensor, Tensor],
+        val_pair: tuple[Tensor, Tensor],
+    ) -> float:
+        """Measure how linearly separable the pseudo-labels are for a contrast pair.
+
+        Args:
+            train_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+                contrastive representations. Used for training the classifier.
+            val_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+                contrastive representations. Used for evaluating the classifier.
+
+        Returns:
+            The AUROC of a linear classifier fit on the pseudo-labels.
+        """
+        x0, x1 = train_pair
+        val_x0, val_x1 = val_pair
+
+        pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
+        pseudo_train_labels = torch.cat(
+            [
+                x0.new_zeros(x0.shape[0]),
+                x0.new_ones(x0.shape[0]),
+            ]
+        ).repeat_interleave(
+            x0.shape[1]
+        )  # make num_variants copies of each pseudo-label
+        pseudo_val_labels = torch.cat(
+            [
+                val_x0.new_zeros(val_x0.shape[0]),
+                val_x0.new_ones(val_x0.shape[0]),
+            ]
+        ).repeat_interleave(val_x0.shape[1])
+
+        pseudo_clf.fit(
+            rearrange(torch.cat([x0, x1]), "b v d -> (b v) d"), pseudo_train_labels
+        )
+        with torch.no_grad():
+            pseudo_preds = pseudo_clf(
+                rearrange(torch.cat([val_x0, val_x1]), "b v d -> (b v) d")
+            )
+            return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
+
+    def unsupervised_loss(
+        self, logit0: torch.Tensor, logit1: torch.Tensor
+    ) -> torch.Tensor:
+        loss = sum(
+            LOSSES[name](logit0, logit1, coef) for name, coef in self.loss_dict.items()
+        )
+        return assert_type(torch.Tensor, loss)
 
     def reset_parameters(self):
         """Reset the parameters of the probe.
@@ -153,10 +219,11 @@ class Reporter(nn.Module):
             for layer in self.probe:
                 if isinstance(layer, nn.Linear):
                     layer.reset_parameters()
+
         elif self.init == "zero":
             for param in self.parameters():
                 param.data.zero_()
-        else:
+        elif self.init != "pca":
             raise ValueError(f"Unknown init: {self.init}")
 
     # TODO: These methods will do something fancier in the future
@@ -250,8 +317,14 @@ class Reporter(nn.Module):
         best_state: dict[str, torch.Tensor] = {}  # State dict of the best run
         x0, x1 = contrast_pair
 
-        for _ in range(cfg.num_tries):
+        for i in range(cfg.num_tries):
             self.reset_parameters()
+
+            # This is sort of inefficient but whatever
+            if self.init == "pca":
+                diffs = torch.flatten(x0 - x1, 0, 1)
+                _, __, V = torch.pca_lowrank(diffs, q=i + 1)
+                self.probe[0].weight.data = V[:, -1, None].T
 
             if cfg.optimizer == "lbfgs":
                 loss = self.train_loop_lbfgs(x0, x1, labels, cfg)
