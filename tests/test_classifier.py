@@ -1,9 +1,9 @@
 import numpy as np
 import torch
+from sklearn.datasets import make_classification
+from sklearn.linear_model import LogisticRegression
 
 from elk.training.classifier import Classifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.datasets import make_classification
 
 
 def test_classifier_roughly_same_sklearn():
