@@ -1,6 +1,7 @@
 from torch.nn.functional import (
     binary_cross_entropy_with_logits as bce_with_logits,
     cross_entropy,
+    sigmoid,
 )
 from typing import Optional
 import torch
