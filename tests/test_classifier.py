@@ -1,11 +1,12 @@
 import numpy as np
+import pytest
 import torch
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
 
 from elk.training.classifier import Classifier
 
-
+@pytest.mark.cpu
 def test_classifier_roughly_same_sklearn():
     input_dims: int = 10
     # make a classification problem of 1000 samples with input_dims features
