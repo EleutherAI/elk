@@ -22,6 +22,7 @@ import pickle
 import random
 import torch
 import torch.multiprocessing as mp
+from typing import Union
 
 
 @dataclass
@@ -42,20 +43,22 @@ class RunConfig(Serializable):
     max_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
+    concatenate_layers: int = 0
+    # if nonzero, appends the hidden states of the layer concatenate_layers before
 
 
 def train_reporter(
     cfg: RunConfig,
     dataset: DatasetDict,
     out_dir: Path,
-    layer: int,
+    layer: Union[int, list[int]],
     devices: list[str],
     world_size: int = 1,
 ):
     """Train a single reporter on a single layer."""
 
     # Reproducibility
-    seed = cfg.net.seed + layer
+    seed = cfg.net.seed + layer if isinstance(layer, int) else layer[0]
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
@@ -72,9 +75,17 @@ def train_reporter(
         train_labels = cast(Tensor, train["label"])
         val_labels = cast(Tensor, val["label"])
 
+        # concatenate hidden states across layers if multiple layers are inputted
+        if isinstance(layer, list):
+            train_hiddens = torch.cat([train[f"hidden_{lay}"] for lay in layer], dim=1)
+            val_hiddens = torch.cat([val[f"hidden_{lay}"] for lay in layer], dim=1)
+        else:
+            train_hiddens = train[f"hidden_{layer}"]
+            val_hiddens = val[f"hidden_{layer}"]
+
         train_h, val_h = normalize(
-            int16_to_float32(assert_type(Tensor, train[f"hidden_{layer}"])),
-            int16_to_float32(assert_type(Tensor, val[f"hidden_{layer}"])),
+            int16_to_float32(assert_type(Tensor, train_hiddens)),
+            int16_to_float32(assert_type(Tensor, val_hiddens)),
             method=cfg.normalization,
         )
         x0, x1 = train_h.unbind(dim=-2)
@@ -161,6 +172,12 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
         for feat in ds["train"].features
         if feat.startswith("hidden_")
     ]
+
+    # concatenate hidden states from a previous layer, if told to
+    if cfg.concatenate_layers > 0:
+        for i in range(cfg.concatenate_layers, len(layers)):
+            layers[i] = [layers[i], layers[i] - cfg.concatenate_layers]
+
     # Train reporters for each layer in parallel
     with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
         fn = partial(

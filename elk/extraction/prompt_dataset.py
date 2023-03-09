@@ -2,7 +2,13 @@ from ..math import stochastic_round_constrained
 from ..promptsource import DatasetTemplates
 from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
 from dataclasses import dataclass
-from datasets import DatasetDict, load_dataset
+from datasets import (
+    DatasetDict,
+    IterableDataset,
+    Dataset,
+    load_dataset,
+    concatenate_datasets,
+)
 from numpy.typing import NDArray
 from random import Random
 from simple_parsing.helpers import field, Serializable
@@ -44,13 +50,24 @@ class PromptConfig(Serializable):
             call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
     """
 
-    dataset: str = field(positional=True)
+    datasets: list[str] = field(positional=True)
+    # dataset2: str = field(positional=True)
     balance: bool = False
     label_column: Optional[str] = None
     max_examples: int = 0
     num_shots: int = 0
     seed: int = 42
     num_variants: int = 1
+
+
+def create_prompt_dataset(
+    cfg: PromptConfig,
+    rank: int = 0,
+    world_size: int = 1,
+    split: str = "validation",
+    dataset_index: int = 0,  # which dataset in cfg.datasets to use
+):
+    pass
 
 
 class PromptDataset(TorchDataset):
@@ -79,8 +96,12 @@ class PromptDataset(TorchDataset):
         rank: int = 0,
         world_size: int = 1,
         split: str = "validation",
+        dataset_index: int = 0,  # which dataset in cfg.datasets to use
     ):
-        ds_name, _, config_name = cfg.dataset.partition(" ")
+        # super.__init__(self)
+
+        dataset = cfg.datasets[dataset_index]
+        ds_name, _, config_name = dataset.partition(" ")
 
         self.num_shots = cfg.num_shots
         self.prompter = DatasetTemplates(ds_name, config_name or None)  # type: ignore
@@ -100,15 +121,16 @@ class PromptDataset(TorchDataset):
         # instantiations of PromptDataset (unless you set the seed to something else).
         # This allows you to just set split="train" and split="test" for any dataset
         # and not worry about train-test leakage.
-        split_name, *others = ds_dict.keys()
-        if not others:
-            print("Creating a 75/25 train-test split...")
 
-            # Don't shuffle now because we're going to shuffle later
-            ds_dict = ds_dict[split_name].train_test_split(
-                seed=cfg.seed, shuffle=False, stratify_by_column=cfg.label_column
-            )
-            assert isinstance(ds_dict, DatasetDict)
+        # split_name, *others = ds_dict.keys()
+        # if not others:
+        #     print("Creating a 75/25 train-test split...")
+
+        #     # Don't shuffle now because we're going to shuffle later
+        #     ds_dict = ds_dict[split_name].train_test_split(
+        #         seed=cfg.seed, shuffle=False, stratify_by_column=cfg.label_column
+        #     )
+        #     assert isinstance(ds_dict, DatasetDict)
 
         # The 'active' split is the one that gets queried by __getitem__
         self.active_split = ds_dict[split]
@@ -225,3 +247,37 @@ class PromptDataset(TorchDataset):
 
         # We piggyback on the ClassLabel feature type to get the number of classes
         return self.active_split.features[self.label_column].num_classes
+
+
+class Interleaved_Datasets(TorchDataset):
+    def __init__(
+        self,
+        datasets: list[PromptDataset],
+    ):
+        """
+        Interleave several (PromptDataset) datasets into a single dataset,
+        alternating between the datasets.
+        Only samples as many datapoints from each dataset as the smallest dataset.
+        Args:
+            datasets (`List[PromptDataset]`):
+                List of datasets to interleave.
+        """
+        self.datasets = datasets
+
+        if not datasets:
+            raise ValueError("Unable to interleave an empty list of datasets.")
+
+        lengths = [len(dset) for dset in datasets]
+        self.min_dataset_length = min(lengths)
+        self.num_datasets = len(datasets)
+
+    def __getitem__(self, index: int) -> list[Prompt]:
+        which_dataset = index % self.num_datasets
+        return self.datasets[which_dataset][int(index / self.num_datasets)]
+
+    def __iter__(self):
+        return (self[i] for i in range(len(self)))
+
+    def __len__(self):
+        """Get the number of predicates in the dataset."""
+        return self.num_datasets * self.min_dataset_length
