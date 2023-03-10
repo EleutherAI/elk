@@ -148,7 +148,6 @@ def train_reporter(
 
 def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     # Extract the hidden states first if necessary
-    print("losses: ", cfg.net.loss_dict.keys())
     is_prompt_based_loss = (
         "ccs_prompt_var" in cfg.net.loss_dict.keys()
         or "prompt_var_squared" in cfg.net.loss_dict.keys()
