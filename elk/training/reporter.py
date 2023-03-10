@@ -59,7 +59,7 @@ class ReporterConfig(Serializable):
     bias: bool = True
     hidden_size: Optional[int] = None
     init: Literal["default", "pca", "spherical", "zero"] = "default"
-    loss: list[str] = field(default_factory=lambda: ["ccs_prompt_var"])
+    loss: list[str] = field(default_factory=lambda: ["ccs"])
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
     num_layers: int = 1
     pre_ln: bool = False
