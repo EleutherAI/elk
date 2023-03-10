@@ -24,8 +24,8 @@ from ..utils import assert_type, held_out_split, int16_to_float32, select_usable
 
 @dataclass
 class EvaluateConfig(Serializable):
-    source: str = field(positional=True)
     target: ExtractionConfig
+    source: str = field(positional=True)
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     max_gpus: int = -1
 
