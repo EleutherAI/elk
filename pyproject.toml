@@ -35,7 +35,8 @@ dependencies = [
     # 4.0 introduced the breaking change of using return_dict=True by default
     "transformers>=4.0.0",
     # required by promptsource, which doesn't specify a version
-    "jinja2"
+    "jinja2",
+    "pyyaml"
 ]
 version = "0.1.1"
 
