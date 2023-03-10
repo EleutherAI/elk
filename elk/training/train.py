@@ -56,7 +56,7 @@ def train_reporter(
     devices: list[str],
     world_size: int = 1,
 ):
-    """Train a single reporter on a single layer."""
+    """Train a single reporter on a single layer, or a list of layers."""
 
     # Reproducibility
     seed = cfg.net.seed + layer if isinstance(layer, int) else layer[0]
