@@ -4,7 +4,8 @@ from .training.losses import LOSSES
 
 def parse_loss(terms: list[str]) -> dict[str, float]:
     """Parse the loss command line argument list into a dictionary."""
-    assert len(terms) > 0, "No loss terms specified."
+    if len(terms) == 0:
+        return {"ccs_prompt_var": 1.0}
     loss_dict = dict()
     for term in terms:
         if term in loss_dict:
