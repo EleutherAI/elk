@@ -146,7 +146,7 @@ def prompt_var_loss(logit0: Tensor, logit1: Tensor, coef: float = 1.0) -> Tensor
     assert len(logit0.shape) in [1, 2]
     if logit0.shape[-1] == 1:
         warnings.warn(
-            "Only one variant provided. Prompt variance loss will equal CCS loss."
+            "Only one variant provided. Prompt variance loss will cause errors."
         )
     p0, p1 = logit0.sigmoid(), logit1.sigmoid()
     prompt_variance = p0.var(dim=-1).mean() + p1.var(dim=-1).mean()
