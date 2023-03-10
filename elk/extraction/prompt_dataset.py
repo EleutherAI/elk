@@ -2,7 +2,7 @@ from ..math_util import stochastic_round_constrained
 from ..promptsource import DatasetTemplates
 from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
 from dataclasses import dataclass
-from datasets import DatasetDict, load_dataset, ClassLabel
+from datasets import DatasetDict, load_dataset, ClassLabel, Value
 from numpy.typing import NDArray
 from random import Random
 from simple_parsing.helpers import field, Serializable
@@ -245,7 +245,10 @@ class PromptDataset(TorchDataset):
         if isinstance(self.active_split.features[self.label_column], ClassLabel):
             # We piggyback on the ClassLabel feature type to get the number of classes
             return self.active_split.features[self.label_column].num_classes
-        elif self.active_split.features[self.label_column].dtype == "bool":
+        elif (
+            isinstance(self.active_split.features[self.label_column], Value)
+            and self.active_split.features[self.label_column].dtype == "bool"
+        ):
             return 2
         else:
             raise ValueError(
