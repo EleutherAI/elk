@@ -105,8 +105,14 @@ def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
         writer = csv.writer(f)
         writer.writerow(cols)
 
-        mapper = pool.imap if num_devices > 1 else map
-        for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
-            writer.writerow([i] + [f"{s:.4f}" for s in stats])
+        mapper = pool.imap_unordered if num_devices > 1 else map
+        row_buf = []
+        try:
+            for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
+                row_buf.append([i] + [f"{s:.4f}" for s in stats])
+        finally:
+            # Make sure the CSV is written even if we crash or get interrupted
+            for row in sorted(row_buf):
+                writer.writerow(row)
 
     print("Results saved")
