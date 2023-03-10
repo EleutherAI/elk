@@ -122,7 +122,8 @@ def train_reporter(
 
     lr_dir.mkdir(parents=True, exist_ok=True)
     reporter_dir.mkdir(parents=True, exist_ok=True)
-    stats = [layer, pseudo_auroc, train_loss, *val_result]
+    layer_name = layer if isinstance(layer, str) else " and ".join(layer)
+    stats = [layer_name, pseudo_auroc, train_loss, *val_result]
 
     if not cfg.skip_baseline:
         # repeat_interleave makes `num_variants` copies of each label, all within a
