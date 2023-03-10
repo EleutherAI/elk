@@ -13,8 +13,7 @@ def run():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     extract_parser = subparsers.add_parser(
-        "extract",
-        help="Extract hidden states from a model.",
+        "extract", help="Extract hidden states from a model."
     )
     extract_parser.add_arguments(ExtractionConfig, dest="extraction")
     extract_parser.add_argument(
