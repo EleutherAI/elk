@@ -78,8 +78,8 @@ def train_reporter(
 
         # concatenate hidden states across layers if multiple layers are inputted
         if isinstance(layer, list):
-            train_hiddens = torch.cat([train[f"hidden_{lay}"] for lay in layer], dim=1)
-            val_hiddens = torch.cat([val[f"hidden_{lay}"] for lay in layer], dim=1)
+            train_hiddens = torch.cat([train[f"hidden_{lay}"] for lay in layer], dim=-1)
+            val_hiddens = torch.cat([val[f"hidden_{lay}"] for lay in layer], dim=-1)
         else:
             train_hiddens = train[f"hidden_{layer}"]
             val_hiddens = val[f"hidden_{layer}"]
@@ -122,7 +122,7 @@ def train_reporter(
 
     lr_dir.mkdir(parents=True, exist_ok=True)
     reporter_dir.mkdir(parents=True, exist_ok=True)
-    layer_name = layer if isinstance(layer, str) else " and ".join(layer)
+    layer_name = layer if isinstance(layer, int) else max(layer)
     stats = [layer_name, pseudo_auroc, train_loss, *val_result]
 
     if not cfg.skip_baseline:
