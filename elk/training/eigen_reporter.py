@@ -13,9 +13,8 @@ import torch.nn as nn
 class EigenReporterConfig(ReporterConfig):
     """ """
 
-    inv_weight: float = 1.0
-    neg_cov_weight: float = 1.0
-    solver: Literal["arpack", "dense", "power"] = "dense"
+    inv_weight: float = 5.0
+    neg_cov_weight: float = 5.0
 
 
 class EigenReporter(Reporter):
@@ -73,7 +72,15 @@ class EigenReporter(Reporter):
         alpha, beta = self.config.inv_weight, self.config.neg_cov_weight
         A = inter_variance - alpha * intra_variance - beta * contrastive_variance
 
-        L, Q = torch.linalg.eigh(A)
-        self.linear.weight.data = Q[:, -1, None].T
+        # Use SciPy's sparse eigensolver for CPU tensors. This is a frontend to ARPACK,
+        # which uses the Lanczos method under the hood.
+        if A.device.type == "cpu":
+            from scipy.sparse.linalg import eigsh
 
-        return L[-1]
+            L, Q = eigsh(A.numpy(), k=1)
+            self.linear.weight.data = torch.from_numpy(Q).T
+        else:
+            L, Q = torch.linalg.eigh(A)
+            self.linear.weight.data = Q[:, -1, None].T
+
+        return float(L[-1])

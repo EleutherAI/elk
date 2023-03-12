@@ -1,4 +1,5 @@
 from torch import Tensor
+from typing import Optional
 import math
 import random
 import torch
@@ -18,26 +19,39 @@ def batch_cov(x: Tensor) -> Tensor:
     return x_.mT @ x_ / x_.shape[-2]
 
 
-@torch.jit.script
-def top_eigh(A: Tensor, num_iter: int) -> tuple[Tensor, Tensor]:
+def power_iteration(
+    A: Tensor, b0: Optional[Tensor] = None, max_iter: int = 1000, tol: float = 1e-3
+) -> tuple[Tensor, Tensor]:
     """
     Power iteration method for computing the dominant eigenpair of a Hermitian matrix.
 
     Args:
-        A: Symmetric matrix
-        num_iter: The number of iterations to perform
+        A: Symmetric matrix whose dominant eigenpair we want to compute.
+        b0: Initial vector for the power iteration. If None, a random vector is used.
+        max_iter: The maximum number of iterations to perform before giving up.
+        tol: The tolerance for the relative error of the dominant eigenvalue.
     Returns:
         largest_eigval: The largest eigenvalue of A
         largest_eigvec: The largest eigenvector of A
     """
     # Initialize a random vector
-    b_k = torch.randn(A.shape[0], 1, device=A.device, dtype=A.dtype)
-    for _ in range(num_iter):
-        # Calculate the matrix-by-vector product Ab
-        b_k1 = A @ b_k
+    if b0 is None:
+        b_k = torch.randn(A.shape[0], 1, device=A.device, dtype=A.dtype)
+    else:
+        b_k = b0
 
-        # Re-normalize the vector
-        b_k = b_k1 / b_k1.norm()
+    for k in range(max_iter):
+        # Calculate the matrix-by-vector product Ab and normalize
+        b_next = torch.nn.functional.normalize(A @ b_k, dim=0)
+
+        # Check if the vector has converged every 25 iterations.
+        # We don't check every iteration because we don't want to
+        # cause a host-device sync each time.
+        if k % 25 == 0 and torch.norm(b_next - b_k) < tol:
+            b_k = b_next
+            break
+
+        b_k = b_next
 
     # Calculate the matrix-by-vector product Ab
     Ab = A @ b_k
@@ -47,7 +61,7 @@ def top_eigh(A: Tensor, num_iter: int) -> tuple[Tensor, Tensor]:
 
     # Calculate the eigenvector
     largest_eigvec = Ab / largest_eigval
-    return largest_eigval, largest_eigvec.squeeze()
+    return largest_eigval.squeeze(), largest_eigvec.squeeze()
 
 
 def stochastic_round_constrained(x: list[float], rng: random.Random) -> list[int]:

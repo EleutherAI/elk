@@ -6,26 +6,12 @@ from .losses import LOSSES
 from .reporter import Reporter, ReporterConfig
 from copy import deepcopy
 from dataclasses import dataclass, field
-from sklearn.metrics import roc_auc_score
 from torch import Tensor
 from torch.nn.functional import binary_cross_entropy as bce
 from typing import cast, Literal, NamedTuple, Optional
 import math
 import torch
 import torch.nn as nn
-
-
-class EvalResult(NamedTuple):
-    """The result of evaluating a reporter on a dataset.
-
-    The `.score()` function of a reporter returns an instance of this class,
-    which contains the loss, accuracy, calibrated accuracy, and AUROC.
-    """
-
-    loss: float
-    acc: float
-    cal_acc: float
-    auroc: float
 
 
 @dataclass
@@ -268,7 +254,12 @@ class CcsReporter(Reporter):
         self.load_state_dict(best_state)
         return best_loss
 
-    def train_loop_adam(self, x0, x1, labels: Optional[Tensor]) -> float:
+    def train_loop_adam(
+        self,
+        x_pos: Tensor,
+        x_neg: Tensor,
+        labels: Optional[Tensor] = None,
+    ) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
 
         optimizer = torch.optim.AdamW(
@@ -279,21 +270,26 @@ class CcsReporter(Reporter):
         for _ in range(self.config.num_epochs):
             optimizer.zero_grad()
 
-            loss = self.loss(self(x0), self(x1), labels)
+            loss = self.loss(self(x_pos), self(x_neg), labels)
             loss.backward()
             optimizer.step()
 
         return float(loss)
 
-    def train_loop_lbfgs(self, x0, x1, labels: Optional[Tensor]) -> float:
+    def train_loop_lbfgs(
+        self,
+        x_pos: Tensor,
+        x_neg: Tensor,
+        labels: Optional[Tensor] = None,
+    ) -> float:
         """LBFGS train loop, returning the final loss. Modifies params in-place."""
 
         optimizer = torch.optim.LBFGS(
             self.parameters(),
             line_search_fn="strong_wolfe",
             max_iter=self.config.num_epochs,
-            tolerance_change=torch.finfo(x0.dtype).eps,
-            tolerance_grad=torch.finfo(x0.dtype).eps,
+            tolerance_change=torch.finfo(x_pos.dtype).eps,
+            tolerance_grad=torch.finfo(x_pos.dtype).eps,
         )
         # Raw unsupervised loss, WITHOUT regularization
         loss = torch.inf
@@ -302,7 +298,7 @@ class CcsReporter(Reporter):
             nonlocal loss
             optimizer.zero_grad()
 
-            loss = self.loss(self(x0), self(x1), labels)
+            loss = self.loss(self(x_pos), self(x_neg), labels)
             regularizer = 0.0
 
             # We explicitly add L2 regularization to the loss, since LBFGS
