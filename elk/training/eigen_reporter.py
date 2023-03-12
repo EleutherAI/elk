@@ -74,6 +74,6 @@ class EigenReporter(Reporter):
         A = inter_variance - alpha * intra_variance - beta * contrastive_variance
 
         L, Q = torch.linalg.eigh(A)
-        self.linear.weight.data = Q[:, -1, None]
+        self.linear.weight.data = Q[:, -1, None].T
 
         return L[-1]
