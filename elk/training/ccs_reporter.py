@@ -84,7 +84,7 @@ class CcsReporter(Reporter):
         in_features: int,
         cfg: CcsReporterConfig,
         device: Optional[str] = None,
-        dtype: Optional[str] = None,
+        dtype: Optional[torch.dtype] = None,
     ):
         super().__init__(in_features, cfg, device=device, dtype=dtype)
 

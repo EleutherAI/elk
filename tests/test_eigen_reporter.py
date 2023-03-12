@@ -31,7 +31,7 @@ def test_eigen_reporter():
     expected_invariance = cov_mean_fused(x_pos) + cov_mean_fused(x_neg)
     assert torch.allclose(reporter.invariance, expected_invariance)
 
-    # Check that the streaming consistency (inter-cluster variance) is correct
+    # Check that the streaming negative covariance is correct
     cross_cov = (pos_centroids - pos_mu).mT @ (neg_centroids - neg_mu) / num_clusters
     cross_cov = cross_cov + cross_cov.mT
     assert torch.allclose(reporter.neg_covariance, cross_cov)
