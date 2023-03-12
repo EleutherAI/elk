@@ -1,7 +1,6 @@
 """Loss functions for training reporters."""
 
 from torch import Tensor
-import math
 import torch
 import warnings
 from inspect import signature
@@ -149,5 +148,8 @@ def prompt_var_loss(logit0: Tensor, logit1: Tensor, coef: float = 1.0) -> Tensor
             "Only one variant provided. Prompt variance loss will cause errors."
         )
     p0, p1 = logit0.sigmoid(), logit1.sigmoid()
-    prompt_variance = p0.var(dim=-1).mean() + p1.var(dim=-1).mean()
+
+    var0 = p0.var(dim=-1, unbiased=False).mean()
+    var1 = p1.var(dim=-1, unbiased=False).mean()
+    prompt_variance = var0 + var1
     return coef * prompt_variance

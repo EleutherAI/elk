@@ -4,6 +4,7 @@ import random
 import torch
 
 
+@torch.jit.script
 def batch_cov(x: Tensor) -> Tensor:
     """Compute a batch of covariance matrices.
 
