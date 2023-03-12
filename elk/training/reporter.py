@@ -67,14 +67,22 @@ class Reporter(nn.Module, ABC):
     pos_mean: Tensor
 
     def __init__(
-        self, in_features: int, cfg: ReporterConfig, device: Optional[str] = None
+        self,
+        in_features: int,
+        cfg: ReporterConfig,
+        device: Optional[str] = None,
+        dtype: Optional[torch.dtype] = None,
     ):
         super().__init__()
 
         self.config = cfg
         self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
-        self.register_buffer("neg_mean", torch.zeros(in_features, device=device))
-        self.register_buffer("pos_mean", torch.zeros(in_features, device=device))
+        self.register_buffer(
+            "neg_mean", torch.zeros(in_features, device=device, dtype=dtype)
+        )
+        self.register_buffer(
+            "pos_mean", torch.zeros(in_features, device=device, dtype=dtype)
+        )
 
     @classmethod
     def check_separability(

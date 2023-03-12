@@ -80,9 +80,13 @@ class CcsReporter(Reporter):
     config: CcsReporterConfig
 
     def __init__(
-        self, in_features: int, cfg: CcsReporterConfig, device: Optional[str] = None
+        self,
+        in_features: int,
+        cfg: CcsReporterConfig,
+        device: Optional[str] = None,
+        dtype: Optional[str] = None,
     ):
-        super().__init__(in_features, cfg, device=device)
+        super().__init__(in_features, cfg, device=device, dtype=dtype)
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
@@ -221,6 +225,8 @@ class CcsReporter(Reporter):
             ValueError: If `optimizer` is not "adam" or "lbfgs".
             RuntimeError: If the best loss is not finite.
         """
+        self.update(x_pos, x_neg)
+
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf
         best_state: dict[str, Tensor] = {}  # State dict of the best run

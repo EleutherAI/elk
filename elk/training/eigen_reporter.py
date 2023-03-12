@@ -1,6 +1,6 @@
 """An ELK reporter network."""
 
-from ..math_util import batch_cov, cov_mean_fused
+from ..math_util import cov_mean_fused
 from .reporter import Reporter, ReporterConfig
 from dataclasses import dataclass
 from torch import Tensor
@@ -34,18 +34,26 @@ class EigenReporter(Reporter):
     invariance: Tensor
 
     def __init__(
-        self, in_features: int, cfg: EigenReporterConfig, device: Optional[str] = None
+        self,
+        in_features: int,
+        cfg: EigenReporterConfig,
+        device: Optional[str] = None,
+        dtype: Optional[torch.dtype] = None,
     ):
-        super().__init__(in_features, cfg, device=device)
+        super().__init__(in_features, cfg, device=device, dtype=dtype)
 
-        self.linear = nn.Linear(in_features, 1, bias=False, device=device)
+        self.linear = nn.Linear(in_features, 1, bias=False, device=device, dtype=dtype)
 
         self.register_buffer(
-            "contrastive_M2", torch.zeros(in_features, in_features, device=device)
+            "contrastive_M2",
+            torch.zeros(in_features, in_features, device=device, dtype=dtype),
         )
-        self.register_buffer("M2", torch.zeros(in_features, in_features, device=device))
         self.register_buffer(
-            "invariance", torch.zeros(in_features, in_features, device=device)
+            "M2", torch.zeros(in_features, in_features, device=device, dtype=dtype)
+        )
+        self.register_buffer(
+            "invariance",
+            torch.zeros(in_features, in_features, device=device, dtype=dtype),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -57,11 +65,11 @@ class EigenReporter(Reporter):
 
     @property
     def neg_covariance(self) -> Tensor:
-        return self.contrastive_M2 / (self.n - 1)
+        return self.contrastive_M2 / self.n
 
     @property
     def variance(self) -> Tensor:
-        return self.M2 / (self.n - 1)
+        return self.M2 / self.n
 
     @torch.no_grad()
     def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
@@ -76,7 +84,8 @@ class EigenReporter(Reporter):
         # of the population mean in order to update (cross-)covariances properly
         # super().update(x_pos, x_neg)
 
-        self.n += pos_centroids.shape[0]
+        sample_n = pos_centroids.shape[0]
+        self.n += sample_n
 
         # Update the running means; super().update() does this usually
         neg_delta = neg_centroids - self.neg_mean
@@ -96,8 +105,10 @@ class EigenReporter(Reporter):
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
         # mean of covariance matrices, not the covariance matrix of means.
-        sample_invar = cov_mean_fused(x_pos) + cov_mean_fused(x_neg)  # [d, d]
-        self.invariance += (sample_invar - self.invariance) / self.n  # [d, d]
+        sample_invar = cov_mean_fused(x_pos) + cov_mean_fused(x_neg)
+        self.invariance += (
+            sample_n * (sample_invar - self.invariance) / self.n
+        )  # [d, d]
 
         # *** Negative covariance ***
         self.contrastive_M2.addmm_(neg_delta.mT, pos_delta2)
