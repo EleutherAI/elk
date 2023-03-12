@@ -1,10 +1,10 @@
 """An ELK reporter network."""
 
-from ..math_util import batch_cov
+from ..math_util import batch_cov, cov_mean_fused
 from .reporter import Reporter, ReporterConfig
 from dataclasses import dataclass
 from torch import Tensor
-from typing import Literal, Optional
+from typing import Optional
 import torch
 import torch.nn as nn
 
@@ -27,13 +27,26 @@ class EigenReporter(Reporter):
 
     config: EigenReporterConfig
 
+    n: Tensor
+
+    contrastive_M2: Tensor
+    M2: Tensor
+    invariance: Tensor
+
     def __init__(
         self, in_features: int, cfg: EigenReporterConfig, device: Optional[str] = None
     ):
-        super().__init__()
+        super().__init__(in_features, cfg, device=device)
 
-        self.config = cfg
         self.linear = nn.Linear(in_features, 1, bias=False, device=device)
+
+        self.register_buffer(
+            "contrastive_M2", torch.zeros(in_features, in_features, device=device)
+        )
+        self.register_buffer("M2", torch.zeros(in_features, in_features, device=device))
+        self.register_buffer(
+            "invariance", torch.zeros(in_features, in_features, device=device)
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         """Return the raw score output of the probe on `x`."""
@@ -41,6 +54,54 @@ class EigenReporter(Reporter):
 
     def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
         return 0.5 * (self(x_pos) - self(x_neg))
+
+    @property
+    def neg_covariance(self) -> Tensor:
+        return self.contrastive_M2 / (self.n - 1)
+
+    @property
+    def variance(self) -> Tensor:
+        return self.M2 / (self.n - 1)
+
+    @torch.no_grad()
+    def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
+        # Sanity checks
+        assert x_pos.ndim == 3, "x_pos must be of shape [batch, num_variants, d]"
+        assert x_pos.shape == x_neg.shape, "x_pos and x_neg must have the same shape"
+
+        # Average across variants inside each cluster, computing the centroids.
+        pos_centroids, neg_centroids = x_pos.mean(1), x_neg.mean(1)
+
+        # We don't actually call super because we need access to the earlier estimate
+        # of the population mean in order to update (cross-)covariances properly
+        # super().update(x_pos, x_neg)
+
+        self.n += pos_centroids.shape[0]
+
+        # Update the running means; super().update() does this usually
+        neg_delta = neg_centroids - self.neg_mean
+        pos_delta = pos_centroids - self.pos_mean
+        self.neg_mean += neg_delta.sum(dim=0) / self.n
+        self.pos_mean += pos_delta.sum(dim=0) / self.n
+
+        # *** Variance (inter-cluster) ***
+        # See code at https://bit.ly/3YC9BhH, as well as "Welford's online algorithm"
+        # in https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance.
+        # Post-mean update deltas are used to update the (co)variance
+        neg_delta2 = neg_centroids - self.neg_mean  # [n, d]
+        pos_delta2 = pos_centroids - self.pos_mean  # [n, d]
+        self.M2.addmm_(neg_delta.mT, neg_delta2)
+        self.M2.addmm_(pos_delta.mT, pos_delta2)
+
+        # *** Invariance (intra-cluster) ***
+        # This is just a standard online *mean* update, since we're computing the
+        # mean of covariance matrices, not the covariance matrix of means.
+        sample_invar = cov_mean_fused(x_pos) + cov_mean_fused(x_neg)  # [d, d]
+        self.invariance += (sample_invar - self.invariance) / self.n  # [d, d]
+
+        # *** Negative covariance ***
+        self.contrastive_M2.addmm_(neg_delta.mT, pos_delta2)
+        self.contrastive_M2.addmm_(pos_delta.mT, neg_delta2)
 
     def fit(
         self,
@@ -58,19 +119,10 @@ class EigenReporter(Reporter):
             loss: The best loss obtained.
         """
         assert x_pos.shape == x_neg.shape
-
-        # Variance
-        pos_bar, neg_bar = x_pos.mean(1), x_neg.mean(1)  # [batch, d]
-        inter_variance = batch_cov(pos_bar) + batch_cov(neg_bar)  # [d, d]
-
-        # Invariance
-        intra_variance = batch_cov(x_pos).mean(0) + batch_cov(x_neg).mean(0)  # [d, d]
-
-        # Negative covariance
-        contrastive_variance = pos_bar.mT @ neg_bar + neg_bar.mT @ pos_bar  # [d, d]
+        self.update(x_pos, x_neg)
 
         alpha, beta = self.config.inv_weight, self.config.neg_cov_weight
-        A = inter_variance - alpha * intra_variance - beta * contrastive_variance
+        A = self.variance - alpha * self.invariance - beta * self.neg_covariance
 
         # Use SciPy's sparse eigensolver for CPU tensors. This is a frontend to ARPACK,
         # which uses the Lanczos method under the hood.

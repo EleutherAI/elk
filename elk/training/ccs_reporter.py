@@ -82,7 +82,7 @@ class CcsReporter(Reporter):
     def __init__(
         self, in_features: int, cfg: CcsReporterConfig, device: Optional[str] = None
     ):
-        super().__init__()
+        super().__init__(in_features, cfg, device=device)
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
@@ -113,9 +113,6 @@ class CcsReporter(Reporter):
                     device=device,
                 )
             )
-
-        self.config = cfg
-        self.device = device
 
     def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         loss = sum(

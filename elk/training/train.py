@@ -39,7 +39,7 @@ class RunConfig(Serializable):
 
     data: ExtractionConfig
     net: ReporterConfig = subgroups(
-        {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="ccs"
+        {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
     )
     optim: OptimConfig = OptimConfig()
 
