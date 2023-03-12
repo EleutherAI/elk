@@ -7,7 +7,9 @@ import torch
 
 
 def compute_class_balance(
-    dataset: Dataset, label_column: Optional[str] = None
+    dataset: Dataset,
+    num_classes: int,
+    label_column: Optional[str] = None,
 ) -> np.ndarray:
     """Compute the class balance of a `Dataset`."""
 
@@ -18,7 +20,6 @@ def compute_class_balance(
     elif label_column not in features:
         raise ValueError(f"{name} has no column '{label_column}'")
 
-    num_classes = getattr(features[label_column], "num_classes", 0)
     class_sizes = np.bincount(dataset[label_column], minlength=num_classes)
 
     if not np.all(class_sizes > 0):
@@ -71,11 +72,11 @@ def infer_label_column(features: Features) -> str:
 
 
 def undersample(
-    dataset: Dataset, rng: Random, label_column: Optional[str] = None
+    dataset: Dataset, rng: Random, num_classes: int, label_column: Optional[str] = None
 ) -> Dataset:
     """Undersample a `Dataset` to the smallest class size."""
     label_column = label_column or infer_label_column(dataset.features)
-    class_sizes = compute_class_balance(dataset, label_column)
+    class_sizes = compute_class_balance(dataset, num_classes, label_column)
     smallest_size = class_sizes.min()
 
     # First group the active split by class
