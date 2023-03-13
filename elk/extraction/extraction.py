@@ -161,6 +161,13 @@ def extract_hiddens(
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
     for prompts in prompt_ds:
+        variant_ids = [prompt.template_name for prompt in prompts]
+
+        # Sort the variants and prompts by their ID to standardize the order
+        sorted_idxs = sorted(range(len(variant_ids)), key=variant_ids.__getitem__)
+        variant_ids = [variant_ids[i] for i in sorted_idxs]
+        prompts = [prompts[i] for i in sorted_idxs]
+
         inputs = collate(prompts)
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
@@ -172,7 +179,6 @@ def extract_hiddens(
             )
             for layer_idx in layer_indices
         }
-        variant_ids = [prompt.template_name for prompt in prompts]
 
         # Iterate over variants
         for i, variant_inputs in enumerate(inputs):
