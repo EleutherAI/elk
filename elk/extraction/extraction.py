@@ -1,6 +1,6 @@
 """Functions for extracting the hidden states of a model."""
 
-from .prompt_dataset import Prompt, PromptDataset, PromptConfig, Interleaved_Datasets
+from .prompt_dataset import Prompt, PromptDataset, PromptConfig, InterleavedDatasets
 from ..utils import (
     assert_type,
     infer_label_column,
@@ -19,7 +19,6 @@ from datasets import (
     SplitDict,
     SplitInfo,
     Value,
-    interleave_datasets,
 )
 from simple_parsing.helpers import field, Serializable
 from transformers import (
@@ -108,7 +107,7 @@ def extract_hiddens(
         prompt_datasets.append(prompt_ds)
 
     # combine each PromptDataset together, interleaving them
-    interleaved_prompt_datasets = Interleaved_Datasets(prompt_datasets)
+    interleaved_prompt_datasets = InterleavedDatasets(prompt_datasets)
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
@@ -178,7 +177,7 @@ def extract_hiddens(
         inputs = collate(prompts)
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
-                prompt_ds.num_variants,
+                prompt_datasets[0].num_variants,
                 num_choices,
                 model.config.hidden_size,
                 device=device,

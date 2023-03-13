@@ -77,12 +77,12 @@ def train_reporter(
         val_labels = cast(Tensor, val["label"])
 
         # concatenate hidden states across layers if multiple layers are inputted
-        if isinstance(layer, list):
-            train_hiddens = torch.cat([train[f"hidden_{lay}"] for lay in layer], dim=-1)
-            val_hiddens = torch.cat([val[f"hidden_{lay}"] for lay in layer], dim=-1)
-        else:
-            train_hiddens = train[f"hidden_{layer}"]
-            val_hiddens = val[f"hidden_{layer}"]
+        train_hiddens = torch.cat(
+            [cast(Tensor, train[f"hidden_{lay}"]) for lay in layer], dim=-1
+        )
+        val_hiddens = torch.cat(
+            [cast(Tensor, val[f"hidden_{lay}"]) for lay in layer], dim=-1
+        )
 
         train_h, val_h = normalize(
             int16_to_float32(assert_type(Tensor, train_hiddens)),
@@ -99,7 +99,7 @@ def train_reporter(
             )
             if pseudo_auroc > 0.6:
                 warnings.warn(
-                    f"The pseudo-labels at layer {layer} are linearly separable with "
+                    f"The pseudo-labels at layers {layer} are linearly separable with "
                     f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
                     f"algorithm will not converge to a good solution."
                 )

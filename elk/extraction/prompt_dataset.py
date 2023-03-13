@@ -156,8 +156,8 @@ class PromptDataset(TorchDataset):
             # Sanity check to prevent train-test leakage via few-shot prompts
             if "train" not in ds_dict:
                 raise ValueError(
-                    f"Dataset {cfg.dataset} has no train split, so we can't create "
-                    "few-shot prompts"
+                    f"Dataset {cfg.datasets[dataset_index]} has no train split, "
+                    "so we can't create few-shot prompts"
                 )
 
             self.fewshot_strata = [
