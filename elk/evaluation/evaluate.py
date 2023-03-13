@@ -13,6 +13,7 @@ import yaml
 from simple_parsing.helpers import Serializable, field
 from torch import Tensor
 from tqdm.auto import tqdm
+from sklearn.metrics import roc_auc_score
 
 from datasets import DatasetDict
 from elk.training.preprocessing import normalize
@@ -71,6 +72,13 @@ def evaluate_reporter(
 
 
 def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
+    if cfg.source == 'zero-shot':
+        print("Evaluating zero-shot performance.")
+        
+        evaluate_zeroshot(cfg, out_dir)
+
+        return
+
     ds = extract(cfg.target, max_gpus=cfg.max_gpus)
 
     layers = [
@@ -105,14 +113,86 @@ def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
         writer = csv.writer(f)
         writer.writerow(cols)
 
-        mapper = pool.imap_unordered if num_devices > 1 else map
-        row_buf = []
-        try:
-            for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
-                row_buf.append([i] + [f"{s:.4f}" for s in stats])
-        finally:
-            # Make sure the CSV is written even if we crash or get interrupted
-            for row in sorted(row_buf):
-                writer.writerow(row)
+        mapper = pool.imap if num_devices > 1 else map
+        for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
+            writer.writerow([i] + [f"{s:.4f}" for s in stats])
 
     print("Results saved")
+
+
+def evaluate_zeroshot(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
+    ds = extract(cfg.target, max_gpus=cfg.max_gpus)
+
+    zs_eval = elk_reporter_dir() / cfg.source / "zero_shot_eval"
+    zs_eval.mkdir(parents=True, exist_ok=True)
+
+    if out_dir is None:
+        out_dir = memorably_named_dir(zs_eval)
+    else:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Print the output directory in bold with escape codes
+    print(f"Saving results to \033[1m{out_dir}\033[0m")
+
+    with open(out_dir / "cfg.yaml", "w") as f:
+        cfg.dump_yaml(f)
+
+    def get_logprobs_tensor(split):
+        print(f"Loading {split} predictions from disk")
+
+        # returns (num_examples, num_prompts, num_labels)
+        logprobs_lst = []
+        for ex in tqdm(ds[split]):
+            logprobs_lst.append(ex['losses'])
+        logprobs = -torch.tensor(logprobs_lst)
+        return logprobs
+
+    train_logprobs = get_logprobs_tensor('train')
+    test_logprobs = get_logprobs_tensor('test')
+
+    print(test_logprobs.shape)
+
+    num_prompts = test_logprobs.shape[1]
+
+    print(num_prompts)
+
+    # calculate correction factor gamma
+    # l_pos - l_neg: (num_examples, num_prompts)
+    diff = train_logprobs[:, :, 1] - train_logprobs[:, :, 0]
+
+    # there are an equal number of elements below and above gamma: (num_prompts,)
+    gammas, _ = torch.median(diff.T, dim=-1, keepdim=False)
+
+    # add correction factor
+    test_logprobs_cal = test_logprobs.clone()
+    test_logprobs_cal[:, :, 0] += gammas.unsqueeze(0)
+
+    # get predictions (num_examples, num_prompts)
+    zs_preds = torch.argmax(test_logprobs, dim=-1)
+    zs_preds_cal = torch.argmax(test_logprobs_cal, dim=-1)
+
+    # labels: (num_examples,) -> (num_examples, num_prompts)
+    labels = torch.tensor(ds['test']['label']).unsqueeze(1)
+    labels = labels.repeat(1, num_prompts)
+
+    # accuracy calculation
+    raw_acc = zs_preds.flatten().eq(labels.flatten()).float().mean()
+    cal_acc = zs_preds_cal.flatten().eq(labels.flatten()).float().mean()
+
+    # get aggregate truth probability
+    # (1 - e^l_neg) * 0.5 + (e^l_pos) * 0.5
+    truth_prob = ((1 - torch.exp(test_logprobs_cal[:, :, 0])) + torch.exp(train_logprobs[:, :, 1])) * 0.5
+
+    # auroc calculation
+    # logprobs -> probs
+    test_probs = torch.exp(test_logprobs)
+    auroc = roc_auc_score(labels.flatten(), truth_prob.flatten())
+
+    print('Raw accuracy: %.4f\nCalibrated accuracy:%.4f\nAUROC: %.4f' % (raw_acc, cal_acc, auroc))    
+
+    cols = ['acc', 'cal_acc', 'auroc']
+
+    with open(out_dir / "eval.csv", "w") as f:
+        writer = csv.writer(f)
+        writer.writerow(cols)
+        writer.writerow([raw_acc, cal_acc, auroc])

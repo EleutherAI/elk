@@ -10,6 +10,7 @@ from ..utils import (
 from .generator import _GeneratorBuilder
 from dataclasses import dataclass, InitVar
 from datasets import (
+    Array2D,
     Array3D,
     DatasetDict,
     Features,
@@ -28,7 +29,8 @@ from transformers import (
     BatchEncoding,
     PreTrainedModel,
 )
-from typing import Iterable, Literal, Union
+import transformers
+from typing import Iterable, Literal, Union, Type
 import logging
 import torch
 
@@ -71,6 +73,29 @@ class ExtractionConfig(Serializable):
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
 
+def get_model_class(model_str: str) -> Type[PreTrainedModel]:
+    model_cfg = AutoConfig.from_pretrained(model_str)
+
+    architectures = model_cfg.architectures
+
+    def get_arch_string(arch_suffix):
+        for arch_str in architectures:
+            if arch_str.endswith(arch_suffix):
+                return arch_str
+        return None
+
+    suffixes = ['SequenceClassification', 'LMHeadModel', 'ConditionalGeneration']
+
+    for suffix in suffixes:
+        supported_arch = get_arch_string(suffix)
+
+        if supported_arch is None:
+            continue
+    
+        return getattr(transformers, supported_arch)
+
+    raise ValueError(f'{model_str} does not support any architectures in the list: {architectures}')
+
 def extract_hiddens(
     cfg: ExtractionConfig,
     *,
@@ -102,7 +127,7 @@ def extract_hiddens(
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(cfg.model, torch_dtype="auto").to(device)
+    model = get_model_class(cfg.model).from_pretrained(cfg.model, torch_dtype="auto").to(device)
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
@@ -174,6 +199,8 @@ def extract_hiddens(
         }
         variant_ids = [prompt.template_name for prompt in prompts]
 
+        loss_all = torch.empty((prompt_ds.num_variants, num_choices), device=device, dtype=torch.float16)
+
         # Iterate over variants
         for i, variant_inputs in enumerate(inputs):
             # Iterate over answers
@@ -201,10 +228,13 @@ def extract_hiddens(
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
+                
+                loss_all[i, j] = outputs.loss
 
         yield dict(
             label=prompts[0].label,
             variant_ids=variant_ids,
+            losses=loss_all,
             **hidden_dict,
         )
 
@@ -276,6 +306,10 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
         "label": features[label_col],
+        "losses": Array2D(
+            dtype="float32",
+            shape=(num_variants, 2),
+        )
     }
     devices = select_usable_devices(max_gpus)
     builders = {
