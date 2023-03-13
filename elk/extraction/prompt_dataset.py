@@ -120,15 +120,15 @@ class PromptDataset(TorchDataset):
         # This allows you to just set split="train" and split="test" for any dataset
         # and not worry about train-test leakage.
 
-        # split_name, *others = ds_dict.keys()
-        # if not others:
-        #     print("Creating a 75/25 train-test split...")
+        split_name, *others = ds_dict.keys()
+        if not others:
+            print("Creating a 75/25 train-test split...")
 
-        #     # Don't shuffle now because we're going to shuffle later
-        #     ds_dict = ds_dict[split_name].train_test_split(
-        #         seed=cfg.seed, shuffle=False, stratify_by_column=cfg.label_column
-        #     )
-        #     assert isinstance(ds_dict, DatasetDict)
+            # Don't shuffle now because we're going to shuffle later
+            ds_dict = ds_dict[split_name].train_test_split(
+                seed=cfg.seed, shuffle=False, stratify_by_column=cfg.label_column
+            )
+            assert isinstance(ds_dict, DatasetDict)
 
         # The 'active' split is the one that gets queried by __getitem__
         self.active_split = ds_dict[split]
@@ -254,7 +254,7 @@ class PromptDataset(TorchDataset):
         return self.active_split.features[self.label_column].num_classes
 
 
-class Interleaved_Datasets(TorchDataset):
+class InterleavedDatasets(TorchDataset):
     def __init__(
         self,
         datasets: list[PromptDataset],

@@ -52,14 +52,14 @@ def train_reporter(
     cfg: RunConfig,
     dataset: DatasetDict,
     out_dir: Path,
-    layer: Union[int, list[int]],
+    layer: list[int],
     devices: list[str],
     world_size: int = 1,
 ):
     """Train a single reporter on a single layer, or a list of layers."""
 
     # Reproducibility
-    seed = cfg.net.seed + layer if isinstance(layer, int) else layer[0]
+    seed = cfg.net.seed + layer[0]
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
@@ -180,8 +180,9 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
+    # Create subsets of layers to train reporters on
     layers = [
-        int(feat[len("hidden_") :])
+        [int(feat[len("hidden_") :])]
         for feat in ds["train"].features
         if feat.startswith("hidden_")
     ]
@@ -189,7 +190,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     # concatenate hidden states from a previous layer, if told to
     if cfg.concatenate_layers > 0:
         for i in range(cfg.concatenate_layers, len(layers)):
-            layers[i] = [layers[i], layers[i] - cfg.concatenate_layers]
+            layers[i] = layers[i] + [layers[i][0] - cfg.concatenate_layers]
 
     # Train reporters for each layer in parallel
     with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
