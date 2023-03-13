@@ -11,8 +11,6 @@ import torch.nn as nn
 
 @dataclass
 class EigenReporterConfig(ReporterConfig):
-    """ """
-
     inv_weight: float = 5.0
     neg_cov_weight: float = 5.0
 
@@ -106,13 +104,29 @@ class EigenReporter(Reporter):
         # This is just a standard online *mean* update, since we're computing the
         # mean of covariance matrices, not the covariance matrix of means.
         sample_invar = cov_mean_fused(x_pos) + cov_mean_fused(x_neg)
-        self.invariance += (
-            sample_n * (sample_invar - self.invariance) / self.n
-        )  # [d, d]
+        self.invariance += (sample_n / self.n) * (sample_invar - self.invariance)
 
         # *** Negative covariance ***
         self.contrastive_M2.addmm_(neg_delta.mT, pos_delta2)
         self.contrastive_M2.addmm_(pos_delta.mT, neg_delta2)
+
+    def fit_streaming(self) -> float:
+        """Fit the probe using the current streaming statistics."""
+        alpha, beta = self.config.inv_weight, self.config.neg_cov_weight
+        A = self.variance - alpha * self.invariance - beta * self.neg_covariance
+
+        # Use SciPy's sparse eigensolver for CPU tensors. This is a frontend to ARPACK,
+        # which uses the Lanczos method under the hood.
+        if A.device.type == "cpu":
+            from scipy.sparse.linalg import eigsh
+
+            L, Q = eigsh(A.numpy(), k=1)
+            self.linear.weight.data = torch.from_numpy(Q).T
+        else:
+            L, Q = torch.linalg.eigh(A)
+            self.linear.weight.data = Q[:, -1, None].T
+
+        return float(L[-1])
 
     def fit(
         self,
@@ -131,19 +145,4 @@ class EigenReporter(Reporter):
         """
         assert x_pos.shape == x_neg.shape
         self.update(x_pos, x_neg)
-
-        alpha, beta = self.config.inv_weight, self.config.neg_cov_weight
-        A = self.variance - alpha * self.invariance - beta * self.neg_covariance
-
-        # Use SciPy's sparse eigensolver for CPU tensors. This is a frontend to ARPACK,
-        # which uses the Lanczos method under the hood.
-        if A.device.type == "cpu":
-            from scipy.sparse.linalg import eigsh
-
-            L, Q = eigsh(A.numpy(), k=1)
-            self.linear.weight.data = torch.from_numpy(Q).T
-        else:
-            L, Q = torch.linalg.eigh(A)
-            self.linear.weight.data = Q[:, -1, None].T
-
-        return float(L[-1])
+        return self.fit_streaming()
