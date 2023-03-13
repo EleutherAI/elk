@@ -20,7 +20,7 @@ repos:
     -   id: flake8
         args: ["--ignore=E203,F401,W503", --max-line-length=88]
 -   repo: https://github.com/codespell-project/codespell
-    rev: v2.2.2
+    rev: v2.2.4
     hooks:
     -   id: codespell
         # The promptsource templates spuriously get flagged without this
