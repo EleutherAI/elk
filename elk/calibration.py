@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from torch import Tensor
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 import torch
 import warnings
 
@@ -37,9 +37,7 @@ class CalibrationError:
         self.labels.append(probs)
         return self
 
-    def compute(
-        self, p: int = 2, strategy: Literal["quantile", "uniform"] = "quantile"
-    ) -> CalibrationEstimate:
+    def compute(self, p: int = 2) -> CalibrationEstimate:
         """Compute the expected calibration error.
 
         Args:
@@ -61,25 +59,14 @@ class CalibrationError:
         # Using a single bin is guaranteed to be monotonic, so we start there.
         b_star, accs_star = 1, labels.mean().unsqueeze(0)
         for b in range(2, n + 1):
-            if strategy == "quantile":
-                # Split into (nearly) equal mass bins
-                accs = torch.stack([h.mean() for h in labels.tensor_split(b)])
-            elif strategy == "uniform":
-                # Split into equal width bins
-                grid = torch.linspace(0, 1, b + 1, device=labels.device)
-                bin_sizes = torch.searchsorted(confidences, grid, right=True).diff()
-                if not torch.all(bin_sizes):
-                    break
-
-                accs = torch.segment_reduce(labels, "mean", lengths=bin_sizes)
-            else:
-                raise ValueError(f"Unknown strategy '{strategy}'.")
+            # Split into (nearly) equal mass bins
+            freqs = torch.stack([h.mean() for h in labels.tensor_split(b)])
 
             # This binning is not strictly monotonic, let's break
-            if not torch.all(accs[1:] > accs[:-1]):
+            if not torch.all(freqs[1:] > freqs[:-1]):
                 break
 
-            elif not torch.all(accs * (1 - accs)):
+            elif not torch.all(freqs * (1 - freqs)):
                 warnings.warn(
                     "Calibration error estimate may be unreliable due to insufficient"
                     " data in some bins."
@@ -88,7 +75,7 @@ class CalibrationError:
 
             # Save the current binning, it's monotonic and may be the best one
             else:
-                accs_star = accs
+                accs_star = freqs
                 b_star = b
 
         # Split into (nearly) equal mass bins. They won't be exactly equal, so we
