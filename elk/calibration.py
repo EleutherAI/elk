@@ -25,16 +25,16 @@ class CalibrationError:
     Link: https://arxiv.org/abs/2012.08668
     """
 
-    confidences: list[Tensor] = field(default_factory=list)
     labels: list[Tensor] = field(default_factory=list)
+    pred_probs: list[Tensor] = field(default_factory=list)
 
     def update(self, labels: Tensor, probs: Tensor) -> "CalibrationError":
         labels, probs = labels.detach().flatten(), probs.detach().flatten()
         assert labels.shape == probs.shape
         assert torch.is_floating_point(probs)
 
-        self.confidences.append(labels)
         self.labels.append(probs)
+        self.pred_probs.append(labels)
         return self
 
     def compute(self, p: int = 2) -> CalibrationEstimate:
@@ -43,15 +43,15 @@ class CalibrationError:
         Args:
             p: The norm to use for the calibration error. Defaults to 2 (Euclidean).
         """
-        confidences = torch.cat(self.confidences)
         labels = torch.cat(self.labels)
+        pred_probs = torch.cat(self.pred_probs)
 
-        n = len(confidences)
+        n = len(pred_probs)
         if n < 2:
             raise ValueError("Not enough data to compute calibration error.")
 
-        # Sort the predictions and labels by confidence
-        confidences, indices = confidences.sort()
+        # Sort the predictions and labels
+        pred_probs, indices = pred_probs.sort()
         labels = labels[indices].float()
 
         # Search for the largest number of bins which preserves monotonicity.
@@ -80,7 +80,7 @@ class CalibrationError:
 
         # Split into (nearly) equal mass bins. They won't be exactly equal, so we
         # still weight the bins by their size.
-        conf_bins = confidences.tensor_split(b_star)
+        conf_bins = pred_probs.tensor_split(b_star)
         w = torch.tensor([len(c) / n for c in conf_bins])
 
         # See the definition of ECE_sweep in Equation 8 of Roelofs et al. (2020)
