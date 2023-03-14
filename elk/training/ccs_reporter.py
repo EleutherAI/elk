@@ -227,6 +227,10 @@ class CcsReporter(Reporter):
         """
         self.update(x_pos, x_neg)
 
+        # Normalization
+        x_pos = x_pos - self.pos_mean
+        x_neg = x_neg - self.neg_mean
+
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf
         best_state: dict[str, Tensor] = {}  # State dict of the best run
