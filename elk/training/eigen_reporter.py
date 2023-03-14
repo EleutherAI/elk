@@ -98,7 +98,7 @@ class EigenReporter(Reporter):
         return 0.5 * (self(x_pos) - self(x_neg))
 
     @property
-    def contrastive_cov(self) -> Tensor:
+    def contrastive_xcov(self) -> Tensor:
         return self.contrastive_xcov_M2 / self.n
 
     @property
@@ -165,7 +165,7 @@ class EigenReporter(Reporter):
         A = (
             alpha * self.intercluster_cov
             - beta * self.intracluster_cov
-            - gamma * self.contrastive_cov
+            - gamma * self.contrastive_xcov
         )
 
         # Use SciPy's sparse eigensolver for CPU tensors. This is a frontend to ARPACK,
