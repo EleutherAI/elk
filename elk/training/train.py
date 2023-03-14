@@ -160,6 +160,16 @@ def train_reporter(
 
 def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     # Extract the hidden states first if necessary
+    is_prompt_based_loss = (
+        "ccs_prompt_var" in cfg.net.loss_dict.keys()
+        or "prompt_var_squared" in cfg.net.loss_dict.keys()
+    )
+    if cfg.data.prompts.num_variants == 1 and is_prompt_based_loss:
+        raise ValueError(
+            "Loss functions ccs_prompt_var and prompt_var_squared "
+            "incompatible with --num_variants 1."
+        )
+
     ds = extract(cfg.data, max_gpus=cfg.max_gpus)
 
     if out_dir is None:
