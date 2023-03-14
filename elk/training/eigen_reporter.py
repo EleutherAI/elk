@@ -208,43 +208,14 @@ class EigenReporter(Reporter):
             tolerance_change=torch.finfo(x_pos.dtype).eps,
             tolerance_grad=torch.finfo(x_pos.dtype).eps,
         )
+        labels = labels.repeat_interleave(x_pos.shape[1]).float()
 
         def closure():
             opt.zero_grad()
-            logits = self.predict(x_pos, x_neg)
+            logits = self.predict(x_pos, x_neg).flatten()
             loss = nn.functional.binary_cross_entropy_with_logits(logits, labels)
 
             loss.backward()
             return float(loss)
 
         opt.step(closure)
-
-    def tune(
-        self,
-        labels: Tensor,
-        x_pos: Tensor,
-        x_neg: Tensor,
-        inv_weights: Sequence[float] = (),
-    ) -> list[EvalResult]:
-        """Fit the probe to the contrast pair (x_pos, x_neg).
-
-        Args:
-            x_pos: The positive test examples.
-            x_neg: The negative test examples.
-
-        Returns:
-            loss: The best loss obtained.
-        """
-        assert x_pos.shape == x_neg.shape
-        assert self.n > 0, "Must call `update` before `tune`"
-
-        results = []
-        _config = deepcopy(self.config)
-
-        for inv_weight in inv_weights:
-            self.config.inv_weight = inv_weight
-            self.fit_streaming(warm_start=True)
-            results.append(self.score(labels, x_pos, x_neg))
-
-        self.config = _config
-        return results

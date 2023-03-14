@@ -39,51 +39,6 @@ def cov_mean_fused(x: Tensor) -> Tensor:
     return x_.mT @ x_ / (b * n)
 
 
-def power_iteration(
-    A: Tensor, b0: Optional[Tensor] = None, max_iter: int = 1000, tol: float = 1e-3
-) -> tuple[Tensor, Tensor]:
-    """
-    Power iteration method for computing the dominant eigenpair of a Hermitian matrix.
-
-    Args:
-        A: Symmetric matrix whose dominant eigenpair we want to compute.
-        b0: Initial vector for the power iteration. If None, a random vector is used.
-        max_iter: The maximum number of iterations to perform before giving up.
-        tol: The tolerance for the relative error of the dominant eigenvalue.
-    Returns:
-        largest_eigval: The largest eigenvalue of A
-        largest_eigvec: The largest eigenvector of A
-    """
-    # Initialize a random vector
-    if b0 is None:
-        b_k = torch.randn(A.shape[0], 1, device=A.device, dtype=A.dtype)
-    else:
-        b_k = b0
-
-    for k in range(max_iter):
-        # Calculate the matrix-by-vector product Ab and normalize
-        b_next = torch.nn.functional.normalize(A @ b_k, dim=0)
-
-        # Check if the vector has converged every 25 iterations.
-        # We don't check every iteration because we don't want to
-        # cause a host-device sync each time.
-        if k % 25 == 0 and torch.norm(b_next - b_k) < tol:
-            b_k = b_next
-            break
-
-        b_k = b_next
-
-    # Calculate the matrix-by-vector product Ab
-    Ab = A @ b_k
-
-    # Calculate the eigenvalue
-    largest_eigval = b_k.mT @ Ab
-
-    # Calculate the eigenvector
-    largest_eigvec = Ab / largest_eigval
-    return largest_eigval.squeeze(), largest_eigvec.squeeze()
-
-
 def stochastic_round_constrained(x: list[float], rng: random.Random) -> list[int]:
     """Stochastic rounding under integer constraints.
 

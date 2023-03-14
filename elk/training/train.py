@@ -105,6 +105,9 @@ def train_reporter(
         raise ValueError(f"Unknown reporter config type: {type(cfg.net)}")
 
     train_loss = reporter.fit(x0, x1)
+    if isinstance(reporter, EigenReporter):
+        reporter.platt_scale(train_labels, x0, x1)
+
     val_result = reporter.score(
         val_labels,
         val_x0,
@@ -142,7 +145,7 @@ def train_reporter(
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
 
         stats += [lr_auroc, lr_acc]
-        with open(lr_dir / f"layer_{layer}.pkl", "wb") as file:
+        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
             pickle.dump(lr_model, file)
 
     with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
