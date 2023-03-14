@@ -172,7 +172,16 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
-    cols = ["layer", "pseudo_auroc", "train_loss", "loss", "acc", "cal_acc", "auroc"]
+    cols = [
+        "layer",
+        "pseudo_auroc",
+        "train_loss",
+        "loss",
+        "acc",
+        "cal_acc",
+        "auroc",
+        "ece",
+    ]
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 

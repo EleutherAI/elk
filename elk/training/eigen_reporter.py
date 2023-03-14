@@ -90,8 +90,8 @@ class EigenReporter(Reporter):
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
     def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
-        """Return the predicted log odds on the contrast pair `(x_pos, x_neg)`."""
-        return 0.5 * (self(x_pos) - self(x_neg))
+        """Return the predicted probability on the contrast pair `(x_pos, x_neg)`."""
+        return torch.sigmoid(0.5 * (self(x_pos) - self(x_neg)))
 
     @property
     def contrastive_cov(self) -> Tensor:
@@ -212,8 +212,8 @@ class EigenReporter(Reporter):
 
         def closure():
             opt.zero_grad()
-            logits = self.predict(x_pos, x_neg).flatten()
-            loss = nn.functional.binary_cross_entropy_with_logits(logits, labels)
+            probs = self.predict(x_pos, x_neg).flatten()
+            loss = nn.functional.binary_cross_entropy(probs, labels)
 
             loss.backward()
             return float(loss)
