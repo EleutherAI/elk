@@ -1,6 +1,6 @@
 """Functions for extracting the hidden states of a model."""
 
-from .prompt_dataset import Prompt, PromptDataset, PromptConfig
+from .prompt_dataset import Prompt, PromptDataset, PromptConfig, InterleavedDatasets
 from ..utils import (
     assert_type,
     infer_label_column,
@@ -88,17 +88,26 @@ def extract_hiddens(
     if rank != 0:
         logging.disable(logging.CRITICAL)
 
-    prompt_ds = PromptDataset(cfg.prompts, rank, world_size, split)
     if rank == 0:
-        prompt_names = prompt_ds.prompter.all_template_names
         if cfg.prompts.num_variants >= 1:
-            print(
-                f"Using {cfg.prompts.num_variants} prompts per example: {prompt_names}"
-            )
+            print(f"Using {cfg.prompts.num_variants} prompts per example")
         elif cfg.prompts.num_variants == -1:
-            print(f"Using all prompts per example: {prompt_names}")
+            print("Using all prompts per example")
         else:
             raise ValueError(f"Invalid prompt num_variants: {cfg.prompts.num_variants}")
+
+    prompt_datasets = []
+
+    # create a PromptDataset for each dataset in cfg.prompts
+    for dataset_index in range(len(cfg.prompts.datasets)):
+        dataset_name = cfg.prompts.datasets[dataset_index]
+        prompt_ds = PromptDataset(cfg.prompts, rank, world_size, split, dataset_index)
+        prompt_names = prompt_ds.prompter.all_template_names
+        print(f"Prompts for dataset {dataset_name}: {prompt_names}")
+        prompt_datasets.append(prompt_ds)
+
+    # combine each PromptDataset together, interleaving them
+    interleaved_prompt_datasets = InterleavedDatasets(prompt_datasets)
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
@@ -114,7 +123,10 @@ def extract_hiddens(
 
     # TODO: Make this configurable or something
     # Token used to separate the question from the answer
-    num_choices = prompt_ds.num_classes
+    num_choices = prompt_datasets[0].num_classes
+    for i in range(1, len(prompt_datasets)):
+        assert prompt_datasets[i].num_classes == num_choices
+
     sep_token = tokenizer.sep_token or "\n"
 
     if not tokenizer.pad_token:
@@ -160,11 +172,12 @@ def extract_hiddens(
 
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
-    for prompts in prompt_ds:
+
+    for prompts in interleaved_prompt_datasets:
         inputs = collate(prompts)
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
-                prompt_ds.num_variants,
+                prompt_datasets[0].num_variants,
                 num_choices,
                 model.config.hidden_size,
                 device=device,
@@ -244,7 +257,8 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             {
                 k: SplitInfo(
                     name=k,
-                    num_examples=min(limit[k], v.num_examples),
+                    num_examples=min(limit[k], v.num_examples)
+                    * len(cfg.prompts.datasets),
                     dataset_name=v.dataset_name,
                 )
                 for k, v in base_splits.items()
@@ -255,13 +269,14 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
     num_variants = cfg.prompts.num_variants
-    ds_name, _, config_name = cfg.prompts.dataset.partition(" ")
+    ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
 
     features = assert_type(Features, info.features)
     label_col = cfg.prompts.label_column or infer_label_column(features)
 
     splits = get_splits()
+    print("SPLITS: ", splits)
 
     layer_cols = {
         f"hidden_{layer}": Array3D(

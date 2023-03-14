@@ -22,6 +22,7 @@ import pickle
 import random
 import torch
 import torch.multiprocessing as mp
+from typing import Union
 import warnings
 
 
@@ -43,20 +44,22 @@ class RunConfig(Serializable):
     max_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
+    concatenate_layers: int = 0
+    # if nonzero, appends the hidden states of the layer concatenate_layers before
 
 
 def train_reporter(
     cfg: RunConfig,
     dataset: DatasetDict,
     out_dir: Path,
-    layer: int,
+    layer: list[int],
     devices: list[str],
     world_size: int = 1,
 ):
-    """Train a single reporter on a single layer."""
+    """Train a single reporter on a single layer, or a list of layers."""
 
     # Reproducibility
-    seed = cfg.net.seed + layer
+    seed = cfg.net.seed + layer[0]
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
@@ -73,9 +76,17 @@ def train_reporter(
         train_labels = cast(Tensor, train["label"])
         val_labels = cast(Tensor, val["label"])
 
+        # concatenate hidden states across layers if multiple layers are inputted
+        train_hiddens = torch.cat(
+            [cast(Tensor, train[f"hidden_{lay}"]) for lay in layer], dim=-1
+        )
+        val_hiddens = torch.cat(
+            [cast(Tensor, val[f"hidden_{lay}"]) for lay in layer], dim=-1
+        )
+
         train_h, val_h = normalize(
-            int16_to_float32(assert_type(Tensor, train[f"hidden_{layer}"])),
-            int16_to_float32(assert_type(Tensor, val[f"hidden_{layer}"])),
+            int16_to_float32(assert_type(Tensor, train_hiddens)),
+            int16_to_float32(assert_type(Tensor, val_hiddens)),
             method=cfg.normalization,
         )
 
@@ -88,7 +99,7 @@ def train_reporter(
             )
             if pseudo_auroc > 0.6:
                 warnings.warn(
-                    f"The pseudo-labels at layer {layer} are linearly separable with "
+                    f"The pseudo-labels at layers {layer} are linearly separable with "
                     f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
                     f"algorithm will not converge to a good solution."
                 )
@@ -111,7 +122,8 @@ def train_reporter(
 
     lr_dir.mkdir(parents=True, exist_ok=True)
     reporter_dir.mkdir(parents=True, exist_ok=True)
-    stats = [layer, pseudo_auroc, train_loss, *val_result]
+    layer_name = layer if isinstance(layer, int) else max(layer)
+    stats = [layer_name, pseudo_auroc, train_loss, *val_result]
 
     if not cfg.skip_baseline:
         # repeat_interleave makes `num_variants` copies of each label, all within a
@@ -178,11 +190,18 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
+    # Create subsets of layers to train reporters on
     layers = [
-        int(feat[len("hidden_") :])
+        [int(feat[len("hidden_") :])]
         for feat in ds["train"].features
         if feat.startswith("hidden_")
     ]
+
+    # concatenate hidden states from a previous layer, if told to
+    if cfg.concatenate_layers > 0:
+        for i in range(cfg.concatenate_layers, len(layers)):
+            layers[i] = layers[i] + [layers[i][0] - cfg.concatenate_layers]
+
     # Train reporters for each layer in parallel
     with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
         fn = partial(
