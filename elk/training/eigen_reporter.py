@@ -27,6 +27,7 @@ class EigenReporterConfig(ReporterConfig):
 
     num_heads: int = 1
 
+
 class EigenReporter(Reporter):
     """A linear reporter whose weights are computed via eigendecomposition.
 
