@@ -104,10 +104,7 @@ def train_reporter(
     else:
         raise ValueError(f"Unknown reporter config type: {type(cfg.net)}")
 
-    train_loss = reporter.fit(x0, x1)
-    if isinstance(reporter, EigenReporter):
-        reporter.platt_scale(train_labels, x0, x1)
-
+    train_loss = reporter.fit(x0, x1, train_labels)
     val_result = reporter.score(
         val_labels,
         val_x0,
@@ -172,7 +169,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
-    cols = ["layer", "pseudo_auroc", "train_loss", "loss", "acc", "cal_acc", "auroc"]
+    cols = ["layer", "pseudo_auroc", "train_loss", "acc", "cal_acc", "auroc"]
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
