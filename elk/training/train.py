@@ -104,10 +104,7 @@ def train_reporter(
     else:
         raise ValueError(f"Unknown reporter config type: {type(cfg.net)}")
 
-    train_loss = reporter.fit(x0, x1)
-    if isinstance(reporter, EigenReporter):
-        reporter.platt_scale(train_labels, x0, x1)
-
+    train_loss = reporter.fit(x0, x1, train_labels)
     val_result = reporter.score(
         val_labels,
         val_x0,
@@ -176,7 +173,6 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
         "layer",
         "pseudo_auroc",
         "train_loss",
-        "loss",
         "acc",
         "cal_acc",
         "auroc",

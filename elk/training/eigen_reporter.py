@@ -1,11 +1,10 @@
 """An ELK reporter network."""
 
 from ..math_util import cov_mean_fused
-from .reporter import EvalResult, Reporter, ReporterConfig
-from copy import deepcopy
+from .reporter import Reporter, ReporterConfig
 from dataclasses import dataclass
 from torch import nn, optim, Tensor
-from typing import Optional, Sequence
+from typing import Optional
 import torch
 
 
@@ -14,12 +13,14 @@ class EigenReporterConfig(ReporterConfig):
     """Configuration for an EigenReporter.
 
     Args:
+        var_weight: The weight of the variance term in the loss.
         inv_weight: The weight of the invariance term in the loss.
         neg_cov_weight: The weight of the negative covariance term in the loss.
         num_heads: The number of reporter heads to fit. In other words, the number
             of eigenvectors to compute from the VINC matrix.
     """
 
+    var_weight: float = 1.0
     inv_weight: float = 5.0
     neg_cov_weight: float = 5.0
 
@@ -35,12 +36,13 @@ class EigenReporter(Reporter):
 
     Attributes:
         config: The reporter configuration.
-        contrastive_M2: The running sum of the cross-covariance between the
+        intercluster_cov_M2: The running sum of the covariance matrices of the
             centroids of the positive and negative clusters.
-        intracluster_cov: The running sum of the covariance matrices of the
+        intracluster_cov: The running mean of the covariance matrices within each
+            cluster. This doesn't need to be a running sum because it's doesn't use
+            Welford's algorithm.
+        contrastive_xcov_M2: The running sum of the cross-covariance between the
             centroids of the positive and negative clusters.
-        M2: The running sum of the covariance matrices of the centroids of the
-            positive and negative clusters.
         n: The running sum of the number of samples in the positive and negative
             clusters.
         weight: The reporter weight matrix. Guaranteed to always be orthogonal, and
@@ -49,9 +51,9 @@ class EigenReporter(Reporter):
 
     config: EigenReporterConfig
 
-    contrastive_M2: Tensor
-    intracluster_cov: Tensor
-    M2: Tensor
+    intercluster_cov_M2: Tensor  # variance
+    intracluster_cov: Tensor  # invariance
+    contrastive_xcov_M2: Tensor  # negative covariance
     n: Tensor
     weight: Tensor
 
@@ -69,11 +71,12 @@ class EigenReporter(Reporter):
         self.scale = nn.Parameter(torch.ones(cfg.num_heads, device=device, dtype=dtype))
 
         self.register_buffer(
-            "contrastive_M2",
+            "contrastive_xcov_M2",
             torch.zeros(in_features, in_features, device=device, dtype=dtype),
         )
         self.register_buffer(
-            "M2", torch.zeros(in_features, in_features, device=device, dtype=dtype)
+            "intercluster_cov_M2",
+            torch.zeros(in_features, in_features, device=device, dtype=dtype),
         )
         self.register_buffer(
             "intracluster_cov",
@@ -90,22 +93,22 @@ class EigenReporter(Reporter):
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
     def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
-        """Return the predicted probability on the contrast pair `(x_pos, x_neg)`."""
-        return torch.sigmoid(0.5 * (self(x_pos) - self(x_neg)))
+        """Return the predicted log odds on the contrast pair `(x_pos, x_neg)`."""
+        return 0.5 * (self(x_pos) - self(x_neg))
 
     @property
-    def contrastive_cov(self) -> Tensor:
-        return self.contrastive_M2 / self.n
+    def contrastive_xcov(self) -> Tensor:
+        return self.contrastive_xcov_M2 / self.n
 
     @property
     def intercluster_cov(self) -> Tensor:
-        return self.M2 / self.n
+        return self.intercluster_cov_M2 / self.n
 
     def clear(self) -> None:
         """Clear the running statistics of the reporter."""
-        self.contrastive_M2.zero_()
+        self.contrastive_xcov_M2.zero_()
         self.intracluster_cov.zero_()
-        self.M2.zero_()
+        self.intercluster_cov_M2.zero_()
         self.n.zero_()
 
     @torch.no_grad()
@@ -136,8 +139,8 @@ class EigenReporter(Reporter):
         # Post-mean update deltas are used to update the (co)variance
         neg_delta2 = neg_centroids - self.neg_mean  # [n, d]
         pos_delta2 = pos_centroids - self.pos_mean  # [n, d]
-        self.M2.addmm_(neg_delta.mT, neg_delta2)
-        self.M2.addmm_(pos_delta.mT, pos_delta2)
+        self.intercluster_cov_M2.addmm_(neg_delta.mT, neg_delta2)
+        self.intercluster_cov_M2.addmm_(pos_delta.mT, pos_delta2)
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
@@ -148,16 +151,15 @@ class EigenReporter(Reporter):
         )
 
         # *** Negative covariance ***
-        self.contrastive_M2.addmm_(neg_delta.mT, pos_delta2)
-        self.contrastive_M2.addmm_(pos_delta.mT, neg_delta2)
+        self.contrastive_xcov_M2.addmm_(neg_delta.mT, pos_delta2)
+        self.contrastive_xcov_M2.addmm_(pos_delta.mT, neg_delta2)
 
     def fit_streaming(self, warm_start: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
-        alpha, beta = self.config.inv_weight, self.config.neg_cov_weight
         A = (
-            self.intercluster_cov
-            - alpha * self.intracluster_cov
-            - beta * self.contrastive_cov
+            self.config.var_weight * self.intercluster_cov
+            - self.config.inv_weight * self.intracluster_cov
+            - self.config.neg_cov_weight * self.contrastive_xcov
         )
 
         # Use SciPy's sparse eigensolver for CPU tensors. This is a frontend to ARPACK,
@@ -175,26 +177,35 @@ class EigenReporter(Reporter):
             L, Q = torch.linalg.eigh(A)
             self.weight.data = Q[:, -self.config.num_heads :].T
 
-        return float(L[-1])
+        return -float(L[-1])
 
     def fit(
         self,
         x_pos: Tensor,
         x_neg: Tensor,
         labels: Optional[Tensor] = None,
+        *,
+        platt_scale: bool = True,
     ) -> float:
         """Fit the probe to the contrast pair (x_pos, x_neg).
 
         Args:
             x_pos: The positive examples.
             x_neg: The negative examples.
+            labels: The ground truth labels if available.
+            platt_scale: Whether to fit the scale and bias terms to data with LBFGS.
+                This is only used if labels are available.
 
         Returns:
-            loss: The best loss obtained.
+            loss: Negative eigenvalue associated with the VINC direction.
         """
         assert x_pos.shape == x_neg.shape
         self.update(x_pos, x_neg)
-        return self.fit_streaming()
+        loss = self.fit_streaming()
+        if labels is not None and platt_scale:
+            self.platt_scale(labels, x_pos, x_neg)
+
+        return loss
 
     def platt_scale(
         self, labels: Tensor, x_pos: Tensor, x_neg: Tensor, max_iter: int = 100
@@ -202,7 +213,7 @@ class EigenReporter(Reporter):
         """Fit the scale and bias terms to data with LBFGS."""
 
         opt = optim.LBFGS(
-            self.parameters(),
+            [self.bias, self.scale],
             line_search_fn="strong_wolfe",
             max_iter=max_iter,
             tolerance_change=torch.finfo(x_pos.dtype).eps,
@@ -212,8 +223,8 @@ class EigenReporter(Reporter):
 
         def closure():
             opt.zero_grad()
-            probs = self.predict(x_pos, x_neg).flatten()
-            loss = nn.functional.binary_cross_entropy(probs, labels)
+            logits = self.predict(x_pos, x_neg).flatten()
+            loss = nn.functional.binary_cross_entropy_with_logits(logits, labels)
 
             loss.backward()
             return float(loss)
