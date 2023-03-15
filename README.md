@@ -23,7 +23,7 @@ This will automatically download the model and dataset, run the model and extrac
 ```bash
 elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --net ccs
 ```
-This will generate a CCS reporter instead, of the Eigen reporter, which is the default
+This will generate a CCS reporter instead of the Eigen reporter, which is the default
 
 
 ## Caching
