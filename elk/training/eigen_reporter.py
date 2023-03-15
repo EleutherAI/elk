@@ -27,7 +27,6 @@ class EigenReporterConfig(ReporterConfig):
 
     num_heads: int = 1
 
-
 class EigenReporter(Reporter):
     """A linear reporter whose weights are computed via eigendecomposition.
 
@@ -80,7 +79,7 @@ class EigenReporter(Reporter):
             torch.zeros(in_features, in_features, device=device, dtype=dtype),
         )
         self.register_buffer(
-            "intracluster_cov_M2",
+            "intracluster_cov",
             torch.zeros(in_features, in_features, device=device, dtype=dtype),
         )
         self.register_buffer(
