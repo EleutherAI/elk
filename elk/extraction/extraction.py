@@ -71,6 +71,7 @@ class ExtractionConfig(Serializable):
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
 
+@torch.no_grad()
 def extract_hiddens(
     cfg: ExtractionConfig,
     *,

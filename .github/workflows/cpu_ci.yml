@@ -21,8 +21,8 @@ jobs:
       - name: Type Checking
         uses: jakebailey/pyright-action@v1
 
-      - name: Run CPU Tests
-        run: pytest -m cpu
+      - name: Run normal tests, excluding GPU tests
+        run: pytest -m "not gpu"
 
   run-tests-python3_10:
     runs-on: ubuntu-latest
@@ -42,5 +42,5 @@ jobs:
       - name: Type Checking
         uses: jakebailey/pyright-action@v1
 
-      - name: Run CPU Tests
-        run: pytest -m cpu
+      - name: Run normal tests, excluding GPU tests
+        run: pytest -m "not gpu"
