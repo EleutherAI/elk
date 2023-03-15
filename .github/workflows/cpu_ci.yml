@@ -26,4 +26,3 @@ jobs:
 
       - name: Run CPU Tests
         run: pytest -m cpu
-
