@@ -1,0 +1,256 @@
+dataset: boolq
+templates:
+  0351d12a-e630-4d19-8b41-e199266e38f7: !Template
+    answer_choices: No ||| Yes
+    id: 0351d12a-e630-4d19-8b41-e199266e38f7
+    jinja: '{{passage}} Given the above passage, {{ question }} |||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: mallen_0
+    reference: ''
+  0f372fb1-795a-47b6-8ddf-c4fd1579e76a: !Template
+    answer_choices: incorrect ||| correct
+    id: 0f372fb1-795a-47b6-8ddf-c4fd1579e76a
+    jinja: 'According to expert sources, "{{passage}}", so next time someone someone asks "{{ question }}", you should say that is ||| {% if answer %} {{ answer_choices[1] }}
+              {% else %} {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: mallen_1
+    reference: ''
+  066474a5-1498-46b7-bfee-ac0c5160707f: !Template
+    answer_choices: Negatory. Over. ||| Affirmative. Over.
+    id: 066474a5-1498-46b7-bfee-ac0c5160707f
+    jinja: '"{{passage}}" Based on that, {{ question }}? Requesting an answer. Over. |||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: mallen_2
+    reference: ''
+  066474a5-1498-46b7-bfee-ac0c51607070: !Template
+    answer_choices: No ||| Yes
+    id: 066474a5-1498-46b7-bfee-ac0c51607070
+    jinja: '{{passage}}\n\nThe answer to "{{ question }}" is ||| {% if answer %} {{ answer_choices[1] }}
+              {% else %} {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: mallen_3
+    reference: ''
+  8351d12a-e630-4d19-8b41-e199266e38f7: !Template
+    answer_choices: False ||| True
+    id: 8351d12a-e630-4d19-8b41-e199266e38f7
+    jinja: 'Passage: {{passage}}
+After reading this passage, I have a question: {{question}}? True or
+False? |||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_0
+    reference: ''
+  8f372fb1-795a-47b6-8ddf-c4fd1579e76a: !Template
+    answer_choices: No ||| Yes
+    id: 8f372fb1-795a-47b6-8ddf-c4fd1579e76a
+    jinja: '{{ passage }}
+Question: {{ question }}
+Answer: ||| {% if answer %} {{ answer_choices[1] }}
+              {% else %} {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_1
+    reference: ''
+  866474a5-1498-46b7-bfee-ac0c5160707f: !Template
+    answer_choices: No ||| Yes
+    id: 866474a5-1498-46b7-bfee-ac0c5160707f
+    jinja: '{{ passage }}
+Having read that, I wonder {{ question }}? |||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_2
+    reference: ''
+  866474a5-1498-46b7-bfee-ac0c51607070: !Template
+    answer_choices: No ||| Yes
+    id: 866474a5-1498-46b7-bfee-ac0c51607070
+    jinja: 'Text: {{passage}}
+Answer the following yes/no question: {{question}}? Yes or no? |||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_3
+    reference: ''
+  9351d12a-e630-4d19-8b41-e199266e38f7: !Template
+    answer_choices: No ||| Yes
+    id: 9351d12a-e630-4d19-8b41-e199266e38f7
+    jinja: '{{ passage }}
+Having read that, could you tell me {{ question }}? |||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_4
+    reference: ''
+  9f372fb1-795a-47b6-8ddf-c4fd1579e76a: !Template
+    answer_choices: No ||| Yes
+    id: 9f372fb1-795a-47b6-8ddf-c4fd1579e76a
+    jinja: 'EXAM
+1. Answer by yes or no.
+Document: {{passage}}
+Question: {{question}}?|||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_5
+    reference: ''
+  966474a5-1498-46b7-bfee-ac0c5160707f: !Template
+    answer_choices: No ||| Yes
+    id: 966474a5-1498-46b7-bfee-ac0c5160707f
+    jinja: 'Based on the following passage, {{ question }}? {{ passage }} |||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_6
+    reference: ''
+  966474a5-1498-46b7-bfee-ac0c51607070: !Template
+    answer_choices: False ||| True
+    id: 966474a5-1498-46b7-bfee-ac0c51607070
+    jinja: 'Exercise: read the text and answer the question by True or False.
+Text: {{passage}}
+Question: {{question}}? |||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_7
+    reference: ''
+  a66474a5-1498-46b7-bfee-ac0c5160707f: !Template
+    answer_choices: No ||| Yes
+    id: a66474a5-1498-46b7-bfee-ac0c5160707f
+    jinja: '{{ passage }}
+Based on the previous passage, {{ question }}? |||
+              {% if answer %}
+                  {{ answer_choices[1] }}
+              {% else %}
+                  {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_8
+    reference: ''
+  a66474a5-1498-46b7-bfee-ac0c51607070: !Template
+    answer_choices: False ||| True
+    id: a66474a5-1498-46b7-bfee-ac0c51607070
+    jinja: '{{passage}}
+Q: {{question}}? True or False? ||| {% if answer %} {{ answer_choices[1] }}
+              {% else %} {{ answer_choices[0] }}
+              {% endif %}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: sanh_9
+    reference: ''

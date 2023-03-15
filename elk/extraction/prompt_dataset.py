@@ -2,7 +2,7 @@ from ..math_util import stochastic_round_constrained
 from ..promptsource import DatasetTemplates
 from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
 from dataclasses import dataclass
-from datasets import DatasetDict, load_dataset
+from datasets import DatasetDict, load_dataset, ClassLabel, Value
 from numpy.typing import NDArray
 from random import Random
 from simple_parsing.helpers import field, Serializable
@@ -126,10 +126,14 @@ class PromptDataset(TorchDataset):
 
         # Enforce class balance if needed
         if cfg.balance:
-            self.active_split = undersample(self.active_split, self.rng, label_col)
+            self.active_split = undersample(
+                self.active_split, self.rng, self.num_classes, label_col
+            )
             self.class_fracs = np.ones(self.num_classes) / self.num_classes
         else:
-            class_sizes = compute_class_balance(self.active_split, label_col)
+            class_sizes = compute_class_balance(
+                self.active_split, self.num_classes, label_col
+            )
             self.class_fracs: NDArray[np.floating] = class_sizes / class_sizes.sum()
 
         # We use stratified sampling to create few-shot prompts that are as balanced as
@@ -180,19 +184,20 @@ class PromptDataset(TorchDataset):
         )
 
         example = self.active_split[index]
+        true_label = example[self.label_column]
 
         prompts = []
         for template_name in template_names:
             template = self.prompter.templates[template_name]
 
-            true_label = example[self.label_column]
             answers = []
             questions = set()
 
             for fake_label in range(self.num_classes):
-                example[self.label_column] = fake_label
+                fake_example = example.copy()
+                fake_example[self.label_column] = fake_label
 
-                q, a = template.apply(example)
+                q, a = template.apply(fake_example)
                 answers.append(a)
                 questions.add(q)
 
@@ -238,6 +243,17 @@ class PromptDataset(TorchDataset):
     @property
     def num_classes(self) -> int:
         """Number of classes in the underlying dataset."""
-
-        # We piggyback on the ClassLabel feature type to get the number of classes
-        return self.active_split.features[self.label_column].num_classes
+        if isinstance(self.active_split.features[self.label_column], ClassLabel):
+            # We piggyback on the ClassLabel feature type to get the number of classes
+            return self.active_split.features[self.label_column].num_classes
+        elif (
+            isinstance(self.active_split.features[self.label_column], Value)
+            and self.active_split.features[self.label_column].dtype == "bool"
+        ):
+            return 2
+        else:
+            raise ValueError(
+                f"Can't infer number of classes from label column "
+                f"{self.label_column} of type "
+                f"{self.active_split.features[self.label_column]}"
+            )
