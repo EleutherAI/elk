@@ -20,6 +20,12 @@ elk elicit microsoft/deberta-v2-xxlarge-mnli imdb
 
 This will automatically download the model and dataset, run the model and extract the relevant representations if they aren't cached on disk, fit reporters on them, and save the reporter checkpoints to the `elk-reporters` folder in your home directory. It will also evaluate the reporter classification performance on a held out test set and save it to a CSV file in the same folder.
 
+```bash
+elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --net ccs
+```
+This will generate a CCS reporter instead, of the Eigen reporter, which is the default
+
+
 ## Caching
 
 The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the same place as all other HuggingFace datasets, which is usually `~/.cache/huggingface/datasets`.
