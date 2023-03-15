@@ -24,7 +24,7 @@ import torch
 import torch.multiprocessing as mp
 import warnings
 
-
+# TODO: See https://github.com/lebrice/SimpleParsing/blob/master/examples/subparsers/README.md
 @dataclass
 class RunConfig(Serializable):
     """Full specification of a reporter training run.
@@ -43,6 +43,9 @@ class RunConfig(Serializable):
     max_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
+
+    def execute(self):
+        return self.command.execute()
 
 
 def train_reporter(

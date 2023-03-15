@@ -1,10 +1,20 @@
 """Main entry point for `elk`."""
 
+from typing import Union
+from attr import dataclass
 from .extraction import extract, ExtractionConfig
 from .training import RunConfig
 from .training.train import train
 from pathlib import Path
 from simple_parsing import ArgumentParser
+
+@dataclass
+class Program:
+    """Some top-level command"""
+    command: Union[RunConfig, ExtractionConfig, ]
+
+    def execute(self):
+        return self.command.execute() 
 
 
 def run():
