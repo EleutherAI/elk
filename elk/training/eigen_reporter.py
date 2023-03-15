@@ -183,7 +183,7 @@ class EigenReporter(Reporter):
             L, Q = torch.linalg.eigh(A)
             self.weight.data = Q[:, -self.config.num_heads :].T
 
-        return float(L[-1])
+        return -float(L[-1])
 
     def fit(
         self,
@@ -198,7 +198,7 @@ class EigenReporter(Reporter):
             x_neg: The negative examples.
 
         Returns:
-            loss: The best loss obtained.
+            loss: Negative eigenvalue associated with the VINC direction.
         """
         assert x_pos.shape == x_neg.shape
         self.update(x_pos, x_neg)
