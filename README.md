@@ -21,12 +21,6 @@ elk elicit microsoft/deberta-v2-xxlarge-mnli imdb
 This will automatically download the model and dataset, run the model and extract the relevant representations if they aren't cached on disk, fit reporters on them, and save the reporter checkpoints to the `elk-reporters` folder in your home directory. It will also evaluate the reporter classification performance on a held out test set and save it to a CSV file in the same folder.
 
 ```bash
-elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --net ccs
-```
-
-This will generate a CCS reporter instead of the Eigen reporter, which is the default
-
-```bash
 elk eval naughty-northcutt microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
@@ -42,6 +36,12 @@ To only extract the hidden states for the model `model` and the dataset `dataset
 
 ```bash
 elk extract microsoft/deberta-v2-xxlarge-mnli imdb -o my_output_dir
+```
+
+The following will generate a CCS reporter instead of the Eigen reporter, which is the default.
+
+```bash
+elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --net ccs
 ```
 
 ## Development
