@@ -184,19 +184,20 @@ class PromptDataset(TorchDataset):
         )
 
         example = self.active_split[index]
+        true_label = example[self.label_column]
 
         prompts = []
         for template_name in template_names:
             template = self.prompter.templates[template_name]
 
-            true_label = example[self.label_column]
             answers = []
             questions = set()
 
             for fake_label in range(self.num_classes):
-                example[self.label_column] = fake_label
+                fake_example = example.copy()
+                fake_example[self.label_column] = fake_label
 
-                q, a = template.apply(example)
+                q, a = template.apply(fake_example)
                 answers.append(a)
                 questions.add(q)
 

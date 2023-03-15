@@ -23,8 +23,14 @@ This will automatically download the model and dataset, run the model and extrac
 ```bash
 elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --net ccs
 ```
+
 This will generate a CCS reporter instead of the Eigen reporter, which is the default
 
+```bash
+elk eval naughty-northcutt microsoft/deberta-v2-xxlarge-mnli imdb
+```
+
+This will evaluate the probe from the run naughty-northcutt on the hidden states extracted from the model deberta-v2-xxlarge-mnli for the imdb dataset. It will result in an `eval.csv` and `cfg.yaml` file, which are stored under a subfolder in `elk-reporters/naughty-northcutt/transfer_eval`.
 
 ## Caching
 
