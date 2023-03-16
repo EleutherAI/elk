@@ -186,6 +186,9 @@ class Reporter(nn.Module, ABC):
 
         pred_probs = self.predict(x_pos, x_neg)
 
+        # makes `num_variants` copies of each label, all within a single
+        # dimension of size `num_variants * n`, such that the labels align
+        # with pred_probs.flatten()
         broadcast_labels = labels.repeat_interleave(pred_probs.shape[1]).float()
         cal_err = (
             CalibrationError()
@@ -198,9 +201,6 @@ class Reporter(nn.Module, ABC):
         cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
         raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
 
-        # makes `num_variants` copies of each label, all within a single
-        # dimension of size `num_variants * n`, such that the labels align
-        # with pred_probs.flatten()
         # roc_auc_score only takes flattened input
         auroc = float(roc_auc_score(broadcast_labels.cpu(), pred_probs.cpu().flatten()))
         cal_acc = cal_preds.flatten().eq(broadcast_labels).float().mean()
