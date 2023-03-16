@@ -73,8 +73,6 @@ def evaluate_reporter(
 
 def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
     if cfg.source == 'zero-shot':
-        print("Evaluating zero-shot performance.")
-        
         evaluate_zeroshot(cfg, out_dir)
 
         return
@@ -117,10 +115,14 @@ def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
         for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
             writer.writerow([i] + [f"{s:.4f}" for s in stats])
 
-    print("Results saved")
+    print("Results saved.")
+
+    evaluate_zeroshot(cfg, out_dir)
 
 
 def evaluate_zeroshot(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
+    print("Evaluating zero-shot performance.")
+
     ds = extract(cfg.target, max_gpus=cfg.max_gpus)
 
     zs_eval = elk_reporter_dir() / cfg.source / "zero_shot_eval"
