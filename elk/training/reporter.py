@@ -3,7 +3,6 @@
 from .classifier import Classifier
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from einops import rearrange
 from pathlib import Path
 from simple_parsing.helpers import Serializable
 from sklearn.metrics import roc_auc_score
@@ -121,11 +120,14 @@ class Reporter(nn.Module, ABC):
         ).repeat_interleave(val_x0.shape[1])
 
         pseudo_clf.fit(
-            rearrange(torch.cat([x0, x1]), "b v d -> (b v) d"), pseudo_train_labels
+            # b v d -> (b v) d
+            torch.cat([x0, x1]).flatten(0, 1),
+            pseudo_train_labels,
         )
         with torch.no_grad():
             pseudo_preds = pseudo_clf(
-                rearrange(torch.cat([val_x0, val_x1]), "b v d -> (b v) d")
+                # b v d -> (b v) d
+                torch.cat([val_x0, val_x1]).flatten(0, 1)
             )
             return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
 
