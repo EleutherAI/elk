@@ -178,8 +178,6 @@ def extract_hiddens(
             return (tokenized, answer_indices)
 
         else:
-            print(prompt.get_input())
-            
             tokenized = tokenizer(
                 [prompt.get_input()],
                 text_target=[prompt.get_output(idx)],
