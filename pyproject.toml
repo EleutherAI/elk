@@ -12,8 +12,6 @@ license = {text = "MIT License"}
 dependencies = [
     # Added Dataset.from_generator() method
     "datasets>=2.5.0",
-    # TODO: consider removing this dependency since we only use it once
-    "einops",
     # Introduced numpy.typing module
     "numpy>=1.20.0",
     # This version is old, but it's needed for certain HF tokenizers to work.
