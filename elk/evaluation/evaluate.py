@@ -143,8 +143,8 @@ def evaluate_zeroshot(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
         # returns (num_examples, num_prompts, num_labels)
         logprobs_lst = []
         for ex in tqdm(ds[split]):
-            logprobs_lst.append(ex['losses'])
-        logprobs = -torch.tensor(logprobs_lst)
+            logprobs_lst.append(ex['logprobs'])
+        logprobs = torch.tensor(logprobs_lst)
         return logprobs
 
     train_logprobs = get_logprobs_tensor('train')
