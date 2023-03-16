@@ -1,5 +1,6 @@
 """An ELK reporter network."""
 
+from ..calibration import CalibrationError
 from .classifier import Classifier
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ class EvalResult(NamedTuple):
     acc: float
     cal_acc: float
     auroc: float
+    ece: float
 
 
 @dataclass
@@ -184,15 +186,21 @@ class Reporter(nn.Module, ABC):
 
         pred_probs = self.predict(x_pos, x_neg)
 
+        # makes `num_variants` copies of each label, all within a single
+        # dimension of size `num_variants * n`, such that the labels align
+        # with pred_probs.flatten()
+        broadcast_labels = labels.repeat_interleave(pred_probs.shape[1]).float()
+        cal_err = (
+            CalibrationError()
+            .update(broadcast_labels.cpu(), pred_probs.cpu())
+            .compute()
+        )
+
         # Calibrated accuracy
         cal_thresh = pred_probs.float().quantile(labels.float().mean())
         cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
         raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
 
-        # makes `num_variants` copies of each label, all within a single
-        # dimension of size `num_variants * n`, such that the labels align
-        # with pred_probs.flatten()
-        broadcast_labels = labels.repeat_interleave(pred_probs.shape[1])
         # roc_auc_score only takes flattened input
         auroc = float(roc_auc_score(broadcast_labels.cpu(), pred_probs.cpu().flatten()))
         cal_acc = cal_preds.flatten().eq(broadcast_labels).float().mean()
@@ -202,4 +210,5 @@ class Reporter(nn.Module, ABC):
             acc=torch.max(raw_acc, 1 - raw_acc).item(),
             cal_acc=torch.max(cal_acc, 1 - cal_acc).item(),
             auroc=max(auroc, 1 - auroc),
+            ece=cal_err.ece,
         )
