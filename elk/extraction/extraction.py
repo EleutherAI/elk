@@ -84,7 +84,7 @@ def get_model_class(model_str: str) -> Type[PreTrainedModel]:
                 return arch_str
         return None
 
-    suffixes = ['SequenceClassification', 'LMHeadModel', 'ConditionalGeneration']
+    suffixes = ['SequenceClassification', 'CausalLM', 'LMHeadModel', 'ConditionalGeneration']
 
     for suffix in suffixes:
         supported_arch = get_arch_string(suffix)
@@ -151,20 +151,47 @@ def extract_hiddens(
     should_concat = not is_enc_dec or cfg.use_encoder_states
 
     def tokenize(prompt: Prompt, idx: int, **kwargs):
-        return tokenizer(
-            (
-                [prompt.to_string(idx, sep=sep_token)]
-                if should_concat
-                else [prompt.question]
-            ),
-            text_target=(
-                [prompt.answers[idx]] if not should_concat else None
-            ),  # type: ignore
-            padding=True,
-            return_tensors="pt",
-            truncation=True,
-            **kwargs,
-        ).to(device)
+        if should_concat:
+            input_str = prompt.get_input()
+            output_str = prompt.get_output(idx)
+
+            answer_start = len(input_str)
+
+            tokenized = tokenizer(
+                [prompt.join(input_str, output_str, sep=sep_token)],
+                padding=True,
+                return_tensors="pt",
+                truncation=True,
+                return_offsets_mapping=True,
+                **kwargs,
+            ).to(device)
+
+            # need to store locations of output tokens
+            # beginning and end of span are equal iff it's a special token
+            answer_indices = [
+                token_idx for token_idx, span in enumerate(tokenized['offset_mapping'][0])
+                if (answer_start <= span[0] and span[0] != span[1])
+            ]
+
+            del tokenized['offset_mapping']
+
+            return (tokenized, answer_indices)
+
+        else:
+            print(prompt.get_input())
+            
+            tokenized = tokenizer(
+                [prompt.get_input()],
+                text_target=[prompt.get_output(idx)],
+                padding=True,
+                return_tensors="pt",
+                truncation=True,
+                **kwargs,
+            ).to(device)
+
+            answer_indices = [i for i, tkn in enumerate(tokenized['labels'][0]) if tkn not in tokenizer.all_special_ids]
+
+            return (tokenized, answer_indices)
 
     # This function returns the flattened questions and answers. After inference we
     # need to reshape the results.
@@ -199,13 +226,14 @@ def extract_hiddens(
         }
         variant_ids = [prompt.template_name for prompt in prompts]
 
-        loss_all = torch.empty((prompt_ds.num_variants, num_choices), device=device, dtype=torch.float16)
+        logprobs_all = torch.empty((prompt_ds.num_variants, num_choices), device=device, dtype=torch.float16)
 
         # Iterate over variants
         for i, variant_inputs in enumerate(inputs):
             # Iterate over answers
-            for j, inpt in enumerate(variant_inputs):
-                outputs = model(**inpt, output_hidden_states=True)
+            for j, (inpt, answer_indices) in enumerate(variant_inputs):
+                with torch.no_grad():
+                    outputs = model(**inpt, output_hidden_states=True)
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
@@ -229,12 +257,29 @@ def extract_hiddens(
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
                 
-                loss_all[i, j] = outputs.loss
+                logprobs = outputs.logits.log_softmax(dim=-1)
+                
+                if should_concat:
+                    # offset predictions targets (target i=1 -> prediction i=0)
+                    input_tokens = inpt['input_ids'][:, 1:]
+                    answer_indices = [idx - 1 for idx in answer_indices]
+
+                    logprobs = torch.gather(logprobs[:, :-1], 2, input_tokens.unsqueeze(-1)).squeeze(-1)
+
+                    logprobs_all[i, j] = torch.sum(logprobs.squeeze(0)[answer_indices])
+
+                else:
+                    # labels don't need offset
+                    answer_tokens = inpt['labels']
+
+                    logprobs = torch.gather(logprobs, 2, answer_tokens.unsqueeze(-1)).squeeze(-1)
+
+                    logprobs_all[i, j] = torch.sum(logprobs.squeeze(0)[answer_indices])
 
         yield dict(
             label=prompts[0].label,
             variant_ids=variant_ids,
-            losses=loss_all,
+            logprobs=logprobs_all,
             **hidden_dict,
         )
 
@@ -306,7 +351,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
         "label": features[label_col],
-        "losses": Array2D(
+        "logprobs": Array2D(
             dtype="float32",
             shape=(num_variants, 2),
         )

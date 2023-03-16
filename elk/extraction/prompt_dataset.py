@@ -6,9 +6,12 @@ from datasets import DatasetDict, load_dataset
 from numpy.typing import NDArray
 from random import Random
 from simple_parsing.helpers import field, Serializable
+from simple_parsing import subgroups
 from torch.utils.data import Dataset as TorchDataset
-from typing import Optional
+from typing import Optional, ClassVar
 import numpy as np
+import yaml
+import os
 
 
 @dataclass
@@ -20,9 +23,61 @@ class Prompt:
     answers: list[str]
     label: int
     template_name: str
+    mislead_cfg: 'MisleadConfig'
+
+    def get_input(self) -> str:
+        return self.question
+
+    def get_output(self, answer_idx: int) -> str:
+        return self.answers[answer_idx]
+
+    def join(self, *args, sep: str = "\n") -> str:
+        return sep.join(args)
 
     def to_string(self, answer_idx: int, sep: str = "\n") -> str:
-        return f"{self.question}{sep}{self.answers[answer_idx]}"
+        """
+        Returns filled template
+        """
+        return self.join(self.get_input(), self.get_output(answer_idx, sep=sep))
+
+
+@dataclass
+class PrefixPrompt(Prompt):
+    mislead_cfg: 'PrefixMisleadConfig'
+
+    def __post_init__(self):
+        with open(self.mislead_cfg.prefixes_file, 'r') as f_in:
+            prefix_data = yaml.safe_load(f_in)
+    
+        if self.mislead_cfg.prefix_name not in prefix_data:
+            raise ValueError(
+                f'Specified prefix name {self.mislead_cfg.prefix_name} was not found in the prefixes \
+                {list(prefix_data.keys())} loaded from {self.mislead_cfg.prefixes_file}'
+            )
+
+        self.prefix = prefix_data[self.mislead_cfg.prefix_name]
+
+    def get_input(self, sep: str = "\n") -> str:
+        return self.join(self.prefix, self.question, sep=sep)
+
+
+@dataclass
+class MisleadConfig(Serializable):
+    mislead_class: ClassVar[type[Prompt]] = Prompt
+
+
+@dataclass
+class PrefixMisleadConfig(MisleadConfig):
+    prefix_name: str = 'default'
+    prefixes_file: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'misleading_prefixes.yaml')
+    
+    mislead_class: ClassVar[type[PrefixPrompt]] = PrefixPrompt
+
+
+# PROMPT_TYPES = {
+#     "normal": Prompt,
+#     "prefix": PrefixPrompt,
+# }
 
 
 @dataclass
@@ -53,6 +108,10 @@ class PromptConfig(Serializable):
     num_shots: int = 0
     seed: int = 42
     num_variants: int = 1
+    mislead_type: MisleadConfig = subgroups(
+        {'None': MisleadConfig, 'Prefix': PrefixMisleadConfig},
+        default='None'
+    )
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
@@ -60,7 +119,12 @@ class PromptConfig(Serializable):
                 "max_examples should be a list of length 0, 1, or 2,"
                 f"but got {len(self.max_examples)}"
             )
-
+        
+        # if self.prompt_type not in PROMPT_TYPES:
+        #     raise ValueError(
+        #         f"Specified prompt_type \'{self.prompt_type}\' was not found in the"
+        #         f" set of valid prompt types: {list(PROMPT_TYPES.keys())}"
+        #     )
 
 class PromptDataset(TorchDataset):
     """Wrapper for a HuggingFace dataset which generates prompts with `promptsource`.
@@ -87,8 +151,10 @@ class PromptDataset(TorchDataset):
         cfg: PromptConfig,
         rank: int = 0,
         world_size: int = 1,
-        split: str = "validation",
+        split: str = "validation"
     ):
+        # self.prompt_class = PROMPT_TYPES[cfg.prompt_type]
+
         ds_name, _, config_name = cfg.dataset.partition(" ")
 
         self.num_shots = cfg.num_shots
@@ -172,6 +238,8 @@ class PromptDataset(TorchDataset):
         if world_size > 1:
             self.active_split = self.active_split.shard(world_size, rank)
 
+        self.prompt_cfg = cfg
+
     def __getitem__(self, index: int) -> list[Prompt]:
         """Get a list of prompts for a given predicate"""
         # get self.num_variants unique prompts from the template pool
@@ -218,12 +286,15 @@ class PromptDataset(TorchDataset):
                 self.rng.shuffle(examples)
                 question = "\n\n".join(examples + [question])
 
+            mislead_cfg = self.prompt_cfg.mislead_type
+
             prompts.append(
-                Prompt(
+                mislead_cfg.mislead_class(
                     question=question,
                     answers=answers,
                     label=true_label,
                     template_name=template_name,
+                    mislead_cfg=mislead_cfg,
                 )
             )
         return prompts
