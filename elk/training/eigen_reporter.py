@@ -157,15 +157,10 @@ class EigenReporter(Reporter):
 
     def fit_streaming(self, warm_start: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
-        alpha, beta, gamma = (
-            self.config.var_weight,
-            self.config.inv_weight,
-            self.config.neg_cov_weight,
-        )
         A = (
-            alpha * self.intercluster_cov
-            - beta * self.intracluster_cov
-            - gamma * self.contrastive_xcov
+            self.config.var_weight * self.intercluster_cov
+            - self.config.inv_weight * self.intracluster_cov
+            - self.config.neg_cov_weight * self.contrastive_xcov
         )
 
         # Use SciPy's sparse eigensolver for CPU tensors. This is a frontend to ARPACK,
@@ -183,26 +178,35 @@ class EigenReporter(Reporter):
             L, Q = torch.linalg.eigh(A)
             self.weight.data = Q[:, -self.config.num_heads :].T
 
-        return float(L[-1])
+        return -float(L[-1])
 
     def fit(
         self,
         x_pos: Tensor,
         x_neg: Tensor,
         labels: Optional[Tensor] = None,
+        *,
+        platt_scale: bool = True,
     ) -> float:
         """Fit the probe to the contrast pair (x_pos, x_neg).
 
         Args:
             x_pos: The positive examples.
             x_neg: The negative examples.
+            labels: The ground truth labels if available.
+            platt_scale: Whether to fit the scale and bias terms to data with LBFGS.
+                This is only used if labels are available.
 
         Returns:
-            loss: The best loss obtained.
+            loss: Negative eigenvalue associated with the VINC direction.
         """
         assert x_pos.shape == x_neg.shape
         self.update(x_pos, x_neg)
-        return self.fit_streaming()
+        loss = self.fit_streaming()
+        if labels is not None and platt_scale:
+            self.platt_scale(labels, x_pos, x_neg)
+
+        return loss
 
     def platt_scale(
         self, labels: Tensor, x_pos: Tensor, x_neg: Tensor, max_iter: int = 100
