@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datasets import DatasetDict
 from functools import partial
 from pathlib import Path
-from simple_parsing import subgroups, Serializable
+from simple_parsing import field, subgroups, Serializable
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 from tqdm.auto import tqdm
@@ -41,7 +41,7 @@ class RunConfig(Serializable):
     net: ReporterConfig = subgroups(
         {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
     )
-    optim: OptimConfig = OptimConfig()
+    optim: OptimConfig = field(default_factory=OptimConfig)
 
     label_frac: float = 0.0
     max_gpus: int = -1
