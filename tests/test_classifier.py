@@ -1,26 +1,24 @@
-import numpy as np
-import pytest
-import torch
+from elk.training.classifier import Classifier
+from elk.utils import assert_type
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
+import numpy as np
+import torch
 
-from elk.training.classifier import Classifier
 
-
-@pytest.mark.cpu
 def test_classifier_roughly_same_sklearn():
     input_dims: int = 10
+
     # make a classification problem of 1000 samples with input_dims features
-    features: np.ndarray
-    truths: np.ndarray
     _features, _truths = make_classification(
         n_samples=1000, n_features=input_dims, random_state=0
     )
     # use float32 for the features so it's the same as the default dtype for torch
-    features = _features.astype(np.float32)
-    truths = _truths.astype(np.float32)
+    features = assert_type(np.ndarray, _features).astype(np.float32)
+    truths = assert_type(np.ndarray, _truths).astype(np.float32)
+
     # train a logistic regression model on the data. No regularization
-    model = LogisticRegression(penalty="none", solver="lbfgs")
+    model = LogisticRegression(penalty=None, solver="lbfgs")  # type: ignore[arg-type]
     model.fit(features, truths)
     # train a classifier on the data
     classifier = Classifier(input_dim=input_dims, device="cpu")

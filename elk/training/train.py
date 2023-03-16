@@ -4,13 +4,15 @@ from ..extraction import extract, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import assert_type, held_out_split, select_usable_devices, int16_to_float32
 from .classifier import Classifier
+from .ccs_reporter import CcsReporter, CcsReporterConfig
+from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
 from datasets import DatasetDict
 from functools import partial
 from pathlib import Path
-from simple_parsing import Serializable
+from simple_parsing import subgroups, Serializable
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 from tqdm.auto import tqdm
@@ -36,8 +38,10 @@ class RunConfig(Serializable):
     """
 
     data: ExtractionConfig
-    net: ReporterConfig
-    optim: OptimConfig
+    net: ReporterConfig = subgroups(
+        {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
+    )
+    optim: OptimConfig = OptimConfig()
 
     label_frac: float = 0.0
     max_gpus: int = -1
@@ -93,17 +97,18 @@ def train_reporter(
                     f"algorithm will not converge to a good solution."
                 )
 
-    reporter = Reporter(x0.shape[-1], cfg.net, device=device)
-    if cfg.label_frac:
-        num_labels = round(cfg.label_frac * len(train_labels))
-        labels = train_labels[:num_labels]
+    if isinstance(cfg.net, CcsReporterConfig):
+        reporter = CcsReporter(x0.shape[-1], cfg.net, device=device)
+    elif isinstance(cfg.net, EigenReporterConfig):
+        reporter = EigenReporter(x0.shape[-1], cfg.net, device=device)
     else:
-        labels = None
+        raise ValueError(f"Unknown reporter config type: {type(cfg.net)}")
 
-    train_loss = reporter.fit((x0, x1), labels, cfg.optim)
+    train_loss = reporter.fit(x0, x1, train_labels)
     val_result = reporter.score(
-        (val_x0, val_x1),
         val_labels,
+        val_x0,
+        val_x1,
     )
 
     lr_dir = out_dir / "lr_models"
@@ -137,7 +142,7 @@ def train_reporter(
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
 
         stats += [lr_auroc, lr_acc]
-        with open(lr_dir / f"layer_{layer}.pkl", "wb") as file:
+        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
             pickle.dump(lr_model, file)
 
     with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
@@ -148,16 +153,6 @@ def train_reporter(
 
 def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     # Extract the hidden states first if necessary
-    is_prompt_based_loss = (
-        "ccs_prompt_var" in cfg.net.loss_dict.keys()
-        or "prompt_var_squared" in cfg.net.loss_dict.keys()
-    )
-    if cfg.data.prompts.num_variants == 1 and is_prompt_based_loss:
-        raise ValueError(
-            "Loss functions ccs_prompt_var and prompt_var_squared "
-            "incompatible with --num_variants 1."
-        )
-
     ds = extract(cfg.data, max_gpus=cfg.max_gpus)
 
     if out_dir is None:
@@ -174,7 +169,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
-    cols = ["layer", "pseudo_auroc", "train_loss", "loss", "acc", "cal_acc", "auroc"]
+    cols = ["layer", "pseudo_auroc", "train_loss", "acc", "cal_acc", "auroc"]
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
