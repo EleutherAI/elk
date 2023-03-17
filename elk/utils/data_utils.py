@@ -54,7 +54,7 @@ def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
         Split.TEST: 2,
     }
     splits = sorted(raw_splits, key=lambda k: priorities.get(k, 100))  # type: ignore
-    assert len(splits) >= 2, "Must have train and val/test splits"
+    assert len(splits) >= 2, "Must have at least two of train, val, and test splits"
 
     return tuple(splits[:2])
 
