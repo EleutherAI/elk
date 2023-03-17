@@ -123,11 +123,10 @@ def _eigsh_solve_ritz(alpha, beta, beta_k: Optional[Tensor], k: int, which: str)
     return wk, sk
 
 
-# @torch.jit.script
+@torch.jit.script
 def _lanczos_asis(a, V, u, alpha, beta, i_start: int, i_end: int):
     """Lanczos iteration for symmetric matrix."""
 
-    assert len(u.shape) == 1
     for i in range(i_start, i_end):
         u[...] = a @ V[i]
         torch.dot(V[i], u, out=alpha[i])
