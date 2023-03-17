@@ -1,11 +1,10 @@
 """An ELK reporter network."""
 
 from ..math_util import cov_mean_fused
-from .reporter import EvalResult, Reporter, ReporterConfig
-from copy import deepcopy
+from .reporter import Reporter, ReporterConfig
 from dataclasses import dataclass
 from torch import nn, optim, Tensor
-from typing import Optional, Sequence
+from typing import Optional
 import torch
 
 
