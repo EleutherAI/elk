@@ -173,17 +173,6 @@ class Classifier(torch.nn.Module):
         mean_losses = losses.mean(dim=0)
         best_idx = mean_losses.argmin()
 
-        # Check the health of the regularization path- we expect a U shape
-        lhs, rhs = mean_losses[:best_idx], mean_losses[best_idx:]
-        if not len(lhs) or not len(rhs):
-            warnings.warn("The best penalty is at the edge of the regularization path.")
-        else:
-            lhs_monotonic_decreasing = lhs.diff().le(0).all()
-            rhs_monotonic_increasing = rhs.diff().ge(0).all()
-
-            if not lhs_monotonic_decreasing or not rhs_monotonic_increasing:
-                warnings.warn("The regularization path does not have a U shape.")
-
         # Refit with the best penalty
         best_penalty = l2_penalties[best_idx]
         self.fit(x, y, l2_penalty=best_penalty, max_iter=max_iter, tol=tol)
