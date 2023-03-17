@@ -54,7 +54,7 @@ class Classifier(torch.nn.Module):
         x: Tensor,
         y: Tensor,
         *,
-        l2_penalty: float = 1.0,
+        l2_penalty: float = 0.1,
         max_iter: int = 10_000,
         tol: float = 1e-4,
     ) -> float:
@@ -109,8 +109,8 @@ class Classifier(torch.nn.Module):
         self,
         x: Tensor,
         y: Tensor,
-        k: int = 5,
         *,
+        k: int = 5,
         max_iter: int = 10_000,
         num_penalties: int = 10,
         seed: int = 42,
@@ -119,7 +119,6 @@ class Classifier(torch.nn.Module):
         """Fit using k-fold cross-validation to select the best L2 penalty.
 
         Args:
-            model: Instance of the Classifier class.
             x: Input tensor of shape (N, D), where N is the number of samples and D is
                 the input dimension.
             y: Target tensor of shape (N,) for binary classification or (N, C) for
