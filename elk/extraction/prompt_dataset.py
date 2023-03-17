@@ -1,28 +1,41 @@
 from ..math_util import stochastic_round_constrained
-from ..promptsource import DatasetTemplates
-from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
+from ..promptsource import DatasetTemplates, Template
+from ..utils import (
+    assert_type,
+    compute_class_balance,
+    infer_label_column,
+    undersample,
+    infer_num_classes,
+    apply_template,
+)
 from dataclasses import dataclass
 from datasets import DatasetDict, load_dataset, ClassLabel, Value
 from numpy.typing import NDArray
 from random import Random
 from simple_parsing.helpers import field, Serializable
 from torch.utils.data import Dataset as TorchDataset
-from typing import Optional
+from typing import Optional, Any
 import numpy as np
 
 
 @dataclass
 class Prompt:
-    """A question, its possible answers, and the correct answer.
-    A question is a template applied to a predicate."""
+    """A prompt for a single example in a dataset"""
 
-    question: str
-    answers: list[str]
+    few_shot_prefix: str
+    template: Template
+    example: dict[str, Any]
     label: int
-    template_name: str
+    label_column: str
+    # TODO: contrast pairs for dbpedia and ag_news need to be between the two choices
+    # I think I need to talk to Walter about this
+    # How do I get the negative example in the answer template slot?
 
-    def to_string(self, answer_idx: int, sep: str = "\n") -> str:
-        return f"{self.question}{sep}{self.answers[answer_idx]}"
+    def to_string(self, answer_idx: int) -> str:
+        """Return the prompt as a string, with the answer at `answer_idx`."""
+        fake_example = self.example.copy()
+        fake_example[self.label_column] = answer_idx
+        return self.few_shot_prefix + apply_template(self.template, fake_example)
 
 
 @dataclass
@@ -35,6 +48,10 @@ class PromptConfig(Serializable):
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset; if there is only one column
             with a `ClassLabel` datatype, we use that.
+        num_classes: The number of classes in the dataset. By default, we infer this
+            from the datatypes of the columns in the dataset; if there is only one
+            column with a `ClassLabel` datatype, we use the number of classes in that
+            column.
         max_examples: The maximum number of examples to use from the val dataset.
             If a single number, use at most that many examples for each split. If a list
             of length 2, use the first element for the train split and the second for
@@ -49,6 +66,7 @@ class PromptConfig(Serializable):
     dataset: str = field(positional=True)
     balance: bool = False
     label_column: Optional[str] = None
+    num_classes: Optional[int] = None
     max_examples: list[int] = field(default_factory=list)
     num_shots: int = 0
     seed: int = 42
@@ -123,6 +141,9 @@ class PromptDataset(TorchDataset):
         self.active_split = ds_dict[split]
         label_col = cfg.label_column or infer_label_column(self.active_split.features)
         self.label_column = label_col
+        self.num_classes = cfg.num_classes or infer_num_classes(
+            self.active_split.features[label_col]
+        )
 
         # Enforce class balance if needed
         if cfg.balance:
@@ -190,20 +211,6 @@ class PromptDataset(TorchDataset):
         for template_name in template_names:
             template = self.prompter.templates[template_name]
 
-            answers = []
-            questions = set()
-
-            for fake_label in range(self.num_classes):
-                fake_example = example.copy()
-                fake_example[self.label_column] = fake_label
-
-                q, a = template.apply(fake_example)
-                answers.append(a)
-                questions.add(q)
-
-            assert len(questions) == 1
-            question = questions.pop()
-
             if self.num_shots > 0:
                 # Use stratified sampling to get `num_shots` examples from train set.
                 # If `num_shots` is not divisible by the number of classes, stochastic
@@ -217,18 +224,20 @@ class PromptDataset(TorchDataset):
                     indices = self.rng.sample(range(len(stratum)), count)
 
                     for idx in indices:
-                        q, a = template.apply(stratum[idx])
-                        examples.append(f"{q}\n{a}")
+                        examples.append(apply_template(template, stratum[idx]))
 
                 self.rng.shuffle(examples)
-                question = "\n\n".join(examples + [question])
+                few_shot_prefix = "\n\n".join(examples) + "\n\n"
+            else:
+                few_shot_prefix = ""
 
             prompts.append(
                 Prompt(
-                    question=question,
-                    answers=answers,
+                    template=template,
+                    example=example,
                     label=true_label,
-                    template_name=template_name,
+                    label_column=self.label_column,
+                    few_shot_prefix=few_shot_prefix,
                 )
             )
         return prompts
@@ -239,21 +248,3 @@ class PromptDataset(TorchDataset):
     def __len__(self):
         """Get the number of predicates in the dataset."""
         return len(self.active_split)
-
-    @property
-    def num_classes(self) -> int:
-        """Number of classes in the underlying dataset."""
-        if isinstance(self.active_split.features[self.label_column], ClassLabel):
-            # We piggyback on the ClassLabel feature type to get the number of classes
-            return self.active_split.features[self.label_column].num_classes
-        elif (
-            isinstance(self.active_split.features[self.label_column], Value)
-            and self.active_split.features[self.label_column].dtype == "bool"
-        ):
-            return 2
-        else:
-            raise ValueError(
-                f"Can't infer number of classes from label column "
-                f"{self.label_column} of type "
-                f"{self.active_split.features[self.label_column]}"
-            )

@@ -1,7 +1,15 @@
 from .typing import assert_type
-from datasets import ClassLabel, Dataset, DatasetDict, Features, concatenate_datasets
+from datasets import (
+    ClassLabel,
+    Dataset,
+    DatasetDict,
+    Features,
+    concatenate_datasets,
+    Value,
+)
+from ..promptsource.templates import Template
 from random import Random
-from typing import Optional
+from typing import Optional, Any
 import numpy as np
 import torch
 
@@ -41,7 +49,9 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
 
 def held_out_split(dataset: DatasetDict) -> Dataset:
     """Return the validation set if it exits, otherwise the test set."""
-    if "validation" in dataset:
+    if (
+        "validation" in dataset
+    ):  # TODO this might need to change if we support Val + Test only splits
         return dataset["validation"]
     elif "test" in dataset:
         return dataset["test"]
@@ -69,6 +79,26 @@ def infer_label_column(features: Features) -> str:
         )
     else:
         return assert_type(str, label_cols[0])
+
+
+def infer_num_classes(label_feature: Any) -> int:
+    """Return the number of classes in a `Dataset`.
+
+    Returns:
+        The number of classes.
+    Raises:
+        ValueError: If the label column is not a `ClassLabel` or `Value('bool')`.
+    """
+    if isinstance(label_feature, ClassLabel):
+        # We piggyback on the ClassLabel feature type to get the number of classes
+        return label_feature.num_classes  # type: ignore
+    elif isinstance(label_feature, Value) and label_feature.dtype == "bool":
+        return 2
+    else:
+        raise ValueError(
+            f"Can't infer number of classes from label column "
+            f"of type {label_feature}"
+        )
 
 
 def undersample(
@@ -106,3 +136,11 @@ def float32_to_int16(x: torch.Tensor) -> torch.Tensor:
 def int16_to_float32(x: torch.Tensor) -> torch.Tensor:
     """Converts int16 to float16, then reinterprets as float32."""
     return x.view(torch.float16).type(torch.float32)
+
+
+def apply_template(template: Template, example: dict) -> str:
+    """Concatenate question and answer if answer is not empty or whitespace."""
+    q, a = template.apply(example)
+    # if the jinja template already adds whitespace, don't add more
+    sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
+    return f"{q}{sep}{a}" if a and not a.isspace() else q

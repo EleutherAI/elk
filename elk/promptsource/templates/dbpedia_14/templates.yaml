@@ -8,8 +8,8 @@ templates:
     jinja: 'Consider the following example: '''''' {{content}} ''''''
 
       Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 14)  |
-      reject("equalto", label) | list | random ]}}.Between choice 1 and choice 2,
-      the topic of this example is |||  {{answer_choices[label]}}'
+      reject("equalto", label) | list | random ]}}. Between choice 1 and choice 2,
+      the topic of this example is ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -45,7 +45,9 @@ templates:
 
       Which is the topic of this example, choice 1: {{answer_choices[label]}}, or
       choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||  {{answer_choices[label]}}'
+      | random ]}} |||
+
+      {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -63,7 +65,9 @@ templates:
 
       Which is the topic of this example, choice 1: {{answer_choices[label]}}, or
       choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||  {{answer_choices[label]}}'
+      | random ]}} |||
+
+      {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -99,7 +103,9 @@ templates:
 
       Which is the topic of this example, choice 1: {{answer_choices[label]}}, or
       choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||  {{answer_choices[label]}}'
+      | random ]}} |||
+
+      {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -117,7 +123,9 @@ templates:
 
       What category does the paragraph belong to, choice 1: {{answer_choices[label]}},
       or choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||  {{answer_choices[label]}}'
+      | random ]}} |||
+
+      {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -135,7 +143,9 @@ templates:
 
       What label best describes this paragraph, choice 1: {{answer_choices[label]}},
       or choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||  {{answer_choices[label]}}'
+      | random ]}} |||
+
+      {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -152,10 +162,7 @@ templates:
     jinja: '{{content}} Given a list of categories: {{"company, educational institution,
       artist, athlete, office holder, mean of transportation, building, natural place,
       village, animal, plant, album, film or written work"}}, what category does the
-      paragraph belong to? ||| {{ answer_choices[label] }}
-
-
-      '
+      paragraph belong to? ||| {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -170,10 +177,12 @@ templates:
       Office Holder ||| Mean Of Transportation ||| Building ||| Natural Place |||
       Village ||| Animal ||| Plant ||| Album ||| Film ||| Written Work
     id: 8eda7e71-6734-486f-b883-e99d3f14c0bf
-    jinja: Pick one category for the following text. The options are - {{"company,
+    jinja: 'Pick one category for the following text. The options are - {{"company,
       educational institution, artist, athlete, office holder, mean of transportation,
       building, natural place, village, animal, plant, album, film or written work"}}.
-      {{title}} - {{content}} ||| {{ answer_choices[label] }}
+      {{title}} - {{content}} |||
+
+      {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -209,10 +218,7 @@ templates:
     jinja: '"{{title}}", given a list of categories: {{"company, educational institution,
       artist, athlete, office holder, mean of transportation, building, natural place,
       village, animal, plant, album, film or written work"}}, what category does the
-      title belong to? ||| {{ answer_choices[label] }}
-
-
-      '
+      title belong to? ||| {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:

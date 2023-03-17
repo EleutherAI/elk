@@ -44,8 +44,6 @@ class ExtractionConfig(Serializable):
         layer_stride: Shortcut for setting `layers` to `range(0, num_layers, stride)`.
         token_loc: The location of the token to extract hidden states from. Can be
             either "first", "last", or "mean". Defaults to "last".
-        use_encoder_states: Whether to extract hiddens from the encoder in
-            encoder-decoder models. Defaults to False.
     """
 
     prompts: PromptConfig
@@ -54,7 +52,6 @@ class ExtractionConfig(Serializable):
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
-    use_encoder_states: bool = False
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -108,15 +105,11 @@ def extract_hiddens(
     # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
 
-    if cfg.use_encoder_states and not model.config.is_encoder_decoder:
-        raise ValueError(
-            "use_encoder_states is only compatible with encoder-decoder models."
-        )
-
+    num_choices = prompt_ds.num_classes
     # TODO: Make this configurable or something
     # Token used to separate the question from the answer
-    num_choices = prompt_ds.num_classes
-    sep_token = tokenizer.sep_token or "\n"
+    # TODO: test whether using sep_token is important, but this seems low priority
+    # sep_token = tokenizer.sep_token or "\n"
 
     if not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
@@ -124,18 +117,10 @@ def extract_hiddens(
     # Whether to concatenate the question and answer before passing to the model.
     # If False pass them to the encoder and decoder separately.
     is_enc_dec = model.config.is_encoder_decoder
-    should_concat = not is_enc_dec or cfg.use_encoder_states
 
     def tokenize(prompt: Prompt, idx: int, **kwargs):
         return tokenizer(
-            (
-                [prompt.to_string(idx, sep=sep_token)]
-                if should_concat
-                else [prompt.question]
-            ),
-            text_target=(
-                [prompt.answers[idx]] if not should_concat else None
-            ),  # type: ignore
+            ([prompt.to_string(idx)]),
             padding=True,
             return_tensors="pt",
             truncation=True,
@@ -150,7 +135,7 @@ def extract_hiddens(
     # If this is an encoder-decoder model and we're passing the answer to the encoder,
     # we don't need to run the decoder at all. Just strip it off, making the problem
     # equivalent to a regular encoder-only model.
-    if is_enc_dec and cfg.use_encoder_states:
+    if is_enc_dec:
         # This isn't actually *guaranteed* by HF, but it's true for all existing models
         if not hasattr(model, "get_encoder") or not callable(model.get_encoder):
             raise ValueError(
@@ -173,7 +158,7 @@ def extract_hiddens(
             )
             for layer_idx in layer_indices
         }
-        variant_ids = [prompt.template_name for prompt in prompts]
+        variant_ids = [prompt.template.name for prompt in prompts]
 
         # Iterate over variants
         for i, variant_inputs in enumerate(inputs):
@@ -233,7 +218,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
         train_split = Split.TRAIN if Split.TRAIN in splits else Split.VALIDATION
         val_split = (
             Split.VALIDATION
-            if Split.VALIDATION and Split.TRAIN in splits
+            if Split.VALIDATION in splits and Split.TRAIN in splits
             else Split.TEST
         )
 
