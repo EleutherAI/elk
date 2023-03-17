@@ -15,10 +15,11 @@ from torch import Tensor
 from tqdm.auto import tqdm
 
 from datasets import DatasetDict
+from elk.parallelization import evaluate_reporters_in_parallel
 from elk.training.preprocessing import normalize
 
 from ..extraction import ExtractionConfig, extract
-from ..files import elk_reporter_dir, memorably_named_dir
+from ..files import create_output_directory, elk_reporter_dir, memorably_named_dir
 from ..utils import (
     assert_type,
     int16_to_float32,
@@ -89,18 +90,12 @@ def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
     num_devices = len(devices)
 
     transfer_eval = elk_reporter_dir() / cfg.source / "transfer_eval"
-    transfer_eval.mkdir(parents=True, exist_ok=True)
-
-    if out_dir is None:
-        out_dir = memorably_named_dir(transfer_eval)
-    else:
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Print the output directory in bold with escape codes
-    print(f"Saving results to \033[1m{out_dir}\033[0m")
+    out_dir = create_output_directory(out_dir, default_root_dir=transfer_eval)
 
     with open(out_dir / "cfg.yaml", "w") as f:
         cfg.dump_yaml(f)
+
+    stats = evaluate_reporters_in_parallel(cfg=cfg, ds=ds, layers=layers)
 
     cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
     # Evaluate reporters for each layer in parallel

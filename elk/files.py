@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import os
 import random
+from typing import Optional
 
 
 def elk_reporter_dir() -> Path:
@@ -35,4 +36,17 @@ def memorably_named_dir(parent: Path):
 
     out_dir = parent / sub_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
+
+
+def create_output_directory(out_dir: Optional[Path] = None, default_root_dir: Path=elk_reporter_dir()):
+    """Creates an output directory"""
+    if out_dir is None:
+        # default_root_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = memorably_named_dir(default_root_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Print the output directory in bold with escape codes
+    print(f"Output directory at \033[1m{out_dir}\033[0m")
+
     return out_dir
