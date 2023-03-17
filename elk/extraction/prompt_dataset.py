@@ -38,7 +38,7 @@ class Prompt:
         """
         Returns filled template
         """
-        return self.join(self.get_input(), self.get_output(answer_idx, sep=sep))
+        return self.join(self.get_input(), self.get_output(answer_idx))
 
 
 @dataclass
