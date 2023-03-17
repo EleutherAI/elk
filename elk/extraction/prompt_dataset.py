@@ -1,12 +1,13 @@
 from ..math_util import stochastic_round_constrained
 from ..promptsource import DatasetTemplates, Template
 from ..utils import (
+    apply_template,
     assert_type,
     compute_class_balance,
     infer_label_column,
-    undersample,
     infer_num_classes,
-    apply_template,
+    select_train_val_splits,
+    undersample,
 )
 from dataclasses import dataclass
 from datasets import DatasetDict, load_dataset, ClassLabel, Value
@@ -167,15 +168,10 @@ class PromptDataset(TorchDataset):
                     f"class; got {cfg.num_shots} examples, {self.num_classes} classes"
                 )
 
-            # Sanity check to prevent train-test leakage via few-shot prompts
-            if "train" not in ds_dict:
-                raise ValueError(
-                    f"Dataset {cfg.dataset} has no train split, so we can't create "
-                    "few-shot prompts"
-                )
+            train_split = select_train_val_splits(ds_dict)[0]
 
             self.fewshot_strata = [
-                ds_dict["train"].filter(lambda ex: ex[label_col] == i)
+                ds_dict[train_split].filter(lambda ex: ex[label_col] == i)
                 for i in range(self.num_classes)
             ]
         else:
