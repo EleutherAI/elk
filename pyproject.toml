@@ -37,7 +37,6 @@ version = "0.1.1"
 
 [project.optional-dependencies]
 dev = [
-    "cupy-cuda11x",
     "hypothesis",
     "pre-commit",
     "pytest",
@@ -48,6 +47,7 @@ dev = [
 elk = "elk.__main__:run"
 
 [tool.pyright]
+exclude = ["elk/training/eigen_reporter.py"]
 include = ["elk*"]
 reportPrivateImportUsage = false
 
