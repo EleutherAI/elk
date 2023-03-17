@@ -174,8 +174,29 @@ class EigenReporter(Reporter):
             L, Q = eigsh(A.numpy(), k=self.config.num_heads, v0=v0, which="LA")
             self.weight.data = torch.from_numpy(Q).T
         else:
-            L, Q = torch.linalg.eigh(A)
-            self.weight.data = Q[:, -self.config.num_heads :].T
+            # Try to use CuPy's sparse eigensolver for GPU tensors.
+            try:
+                from cupy.cuda import Device
+                from cupyx.scipy.sparse.linalg import eigsh
+                from torch.utils.dlpack import to_dlpack
+                import cupy as cp
+
+                # Zero-copy conversion from PyTorch to CuPy
+                with Device(A.device.index):
+                    A = cp.from_dlpack(to_dlpack(A))
+
+                    # CuPy doesn't support warm-starting here
+                    L, Q = eigsh(A, k=self.config.num_heads, which="LA")
+
+                    # Convert back to PyTorch
+                    L = torch.from_dlpack(L.toDlpack())
+                    Q = torch.from_dlpack(Q.toDlpack())
+                    self.weight.data = Q.T
+
+            # Fall back to PyTorch's eigensolver if CuPy is not available
+            except ImportError:
+                L, Q = torch.linalg.eigh(A)
+                self.weight.data = Q[:, -self.config.num_heads :].T
 
         return -float(L[-1])
 
