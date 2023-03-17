@@ -3,9 +3,10 @@
 from .prompt_dataset import Prompt, PromptDataset, PromptConfig
 from ..utils import (
     assert_type,
-    infer_label_column,
-    select_usable_devices,
     float32_to_int16,
+    infer_label_column,
+    select_train_val_splits,
+    select_usable_devices,
 )
 from .generator import _GeneratorBuilder
 from dataclasses import dataclass, InitVar
@@ -220,16 +221,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
 
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
-        priorities = {
-            Split.TRAIN: 0,
-            Split.VALIDATION: 1,
-            Split.TEST: 2,
-        }
-        splits = sorted(available_splits, key=lambda k: priorities.get(k, 100))
-        assert len(splits) >= 2, "Must have train and val/test splits"
-
-        # Take the first two splits
-        splits = splits[:2]
+        splits = select_train_val_splits(available_splits)
         print(f"Using '{splits[0]}' for training and '{splits[1]}' for validation")
 
         # Empty list means no limit
