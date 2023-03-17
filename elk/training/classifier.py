@@ -146,7 +146,7 @@ class Classifier(torch.nn.Module):
         fold_size = num_samples // k
         indices = torch.randperm(num_samples, device=x.device, generator=rng)
 
-        l2_penalties = torch.logspace(-4, -4, num_penalties).tolist()
+        l2_penalties = torch.logspace(-4, 4, num_penalties).tolist()
         y = y.float()
 
         num_classes = self.linear.out_features
