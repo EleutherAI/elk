@@ -1,6 +1,7 @@
 from torch import Tensor
 from typing import Literal, Optional
 import torch
+import torch.nn.functional as F
 
 
 def lanczos_eigsh(
@@ -10,22 +11,26 @@ def lanczos_eigsh(
     max_iter: Optional[int] = None,
     ncv: Optional[int] = None,
     tol: Optional[float] = None,
+    seed: Optional[int] = None,
     v0: Optional[Tensor] = None,
     which: Literal["LA", "LM", "SA"] = "LM",
 ) -> tuple[Tensor, Tensor]:
     """Lanczos method for computing the top k eigenpairs of a symmetric matrix.
 
-    Implementation transliterated from `cupyx.scipy.sparse.linalg.eigsh`, which in turn
-    is based on `scipy.sparse.linalg.eigsh`.
+    Implementation adapted from `cupyx.scipy.sparse.linalg.eigsh`, which in turn is
+    based on `scipy.sparse.linalg.eigsh`. Unlike the CuPy and SciPy functions, this
+    function supports batched inputs with arbitrary leading dimensions.
 
     Args:
-        A (Tensor): The symmetric matrix to compute the eigenpairs of.
+        A (Tensor): The matrix or batch of matrices of shape `[..., n, n]` for which to
+            compute eigenpairs. Must be symmetric, but need not be positive definite.
         k (int): The number of eigenpairs to compute.
         max_iter (int, optional): The maximum number of iterations to perform.
         ncv (int, optional): The number of Lanczos vectors generated. Must be
             greater than k and smaller than n - 1.
         tol (float, optional): The tolerance for the residual.
-        v0 (Tensor, optional): The starting vector for the Lanczos iteration.
+        seed (int, optional): The random seed to use for the starting vector.
+        v0 (Tensor, optional): The starting vector of shape `[n]`.
         which (str, optional): Which k eigenvalues and eigenvectors to compute.
             Must be one of 'LA', 'LM', or 'SA'.
             'LA': compute the k largest (algebraic) eigenvalues.
@@ -35,7 +40,8 @@ def lanczos_eigsh(
     Returns:
         (Tensor, Tensor): A tuple containing the eigenvalues and eigenvectors.
     """
-    n = A.shape[0]
+    *leading, n, m = A.shape
+    assert n == m, "A must be a square matrix or a batch of square matrices."
 
     if ncv is None:
         ncv = min(max(2 * k, k + 32), n - 1)
@@ -47,29 +53,40 @@ def lanczos_eigsh(
     if tol is None:
         tol = torch.finfo(A.dtype).eps
 
-    alpha = A.new_zeros([ncv])
-    beta = A.new_zeros([ncv])
-    V = A.new_empty([ncv, n])
+    # We don't support which == 'LM' for batched inputs, because we can't do the
+    # re-sorting properly in TorchScript.
+    if len(leading) > 0 and which == "LM":
+        raise NotImplementedError("`which='LM'` is not supported for batched inputs.")
+
+    alpha = A.new_zeros([*leading, ncv])
+    beta = A.new_zeros([*leading, ncv])
+    V = A.new_empty([*leading, ncv, n])
 
     # Initialize Lanczos vector
     if v0 is None:
-        u = torch.randn(n, dtype=A.dtype, device=A.device)
+        if seed is not None:
+            torch.manual_seed(seed)
+
+        u = torch.randn(*leading, n, dtype=A.dtype, device=A.device)
     else:
-        assert v0.shape == (n,)
+        assert v0.shape == (
+            *leading,
+            n,
+        )
         u = v0
 
-    V[0] = u / torch.norm(u)
-
-    _lanczos_asis(A, V, u, alpha, beta, 0, ncv)
+    V[..., 0, :] = F.normalize(u, dim=-1)
+    _inner_loop(A, V, u, alpha, beta, 0, ncv)
 
     # Compute the Ritz vectors and values
     cur_iter = ncv
     w, s = _eigsh_solve_ritz(alpha, beta, None, k, which)
-    x = V.mT @ s
+    x = torch.einsum("...ij,...ik->...jk", V, s)
 
-    # Compute the residual
-    beta_k = beta[-1] * s[-1, :]
-    res = beta_k.norm()
+    # Compute the residual. Note that we take the max over the batch dimensions,
+    # to ensure that we don't terminate early for any element in the batch.
+    beta_k = beta[..., -1, None] * s[..., -1, :]
+    res = beta_k.norm(dim=-1).max()
 
     while res > tol and cur_iter < max_iter:
         w, x, beta_k, res = _outer_loop(
@@ -88,35 +105,39 @@ def lanczos_eigsh(
         )
         cur_iter += ncv - k
 
-    idx = w.argsort()
-    return w[idx], x[:, idx]
+    return w, x
 
 
 @torch.jit.script
 def _eigsh_solve_ritz(alpha, beta, beta_k: Optional[Tensor], k: int, which: str):
     """Solve the standard eigenvalue problem for the Ritz values and vectors."""
-    t = torch.diag(alpha)
-    t = t + torch.diag(beta[:-1], 1)
-    t = t + torch.diag(beta[:-1], -1)
-    if beta_k is not None:
-        t[k, :k] = beta_k
-        t[:k, k] = beta_k
 
+    # Create tri-diagonal matrix
+    t = alpha.diag_embed()
+    t = t + beta[..., :-1].diag_embed(1)
+    t = t + beta[..., :-1].diag_embed(-1)
+
+    if beta_k is not None:
+        t[..., k, :k] = beta_k
+        t[..., :k, k] = beta_k
+
+    # The eigenpairs are already sorted ascending by algebraic value
     w, s = torch.linalg.eigh(t)
 
     # Pick-up k ritz-values and ritz-vectors
     if which == "LA":
-        idx = torch.argsort(w)
-        wk = w[idx[-k:]]
-        sk = s[:, idx[-k:]]
+        wk = w[..., -k:]
+        sk = s[..., -k:]
     elif which == "LM":
-        idx = torch.argsort(torch.absolute(w))
+        # NOTE: We're assuming here that the inputs are not batched; this was already
+        # checked in the main function.
+        idx = w.abs().argsort()
+
         wk = w[idx[-k:]]
         sk = s[:, idx[-k:]]
     elif which == "SA":
-        idx = torch.argsort(w)
-        wk = w[idx[:k]]
-        sk = s[:, idx[:k]]
+        wk = w[..., :k]
+        sk = s[..., :k]
     else:
         raise ValueError("which must be LA, LM, or SA")
 
@@ -124,18 +145,21 @@ def _eigsh_solve_ritz(alpha, beta, beta_k: Optional[Tensor], k: int, which: str)
 
 
 @torch.jit.script
-def _lanczos_asis(a, V, u, alpha, beta, i_start: int, i_end: int):
+def _inner_loop(A, V, u, alpha, beta, i_start: int, i_end: int):
     """Lanczos iteration for symmetric matrix."""
 
     for i in range(i_start, i_end):
-        u[...] = a @ V[i]
-        torch.dot(V[i], u, out=alpha[i])
-        u -= u @ V[: i + 1].conj().mT @ V[: i + 1]
-        torch.norm(u, out=beta[i])
+        # Batched matrix-vector product Av
+        u[:] = torch.einsum("...ij,...j->...i", A, V[..., i, :])
+
+        alpha[..., i] = torch.einsum("...i,...i->...", V[..., i, :], u)
+        proj = torch.einsum("...ij,...j->...i", V[..., : i + 1, :].conj(), u)
+        u -= torch.einsum("...ij,...i->...j", V[..., : i + 1, :], proj)
+        beta[..., i] = u.square().sum(dim=-1).sqrt()  # TorchScript-friendly norm
         if i >= i_end - 1:
             break
 
-        V[i + 1] = u / beta[i]
+        V[..., i + 1, :] = u / beta[..., i, None]
 
 
 @torch.jit.script
@@ -155,30 +179,33 @@ def _outer_loop(
 ):
     """Outer loop for Lanczos iteration."""
     # Setup for thick-restart
-    beta[:k] = 0
-    alpha[:k] = w
-    V[:k] = x.T
+    beta[..., :k] = 0
+    alpha[..., :k] = w
+    V[..., :k, :] = x.mT
 
     # Compute the next Lanczos vector
-    u -= u @ V[:k].conj().mT @ V[:k]
+    proj = torch.einsum("...ij,...j->...i", V[..., :k, :].conj(), u)
+    u -= torch.einsum("...ij,...i->...j", V[..., :k, :], proj)
 
-    V[k] = u / u.norm()
+    V[..., k, :] = F.normalize(u, dim=-1)
 
-    u[:] = A @ V[k]
-    torch.dot(V[k], u, out=alpha[k])
-    u -= alpha[k] * V[k]
-    u -= V[:k].mT @ beta_k
-    torch.norm(u, out=beta[k])
-    V[k + 1] = u / beta[k]
+    u[:] = torch.einsum("...ij,...j->...i", A, V[..., k, :])
+    alpha[..., k] = torch.einsum("...i,...i->...", V[..., k, :], u)
 
-    # Lanczos iteration
-    _lanczos_asis(A, V, u, alpha, beta, k + 1, ncv)
+    proj = torch.einsum("...ij,...j->...i", V[..., : k + 1, :].conj(), u)
+    u -= torch.einsum("...ij,...i->...j", V[..., : k + 1, :], proj)
+
+    beta[..., k] = u.square().sum(dim=-1).sqrt()  # TorchScript-friendly norm
+    V[..., k + 1, :] = u / beta[..., k, None]
+
+    # Inner loop
+    _inner_loop(A, V, u, alpha, beta, k + 1, ncv)
 
     w, s = _eigsh_solve_ritz(alpha, beta, beta_k, k, which)
     x = V.mT @ s
 
     # Compute the residual
-    beta_k = beta[-1] * s[-1, :]
-    res = beta_k.norm()
+    beta_k = beta[..., -1, None] * s[..., -1, :]
+    res = beta_k.square().sum(dim=-1).sqrt().max()  # TorchScript-friendly norm
 
     return w, x, beta_k, res

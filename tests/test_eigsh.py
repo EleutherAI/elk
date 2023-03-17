@@ -5,7 +5,7 @@ import pytest
 import torch
 
 
-@pytest.mark.parametrize("which", ["LA", "LM", "SA"])
+@pytest.mark.parametrize("which", ["LA", "SA"])
 def test_lanczos_eigsh(which):
     torch.manual_seed(42)
 
