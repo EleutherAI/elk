@@ -3,9 +3,10 @@
 from .prompt_dataset import Prompt, PromptDataset, PromptConfig
 from ..utils import (
     assert_type,
-    infer_label_column,
-    select_usable_devices,
     float32_to_int16,
+    infer_label_column,
+    select_train_val_splits,
+    select_usable_devices,
 )
 from .generator import _GeneratorBuilder
 from dataclasses import dataclass, InitVar
@@ -204,38 +205,20 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
-        # Valid splits: TrVal, TrTe, ValTe, TrValTe(->TrVal)
-        base_splits = assert_type(SplitDict, info.splits)
-        splits = set(base_splits) & {Split.TRAIN, Split.VALIDATION, Split.TEST}
-        if (
-            Split.VALIDATION in splits
-            and Split.TEST in splits
-            and Split.TRAIN in splits
-        ):
-            splits.remove(Split.TEST)
-        assert len(splits) == 2, "Must have at least two of train, val, and test splits"
+        available_splits = assert_type(SplitDict, info.splits)
+        splits = select_train_val_splits(available_splits)
+        print(f"Using '{splits[0]}' for training and '{splits[1]}' for validation")
 
-        train_split = Split.TRAIN if Split.TRAIN in splits else Split.VALIDATION
-        val_split = (
-            Split.VALIDATION
-            if Split.VALIDATION in splits and Split.TRAIN in splits
-            else Split.TEST
-        )
+        # Empty list means no limit
+        limit_list = cfg.prompts.max_examples
+        if not limit_list:
+            limit_list = [int(1e100)]
 
-        # grab the max number of examples from the config for each split
-        limit = (
-            {
-                train_split: cfg.prompts.max_examples[0],
-                val_split: cfg.prompts.max_examples[0]
-                if len(cfg.prompts.max_examples) == 1
-                else cfg.prompts.max_examples[1],
-            }
-            if cfg.prompts.max_examples
-            else {
-                train_split: int(1e100),
-                val_split: int(1e100),
-            }
-        )
+        # Broadcast the limit to all splits
+        if len(limit_list) == 1:
+            limit_list *= len(splits)
+
+        limit = {k: v for k, v in zip(splits, limit_list)}
         return SplitDict(
             {
                 k: SplitInfo(
@@ -243,10 +226,10 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
                     num_examples=min(limit[k], v.num_examples),
                     dataset_name=v.dataset_name,
                 )
-                for k, v in base_splits.items()
+                for k, v in available_splits.items()
                 if k in splits
             },
-            dataset_name=base_splits.dataset_name,
+            dataset_name=available_splits.dataset_name,
         )
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)

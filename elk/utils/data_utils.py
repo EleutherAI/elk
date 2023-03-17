@@ -1,15 +1,16 @@
 from .typing import assert_type
+from ..promptsource.templates import Template
 from datasets import (
     ClassLabel,
     Dataset,
     DatasetDict,
     Features,
-    concatenate_datasets,
+    Split,
     Value,
+    concatenate_datasets,
 )
-from ..promptsource.templates import Template
 from random import Random
-from typing import Optional, Any
+from typing import Optional, Iterable, Any
 import numpy as np
 import torch
 
@@ -47,16 +48,17 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
     return pivot
 
 
-def held_out_split(dataset: DatasetDict) -> Dataset:
-    """Return the validation set if it exits, otherwise the test set."""
-    if (
-        "validation" in dataset
-    ):  # TODO this might need to change if we support Val + Test only splits
-        return dataset["validation"]
-    elif "test" in dataset:
-        return dataset["test"]
-    else:
-        raise ValueError("No validation or test split found")
+def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
+    """Return splits to use for train and validation, given an Iterable of splits."""
+    priorities = {
+        Split.TRAIN: 0,
+        Split.VALIDATION: 1,
+        Split.TEST: 2,
+    }
+    splits = sorted(raw_splits, key=lambda k: priorities.get(k, 100))  # type: ignore
+    assert len(splits) >= 2, "Must have at least two of train, val, and test splits"
+
+    return tuple(splits[:2])
 
 
 def infer_label_column(features: Features) -> str:

@@ -2,7 +2,12 @@
 
 from ..extraction import extract, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import assert_type, held_out_split, select_usable_devices, int16_to_float32
+from ..utils import (
+    assert_type,
+    select_train_val_splits,
+    select_usable_devices,
+    int16_to_float32,
+)
 from .classifier import Classifier
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .eigen_reporter import EigenReporter, EigenReporterConfig
@@ -12,7 +17,7 @@ from dataclasses import dataclass
 from datasets import DatasetDict
 from functools import partial
 from pathlib import Path
-from simple_parsing import subgroups, Serializable
+from simple_parsing import field, subgroups, Serializable
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 from tqdm.auto import tqdm
@@ -41,7 +46,7 @@ class RunConfig(Serializable):
     net: ReporterConfig = subgroups(
         {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
     )
-    optim: OptimConfig = OptimConfig()
+    optim: OptimConfig = field(default_factory=OptimConfig)
 
     label_frac: float = 0.0
     max_gpus: int = -1
@@ -73,7 +78,9 @@ def train_reporter(
     # saved in float16 to save disk space. In the future we could try to use mixed
     # precision training in at least some cases.
     with dataset.formatted_as("torch", device=device, dtype=torch.int16):
-        train, val = dataset["train"], held_out_split(dataset)
+        train_split, val_split = select_train_val_splits(dataset)
+        train, val = dataset[train_split], dataset[val_split]
+
         train_labels = cast(Tensor, train["label"])
         val_labels = cast(Tensor, val["label"])
 
@@ -169,7 +176,15 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
-    cols = ["layer", "pseudo_auroc", "train_loss", "acc", "cal_acc", "auroc"]
+    cols = [
+        "layer",
+        "pseudo_auroc",
+        "train_loss",
+        "acc",
+        "cal_acc",
+        "auroc",
+        "ece",
+    ]
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
