@@ -38,6 +38,12 @@ To only extract the hidden states for the model `model` and the dataset `dataset
 elk extract microsoft/deberta-v2-xxlarge-mnli imdb -o my_output_dir
 ```
 
+The following will generate a CCS reporter instead of the Eigen reporter, which is the default.
+
+```bash
+elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --net ccs
+```
+
 ## Development
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 

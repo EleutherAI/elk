@@ -2,7 +2,7 @@ from ..math_util import stochastic_round_constrained
 from ..promptsource import DatasetTemplates
 from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
 from dataclasses import dataclass
-from datasets import DatasetDict, load_dataset
+from datasets import DatasetDict, load_dataset, ClassLabel, Value
 from numpy.typing import NDArray
 from random import Random
 from simple_parsing.helpers import field, Serializable
@@ -23,7 +23,7 @@ class Prompt:
     answers: list[str]
     label: int
     template_name: str
-    mislead_cfg: 'MisleadConfig'
+    mislead_cfg: "MisleadConfig"
 
     def get_input(self) -> str:
         return self.question
@@ -43,16 +43,17 @@ class Prompt:
 
 @dataclass
 class PrefixPrompt(Prompt):
-    mislead_cfg: 'PrefixMisleadConfig'
+    mislead_cfg: "PrefixMisleadConfig"
 
     def __post_init__(self):
-        with open(self.mislead_cfg.prefixes_file, 'r') as f_in:
+        with open(self.mislead_cfg.prefixes_file, "r") as f_in:
             prefix_data = yaml.safe_load(f_in)
-    
+
         if self.mislead_cfg.prefix_name not in prefix_data:
             raise ValueError(
-                f'Specified prefix name {self.mislead_cfg.prefix_name} was not found in the prefixes \
-                {list(prefix_data.keys())} loaded from {self.mislead_cfg.prefixes_file}'
+                f"Specified prefix name {self.mislead_cfg.prefix_name} was not found "
+                f"in the prefixes {list(prefix_data.keys())} loaded from "
+                f"{self.mislead_cfg.prefixes_file}"
             )
 
         self.prefix = prefix_data[self.mislead_cfg.prefix_name]
@@ -68,9 +69,11 @@ class MisleadConfig(Serializable):
 
 @dataclass
 class PrefixMisleadConfig(MisleadConfig):
-    prefix_name: str = 'default'
-    prefixes_file: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'misleading_prefixes.yaml')
-    
+    prefix_name: str = "default"
+    prefixes_file: str = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "misleading_prefixes.yaml"
+    )
+
     mislead_class: ClassVar[type[PrefixPrompt]] = PrefixPrompt
 
 
@@ -109,8 +112,7 @@ class PromptConfig(Serializable):
     seed: int = 42
     num_variants: int = 1
     mislead_type: MisleadConfig = subgroups(
-        {'None': MisleadConfig, 'Prefix': PrefixMisleadConfig},
-        default='None'
+        {"None": MisleadConfig, "Prefix": PrefixMisleadConfig}, default="None"
     )
 
     def __post_init__(self):
@@ -119,12 +121,13 @@ class PromptConfig(Serializable):
                 "max_examples should be a list of length 0, 1, or 2,"
                 f"but got {len(self.max_examples)}"
             )
-        
+
         # if self.prompt_type not in PROMPT_TYPES:
         #     raise ValueError(
         #         f"Specified prompt_type \'{self.prompt_type}\' was not found in the"
         #         f" set of valid prompt types: {list(PROMPT_TYPES.keys())}"
         #     )
+
 
 class PromptDataset(TorchDataset):
     """Wrapper for a HuggingFace dataset which generates prompts with `promptsource`.
@@ -151,7 +154,7 @@ class PromptDataset(TorchDataset):
         cfg: PromptConfig,
         rank: int = 0,
         world_size: int = 1,
-        split: str = "validation"
+        split: str = "validation",
     ):
         # self.prompt_class = PROMPT_TYPES[cfg.prompt_type]
 
@@ -192,10 +195,14 @@ class PromptDataset(TorchDataset):
 
         # Enforce class balance if needed
         if cfg.balance:
-            self.active_split = undersample(self.active_split, self.rng, label_col)
+            self.active_split = undersample(
+                self.active_split, self.rng, self.num_classes, label_col
+            )
             self.class_fracs = np.ones(self.num_classes) / self.num_classes
         else:
-            class_sizes = compute_class_balance(self.active_split, label_col)
+            class_sizes = compute_class_balance(
+                self.active_split, self.num_classes, label_col
+            )
             self.class_fracs: NDArray[np.floating] = class_sizes / class_sizes.sum()
 
         # We use stratified sampling to create few-shot prompts that are as balanced as
@@ -244,23 +251,24 @@ class PromptDataset(TorchDataset):
         """Get a list of prompts for a given predicate"""
         # get self.num_variants unique prompts from the template pool
         template_names = self.rng.sample(
-            self.prompter.templates.keys(), self.num_variants
+            list(self.prompter.templates), self.num_variants
         )
 
         example = self.active_split[index]
+        true_label = example[self.label_column]
 
         prompts = []
         for template_name in template_names:
             template = self.prompter.templates[template_name]
 
-            true_label = example[self.label_column]
             answers = []
             questions = set()
 
             for fake_label in range(self.num_classes):
-                example[self.label_column] = fake_label
+                fake_example = example.copy()
+                fake_example[self.label_column] = fake_label
 
-                q, a = template.apply(example)
+                q, a = template.apply(fake_example)
                 answers.append(a)
                 questions.add(q)
 
@@ -309,6 +317,17 @@ class PromptDataset(TorchDataset):
     @property
     def num_classes(self) -> int:
         """Number of classes in the underlying dataset."""
-
-        # We piggyback on the ClassLabel feature type to get the number of classes
-        return self.active_split.features[self.label_column].num_classes
+        if isinstance(self.active_split.features[self.label_column], ClassLabel):
+            # We piggyback on the ClassLabel feature type to get the number of classes
+            return self.active_split.features[self.label_column].num_classes
+        elif (
+            isinstance(self.active_split.features[self.label_column], Value)
+            and self.active_split.features[self.label_column].dtype == "bool"
+        ):
+            return 2
+        else:
+            raise ValueError(
+                f"Can't infer number of classes from label column "
+                f"{self.label_column} of type "
+                f"{self.active_split.features[self.label_column]}"
+            )

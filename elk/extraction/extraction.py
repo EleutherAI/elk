@@ -24,7 +24,6 @@ from datasets import (
 from simple_parsing.helpers import field, Serializable
 from transformers import (
     AutoConfig,
-    AutoModel,
     AutoTokenizer,
     BatchEncoding,
     PreTrainedModel,
@@ -84,18 +83,27 @@ def get_model_class(model_str: str) -> Type[PreTrainedModel]:
                 return arch_str
         return None
 
-    suffixes = ['SequenceClassification', 'CausalLM', 'LMHeadModel', 'ConditionalGeneration']
+    suffixes = [
+        "SequenceClassification",
+        "CausalLM",
+        "LMHeadModel",
+        "ConditionalGeneration",
+    ]
 
     for suffix in suffixes:
         supported_arch = get_arch_string(suffix)
 
         if supported_arch is None:
             continue
-    
+
         return getattr(transformers, supported_arch)
 
-    raise ValueError(f'{model_str} does not support any architectures in the list: {architectures}')
+    raise ValueError(
+        f"{model_str} does not support any architectures in the list: {architectures}"
+    )
 
+
+@torch.no_grad()
 def extract_hiddens(
     cfg: ExtractionConfig,
     *,
@@ -127,7 +135,11 @@ def extract_hiddens(
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    model = get_model_class(cfg.model).from_pretrained(cfg.model, torch_dtype="auto").to(device)
+    model = (
+        get_model_class(cfg.model)
+        .from_pretrained(cfg.model, torch_dtype="auto")
+        .to(device)
+    )
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
@@ -169,11 +181,12 @@ def extract_hiddens(
             # need to store locations of output tokens
             # beginning and end of span are equal iff it's a special token
             answer_indices = [
-                token_idx for token_idx, span in enumerate(tokenized['offset_mapping'][0])
+                token_idx
+                for token_idx, span in enumerate(tokenized["offset_mapping"][0])
                 if (answer_start <= span[0] and span[0] != span[1])
             ]
 
-            del tokenized['offset_mapping']
+            del tokenized["offset_mapping"]
 
             return (tokenized, answer_indices)
 
@@ -187,7 +200,11 @@ def extract_hiddens(
                 **kwargs,
             ).to(device)
 
-            answer_indices = [i for i, tkn in enumerate(tokenized['labels'][0]) if tkn not in tokenizer.all_special_ids]
+            answer_indices = [
+                i
+                for i, tkn in enumerate(tokenized["labels"][0])
+                if tkn not in tokenizer.all_special_ids
+            ]
 
             return (tokenized, answer_indices)
 
@@ -224,7 +241,9 @@ def extract_hiddens(
         }
         variant_ids = [prompt.template_name for prompt in prompts]
 
-        logprobs_all = torch.empty((prompt_ds.num_variants, num_choices), device=device, dtype=torch.float16)
+        logprobs_all = torch.empty(
+            (prompt_ds.num_variants, num_choices), device=device, dtype=torch.float16
+        )
 
         # Iterate over variants
         for i, variant_inputs in enumerate(inputs):
@@ -254,23 +273,27 @@ def extract_hiddens(
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
-                
+
                 logprobs = outputs.logits.log_softmax(dim=-1)
-                
+
                 if should_concat:
                     # offset predictions targets (target i=1 -> prediction i=0)
-                    input_tokens = inpt['input_ids'][:, 1:]
+                    input_tokens = inpt["input_ids"][:, 1:]
                     answer_indices = [idx - 1 for idx in answer_indices]
 
-                    logprobs = torch.gather(logprobs[:, :-1], 2, input_tokens.unsqueeze(-1)).squeeze(-1)
+                    logprobs = torch.gather(
+                        logprobs[:, :-1], 2, input_tokens.unsqueeze(-1)
+                    ).squeeze(-1)
 
                     logprobs_all[i, j] = torch.sum(logprobs.squeeze(0)[answer_indices])
 
                 else:
                     # labels don't need offset
-                    answer_tokens = inpt['labels']
+                    answer_tokens = inpt["labels"]
 
-                    logprobs = torch.gather(logprobs, 2, answer_tokens.unsqueeze(-1)).squeeze(-1)
+                    logprobs = torch.gather(
+                        logprobs, 2, answer_tokens.unsqueeze(-1)
+                    ).squeeze(-1)
 
                     logprobs_all[i, j] = torch.sum(logprobs.squeeze(0)[answer_indices])
 
@@ -291,28 +314,29 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
-        base_splits = assert_type(SplitDict, info.splits)
-        splits = set(base_splits) & {Split.TRAIN, Split.VALIDATION, Split.TEST}
-        if Split.VALIDATION in splits and Split.TEST in splits:
-            splits.remove(Split.TEST)
+        available_splits = assert_type(SplitDict, info.splits)
+        priorities = {
+            Split.TRAIN: 0,
+            Split.VALIDATION: 1,
+            Split.TEST: 2,
+        }
+        splits = sorted(available_splits, key=lambda k: priorities.get(k, 100))
+        assert len(splits) >= 2, "Must have train and val/test splits"
 
-        assert len(splits) == 2, "Must have train and val/test splits"
-        val_split = Split.VALIDATION if Split.VALIDATION in splits else Split.TEST
+        # Take the first two splits
+        splits = splits[:2]
+        print(f"Using '{splits[0]}' for training and '{splits[1]}' for validation")
 
-        # grab the max number of examples from the config for each split
-        limit = (
-            {
-                Split.TRAIN: cfg.prompts.max_examples[0],
-                val_split: cfg.prompts.max_examples[0]
-                if len(cfg.prompts.max_examples) == 1
-                else cfg.prompts.max_examples[1],
-            }
-            if cfg.prompts.max_examples
-            else {
-                Split.TRAIN: int(1e100),
-                val_split: int(1e100),
-            }
-        )
+        # Empty list means no limit
+        limit_list = cfg.prompts.max_examples
+        if not limit_list:
+            limit_list = [int(1e100)]
+
+        # Broadcast the limit to all splits
+        if len(limit_list) == 1:
+            limit_list *= len(splits)
+
+        limit = {k: v for k, v in zip(splits, limit_list)}
         return SplitDict(
             {
                 k: SplitInfo(
@@ -320,10 +344,10 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
                     num_examples=min(limit[k], v.num_examples),
                     dataset_name=v.dataset_name,
                 )
-                for k, v in base_splits.items()
+                for k, v in available_splits.items()
                 if k in splits
             },
-            dataset_name=base_splits.dataset_name,
+            dataset_name=available_splits.dataset_name,
         )
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
@@ -352,7 +376,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
         "logprobs": Array2D(
             dtype="float32",
             shape=(num_variants, 2),
-        )
+        ),
     }
     devices = select_usable_devices(max_gpus)
     builders = {

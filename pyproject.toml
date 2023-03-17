@@ -12,12 +12,8 @@ license = {text = "MIT License"}
 dependencies = [
     # Added Dataset.from_generator() method
     "datasets>=2.5.0",
-    # TODO: consider removing this dependency since we only use it once
-    "einops",
     # Introduced numpy.typing module
     "numpy>=1.20.0",
-    # Introduced type annotations
-    "prettytable>=3.5.0",
     # This version is old, but it's needed for certain HF tokenizers to work.
     "protobuf==3.20.*",
     # Basically any version should work as long as it supports the user's CUDA version
@@ -26,8 +22,8 @@ dependencies = [
     "scikit-learn>=1.0.0",
     # Needed for certain HF tokenizers
     "sentencepiece==0.1.97",
-    # Support for Literal types was added in 0.0.21
-    "simple-parsing>=0.0.21",
+    # We upstreamed bugfixes for Literal types in 0.1.1
+    "simple-parsing>=0.1.1",
     # Version 1.11 introduced Fully Sharded Data Parallel, which we plan to use soon
     "torch>=1.11.0",
     # Doesn't really matter but versions < 4.0 are very very old (pre-2016)
@@ -55,7 +51,6 @@ include = ["elk*"]
 reportPrivateImportUsage = false
 
 [tool.pytest.ini_options]
-markers = ["cpu: Marker for tests that do not depend on GPUs"]
 testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
