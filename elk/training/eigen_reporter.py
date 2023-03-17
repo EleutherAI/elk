@@ -1,6 +1,7 @@
 """An ELK reporter network."""
 
 from ..math_util import cov_mean_fused
+from ..eigsh import lanczos_eigsh
 from .reporter import Reporter, ReporterConfig
 from dataclasses import dataclass
 from torch import nn, optim, Tensor
@@ -161,21 +162,12 @@ class EigenReporter(Reporter):
             - self.config.inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
         )
+        v0 = self.weight.T.squeeze() if warm_start else None
 
-        # Use SciPy's sparse eigensolver for CPU tensors. This is a frontend to ARPACK,
-        # which uses the Lanczos method under the hood.
-        if A.device.type == "cpu":
-            from scipy.sparse.linalg import eigsh
-
-            v0 = self.weight.T.numpy() if warm_start else None
-
-            # We use "LA" (largest algebraic) instead of "LM" (largest magnitude) to
-            # ensure that the eigenvalue is positive and not a large negative one
-            L, Q = eigsh(A.numpy(), k=self.config.num_heads, v0=v0, which="LA")
-            self.weight.data = torch.from_numpy(Q).T
-        else:
-            L, Q = torch.linalg.eigh(A)
-            self.weight.data = Q[:, -self.config.num_heads :].T
+        # We use "LA" (largest algebraic) instead of "LM" (largest magnitude) to
+        # ensure that the eigenvalue is positive and not a large negative one
+        L, Q = lanczos_eigsh(A, k=self.config.num_heads, v0=v0, which="LA")
+        self.weight.data = Q.T
 
         return -float(L[-1])
 
