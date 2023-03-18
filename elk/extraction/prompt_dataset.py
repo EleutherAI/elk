@@ -231,7 +231,7 @@ class PromptDataset(TorchDataset):
             if self.num_classes > 2:
                 # remove all but the true answer and one random other answer
                 variant_template, variant_label = binarize(
-                    template, true_label, new_label, self.rng
+                    template, true_label, assert_type(int, new_label), self.rng
                 )
             else:
                 variant_template, variant_label = template, true_label
