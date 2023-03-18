@@ -144,17 +144,21 @@ def int16_to_float32(x: torch.Tensor) -> torch.Tensor:
 def apply_template(template: Template, example: dict) -> str:
     """Concatenate question and answer if answer is not empty or whitespace."""
     q, a = template.apply(example)
+
     # if the jinja template already adds whitespace, don't add more
     sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
     return f"{q}{sep}{a}" if a and not a.isspace() else q
 
 
 def binarize(template: Template, label: int, rng: Random) -> tuple[Template, int]:
-    """Binarize a template with more than 2 classes, modifying the template in-place.
+    """Binarize a template with >2 answer choices, returning a new template and label.
 
     Returns:
-        The new template (with only 2 answer choices).
-        The new label (the index of the true answer in the new answer choices).
+        `new_template`:
+            A deepcopy of the original template with with 2 answer choices, one of
+            which is the true answer and the other is a random false answer.
+        `new_label`:
+            the index of the true answer into `new_template.answer_choices`
     """
     answer_choices = assert_type(str, template.answer_choices).split(" ||| ")
     assert len(answer_choices) > 2

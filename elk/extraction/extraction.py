@@ -132,8 +132,8 @@ def extract_hiddens(
     def collate(prompts: list[Prompt]) -> list[list[BatchEncoding]]:
         return [[tokenize(prompt, i) for i in range(2)] for prompt in prompts]
 
-    # If this is an encoder-decoder model and we're passing the answer to the encoder,
-    # we don't need to run the decoder at all. Just strip it off, making the problem
+    # If this is an encoder-decoder model we don't need to run the decoder at all.
+    # Just strip it off, making the problem
     # equivalent to a regular encoder-only model.
     if is_enc_dec:
         # This isn't actually *guaranteed* by HF, but it's true for all existing models
