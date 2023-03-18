@@ -82,15 +82,10 @@ class PromptConfig(Serializable):
 class PromptDataset(TorchDataset):
     """Wrapper for a HuggingFace dataset which generates prompts with `promptsource`.
 
-    Usually `promptsource` has multiple prompt templates for a given dataset. We handle
-    this in two ways. When `strategy` is set to `"randomize"` (the default), we sample
-    a random prompt template for each example on-the-fly when `__getitem__` is called,
-    using the seed passed to `__init__`. Note this means that the same example may be
-    assigned a different prompt template if `__getitem__` is called multiple times with
-    the same index.  TODO redo this documentation
-
-    When `strategy` is set to `"all"`, we "broadcast" the prompt templates across the
-    dataset, multiplying its effective size by the number of templates.
+    Usually `promptsource` has multiple prompt templates for a given dataset. We sample
+    `num_variants` of these templates and apply them to each example in the dataset, up
+    to `max_examples` examples. If `num_shots` is greater than zero, we sample that
+    many examples from the dataset and use them to generate a prefix for the prompt.
 
     Example:
     >>> prompts = PromptDataset("super_glue", "boolq", split="train")

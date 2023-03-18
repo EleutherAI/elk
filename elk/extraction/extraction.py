@@ -106,16 +106,11 @@ def extract_hiddens(
     # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
 
-    # TODO: Make this configurable or something
-    # Token used to separate the question from the answer
     # TODO: test whether using sep_token is important, but this seems low priority
     # sep_token = tokenizer.sep_token or "\n"
-    # TODO: make sure I'm dealing with encoder-decoder models correctly
     if not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Whether to concatenate the question and answer before passing to the model.
-    # If False pass them to the encoder and decoder separately.
     is_enc_dec = model.config.is_encoder_decoder
 
     def tokenize(prompt: Prompt, idx: int, **kwargs):
