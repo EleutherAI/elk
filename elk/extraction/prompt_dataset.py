@@ -202,6 +202,7 @@ class PromptDataset(TorchDataset):
 
         example = self.active_split[index]
         true_label = example[self.label_column]
+        new_label = self.rng.choice([0, 1]) if self.num_classes > 2 else None
 
         prompts = []
         for template_name in template_names:
@@ -230,7 +231,7 @@ class PromptDataset(TorchDataset):
             if self.num_classes > 2:
                 # remove all but the true answer and one random other answer
                 variant_template, variant_label = binarize(
-                    template, true_label, self.rng
+                    template, true_label, new_label, self.rng
                 )
             else:
                 variant_template, variant_label = template, true_label

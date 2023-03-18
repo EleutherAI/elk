@@ -188,6 +188,7 @@ def extract_hiddens(
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
 
+        assert all([prompts[0].label == prompt.label for prompt in prompts])
         yield dict(
             label=prompts[0].label,
             variant_ids=variant_ids,

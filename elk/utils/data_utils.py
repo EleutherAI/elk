@@ -150,7 +150,7 @@ def apply_template(template: Template, example: dict) -> str:
     return f"{q}{sep}{a}" if a and not a.isspace() else q
 
 
-def binarize(template: Template, label: int, rng: Random) -> tuple[Template, int]:
+def binarize(template: Template, label: int, new_label: int, rng: Random) -> tuple[Template, int]:
     """Binarize a template with >2 answer choices, returning a new template and label.
 
     Returns:
@@ -166,7 +166,7 @@ def binarize(template: Template, label: int, rng: Random) -> tuple[Template, int
     true = answer_choices[label]
     false = rng.choice([c for c in answer_choices if c != true])
 
-    new_label = rng.choice([0, 1])
+    assert new_label in (0, 1)
     new_template = copy.deepcopy(template)
     new_template.answer_choices = (
         f"{false} ||| {true}" if new_label else f"{true} ||| {false}"
