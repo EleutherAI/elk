@@ -1,30 +1,39 @@
 from elk.extraction import extract, ExtractionConfig, PromptDataset
 from elk.promptsource.templates import DatasetTemplates
+from elk.utils import apply_template
 
 
-def test_prompt_dataset_getitem():
+def test_prompt_dataset_getitem_boolq():
+    def test_prompt_dataset_getitem(cfg: ExtractionConfig, split: str):
+        prompt_ds = PromptDataset(cfg.prompts, rank=0, world_size=1, split=split)
+        ds_name, _, config_name = cfg.prompts.dataset.partition(" ")
+
+        prompter = DatasetTemplates(ds_name, config_name or None)
+        assert len(prompt_ds) == cfg.prompts.max_examples[-1]
+        for i in range(len(prompt_ds)):
+            true_templates_ids = [
+                template.id for template in prompter.templates.values()
+            ]
+            returned_prompts = prompt_ds[i]
+            returned_templates_ids = [prompt.template.id for prompt in returned_prompts]
+
+            # check for using the right example
+            assert all(
+                [
+                    prompt_ds.active_split[i] == prompt.example
+                    for prompt in returned_prompts
+                ]
+            )
+
+            # check for using the same templates
+            assert set(true_templates_ids) == set(returned_templates_ids)
+            # TODO: once we're sorting output add
+            # assert true_templates_ids == returned_templates_ids
+
+    # the case where the dataset has 2 classes
     cfg = ExtractionConfig.load_yaml("tests/distilgpt2_boolq_cfg.yaml")
-    prompt_ds = PromptDataset(cfg.prompts, rank=0, world_size=1, split="validation")
+    test_prompt_dataset_getitem(cfg, "validation")
 
-    ds_name, config_name = cfg.prompts.dataset.split(" ")
-    prompter = DatasetTemplates(ds_name, config_name or None)
-    assert len(prompt_ds) == 2
-    for i in range(len(prompt_ds)):
-        true_prompts = [
-            "\n".join(template.apply(prompt_ds.active_split[i]))
-            for template in prompter.templates.values()
-        ]
-        # TODO in future use
-        # true_prompts = [
-        #   apply_template(template, boolq[i])
-        #   for template_name, template in prompter.templates.items()
-        # ]
-        returned_prompts = prompt_ds[i]
-        prompts = [
-            ret_prompt.to_string(answer_idx=ret_prompt.label)
-            for ret_prompt in returned_prompts
-        ]
-
-        # this checks if the prompts are the same, AND the labels are the same
-        assert set(true_prompts) == set(prompts)
-        # TODO: in future: assert true_prompts == prompts
+    # the case where the dataset has more than 2 classes
+    cfg = ExtractionConfig.load_yaml("tests/distilgpt2_dbpedia_cfg.yaml")
+    test_prompt_dataset_getitem(cfg, "test")
