@@ -32,6 +32,8 @@ class PromptConfig(Serializable):
         dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
             `"super_glue boolq"` or `"imdb"`.
         balance: Whether to force class balance in the dataset using undersampling.
+        data_dir: The directory to use for caching the dataset. Defaults to
+            `~/.cache/huggingface/datasets`.
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset; if there is only one column
             with a `ClassLabel` datatype, we use that.
@@ -48,11 +50,12 @@ class PromptConfig(Serializable):
 
     dataset: str = field(positional=True)
     balance: bool = False
+    data_dir: Optional[str] = None
     label_column: Optional[str] = None
     max_examples: list[int] = field(default_factory=list)
     num_shots: int = 0
-    seed: int = 42
     num_variants: int = 1
+    seed: int = 42
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
@@ -100,7 +103,7 @@ class PromptDataset(TorchDataset):
 
         ds_dict = assert_type(
             DatasetDict,  # TODO: Should we support IterableDataset?
-            load_dataset(ds_name, config_name or None),
+            load_dataset(ds_name, config_name or None, data_dir=cfg.data_dir),
         )
 
         # By default we use the existing train-validation/test split in the dataset.
