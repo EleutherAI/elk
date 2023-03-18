@@ -49,10 +49,10 @@ class PromptConfig(Serializable):
     dataset: str = field(positional=True)
     balance: bool = False
     label_column: Optional[str] = None
-    max_examples: list[int] = field(default_factory=list)
+    max_examples: list[int] = field(default_factory=lambda: [750, 250])
     num_shots: int = 0
     seed: int = 42
-    num_variants: int = 1
+    num_variants: int = -1
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
