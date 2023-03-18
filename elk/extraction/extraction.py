@@ -106,12 +106,11 @@ def extract_hiddens(
     # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
 
-    num_choices = prompt_ds.num_classes
     # TODO: Make this configurable or something
     # Token used to separate the question from the answer
     # TODO: test whether using sep_token is important, but this seems low priority
     # sep_token = tokenizer.sep_token or "\n"
-
+    # TODO: make sure I'm dealing with encoder-decoder models correctly
     if not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -131,7 +130,7 @@ def extract_hiddens(
     # This function returns the flattened questions and answers. After inference we
     # need to reshape the results.
     def collate(prompts: list[Prompt]) -> list[list[BatchEncoding]]:
-        return [[tokenize(prompt, i) for i in range(num_choices)] for prompt in prompts]
+        return [[tokenize(prompt, i) for i in range(2)] for prompt in prompts]
 
     # If this is an encoder-decoder model and we're passing the answer to the encoder,
     # we don't need to run the decoder at all. Just strip it off, making the problem
@@ -152,7 +151,7 @@ def extract_hiddens(
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
                 prompt_ds.num_variants,
-                num_choices,
+                2,  # contrast pair
                 model.config.hidden_size,
                 device=device,
                 dtype=torch.int16,

@@ -1,4 +1,5 @@
 from .data_utils import (
+    binarize,
     compute_class_balance,
     get_columns_all_equal,
     infer_label_column,

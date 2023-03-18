@@ -3,6 +3,7 @@ from ..promptsource import DatasetTemplates, Template
 from ..utils import (
     apply_template,
     assert_type,
+    binarize,
     compute_class_balance,
     infer_label_column,
     infer_num_classes,
@@ -28,9 +29,6 @@ class Prompt:
     example: dict[str, Any]
     label: int
     label_column: str
-    # TODO: contrast pairs for dbpedia and ag_news need to be between the two choices
-    # I think I need to talk to Walter about this
-    # How do I get the negative example in the answer template slot?
 
     def to_string(self, answer_idx: int) -> str:
         """Return the prompt as a string, with the answer at `answer_idx`."""
@@ -227,11 +225,19 @@ class PromptDataset(TorchDataset):
             else:
                 few_shot_prefix = ""
 
+            if self.num_classes > 2:
+                # remove all but the true answer and one random other answer
+                variant_template, variant_label = binarize(
+                    template, true_label, self.rng
+                )
+            else:
+                variant_template, variant_label = template, true_label
+
             prompts.append(
                 Prompt(
-                    template=template,
+                    template=variant_template,
                     example=example,
-                    label=true_label,
+                    label=variant_label,
                     label_column=self.label_column,
                     few_shot_prefix=few_shot_prefix,
                 )

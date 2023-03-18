@@ -7,8 +7,7 @@ templates:
     id: 00fa401f-3329-48fa-be4a-1b6725292ee6
     jinja: 'Consider the following example: '''''' {{content}} ''''''
 
-      Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 14)  |
-      reject("equalto", label) | list | random ]}}. Between choice 1 and choice 2,
+      Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[1 - label]}}. Between choice 1 and choice 2,
       the topic of this example is ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -25,8 +24,7 @@ templates:
     id: 01fa401f-3329-48fa-be4a-1b6725292ee6
     jinja: 'Consider the following example: '''''' {{content}} ''''''
 
-      Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 14)  |
-      reject("equalto", label) | list | random ]}}.Between choice 1 and choice 2,
+      Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[1 - label]}}.Between choice 1 and choice 2,
       what is the topic of this example? |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -44,8 +42,7 @@ templates:
     jinja: 'Consider the following example: '''''' {{content}} ''''''
 
       Which is the topic of this example, choice 1: {{answer_choices[label]}}, or
-      choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||
+      choice 2: {{answer_choices[1 - label]}} |||
 
       {{answer_choices[label]}}'
     metadata: !TemplateMetadata
@@ -64,8 +61,7 @@ templates:
     jinja: 'Consider the following example: '''''' {{content}} ''''''
 
       Which is the topic of this example, choice 1: {{answer_choices[label]}}, or
-      choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||
+      choice 2: {{answer_choices[1 - label]}} |||
 
       {{answer_choices[label]}}'
     metadata: !TemplateMetadata
@@ -83,8 +79,7 @@ templates:
     id: 04fa401f-3329-48fa-be4a-1b6725292ee6
     jinja: '{{content}}
 
-      Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 14)  |
-      reject("equalto", label) | list | random ]}}.Between choice 1 and choice 2,
+      Choice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[1 - label]}}.Between choice 1 and choice 2,
       the topic of this example is |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -102,8 +97,7 @@ templates:
     jinja: '{{content}}
 
       Which is the topic of this example, choice 1: {{answer_choices[label]}}, or
-      choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||
+      choice 2: {{answer_choices[1 - label]}} |||
 
       {{answer_choices[label]}}'
     metadata: !TemplateMetadata
@@ -122,8 +116,7 @@ templates:
     jinja: '{{content}}
 
       What category does the paragraph belong to, choice 1: {{answer_choices[label]}},
-      or choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||
+      or choice 2: {{answer_choices[1 - label]}} |||
 
       {{answer_choices[label]}}'
     metadata: !TemplateMetadata
@@ -142,8 +135,7 @@ templates:
     jinja: '{{content}}
 
       What label best describes this paragraph, choice 1: {{answer_choices[label]}},
-      or choice 2: {{answer_choices[ range(0, 14)  | reject("equalto", label) | list
-      | random ]}} |||
+      or choice 2: {{answer_choices[1 - label]}} |||
 
       {{answer_choices[label]}}'
     metadata: !TemplateMetadata

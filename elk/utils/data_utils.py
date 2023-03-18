@@ -13,6 +13,7 @@ from random import Random
 from typing import Optional, Iterable, Any
 import numpy as np
 import torch
+import copy
 
 
 def compute_class_balance(
@@ -146,3 +147,25 @@ def apply_template(template: Template, example: dict) -> str:
     # if the jinja template already adds whitespace, don't add more
     sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
     return f"{q}{sep}{a}" if a and not a.isspace() else q
+
+
+def binarize(template: Template, label: int, rng: Random) -> tuple[Template, int]:
+    """Binarize a template with more than 2 classes, modifying the template in-place.
+
+    Returns:
+        The new template (with only 2 answer choices).
+        The new label (the index of the true answer in the new answer choices).
+    """
+    answer_choices = assert_type(str, template.answer_choices).split(" ||| ")
+    assert len(answer_choices) > 2
+
+    true = answer_choices[label]
+    false = rng.choice([c for c in answer_choices if c != true])
+
+    new_label = rng.choice([0, 1])
+    new_template = copy.deepcopy(template)
+    new_template.answer_choices = (
+        f"{false} ||| {true}" if new_label else f"{true} ||| {false}"
+    )
+
+    return new_template, new_label
