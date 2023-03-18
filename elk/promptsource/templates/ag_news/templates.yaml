@@ -82,8 +82,7 @@ templates:
     answer_choices: World politics ||| Sports ||| Business ||| Science and technology
     id: b1d49782-dfd9-41a5-87a6-8fceab9c2198
     jinja: 'Consider the following example: '''''' {{text}} ''''''\nChoice 1: {{answer_choices[label]}}.
-      Choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
-      random ]}}.Between choice 1 and choice 2, the topic of this example is |||  {{answer_choices[label]}}'
+      Choice 2: {{answer_choices[1 - label]}}.Between choice 1 and choice 2, the topic of this example is |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -96,8 +95,7 @@ templates:
     answer_choices: World politics ||| Sports ||| Business ||| Science and technology
     id: b2d49782-dfd9-41a5-87a6-8fceab9c2198
     jinja: 'Consider the following example: '''''' {{text}} ''''''\nChoice 1: {{answer_choices[label]}}.
-      Choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
-      random ]}}.Between choice 1 and choice 2, what is the topic of this example? |||  {{answer_choices[label]}}'
+      Choice 2: {{answer_choices[1 - label]}}.Between choice 1 and choice 2, what is the topic of this example? |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -110,8 +108,7 @@ templates:
     answer_choices: World politics ||| Sports ||| Business ||| Science and technology
     id: b3d49782-dfd9-41a5-87a6-8fceab9c2198
     jinja: 'Consider the following example: '''''' {{text}} ''''''\nWhich is the topic of this example, choice 1: {{answer_choices[label]}},
-      or choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
-      random ]}}? |||  {{answer_choices[label]}}'
+      or choice 2: {{answer_choices[1 - label]}}? |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -123,8 +120,7 @@ templates:
   b4d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
     answer_choices: World politics ||| Sports ||| Business ||| Science and technology
     id: b4d49782-dfd9-41a5-87a6-8fceab9c2198
-    jinja: '{{text}}\nChoice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
-      random ]}}. Between choice 1 and choice 2, the topic of this example is |||  {{answer_choices[label]}}'
+    jinja: '{{text}}\nChoice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[1 - label]}}. Between choice 1 and choice 2, the topic of this example is |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -136,8 +132,7 @@ templates:
   b5d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
     answer_choices: World politics ||| Sports ||| Business ||| Science and technology
     id: b5d49782-dfd9-41a5-87a6-8fceab9c2198
-    jinja: '{{text}}\nChoice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
-      random ]}}. Between choice 1 and choice 2, what is the topic of this example? |||  {{answer_choices[label]}}'
+    jinja: '{{text}}\nChoice 1: {{answer_choices[label]}}. Choice 2: {{answer_choices[1 - label]}}. Between choice 1 and choice 2, what is the topic of this example? |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -149,8 +144,7 @@ templates:
   b6d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
     answer_choices: World politics ||| Sports ||| Business ||| Science and technology
     id: b6d49782-dfd9-41a5-87a6-8fceab9c2198
-    jinja: '{{text}}\nWhich is the topic of this example, choice 1: {{answer_choices[label]}}, or choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
-      random ]}}? |||  {{answer_choices[label]}}'
+    jinja: '{{text}}\nWhich is the topic of this example, choice 1: {{answer_choices[label]}}, or choice 2: {{answer_choices[1 - label]}}? |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -162,8 +156,7 @@ templates:
   b7d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
     answer_choices: World politics ||| Sports ||| Business ||| Science and technology
     id: b7d49782-dfd9-41a5-87a6-8fceab9c2198
-    jinja: '{{text}}\nWhat label best describes this news article, choice 1: {{answer_choices[label]}}, or choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
-      random ]}}? |||  {{answer_choices[label]}}'
+    jinja: '{{text}}\nWhat label best describes this news article, choice 1: {{answer_choices[label]}}, or choice 2: {{answer_choices[1 - label]}}? |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -175,8 +168,7 @@ templates:
   b8d49782-dfd9-41a5-87a6-8fceab9c2198: !Template
     answer_choices: World politics ||| Sports ||| Business ||| Science and technology
     id: b8d49782-dfd9-41a5-87a6-8fceab9c2198
-    jinja: '{{text}}\nWhich section of a newspaper would this article likely appear in, choice 1: {{answer_choices[label]}}, or choice 2: {{answer_choices[ range(0, 4)  | reject("equalto", label) | list |
-      random ]}}? |||  {{answer_choices[label]}}'
+    jinja: '{{text}}\nWhich section of a newspaper would this article likely appear in, choice 1: {{answer_choices[label]}}, or choice 2: {{answer_choices[1 - label]}}? |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
