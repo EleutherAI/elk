@@ -194,8 +194,10 @@ class PromptDataset(TorchDataset):
     def __getitem__(self, index: int) -> list[Prompt]:
         """Get a list of prompts for a given predicate"""
         # get self.num_variants unique prompts from the template pool
-        template_names = self.rng.sample(
-            list(self.prompter.templates), self.num_variants
+        template_names = (
+            self.rng.sample(list(self.prompter.templates), self.num_variants)
+            if self.num_variants < len(self.prompter.templates)
+            else list(self.prompter.templates)
         )
 
         example = self.active_split[index]
