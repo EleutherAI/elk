@@ -24,7 +24,7 @@ import numpy as np
 class Prompt:
     """A prompt for a single example in a dataset"""
 
-    few_shot_prefix: str
+    prefix: str
     template: Template
     example: dict[str, Any]
     label: int
@@ -34,7 +34,7 @@ class Prompt:
         """Return the prompt as a string, with the answer at `answer_idx`."""
         fake_example = self.example.copy()
         fake_example[self.label_column] = answer_idx
-        return self.few_shot_prefix + apply_template(self.template, fake_example)
+        return self.prefix + apply_template(self.template, fake_example)
 
 
 @dataclass
@@ -241,7 +241,7 @@ class PromptDataset(TorchDataset):
                     example=example,
                     label=variant_label,
                     label_column=self.label_column,
-                    few_shot_prefix=few_shot_prefix,
+                    prefix=few_shot_prefix,
                 )
             )
         return prompts

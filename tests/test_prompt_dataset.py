@@ -28,8 +28,8 @@ def test_prompt_dataset_getitem_boolq():
 
             # check for using the same templates
             assert set(true_templates_ids) == set(returned_templates_ids)
-            # TODO: once we're sorting output add
-            # assert true_templates_ids == returned_templates_ids
+            # check for them being in the same order
+            assert true_templates_ids == returned_templates_ids
 
     # the case where the dataset has 2 classes
     # this dataset is small
