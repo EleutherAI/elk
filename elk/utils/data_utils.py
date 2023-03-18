@@ -150,7 +150,9 @@ def apply_template(template: Template, example: dict) -> str:
     return f"{q}{sep}{a}" if a and not a.isspace() else q
 
 
-def binarize(template: Template, label: int, new_label: int, rng: Random) -> tuple[Template, int]:
+def binarize(
+    template: Template, label: int, new_label: int, rng: Random
+) -> tuple[Template, int]:
     """Binarize a template with >2 answer choices, returning a new template and label.
 
     Returns:
