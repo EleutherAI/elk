@@ -154,6 +154,13 @@ def extract_hiddens(
             for layer_idx in layer_indices
         }
         variant_ids = [prompt.template.name for prompt in prompts]
+        # decode so that we know exactly what the input was
+        text_inputs = [
+            [
+                tokenizer.decode(assert_type(torch.Tensor, variant_inputs[0].input_ids)[0]),
+                tokenizer.decode(assert_type(torch.Tensor, variant_inputs[1].input_ids)[0]),
+            ] for variant_inputs in inputs
+        ]
 
         # Iterate over variants
         for i, variant_inputs in enumerate(inputs):
@@ -187,6 +194,7 @@ def extract_hiddens(
         yield dict(
             label=prompts[0].label,
             variant_ids=variant_ids,
+            text_inputs=text_inputs,
             **hidden_dict,
         )
 
@@ -250,6 +258,13 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
         "label": features[label_col],
+        "text_inputs": Sequence(
+            Sequence(
+                Value(dtype="string"),
+                length=2,
+            ),
+            length=num_variants,
+        ),
     }
     devices = select_usable_devices(max_gpus)
     builders = {
