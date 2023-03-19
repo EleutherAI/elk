@@ -6,6 +6,8 @@ import os
 import random
 from typing import Optional
 
+from simple_parsing import Serializable
+
 
 def elk_reporter_dir() -> Path:
     """Return the directory where reporter checkpoints and logs are stored."""
@@ -50,3 +52,9 @@ def create_output_directory(out_dir: Optional[Path] = None, default_root_dir: Pa
     print(f"Output directory at \033[1m{out_dir}\033[0m")
 
     return out_dir
+
+def save_config(cfg: Serializable, out_dir: Path):
+    """Save the config to a file"""
+    
+    with open(out_dir / "cfg.yaml", "w") as f:
+        cfg.dump_yaml(f)
