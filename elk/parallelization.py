@@ -1,17 +1,18 @@
 import csv
-from functools import partial
-from typing import List, Tuple
-from omegaconf import DictConfig
 import multiprocessing as mp
+from functools import partial
+from typing import List
+
+from tqdm.auto import tqdm
 
 from elk.utils.gpu_utils import select_usable_devices
 
 
-def execute_in_parallel(func, cfg, ds, layers: List[int]) -> List[Tuple[int, float, float, float, float]]:
+def run_on_layers(func, cols, eval_output_path, cfg, ds, layers: List[int]):
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
-    with mp.Pool(num_devices) as pool, open(path, "w") as f:
+    with mp.Pool(num_devices) as pool, open(eval_output_path, "w") as f:
         fn = partial(
             func, cfg, ds, devices=devices, world_size=num_devices
         )
