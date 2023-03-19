@@ -1,31 +1,19 @@
-import csv
 import os
-import pickle
 from dataclasses import dataclass
-from functools import partial
-from hashlib import md5
 from pathlib import Path
-from typing import List, Literal, Optional, cast
-
+from typing import cast, Literal, Optional
 import torch
-import torch.multiprocessing as mp
-import yaml
 from simple_parsing.helpers import Serializable, field
 from torch import Tensor
-from tqdm.auto import tqdm
 
-from datasets import DatasetDict
-from elk.parallelization import evaluate_reporters_in_parallel
+from datasets import DatasetDict, Split
+from elk.parallelization import  run_on_layers
 from elk.training.preprocessing import normalize
+from elk.utils.data_utils import get_layers, select_train_val_splits
+from elk.utils.typing import assert_type, upcast_hiddens
 
 from ..extraction import ExtractionConfig, extract
-from ..files import create_output_directory, elk_reporter_dir, memorably_named_dir
-from ..utils import (
-    assert_type,
-    int16_to_float32,
-    select_train_val_splits,
-    select_usable_devices,
-)
+from ..files import create_output_directory, elk_reporter_dir, save_config
 
 
 @dataclass
@@ -47,19 +35,19 @@ def evaluate_reporter(
     rank = os.getpid() % world_size
     device = devices[rank]
 
-    # Note: currently we're just upcasting to float32 so we don't have to deal with
-    # grad scaling (which isn't supported for LBFGS), while the hidden states are
-    # saved in float16 to save disk space. In the future we could try to use mixed
-    # precision training in at least some cases.
     with dataset.formatted_as("torch", device=device, dtype=torch.int16):
-        train_split, val_split = select_train_val_splits(dataset)
-        train, val = dataset[train_split], dataset[val_split]
-        test_labels = cast(Tensor, val["label"])
+        train_split, test_split= select_train_val_splits(dataset, priorities= {
+            Split.TRAIN: 0,
+            Split.TEST: 1,
+            Split.VALIDATION: 2
+        })
+        train, test = dataset[train_split], dataset[test_split]
+        test_labels = cast(Tensor, test["label"])
 
         _, test_h = normalize(
-            int16_to_float32(assert_type(Tensor, train[f"hidden_{layer}"])),
-            int16_to_float32(assert_type(Tensor, val[f"hidden_{layer}"])),
-            method=cfg.normalization,
+            upcast_hiddens(train[f"hidden_{layer}"]),  # type: ignore
+            upcast_hiddens(test[f"hidden_{layer}"]), # type: ignore
+            cfg.normalization
         )
 
     reporter_path = elk_reporter_dir() / cfg.source / "reporters" / f"layer_{layer}.pt"
@@ -69,8 +57,9 @@ def evaluate_reporter(
     test_x0, test_x1 = test_h.unbind(dim=-2)
 
     test_result = reporter.score(
-        (test_x0, test_x1),
         test_labels,
+        test_x0, 
+        test_x1,
     )
 
     stats = [layer, *test_result]
@@ -80,40 +69,19 @@ def evaluate_reporter(
 def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
     ds = extract(cfg.target, max_gpus=cfg.max_gpus)
 
-    layers = [
-        int(feat[len("hidden_") :])
-        for feat in ds["train"].features
-        if feat.startswith("hidden_")
-    ]
-
-    devices = select_usable_devices(cfg.max_gpus)
-    num_devices = len(devices)
+    layers = get_layers(ds)
 
     transfer_eval = elk_reporter_dir() / cfg.source / "transfer_eval"
     out_dir = create_output_directory(out_dir, default_root_dir=transfer_eval)
+    
+    save_config(cfg, out_dir)
 
-    with open(out_dir / "cfg.yaml", "w") as f:
-        cfg.dump_yaml(f)
-
-    stats = evaluate_reporters_in_parallel(cfg=cfg, ds=ds, layers=layers)
-
-    cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
-    # Evaluate reporters for each layer in parallel
-    with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
-        fn = partial(
-            evaluate_reporter, cfg, ds, devices=devices, world_size=num_devices
-        )
-        writer = csv.writer(f)
-        writer.writerow(cols)
-
-        mapper = pool.imap_unordered if num_devices > 1 else map
-        row_buf = []
-        try:
-            for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
-                row_buf.append([i] + [f"{s:.4f}" for s in stats])
-        finally:
-            # Make sure the CSV is written even if we crash or get interrupted
-            for row in sorted(row_buf):
-                writer.writerow(row)
-
+    run_on_layers(
+        func=evaluate_reporter,
+        cols=["layer", "loss", "acc", "cal_acc", "auroc"],
+        eval_output_path=out_dir / "eval.csv",
+        cfg=cfg,
+        ds=ds,
+        layers=layers
+    )
     print("Results saved")
