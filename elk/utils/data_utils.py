@@ -163,7 +163,7 @@ def binarize(
             the index of the true answer into `new_template.answer_choices`
     """
 
-    # TODO: it would be nice in the future to binarize exhaustively so we're not 
+    # TODO: it would be nice in the future to binarize exhaustively so we're not
     # cheating here (since this step requires a label). e.g. this function would
     # also take a candidate answer and the template would ask whether the candidate
     # answer is true or false. This would require rewriting the jinja templates though.

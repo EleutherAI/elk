@@ -33,6 +33,7 @@ import torch.multiprocessing as mp
 import warnings
 import yaml
 
+
 @dataclass
 class RunConfig(Serializable):
     """Full specification of a reporter training run.
@@ -182,7 +183,9 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     with open(out_dir / "cfg.yaml", "w") as f:
         cfg.dump_yaml(f)
 
-    meta = {"dataset_fingerprints": {split: ds[split]._fingerprint for split in ds.keys()}}
+    meta = {
+        "dataset_fingerprints": {split: ds[split]._fingerprint for split in ds.keys()}
+    }
     with open(out_dir / "metadata.yaml", "w") as meta_f:
         yaml.dump(meta, meta_f)
 

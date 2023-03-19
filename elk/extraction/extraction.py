@@ -157,9 +157,14 @@ def extract_hiddens(
         # decode so that we know exactly what the input was
         text_inputs = [
             [
-                tokenizer.decode(assert_type(torch.Tensor, variant_inputs[0].input_ids)[0]),
-                tokenizer.decode(assert_type(torch.Tensor, variant_inputs[1].input_ids)[0]),
-            ] for variant_inputs in inputs
+                tokenizer.decode(
+                    assert_type(torch.Tensor, variant_inputs[0].input_ids)[0]
+                ),
+                tokenizer.decode(
+                    assert_type(torch.Tensor, variant_inputs[1].input_ids)[0]
+                ),
+            ]
+            for variant_inputs in inputs
         ]
 
         # Iterate over variants

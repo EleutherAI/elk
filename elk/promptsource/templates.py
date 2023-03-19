@@ -195,11 +195,11 @@ class Template(yaml.YAMLObject):
             Template._strip_spaces(self._unescape_pipe(part))
             for part in rendered_example.split("|||")
         ]
-    
+
     @staticmethod
     def _strip_spaces(string):
         """Same functionality as str.strip(), but ignores newlines"""
-        
+
         if string.isspace():
             return "\n" * string.count("\n")
 
@@ -222,7 +222,7 @@ class Template(yaml.YAMLObject):
         string = string + "\n" * num_newlines
 
         return string
-        
+
     pipe_protector = "3ed2dface8203c4c9dfb1a5dc58e41e0"
 
     @classmethod

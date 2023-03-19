@@ -142,7 +142,7 @@ templates:
     id: b2b3cb60-d6e3-491c-a09a-8201e13e417e
     jinja: '{{ passage }}
 
-      Based on the previous passage, {{ question }}? ||| 
+      Based on the previous passage, {{ question }}? |||
       {% if label != -1 %}
       {{ answer_choices[label]}}
       {% endif %}'
