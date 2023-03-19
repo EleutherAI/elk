@@ -97,6 +97,10 @@ def train_reporter(
                     f"algorithm will not converge to a good solution."
                 )
 
+    # with dataset.formatted_as("torch", device=device):
+    #     train_preds = assert_type(Tensor, train[f"model_preds"])
+    #     val_preds = assert_type(Tensor, train[f"model_preds"])
+
     if isinstance(cfg.net, CcsReporterConfig):
         reporter = CcsReporter(x0.shape[-1], cfg.net, device=device)
     elif isinstance(cfg.net, EigenReporterConfig):
@@ -180,6 +184,9 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     ]
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
+
+    # Final layer model accuracy
+    cols += ["model_auroc", "model_acc"]
 
     layers = [
         int(feat[len("hidden_") :])

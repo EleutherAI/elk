@@ -1,5 +1,7 @@
 from .typing import assert_type
+from bisect import bisect_left, bisect_right
 from datasets import ClassLabel, Dataset, DatasetDict, Features, concatenate_datasets
+from operator import itemgetter
 from random import Random
 from typing import Optional
 import numpy as np

@@ -21,9 +21,6 @@ class Prompt:
     label: int
     template_name: str
 
-    def to_string(self, answer_idx: int, sep: str = "\n") -> str:
-        return f"{self.question}{sep}{self.answers[answer_idx]}"
-
 
 @dataclass
 class PromptConfig(Serializable):
@@ -72,14 +69,9 @@ class PromptDataset(TorchDataset):
     assigned a different prompt template if `__getitem__` is called multiple times with
     the same index.  TODO redo this documentation
 
-    When `strategy` is set to `"all"`, we "broadcast" the prompt templates across the
-    dataset, multiplying its effective size by the number of templates.
-
     Example:
     >>> prompts = PromptDataset("super_glue", "boolq", split="train")
     >>> prompt = prompts[0]
-    >>> prompt.to_string(0)
-    "Henry Mills (Once Upon a Time) -- Henry Daniel Mills is a fictional character...
     """
 
     def __init__(

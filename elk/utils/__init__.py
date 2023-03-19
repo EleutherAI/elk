@@ -1,5 +1,6 @@
 from .data_utils import (
     compute_class_balance,
+    convert_span,
     get_columns_all_equal,
     held_out_split,
     infer_label_column,
@@ -8,5 +9,6 @@ from .data_utils import (
     int16_to_float32,
 )
 from .gpu_utils import select_usable_devices
+from .hf_utils import get_model_class
 from .tree_utils import pytree_map
 from .typing import assert_type

@@ -1,15 +1,18 @@
 """Functions for extracting the hidden states of a model."""
 
-from .prompt_dataset import Prompt, PromptDataset, PromptConfig
+from .prompt_dataset import PromptDataset, PromptConfig
 from ..utils import (
     assert_type,
+    get_model_class,
     infer_label_column,
     select_usable_devices,
     float32_to_int16,
 )
 from .generator import _GeneratorBuilder
+from bisect import bisect_left
 from dataclasses import dataclass, InitVar
 from datasets import (
+    Array2D,
     Array3D,
     DatasetDict,
     Features,
@@ -20,12 +23,11 @@ from datasets import (
     SplitInfo,
     Value,
 )
+from operator import itemgetter
 from simple_parsing.helpers import field, Serializable
 from transformers import (
     AutoConfig,
-    AutoModel,
     AutoTokenizer,
-    BatchEncoding,
     PreTrainedModel,
 )
 from typing import Iterable, Literal, Union
@@ -101,23 +103,20 @@ def extract_hiddens(
         else:
             raise ValueError(f"Invalid prompt num_variants: {cfg.prompts.num_variants}")
 
-    # AutoModel should do the right thing here in nearly all cases. We don't actually
-    # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(cfg.model, torch_dtype="auto").to(device)
-    # TODO: Maybe also make this configurable?
-    # We want to make sure the answer is never truncated
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
+    model_cls = get_model_class(cfg.model)
+    model = assert_type(
+        PreTrainedModel, model_cls.from_pretrained(cfg.model, torch_dtype="auto")
+    ).to(device)
 
+    tokenizer = AutoTokenizer.from_pretrained(
+        cfg.model, truncation_side="left", verbose=False
+    )
     if cfg.use_encoder_states and not model.config.is_encoder_decoder:
         raise ValueError(
             "use_encoder_states is only compatible with encoder-decoder models."
         )
 
-    # TODO: Make this configurable or something
-    # Token used to separate the question from the answer
     num_choices = prompt_ds.num_classes
-    sep_token = tokenizer.sep_token or "\n"
-
     if not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -125,27 +124,6 @@ def extract_hiddens(
     # If False pass them to the encoder and decoder separately.
     is_enc_dec = model.config.is_encoder_decoder
     should_concat = not is_enc_dec or cfg.use_encoder_states
-
-    def tokenize(prompt: Prompt, idx: int, **kwargs):
-        return tokenizer(
-            (
-                [prompt.to_string(idx, sep=sep_token)]
-                if should_concat
-                else [prompt.question]
-            ),
-            text_target=(
-                [prompt.answers[idx]] if not should_concat else None
-            ),  # type: ignore
-            padding=True,
-            return_tensors="pt",
-            truncation=True,
-            **kwargs,
-        ).to(device)
-
-    # This function returns the flattened questions and answers. After inference we
-    # need to reshape the results.
-    def collate(prompts: list[Prompt]) -> list[list[BatchEncoding]]:
-        return [[tokenize(prompt, i) for i in range(num_choices)] for prompt in prompts]
 
     # If this is an encoder-decoder model and we're passing the answer to the encoder,
     # we don't need to run the decoder at all. Just strip it off, making the problem
@@ -162,7 +140,6 @@ def extract_hiddens(
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
     for prompts in prompt_ds:
-        inputs = collate(prompts)
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
                 prompt_ds.num_variants,
@@ -173,14 +150,47 @@ def extract_hiddens(
             )
             for layer_idx in layer_indices
         }
+        log_probs = torch.empty(
+            prompt_ds.num_variants,
+            num_choices,
+            device=device,
+            dtype=torch.float32,
+        )
         variant_ids = [prompt.template_name for prompt in prompts]
 
         # Iterate over variants
-        for i, variant_inputs in enumerate(inputs):
+        for i, prompt in enumerate(prompts):
             # Iterate over answers
-            for j, inpt in enumerate(variant_inputs):
-                outputs = model(**inpt, output_hidden_states=True)
+            for j in range(num_choices):
+                q = prompt.question
+                a = prompt.answers[j]
 
+                x = f"{q} {a}" if should_concat else q
+                inputs = tokenizer(
+                    x,
+                    text_target=[a] if not should_concat else None,  # type: ignore
+                    padding=True,
+                    return_offsets_mapping=True,
+                    return_tensors="pt",
+                    truncation=True,
+                )
+
+                offsets = inputs.pop("offset_mapping").squeeze().tolist()
+                outputs = model(**inputs.to(device), output_hidden_states=True)
+
+                if should_concat:
+                    # Locate the start of the answer in the tokenized input
+                    answer_start = bisect_left(offsets, x.rindex(a), key=itemgetter(1))
+
+                    log_dist = outputs.logits[:, answer_start - 1 : -1].log_softmax(
+                        dim=-1
+                    )
+                    tokens = inputs.input_ids[:, answer_start:]
+                else:
+                    log_dist = outputs.logits.log_softmax(dim=-1)
+                    tokens = inputs.input_ids
+
+                log_probs[i, j] = log_dist.gather(-1, tokens[..., None]).sum()
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 )
@@ -205,6 +215,7 @@ def extract_hiddens(
 
         yield dict(
             label=prompts[0].label,
+            model_preds=log_probs.softmax(dim=-1),
             variant_ids=variant_ids,
             **hidden_dict,
         )
@@ -278,6 +289,10 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
         "label": features[label_col],
+        "model_preds": Array2D(
+            dtype="float32",
+            shape=(num_variants, 2),
+        ),
     }
     devices = select_usable_devices(max_gpus)
     builders = {
