@@ -67,11 +67,7 @@ def evaluate_reporter(
 
     test_x0, test_x1 = test_h.unbind(dim=-2)
 
-    test_result = reporter.score(
-        test_labels,
-        test_x0,
-        test_x1
-    )
+    test_result = reporter.score(test_labels, test_x0, test_x1)
 
     stats = [layer, *test_result]
     return stats
