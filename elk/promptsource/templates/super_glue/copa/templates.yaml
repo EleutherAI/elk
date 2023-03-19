@@ -12,7 +12,10 @@ templates:
 
       - {{choice1}}
 
-      - {{choice2}} ||| {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
+      - {{choice2}} |||
+
+
+      {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -41,8 +44,8 @@ templates:
     answer_choices: '{{choice1}} ||| {{choice2}}'
     id: 4d879cbe-2fd7-424a-9d78-3f5200313fba
     jinja: "{{ premise }} \n\nI am hesitating between two options. Help me choose\
-      \ the more likely {% if question == \"cause\" %} cause: {% else %} effect: {%\
-      \ endif %}\n- {{choice1}}\n- {{choice2}} ||| {% if label != -1 %}{{ answer_choices[label]\
+      \ the more likely{% if question == \"cause\" %} cause: {% else %} effect: {%\
+      \ endif %}\n- {{choice1}}\n- {{choice2}} ||| \n\n{% if label != -1 %}{{ answer_choices[label]\
       \ }}{%endif%}"
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -60,8 +63,9 @@ templates:
 
       Choice 2: {{answer_choices[1]}}
 
-      Q: Which one is more likely to be the {{question}}, choice 1 or choice 2? |||
-      {{answer_choices[label]}}'
+      Q: Which one is more likely to be the {{question}}, choice 1 or choice 2?
+
+      A:|||{{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -80,7 +84,10 @@ templates:
 
       - {{choice1}}
 
-      - {{choice2}} ||| {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
+      - {{choice2}}
+
+
+      ||| {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -124,8 +131,8 @@ templates:
     answer_choices: '{{choice1}} ||| {{choice2}}'
     id: 8ce80f8a-239e-4393-892c-f63dbb0d9929
     jinja: "{{ premise }} \n\nWhat's the best option?\n- {{choice1}}\n- {{choice2}}\n\
-      \nWe are looking for {% if question == \"cause\" %} a cause {% else %} an effect\
-      \ {% endif %}\n||| {% if label != -1 %}{{answer_choices[label]}}{%endif%}"
+      \nWe are looking for{% if question == \"cause\" %} a cause{% else %} an effect{% endif %}.\n\nA:
+      \ ||| {% if label != -1 %}{{answer_choices[label]}}{%endif%}"
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -160,7 +167,10 @@ templates:
 
       - {{choice1}}
 
-      - {{choice2}} ||| {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
+      - {{choice2}} |||
+
+
+      {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -181,7 +191,10 @@ templates:
 
       - {{choice1}}
 
-      - {{choice2}} ||| {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
+      - {{choice2}} |||
+
+
+      {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -216,7 +229,10 @@ templates:
 
       - {{choice1}}
 
-      - {{choice2}} ||| {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
+      - {{choice2}} |||
+
+
+      {% if label != -1 %}{{ answer_choices[label] }}{%endif%}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
