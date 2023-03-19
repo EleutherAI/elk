@@ -1,9 +1,9 @@
 """Functions for extracting the hidden states of a model."""
 
+from elk.utils.typing import float32_to_int16
 from .prompt_dataset import Prompt, PromptDataset, PromptConfig
 from ..utils import (
     assert_type,
-    float32_to_int16,
     infer_label_column,
     select_train_val_splits,
     select_usable_devices,

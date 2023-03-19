@@ -1,12 +1,12 @@
 """Main training loop."""
 
+from elk.utils.typing import int16_to_float32
 from ..extraction import extract, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import (
     assert_type,
     select_train_val_splits,
     select_usable_devices,
-    int16_to_float32,
 )
 from .classifier import Classifier
 from .ccs_reporter import CcsReporter, CcsReporterConfig
