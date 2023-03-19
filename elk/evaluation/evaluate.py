@@ -10,7 +10,7 @@ from datasets import DatasetDict, Split
 from elk.parallelization import  run_on_layers
 from elk.training.preprocessing import normalize
 from elk.utils.data_utils import get_layers, select_train_val_splits
-from elk.utils.typing import assert_type, upcast_hiddens
+from elk.utils.typing import upcast_hiddens
 
 from ..extraction import ExtractionConfig, extract
 from ..files import create_output_directory, elk_reporter_dir, save_config
