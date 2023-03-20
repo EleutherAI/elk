@@ -2,15 +2,23 @@
 
 from ..extraction import extract, ExtractionConfig
 from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import assert_type, held_out_split, select_usable_devices, int16_to_float32
+from ..utils import (
+    assert_type,
+    select_train_val_splits,
+    select_usable_devices,
+    int16_to_float32,
+)
+from ..logging import save_debug_log
 from .classifier import Classifier
+from .ccs_reporter import CcsReporter, CcsReporterConfig
+from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
 from datasets import DatasetDict
 from functools import partial
 from pathlib import Path
-from simple_parsing import Serializable
+from simple_parsing import field, subgroups, Serializable
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 from tqdm.auto import tqdm
@@ -22,8 +30,8 @@ import pickle
 import random
 import torch
 import torch.multiprocessing as mp
-from typing import Union
 import warnings
+import yaml
 
 
 @dataclass
@@ -34,18 +42,28 @@ class RunConfig(Serializable):
         data: Config specifying hidden states on which the reporter will be trained.
         net: Config for building the reporter network.
         optim: Config for the `.fit()` loop.
+        max_gpus: The maximum number of GPUs to use. Defaults to -1, which means
+            "use all available GPUs".
+        normalization: The normalization method to use. Defaults to "meanonly". See
+            `elk.training.preprocessing.normalize()` for details.
+        skip_baseline: Whether to skip training the baseline classifier. Defaults to
+            False.
+        debug: When in debug mode, a useful log file is saved to the memorably-named
+            output directory. Defaults to False.
     """
 
     data: ExtractionConfig
-    net: ReporterConfig
-    optim: OptimConfig
+    net: ReporterConfig = subgroups(
+        {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
+    )
+    optim: OptimConfig = field(default_factory=OptimConfig)
 
-    label_frac: float = 0.0
     max_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
-    concatenate_layers: int = 0
-    # if nonzero, appends the hidden states of the layer concatenate_layers before
+    concatenated_layer_offset: int = 0
+    # if nonzero, appends the hidden states of layer concatenated_layer_offset before
+    debug: bool = False
 
 
 def train_reporter(
@@ -72,7 +90,9 @@ def train_reporter(
     # saved in float16 to save disk space. In the future we could try to use mixed
     # precision training in at least some cases.
     with dataset.formatted_as("torch", device=device, dtype=torch.int16):
-        train, val = dataset["train"], held_out_split(dataset)
+        train_split, val_split = select_train_val_splits(dataset)
+        train, val = dataset[train_split], dataset[val_split]
+
         train_labels = cast(Tensor, train["label"])
         val_labels = cast(Tensor, val["label"])
 
@@ -104,17 +124,18 @@ def train_reporter(
                     f"algorithm will not converge to a good solution."
                 )
 
-    reporter = Reporter(x0.shape[-1], cfg.net, device=device)
-    if cfg.label_frac:
-        num_labels = round(cfg.label_frac * len(train_labels))
-        labels = train_labels[:num_labels]
+    if isinstance(cfg.net, CcsReporterConfig):
+        reporter = CcsReporter(x0.shape[-1], cfg.net, device=device)
+    elif isinstance(cfg.net, EigenReporterConfig):
+        reporter = EigenReporter(x0.shape[-1], cfg.net, device=device)
     else:
-        labels = None
+        raise ValueError(f"Unknown reporter config type: {type(cfg.net)}")
 
-    train_loss = reporter.fit((x0, x1), labels, cfg.optim)
+    train_loss = reporter.fit(x0, x1, train_labels)
     val_result = reporter.score(
-        (val_x0, val_x1),
         val_labels,
+        val_x0,
+        val_x1,
     )
 
     lr_dir = out_dir / "lr_models"
@@ -139,7 +160,7 @@ def train_reporter(
         X = torch.cat([x0, x1]).squeeze()
         d = X.shape[-1]
         lr_model = Classifier(d, device=device)
-        lr_model.fit(X.view(-1, d), train_labels_aug)
+        lr_model.fit_cv(X.view(-1, d), train_labels_aug)
 
         X_val = torch.cat([val_x0, val_x1]).view(-1, d)
         with torch.no_grad():
@@ -149,7 +170,7 @@ def train_reporter(
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
 
         stats += [lr_auroc, lr_acc]
-        with open(lr_dir / f"layer_{layer}.pkl", "wb") as file:
+        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
             pickle.dump(lr_model, file)
 
     with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
@@ -160,16 +181,6 @@ def train_reporter(
 
 def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     # Extract the hidden states first if necessary
-    is_prompt_based_loss = (
-        "ccs_prompt_var" in cfg.net.loss_dict.keys()
-        or "prompt_var_squared" in cfg.net.loss_dict.keys()
-    )
-    if cfg.data.prompts.num_variants == 1 and is_prompt_based_loss:
-        raise ValueError(
-            "Loss functions ccs_prompt_var and prompt_var_squared "
-            "incompatible with --num_variants 1."
-        )
-
     ds = extract(cfg.data, max_gpus=cfg.max_gpus)
 
     if out_dir is None:
@@ -183,10 +194,24 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     with open(out_dir / "cfg.yaml", "w") as f:
         cfg.dump_yaml(f)
 
+    meta = {
+        "dataset_fingerprints": {split: ds[split]._fingerprint for split in ds.keys()}
+    }
+    with open(out_dir / "metadata.yaml", "w") as meta_f:
+        yaml.dump(meta, meta_f)
+
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
-    cols = ["layer", "pseudo_auroc", "train_loss", "loss", "acc", "cal_acc", "auroc"]
+    cols = [
+        "layer",
+        "pseudo_auroc",
+        "train_loss",
+        "acc",
+        "cal_acc",
+        "auroc",
+        "ece",
+    ]
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
@@ -198,9 +223,9 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     ]
 
     # concatenate hidden states from a previous layer, if told to
-    if cfg.concatenate_layers > 0:
-        for i in range(cfg.concatenate_layers, len(layers)):
-            layers[i] = layers[i] + [layers[i][0] - cfg.concatenate_layers]
+    if cfg.concatenated_layer_offset > 0:
+        for i in range(cfg.concatenated_layer_offset, len(layers)):
+            layers[i] = layers[i] + [layers[i][0] - cfg.concatenated_layer_offset]
 
     # Train reporters for each layer in parallel
     with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
@@ -216,6 +241,9 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
             for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
                 row_buf.append([i] + [f"{s:.4f}" for s in stats])
         finally:
-            # Make sure the CSV is written even if we crash or get interrupted
+            # Make sure the output files are written even if we crash or get interrupted
             for row in sorted(row_buf):
                 writer.writerow(row)
+
+            if cfg.debug:
+                save_debug_log(ds, out_dir)
