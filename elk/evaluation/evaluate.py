@@ -1,20 +1,20 @@
 import os
-from dataclasses import dataclass
 from pathlib import Path
-from typing import cast, Literal, Optional
+from dataclasses import dataclass
+from typing import cast, Optional, Literal
 import torch
 from simple_parsing.helpers import Serializable, field
 from torch import Tensor
 
 from datasets import DatasetDict, Split
-from elk.parallelization import  run_on_layers
+from elk.files import create_output_directory, elk_reporter_dir, save_config
 from elk.training.preprocessing import normalize
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.typing import upcast_hiddens
+from elk.extraction.extraction import extract
+from elk.parallelization import run_on_layers
 
-from ..extraction import ExtractionConfig, extract
-from ..files import create_output_directory, elk_reporter_dir, save_config
-
+from ..extraction import ExtractionConfig
 
 @dataclass
 class EvaluateConfig(Serializable):
@@ -79,9 +79,8 @@ def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
     run_on_layers(
         func=evaluate_reporter,
         cols=["layer", "loss", "acc", "cal_acc", "auroc"],
-        eval_output_path=out_dir / "eval.csv",
+        out_dir=out_dir,
         cfg=cfg,
         ds=ds,
         layers=layers
     )
-    print("Results saved")
