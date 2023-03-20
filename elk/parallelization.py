@@ -1,20 +1,26 @@
+from abc import ABC
 import csv
 import multiprocessing as mp
 from functools import partial
-from typing import List
+from pathlib import Path
+from typing import Callable, List, Optional, Union
 
 from tqdm.auto import tqdm
-
 from elk.utils.gpu_utils import select_usable_devices
 
+from typing import TYPE_CHECKING
 
-def run_on_layers(func, cols, eval_output_path, cfg, ds, layers: List[int]):
+if TYPE_CHECKING:
+    from elk.evaluation.evaluate import EvaluateConfig
+    from elk.training.train import TrainConfig
+
+def run_on_layers(func: Callable, cols: List[str], out_dir: Path, cfg: Union["TrainConfig", "EvaluateConfig"], ds, layers: List[int]):
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
-    with mp.Pool(num_devices) as pool, open(eval_output_path, "w") as f:
+    with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
         fn = partial(
-            func, cfg, ds, devices=devices, world_size=num_devices
+            func, cfg, ds, out_dir, devices=devices, world_size=num_devices
         )
         writer = csv.writer(f)
         writer.writerow(cols)
