@@ -2,7 +2,7 @@
 
 from .extraction import extract, ExtractionConfig
 from elk.evaluation.evaluate import EvaluateConfig, evaluate_reporters
-from .training import RunConfig
+from .training import TrainConfig
 from .training.train import train
 from pathlib import Path
 from simple_parsing import ArgumentParser
@@ -39,7 +39,7 @@ def run():
         ),
         conflict_handler="resolve",
     )
-    elicit_parser.add_arguments(RunConfig, dest="run")
+    elicit_parser.add_arguments(TrainConfig, dest="run")
     elicit_parser.add_argument(
         "--output",
         "-o",

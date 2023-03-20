@@ -1,13 +1,10 @@
 """Main training loop."""
 
-from elk.utils.typing import int16_to_float32
-from ..extraction import extract, ExtractionConfig
-from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import (
-    assert_type,
-    select_train_val_splits,
-    select_usable_devices,
-)
+from elk.extraction.extraction import extract
+from elk.files import create_output_directory, save_config
+import elk.parallelization
+from elk.utils.typing import upcast_hiddens
+from ..extraction import ExtractionConfig
 from .classifier import Classifier
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .eigen_reporter import EigenReporter, EigenReporterConfig
@@ -15,25 +12,22 @@ from .preprocessing import normalize
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from dataclasses import dataclass
 from datasets import DatasetDict
-from functools import partial
 from pathlib import Path
 from simple_parsing import field, subgroups, Serializable
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
-from tqdm.auto import tqdm
 from typing import cast, Literal, Optional
-import csv
 import numpy as np
 import os
 import pickle
 import random
 import torch
-import torch.multiprocessing as mp
 import warnings
-
+from elk.utils.data_utils import get_layers, select_train_val_splits
+from elk.parallelization import run_on_layers
 
 @dataclass
-class RunConfig(Serializable):
+class TrainConfig(Serializable):
     """Full specification of a reporter training run.
 
     Args:
@@ -55,7 +49,7 @@ class RunConfig(Serializable):
 
 
 def train_reporter(
-    cfg: RunConfig,
+    cfg: TrainConfig,
     dataset: DatasetDict,
     out_dir: Path,
     layer: int,
@@ -85,8 +79,8 @@ def train_reporter(
         val_labels = cast(Tensor, val["label"])
 
         train_h, val_h = normalize(
-            int16_to_float32(assert_type(Tensor, train[f"hidden_{layer}"])),
-            int16_to_float32(assert_type(Tensor, val[f"hidden_{layer}"])),
+            upcast_hiddens(train[f"hidden_{layer}"]), # type: ignore
+            upcast_hiddens(val[f"hidden_{layer}"]), # type: ignore
             method=cfg.normalization,
         )
 
@@ -158,24 +152,7 @@ def train_reporter(
     return stats
 
 
-def train(cfg: RunConfig, out_dir: Optional[Path] = None):
-    # Extract the hidden states first if necessary
-    ds = extract(cfg.data, max_gpus=cfg.max_gpus)
-
-    if out_dir is None:
-        out_dir = memorably_named_dir(elk_reporter_dir())
-    else:
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Print the output directory in bold with escape codes
-    print(f"Saving results to \033[1m{out_dir}\033[0m")
-
-    with open(out_dir / "cfg.yaml", "w") as f:
-        cfg.dump_yaml(f)
-
-    devices = select_usable_devices(cfg.max_gpus)
-    num_devices = len(devices)
-
+def train(cfg: TrainConfig, out_dir: Optional[Path] = None):
     cols = [
         "layer",
         "pseudo_auroc",
@@ -188,25 +165,17 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     if not cfg.skip_baseline:
         cols += ["lr_auroc", "lr_acc"]
 
-    layers = [
-        int(feat[len("hidden_") :])
-        for feat in ds["train"].features
-        if feat.startswith("hidden_")
-    ]
-    # Train reporters for each layer in parallel
-    with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
-        fn = partial(
-            train_reporter, cfg, ds, out_dir, devices=devices, world_size=num_devices
-        )
-        writer = csv.writer(f)
-        writer.writerow(cols)
+    # Extract the hidden states first if necessary
+    ds = extract(cfg.data, max_gpus=cfg.max_gpus)
+    
+    out_dir = create_output_directory(out_dir)
+    save_config(cfg, out_dir)
 
-        mapper = pool.imap_unordered if num_devices > 1 else map
-        row_buf = []
-        try:
-            for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
-                row_buf.append([i] + [f"{s:.4f}" for s in stats])
-        finally:
-            # Make sure the CSV is written even if we crash or get interrupted
-            for row in sorted(row_buf):
-                writer.writerow(row)
+    run_on_layers(
+        func=train_reporter,
+        cols=cols,
+        out_dir=out_dir,
+        cfg=cfg,
+        ds=ds,
+        layers=get_layers(ds)
+    )
