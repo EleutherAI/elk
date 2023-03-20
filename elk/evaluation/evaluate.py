@@ -19,7 +19,12 @@ from elk.training.preprocessing import normalize
 
 from ..extraction import ExtractionConfig, extract
 from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import assert_type, held_out_split, int16_to_float32, select_usable_devices
+from ..utils import (
+    assert_type,
+    int16_to_float32,
+    select_train_val_splits,
+    select_usable_devices,
+)
 
 
 @dataclass
@@ -46,12 +51,13 @@ def evaluate_reporter(
     # saved in float16 to save disk space. In the future we could try to use mixed
     # precision training in at least some cases.
     with dataset.formatted_as("torch", device=device, dtype=torch.int16):
-        train, test = dataset["train"], held_out_split(dataset)
-        test_labels = cast(Tensor, test["label"])
+        train_split, val_split = select_train_val_splits(dataset)
+        train, val = dataset[train_split], dataset[val_split]
+        test_labels = cast(Tensor, val["label"])
 
         _, test_h = normalize(
             int16_to_float32(assert_type(Tensor, train[f"hidden_{layer}"])),
-            int16_to_float32(assert_type(Tensor, test[f"hidden_{layer}"])),
+            int16_to_float32(assert_type(Tensor, val[f"hidden_{layer}"])),
             method=cfg.normalization,
         )
 
@@ -61,10 +67,7 @@ def evaluate_reporter(
 
     test_x0, test_x1 = test_h.unbind(dim=-2)
 
-    test_result = reporter.score(
-        (test_x0, test_x1),
-        test_labels,
-    )
+    test_result = reporter.score(test_labels, test_x0, test_x1)
 
     stats = [layer, *test_result]
     return stats
