@@ -8,6 +8,7 @@ from ..utils import (
     select_usable_devices,
     int16_to_float32,
 )
+from ..logging import save_debug_log
 from .classifier import Classifier
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .eigen_reporter import EigenReporter, EigenReporterConfig
@@ -30,6 +31,7 @@ import random
 import torch
 import torch.multiprocessing as mp
 import warnings
+import yaml
 
 
 @dataclass
@@ -40,6 +42,14 @@ class RunConfig(Serializable):
         data: Config specifying hidden states on which the reporter will be trained.
         net: Config for building the reporter network.
         optim: Config for the `.fit()` loop.
+        max_gpus: The maximum number of GPUs to use. Defaults to -1, which means
+            "use all available GPUs".
+        normalization: The normalization method to use. Defaults to "meanonly". See
+            `elk.training.preprocessing.normalize()` for details.
+        skip_baseline: Whether to skip training the baseline classifier. Defaults to
+            False.
+        debug: When in debug mode, a useful log file is saved to the memorably-named
+            output directory. Defaults to False.
     """
 
     data: ExtractionConfig
@@ -48,10 +58,10 @@ class RunConfig(Serializable):
     )
     optim: OptimConfig = field(default_factory=OptimConfig)
 
-    label_frac: float = 0.0
     max_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
+    debug: bool = False
 
 
 def train_reporter(
@@ -173,6 +183,12 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     with open(out_dir / "cfg.yaml", "w") as f:
         cfg.dump_yaml(f)
 
+    meta = {
+        "dataset_fingerprints": {split: ds[split]._fingerprint for split in ds.keys()}
+    }
+    with open(out_dir / "metadata.yaml", "w") as meta_f:
+        yaml.dump(meta, meta_f)
+
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
@@ -207,6 +223,9 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
             for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
                 row_buf.append([i] + [f"{s:.4f}" for s in stats])
         finally:
-            # Make sure the CSV is written even if we crash or get interrupted
+            # Make sure the output files are written even if we crash or get interrupted
             for row in sorted(row_buf):
                 writer.writerow(row)
+
+            if cfg.debug:
+                save_debug_log(ds, out_dir)
