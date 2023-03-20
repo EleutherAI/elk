@@ -2,7 +2,8 @@ layers: []
 model: distilgpt2
 prompts:
   balance: true
-  dataset: dbpedia_14
+  datasets:
+    - "dbpedia_14"
   label_column: null
   max_examples:
   - 3

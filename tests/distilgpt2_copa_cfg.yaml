@@ -2,7 +2,8 @@ layers: []
 model: distilgpt2
 prompts:
   balance: true
-  dataset: super_glue copa
+  datasets:
+    - "super_glue copa"
   label_column: null
   max_examples:
   - 2

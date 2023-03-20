@@ -7,7 +7,7 @@ import pytest
 def test_prompt_dataset_getitem_boolq():
     def test_prompt_dataset_getitem(cfg: ExtractionConfig, split: str):
         prompt_ds = PromptDataset(cfg.prompts, rank=0, world_size=1, split=split)
-        ds_name, _, config_name = cfg.prompts.dataset.partition(" ")
+        ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
 
         prompter = DatasetTemplates(ds_name, config_name or None)
         assert len(prompt_ds) == cfg.prompts.max_examples[-1]
