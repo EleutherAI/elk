@@ -27,7 +27,7 @@ from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.parallelization import run_on_layers
 
 @dataclass
-class TrainConfig(Serializable):
+class Elicit(Serializable):
     """Full specification of a reporter training run.
 
     Args:
@@ -47,9 +47,14 @@ class TrainConfig(Serializable):
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
 
+    out_dir: Optional[Path] = None
+
+    def execute(self):
+        train(cfg=self, out_dir=self.out_dir)
+
 
 def train_reporter(
-    cfg: TrainConfig,
+    cfg: Elicit,
     dataset: DatasetDict,
     out_dir: Path,
     layer: int,
@@ -152,7 +157,7 @@ def train_reporter(
     return stats
 
 
-def train(cfg: TrainConfig, out_dir: Optional[Path] = None):
+def train(cfg: Elicit, out_dir: Optional[Path] = None):
     cols = [
         "layer",
         "pseudo_auroc",
@@ -168,7 +173,7 @@ def train(cfg: TrainConfig, out_dir: Optional[Path] = None):
     # Extract the hidden states first if necessary
     ds = extract(cfg.data, max_gpus=cfg.max_gpus)
     
-    out_dir = create_output_directory(out_dir)
+    out_dir = create_output_directory(cfg.out_dir)
     save_config(cfg, out_dir)
 
     run_on_layers(

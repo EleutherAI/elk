@@ -16,16 +16,20 @@ from elk.parallelization import run_on_layers
 
 from ..extraction import ExtractionConfig
 
+
 @dataclass
-class EvaluateConfig(Serializable):
+class Eval(Serializable):
     target: ExtractionConfig
     source: str = field(positional=True)
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     max_gpus: int = -1
 
+    def execute(self):
+        evaluate_reporters(cfg=self)
+
 
 def evaluate_reporter(
-    cfg: EvaluateConfig,
+    cfg: Eval,
     dataset: DatasetDict,
     layer: int,
     devices: list[str],
@@ -66,7 +70,7 @@ def evaluate_reporter(
     return stats
 
 
-def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
+def evaluate_reporters(cfg: Eval, out_dir: Optional[Path] = None):
     ds = extract(cfg.target, max_gpus=cfg.max_gpus)
 
     layers = get_layers(ds)

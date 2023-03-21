@@ -11,10 +11,10 @@ from elk.utils.gpu_utils import select_usable_devices
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from elk.evaluation.evaluate import EvaluateConfig
-    from elk.training.train import TrainConfig
+    from elk.evaluation.evaluate import Eval
+    from elk.training.train import Elicit
 
-def run_on_layers(func: Callable, cols: List[str], out_dir: Path, cfg: Union["TrainConfig", "EvaluateConfig"], ds, layers: List[int]):
+def run_on_layers(func: Callable, cols: List[str], out_dir: Path, cfg: Union["Elicit", "Eval"], ds, layers: List[int]):
     devices = select_usable_devices(cfg.max_gpus)
     num_devices = len(devices)
 
