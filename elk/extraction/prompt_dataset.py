@@ -65,7 +65,7 @@ class PromptConfig(Serializable):
     """
 
     dataset: str = field(positional=True)
-    balance: bool = False
+    balance: bool = True
     data_dir: Optional[str] = None
     label_column: Optional[str] = None
     num_classes: Optional[int] = None
