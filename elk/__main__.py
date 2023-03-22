@@ -1,7 +1,7 @@
 """Main entry point for `elk`."""
 
 from .extraction import extract, ExtractionConfig
-from elk.evaluation.evaluate import EvaluateConfig, evaluate_reporters
+from .evaluation.evaluate import EvaluateConfig, evaluate_reporters
 from .training import RunConfig
 from .training.train import train
 from pathlib import Path

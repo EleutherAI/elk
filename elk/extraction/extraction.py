@@ -1,6 +1,6 @@
 """Functions for extracting the hidden states of a model."""
 
-from .prompt_dataset import Prompt, PromptDataset, PromptConfig, InterleavedDatasets
+from .prompt_loading import load_prompts, PromptConfig
 from ..utils import (
     assert_type,
     float32_to_int16,
@@ -8,10 +8,12 @@ from ..utils import (
     select_train_val_splits,
     select_usable_devices,
 )
+from .balanced_sampler import BalancedSampler
 from .generator import _GeneratorBuilder
 from dataclasses import dataclass, InitVar
 from datasets import (
     Array3D,
+    ClassLabel,
     DatasetDict,
     Features,
     get_dataset_config_info,
@@ -25,11 +27,11 @@ from transformers import (
     AutoConfig,
     AutoModel,
     AutoTokenizer,
-    BatchEncoding,
     PreTrainedModel,
 )
 from typing import Iterable, Literal, Union
 import logging
+import os
 import torch
 
 
@@ -73,71 +75,44 @@ def extract_hiddens(
     cfg: ExtractionConfig,
     *,
     device: Union[str, torch.device] = "cpu",
+    split_type: Literal["train", "val"] = "train",
     rank: int = 0,
-    split: str,
     world_size: int = 1,
 ) -> Iterable[dict]:
     """Run inference on a model with a set of prompts, yielding the hidden states.
 
     This is a lightweight, functional version of the `Extractor` API.
     """
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     # Silence datasets logging messages from all but the first process
     if rank != 0:
         logging.disable(logging.CRITICAL)
+    if rank == 0 and cfg.prompts.num_variants >= 1:
+        print(f"Using {cfg.prompts.num_variants} prompts per example")
 
-    if rank == 0:
-        if cfg.prompts.num_variants >= 1:
-            print(f"Using {cfg.prompts.num_variants} prompts per example")
-        elif cfg.prompts.num_variants == -1:
-            print("Using all prompts per example")
-        else:
-            raise ValueError(f"Invalid prompt num_variants: {cfg.prompts.num_variants}")
-
-    prompt_datasets = []
-
-    # create a PromptDataset for each dataset in cfg.prompts
-    for dataset_index in range(len(cfg.prompts.datasets)):
-        dataset_name = cfg.prompts.datasets[dataset_index]
-        prompt_ds = PromptDataset(cfg.prompts, rank, world_size, split, dataset_index)
-        prompt_names = prompt_ds.prompter.all_template_names
-        print(f"Prompts for dataset {dataset_name}: {prompt_names}")
-        prompt_datasets.append(prompt_ds)
-
-    # combine each PromptDataset together, interleaving them
-    interleaved_prompt_datasets = InterleavedDatasets(prompt_datasets)
+    limits = cfg.prompts.max_examples
+    prompt_ds = load_prompts(
+        *cfg.prompts.datasets,
+        max_examples=limits[0 if split_type == "train" else 1],
+        split_type=split_type,
+        rank=rank,
+        world_size=world_size,
+    )
+    num_variants = prompt_ds.features["prompts"].length
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
     model = AutoModel.from_pretrained(cfg.model, torch_dtype="auto").to(device)
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
-
-    # TODO: test whether using sep_token is important, but this seems low priority
-    # sep_token = tokenizer.sep_token or "\n"
-    if not tokenizer.pad_token:
-        tokenizer.pad_token = tokenizer.eos_token
-
+    tokenizer = AutoTokenizer.from_pretrained(
+        cfg.model, truncation_side="left", verbose=False
+    )
     is_enc_dec = model.config.is_encoder_decoder
 
-    def tokenize(prompt: Prompt, idx: int, **kwargs):
-        return tokenizer(
-            ([prompt.to_string(idx)]),
-            padding=True,
-            return_tensors="pt",
-            truncation=True,
-            **kwargs,
-        ).to(device)
-
-    # This function returns the flattened questions and answers. After inference we
-    # need to reshape the results.
-    def collate(prompts: list[Prompt]) -> list[list[BatchEncoding]]:
-        return [[tokenize(prompt, i) for i in range(2)] for prompt in prompts]
-
     # If this is an encoder-decoder model we don't need to run the decoder at all.
-    # Just strip it off, making the problem
-    # equivalent to a regular encoder-only model.
+    # Just strip it off, making the problem equivalent to a regular encoder-only model.
     if is_enc_dec:
         # This isn't actually *guaranteed* by HF, but it's true for all existing models
         if not hasattr(model, "get_encoder") or not callable(model.get_encoder):
@@ -149,12 +124,12 @@ def extract_hiddens(
 
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
+    # print(f"Using {prompt_ds} variants for each dataset")
 
-    for prompts in interleaved_prompt_datasets:
-        inputs = collate(prompts)
+    for example in BalancedSampler(prompt_ds):
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
-                prompt_datasets[0].num_variants,
+                num_variants,
                 2,  # contrast pair
                 model.config.hidden_size,
                 device=device,
@@ -162,25 +137,23 @@ def extract_hiddens(
             )
             for layer_idx in layer_indices
         }
-        variant_ids = [prompt.template.name for prompt in prompts]
-        # decode so that we know exactly what the input was
-        text_inputs = [
-            [
-                tokenizer.decode(
-                    assert_type(torch.Tensor, variant_inputs[0].input_ids)[0]
-                ),
-                tokenizer.decode(
-                    assert_type(torch.Tensor, variant_inputs[1].input_ids)[0]
-                ),
-            ]
-            for variant_inputs in inputs
-        ]
+        text_inputs = []
 
         # Iterate over variants
-        for i, variant_inputs in enumerate(inputs):
+        for i, record in enumerate(example["prompts"]):
+            variant_inputs = []
+
             # Iterate over answers
-            for j, inpt in enumerate(variant_inputs):
-                outputs = model(**inpt, output_hidden_states=True)
+            for j in range(2):
+                text = record["text"][j]
+                variant_inputs.append(text)
+
+                inputs = tokenizer(
+                    text,
+                    return_tensors="pt",
+                    truncation=True,
+                ).to(device)
+                outputs = model(**inputs, output_hidden_states=True)
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
@@ -204,10 +177,11 @@ def extract_hiddens(
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
 
-        assert all([prompts[0].label == prompt.label for prompt in prompts])
+            text_inputs.append(variant_inputs)
+
         yield dict(
-            label=prompts[0].label,
-            variant_ids=variant_ids,
+            label=example["label"],
+            variant_ids=example["template_names"],
             text_inputs=text_inputs,
             **hidden_dict,
         )
@@ -223,8 +197,12 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
 
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
-        splits = select_train_val_splits(available_splits)
-        print(f"Using '{splits[0]}' for training and '{splits[1]}' for validation")
+        train_name, val_name = select_train_val_splits(available_splits)
+        print(f"Using '{train_name}' for training and '{val_name}' for validation")
+
+        out_splits = SplitDict(
+            train=available_splits[train_name], val=available_splits[val_name]
+        )
 
         # Empty list means no limit
         limit_list = cfg.prompts.max_examples
@@ -233,32 +211,26 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
 
         # Broadcast the limit to all splits
         if len(limit_list) == 1:
-            limit_list *= len(splits)
+            limit_list *= len(out_splits)
 
-        limit = {k: v for k, v in zip(splits, limit_list)}
         return SplitDict(
             {
                 k: SplitInfo(
                     name=k,
-                    num_examples=min(limit[k], v.num_examples)
-                    * len(cfg.prompts.datasets),
+                    num_examples=min(limit, v.num_examples) * len(cfg.prompts.datasets),
                     dataset_name=v.dataset_name,
                 )
-                for k, v in available_splits.items()
-                if k in splits
+                for limit, (k, v) in zip(limit_list, available_splits.items())
             },
             dataset_name=available_splits.dataset_name,
         )
 
+    devices = select_usable_devices(max_gpus)
     model_cfg = AutoConfig.from_pretrained(cfg.model)
     num_variants = cfg.prompts.num_variants
+
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
-
-    features = assert_type(Features, info.features)
-    label_col = cfg.prompts.label_column or infer_label_column(features)
-
-    splits = get_splits()
 
     layer_cols = {
         f"hidden_{layer}": Array3D(
@@ -272,7 +244,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             Value(dtype="string"),
             length=num_variants,
         ),
-        "label": features[label_col],
+        "label": ClassLabel(names=["neg", "pos"]),
         "text_inputs": Sequence(
             Sequence(
                 Value(dtype="string"),
@@ -281,7 +253,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
     }
-    devices = select_usable_devices(max_gpus)
+
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,
@@ -293,15 +265,16 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
                 cfg=[cfg] * len(devices),
                 device=devices,
                 rank=list(range(len(devices))),
-                split=[split_name] * len(devices),
+                split_type=[split_name] * len(devices),
                 world_size=[len(devices)] * len(devices),
             ),
         )
-        for (split_name, split_info) in splits.items()
+        for (split_name, split_info) in get_splits().items()
     }
 
     ds = dict()
     for split, builder in builders.items():
         builder.download_and_prepare(num_proc=len(devices))
         ds[split] = builder.as_dataset(split=split)
+
     return DatasetDict(ds)
