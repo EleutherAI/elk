@@ -34,10 +34,6 @@ class PromptConfig(Serializable):
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset; if there is only one column
             with a `ClassLabel` datatype, we use that.
-        num_classes: The number of classes in the dataset. By default, we infer this
-            from the datatypes of the columns in the dataset; if there is only one
-            column with a `ClassLabel` datatype, we use the number of classes in that
-            column.
         max_examples: The maximum number of examples to use from the val dataset.
             If a single number, use at most that many examples for each split. If a list
             of length 2, use the first element for the train split and the second for
@@ -53,7 +49,6 @@ class PromptConfig(Serializable):
     balance: bool = False
     data_dir: Optional[str] = None
     label_column: Optional[str] = None
-    num_classes: Optional[int] = None
     max_examples: list[int] = field(default_factory=lambda: [750, 250])
     num_shots: int = 0
     num_variants: int = -1
@@ -111,7 +106,6 @@ def load_prompts(
     for ds, prompter in zip(raw_datasets, prompters):
         label_column = infer_label_column(ds.features)
         num_classes = infer_num_classes(ds.features[label_column])
-        assert num_classes == 2
 
         # Remove everything but the label column
         extra_cols = list(assert_type(Features, ds.features))
@@ -182,6 +176,11 @@ def _convert_to_prompts(
 
     for template in templates:
         choices = []
+
+        if num_classes > 2:
+            template, _ = binarize(
+                template, example[label_column], rng.choice([0, 1]), rng
+            )
 
         for answer_idx in range(num_classes):
             fake_example = example.copy()
