@@ -26,10 +26,10 @@ class BalancedSampler(TorchIterableDataset):
 
     dataset: IterableDataset
     label_counts: np.ndarray = field(default_factory=lambda: np.zeros(2))
-    seed: int = 42
+    seed: InitVar[int] = 42
 
-    def __post_init__(self):
-        self.rng = np.random.default_rng(self.seed)
+    def __post_init__(self, seed: int):
+        self.rng = np.random.default_rng(seed)
 
     def __iter__(self):
         for sample in self.dataset:
