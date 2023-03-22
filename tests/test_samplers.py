@@ -43,7 +43,7 @@ def test_output_is_roughly_balanced():
 
     # Count the number of samples for each label
     counter = Counter()
-    for sample in islice(reservoir, 2000):
+    for sample in islice(reservoir, 3000):
         counter[sample[col]] += 1
 
     # Check if the output is roughly balanced
