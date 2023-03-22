@@ -44,8 +44,7 @@ class PromptConfig(Serializable):
         dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
             `"super_glue boolq"` or `"imdb"`.
         balance: Whether to force class balance in the dataset using undersampling.
-        data_dir: The directory to use for caching the dataset. Defaults to
-            `~/.cache/huggingface/datasets`.
+        data_dir: The directory to use for caching the dataset.
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset; if there is only one column
             with a `ClassLabel` datatype, we use that.
@@ -56,12 +55,12 @@ class PromptConfig(Serializable):
         max_examples: The maximum number of examples to use from the val dataset.
             If a single number, use at most that many examples for each split. If a list
             of length 2, use the first element for the train split and the second for
-            the val split. If empty, use all examples. Defaults to empty.
+            the val split. If empty, use all examples.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
-            are zero-shot. Defaults to 0.
-        seed: The seed to use for prompt randomization. Defaults to 42.
+            are zero-shot.
+        seed: The seed to use for prompt randomization.
         num_variants: The number of prompt templates to apply to each predicate upon
-            call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
+            call to __getitem__. Use -1 to apply all available templates.
     """
 
     dataset: str = field(positional=True)
