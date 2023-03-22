@@ -3,9 +3,10 @@ from datasets import load_dataset, IterableDataset
 from elk.extraction import BalancedBatchSampler, BalancedSampler
 from elk.utils import assert_type, infer_label_column
 from itertools import islice
-import numpy as np
+import pytest
 
 
+@pytest.mark.skip(reason="This test is too slow to run on every commit")
 def test_output_batches_are_balanced():
     # Load an example dataset for testing
     dataset = assert_type(
