@@ -132,6 +132,7 @@ def undersample(
 
     return dataset
 
+
 def get_layers(ds: DatasetDict) -> List[int]:
     """Get a list of indices of hidden layers given a `DatasetDict`."""
     layers = [
@@ -141,6 +142,7 @@ def get_layers(ds: DatasetDict) -> List[int]:
     ]
     return layers
 
+
 def apply_template(template: Template, example: dict) -> str:
     """Concatenate question and answer if answer is not empty or whitespace."""
     q, a = template.apply(example)
@@ -148,6 +150,7 @@ def apply_template(template: Template, example: dict) -> str:
     # if the jinja template already adds whitespace, don't add more
     sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
     return f"{q}{sep}{a}" if a and not a.isspace() else q
+
 
 def binarize(
     template: Template, label: int, new_label: int, rng: Random
@@ -161,7 +164,6 @@ def binarize(
         `new_label`:
             the index of the true answer into `new_template.answer_choices`
     """
-
 
     # TODO: it would be nice in the future to binarize exhaustively so we're not
     # cheating here (since this step requires a label). e.g. this function would
