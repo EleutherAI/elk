@@ -277,6 +277,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
     devices = select_usable_devices(max_gpus)
     builders: dict[Split, _GeneratorBuilder] = {
         split_name: _GeneratorBuilder(
+            # disable cacheing
             cache_dir=None,
             features=Features({**layer_cols, **other_cols}),
             generator=_extraction_worker,
