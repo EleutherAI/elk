@@ -45,7 +45,6 @@ class EvaluateRun(Run):
         reporter_path = (
             elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"
         )
-        print("reporter_path", reporter_path)
         reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
