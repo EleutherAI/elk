@@ -50,6 +50,8 @@ class Elicit(Serializable):
 
 @dataclass
 class TrainRun(Run):
+    cfg: Elicit
+
     def get_reporter(self, x0: Tensor, device: int): 
         if isinstance(self.cfg.net, CcsReporterConfig):
             reporter = CcsReporter(x0.shape[-1], self.cfg.net, device=device)

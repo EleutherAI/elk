@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 import torch
 from simple_parsing import Serializable, field
@@ -11,6 +11,7 @@ from elk.extraction.extraction import Extract
 from elk.files import create_output_directory, elk_reporter_dir
 from elk.run import Run
 from elk.training.preprocessing import normalize
+from elk.training.train import Elicit
 from elk.utils.data_utils import select_train_val_splits
 from elk.utils.typing import upcast_hiddens
 
@@ -29,11 +30,8 @@ class Eval(Serializable):
         evaluate_run.evaluate_reporters()
 
 
-@dataclass
 class EvaluateRun(Run):
-    def __post_init__(self):
-        transfer_eval = elk_reporter_dir() / self.cfg.source / "transfer_eval"
-        self.cfg.out_dir = create_output_directory(self.cfg.out_dir, default_root_dir=transfer_eval) 
+    cfg: Eval
 
     def evaluate_reporter(
         self,
@@ -66,5 +64,8 @@ class EvaluateRun(Run):
 
 
     def evaluate_reporters(self):
+        transfer_eval = elk_reporter_dir() / self.cfg.source / "transfer_eval"
+        out_dir = create_output_directory(self.cfg.out_dir, default_root_dir=transfer_eval) 
+
         cols=["layer", "loss", "acc", "cal_acc", "auroc"]
-        self.run(func=self.evaluate_reporter, cols=cols)
+        self.run(func=self.evaluate_reporter, cols=cols, out_dir=out_dir)
