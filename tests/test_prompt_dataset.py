@@ -1,11 +1,11 @@
-from elk.extraction import ExtractionConfig, PromptDataset
+from elk.extraction import Extract, PromptDataset
 from elk.promptsource.templates import DatasetTemplates
 import pytest
 
 
 @pytest.mark.filterwarnings("ignore:Unable to find a decoding function")
 def test_prompt_dataset_getitem_boolq():
-    def test_prompt_dataset_getitem(cfg: ExtractionConfig, split: str):
+    def test_prompt_dataset_getitem(cfg: Extract, split: str):
         prompt_ds = PromptDataset(cfg.prompts, rank=0, world_size=1, split=split)
         ds_name, _, config_name = cfg.prompts.dataset.partition(" ")
 
@@ -33,10 +33,10 @@ def test_prompt_dataset_getitem_boolq():
 
     # the case where the dataset has 2 classes
     # this dataset is small
-    cfg = ExtractionConfig.load_yaml("tests/distilgpt2_copa_cfg.yaml")
+    cfg = Extract.load_yaml("tests/distilgpt2_copa_cfg.yaml")
     test_prompt_dataset_getitem(cfg, "validation")
 
     # the case where the dataset has more than 2 classes
     # TODO: I'm not sure if we want to force people to download the whole dataset
-    cfg = ExtractionConfig.load_yaml("tests/distilgpt2_dbpedia_cfg.yaml")
+    cfg = Extract.load_yaml("tests/distilgpt2_dbpedia_cfg.yaml")
     test_prompt_dataset_getitem(cfg, "test")
