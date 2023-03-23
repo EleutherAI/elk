@@ -195,9 +195,10 @@ class CcsReporter(Reporter):
 
             alpha = self.config.supervised_weight
             preds = p0.add(1 - p1).mul(0.5).squeeze(-1)
-            # TODO: wrong dims on CCS?
-            sum_preds = preds.sum(-1).sigmoid()
-            bce_loss = bce(sum_preds, labels.type_as(sum_preds))
+            # unsqueeze and broadcast to match the shape of preds
+            # TODO: not sure what to do here actually
+            labels_unsqueezed = labels.unsqueeze(-1).expand_as(preds)
+            bce_loss = bce(preds, labels_unsqueezed.type_as(preds))
             loss = alpha * bce_loss + (1 - alpha) * loss
 
         elif self.config.supervised_weight > 0:

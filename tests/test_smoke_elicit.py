@@ -8,8 +8,9 @@ from elk.training.train import train, RunConfig
 
 def test_smoke_elicit_run(tmp_path: Path):
     # We'll use the tiny gpt2 model for this test
+    # TODO: work with deberta but that doesn't support cpus
     model_path = "sshleifer/tiny-gpt2"
-    # todo: support tiny-imdb. But somnehow we need to convince promptsource
+    # TODO: support tiny-imdb. But somnehow we need to convince promptsource
     dataset_name = "imdb"
     config = RunConfig(
         data=ExtractionConfig(
@@ -19,7 +20,7 @@ def test_smoke_elicit_run(tmp_path: Path):
         ),
         net=CcsReporterConfig(),
     )
-    dataset = train(config, tmp_path)
+    train(config, tmp_path)
     # get the files in the tmp_path
     files: Path = list(tmp_path.iterdir())
     created_file_names = {file.name for file in files}
