@@ -1,12 +1,11 @@
 from collections import Counter
 from datasets import load_dataset, IterableDataset
-from elk.extraction import BalancedBatchSampler, BalancedSampler
+from elk.extraction import FewShotSampler, BalancedSampler
 from elk.utils import assert_type, infer_label_column
 from itertools import islice
-import pytest
+from random import Random
 
 
-@pytest.mark.skip(reason="This test is too slow to run on every commit")
 def test_output_batches_are_balanced():
     # Load an example dataset for testing
     dataset = assert_type(
@@ -15,20 +14,21 @@ def test_output_batches_are_balanced():
     )
     label_col = infer_label_column(dataset.features)
 
-    # Create the BalancedBatchSampler instance
-    batch_size = 32
-    balanced_batch_sampler = BalancedBatchSampler(dataset, batch_size=batch_size)
-
-    # Iterate through batches and check if they are balanced
-    for batch in balanced_batch_sampler:
+    # Start with an even number of shots; make sure they're exactly balanced
+    sampler = FewShotSampler(dataset, 6, rng=Random(42))
+    for batch in islice(sampler, 5):
         counter = Counter(sample[label_col] for sample in batch)
 
         # Check if the output batch is balanced
-        label_0_count = counter[0]
-        label_1_count = counter[1]
-        assert (
-            label_0_count == label_1_count
-        ), f"Batch is not balanced: {label_0_count}, {label_1_count}"
+        assert counter[0] == counter[1]
+
+    # Start with an odd number of shots; make sure they're roughly balanced
+    sampler = FewShotSampler(dataset, 5, rng=Random(42))
+    for batch in islice(sampler, 5):
+        counter = Counter(sample[label_col] for sample in batch)
+
+        # The batch should be balanced to within 1 sample
+        assert abs(counter[0] - counter[1]) <= 1
 
 
 def test_output_is_roughly_balanced():
