@@ -13,6 +13,20 @@ from elk.run import Run
 
 @dataclass
 class Eval(Serializable):
+    """
+    Full specification of a reporter evaluation run.
+
+    Args:
+        data: Config specifying hidden states on which the reporter will be trained.
+        source: The name of the source directory
+        normalization: The normalization method to use. Defaults to "meanonly". See
+            `elk.training.preprocessing.normalize()` for details.
+        max_gpus: The maximum number of GPUs to use. Defaults to -1, which means
+            "use all available GPUs".
+        debug: When in debug mode, a useful log file is saved to the memorably-named
+            output directory. Defaults to False.
+    """
+
     data: Extract
     source: str = field(positional=True)
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
@@ -58,4 +72,6 @@ class EvaluateRun(Run):
         return stats
 
     def evaluate(self):
+        """Evaluate the reporter on all layers."""
+
         self.apply_to_layers(func=self.evaluate_reporter)

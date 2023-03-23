@@ -1,21 +1,19 @@
 import csv
 import os
 import random
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Callable, List, Optional, Union, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Union, cast
 
 import numpy as np
 import torch
 import torch.multiprocessing as mp
-
 from torch import Tensor
 from tqdm import tqdm
 
 from datasets import DatasetDict, Split
-
 from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
 from elk.logging import save_debug_log
@@ -25,8 +23,8 @@ from elk.utils.gpu_utils import select_usable_devices
 from elk.utils.typing import assert_type, upcast_hiddens
 
 if TYPE_CHECKING:
-    from elk.training.train import Elicit
     from elk.evaluation.evaluate import Eval
+    from elk.training.train import Elicit
 
 
 @dataclass
@@ -39,16 +37,21 @@ class Run(ABC):
     def __post_init__(self):
         # Extract the hidden states first if necessary
         self.dataset = extract(self.cfg.data, max_gpus=self.cfg.max_gpus)
+
         self.out_dir = create_output_directory(self.out_dir)
         save_config(self.cfg, self.out_dir)
         save_meta(self.dataset, self.out_dir)
 
     def make_reproducible(self, seed: int):
+        """Make the run reproducible by setting the random seed."""
+
         np.random.seed(seed)
         random.seed(seed)
         torch.manual_seed(seed)
 
     def get_device(self, devices, world_size: int) -> str:
+        """Get the device for the current process."""
+
         rank = os.getpid() % world_size
         device = devices[rank]
         return device
@@ -58,7 +61,9 @@ class Run(ABC):
         device: str,
         layer: int,
         priorities: dict = {Split.TRAIN: 0, Split.VALIDATION: 1, Split.TEST: 2},
-    ):
+    ) -> tuple:
+        """Prepare the data for training and validation."""
+
         with self.dataset.formatted_as("torch", device=device, dtype=torch.int16):
             train_split, val_split = select_train_val_splits(
                 self.dataset, priorities=priorities
@@ -80,6 +85,8 @@ class Run(ABC):
         return x0, x1, val_x0, val_x1, train_labels, val_labels
 
     def apply_to_layers(self, func):
+        """Apply a function to each layer of the dataset in parallel."""
+
         devices = select_usable_devices(self.cfg.max_gpus)
         num_devices = len(devices)
         self.out_dir = assert_type(Path, self.out_dir)

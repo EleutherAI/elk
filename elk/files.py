@@ -44,7 +44,7 @@ def memorably_named_dir(parent: Path):
 
 def create_output_directory(
     out_dir: Optional[Path] = None, default_root_dir: Path = elk_reporter_dir()
-):
+) -> Path:
     """Creates an output directory"""
     if out_dir is None:
         # default_root_dir.mkdir(parents=True, exist_ok=True)
@@ -60,8 +60,11 @@ def create_output_directory(
 def save_config(cfg: Serializable, out_dir: Path):
     """Save the config to a file"""
 
-    with open(out_dir / "cfg.yaml", "w") as f:
+    path = out_dir / "cfg.yaml"
+    with open(path, "w") as f:
         cfg.dump_yaml(f)
+
+    return path
 
 
 def save_meta(dataset, out_dir: Path):
@@ -72,5 +75,8 @@ def save_meta(dataset, out_dir: Path):
             split: dataset[split]._fingerprint for split in dataset.keys()
         }
     }
-    with open(out_dir / "metadata.yaml", "w") as meta_f:
+    path = out_dir / "metadata.yaml"
+    with open(path, "w") as meta_f:
         yaml.dump(meta, meta_f)
+
+    return path

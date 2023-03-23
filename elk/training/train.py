@@ -11,7 +11,6 @@ from simple_parsing import Serializable, field, subgroups
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 
-from datasets import DatasetDict
 from elk.extraction.extraction import Extract
 from elk.run import Run
 from elk.utils.typing import assert_type
@@ -20,7 +19,6 @@ from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig
-import yaml
 
 
 @dataclass
@@ -174,6 +172,8 @@ class TrainRun(Run):
     def get_pseudo_auroc(
         self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor
     ):
+        """Check the separability of the pseudo-labels at a given layer."""
+
         with torch.no_grad():
             pseudo_auroc = Reporter.check_separability(
                 train_pair=(x0, x1), val_pair=(val_x0, val_x1)
@@ -188,4 +188,6 @@ class TrainRun(Run):
         return pseudo_auroc
 
     def train(self):
+        """Train a reporter on each layer of the network."""
+
         self.apply_to_layers(func=self.train_reporter)
