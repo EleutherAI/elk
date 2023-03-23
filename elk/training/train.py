@@ -14,6 +14,7 @@ from torch import Tensor
 from datasets import DatasetDict
 from elk.extraction.extraction import Extract
 from elk.run import Run
+from elk.utils.typing import assert_type
 
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .classifier import Classifier
@@ -45,22 +46,24 @@ class Elicit(Serializable):
     out_dir: Optional[Path] = None
 
     def execute(self):
-        train_run = TrainRun(cfg=self)
+        cols = [
+            "layer",
+            "pseudo_auroc",
+            "train_loss",
+            "acc",
+            "cal_acc",
+            "auroc",
+            "ece",
+        ]
+        if not self.skip_baseline:
+            cols += ["lr_auroc", "lr_acc"]
+        train_run = TrainRun(cfg=self, eval_headers=cols, out_dir=self.out_dir)
         train_run.train()
 
 
 @dataclass
 class TrainRun(Run):
     cfg: Elicit
-
-    def get_reporter(self, x0: Tensor, device: int):
-        if isinstance(self.cfg.net, CcsReporterConfig):
-            reporter = CcsReporter(x0.shape[-1], self.cfg.net, device=device)
-        elif isinstance(self.cfg.net, EigenReporterConfig):
-            reporter = EigenReporter(x0.shape[-1], self.cfg.net, device=device)
-        else:
-            raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
-        return reporter
 
     def train_baseline(
         self,
@@ -70,10 +73,7 @@ class TrainRun(Run):
         val_x1: Tensor,
         train_labels: Tensor,
         val_labels: Tensor,
-        device: int,
-        stats: list,
-        layer: int,
-        lr_dir: Path,
+        device: str,
     ):
         # repeat_interleave makes `num_variants` copies of each label, all within a
         # single dimension of size `num_variants * 2 * n`, such that the labels align
@@ -115,8 +115,6 @@ class TrainRun(Run):
 
     def train_reporter(
         self,
-        dataset: DatasetDict,
-        out_dir: Path,
         layer: int,
         devices: list[str],
         world_size: int = 1,
@@ -127,11 +125,16 @@ class TrainRun(Run):
         device = self.get_device(devices, world_size)
 
         x0, x1, val_x0, val_x1, train_labels, val_labels = self.prepare_data(
-            dataset, device, layer
-        )  # useful for both
+            device, layer
+        )
         pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
 
-        reporter = self.get_reporter(x0, device)
+        if isinstance(self.cfg.net, CcsReporterConfig):
+            reporter = CcsReporter(x0.shape[-1], self.cfg.net, device=device)
+        elif isinstance(self.cfg.net, EigenReporterConfig):
+            reporter = EigenReporter(x0.shape[-1], self.cfg.net, device=device)
+        else:
+            raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
         train_loss = reporter.fit(x0, x1, train_labels)
         val_result = reporter.score(
@@ -139,8 +142,8 @@ class TrainRun(Run):
             val_x0,
             val_x1,
         )
-
-        reporter_dir, lr_dir = self.create_models_dir(out_dir)
+        
+        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         stats = [layer, pseudo_auroc, train_loss, *val_result]
 
         if not self.cfg.skip_baseline:
@@ -152,9 +155,6 @@ class TrainRun(Run):
                 train_labels,
                 val_labels,
                 device,
-                stats,
-                layer,
-                lr_dir,
             )
             stats += [lr_auroc, lr_acc]
             self.save_baseline(lr_dir, layer, lr_model)
@@ -181,16 +181,4 @@ class TrainRun(Run):
         return pseudo_auroc
 
     def train(self):
-        cols = [
-            "layer",
-            "pseudo_auroc",
-            "train_loss",
-            "acc",
-            "cal_acc",
-            "auroc",
-            "ece",
-        ]
-        if not self.cfg.skip_baseline:
-            cols += ["lr_auroc", "lr_acc"]
-
-        self.run(func=self.train_reporter, cols=cols, out_dir=self.cfg.out_dir)
+        self.apply_to_layers(func=self.train_reporter)

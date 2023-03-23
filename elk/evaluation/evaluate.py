@@ -1,19 +1,14 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import List, Literal, Optional
 
 import torch
 from simple_parsing import Serializable, field
-from torch import Tensor
 
-from datasets import DatasetDict, Split
+from datasets import Split
 from elk.extraction.extraction import Extract
-from elk.files import create_output_directory, elk_reporter_dir
+from elk.files import elk_reporter_dir
 from elk.run import Run
-from elk.training.preprocessing import normalize
-from elk.training.train import Elicit
-from elk.utils.data_utils import select_train_val_splits
-from elk.utils.typing import upcast_hiddens
 
 
 @dataclass
@@ -26,26 +21,22 @@ class Eval(Serializable):
     out_dir: Optional[Path] = None
 
     def execute(self):
-        evaluate_run = EvaluateRun(cfg=self)
-        evaluate_run.evaluate_reporters()
+        transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
+        cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
+
+        run = EvaluateRun(cfg=self, eval_headers=cols, out_dir=transfer_eval)
+        run.evaluate()
 
 
+@dataclass
 class EvaluateRun(Run):
     cfg: Eval
 
-    def evaluate_reporter(
-        self,
-        dataset: DatasetDict,
-        out_dir: Path,
-        layer: int,
-        devices: list[str],
-        world_size: int = 1,
-    ):
+    def evaluate_reporter(self, layer: int, devices: List[str], world_size: int):
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
         _, _, test_x0, test_x1, _, test_labels = self.prepare_data(
-            dataset,
             device,
             layer,
             priorities={Split.TRAIN: 0, Split.VALIDATION: 1, Split.TEST: 2},
@@ -66,8 +57,5 @@ class EvaluateRun(Run):
         stats = [layer, *test_result]
         return stats
 
-    def evaluate_reporters(self):
-        transfer_eval = elk_reporter_dir() / self.cfg.source / "transfer_eval"
-
-        cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
-        self.run(func=self.evaluate_reporter, cols=cols, out_dir=transfer_eval)
+    def evaluate(self):
+        self.apply_to_layers(func=self.evaluate_reporter)
