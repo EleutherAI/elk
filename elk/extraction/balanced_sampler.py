@@ -1,8 +1,9 @@
 from ..utils import infer_label_column
-from collections import Counter
+from ..math_util import stochastic_round_constrained
 from dataclasses import dataclass, field, InitVar
 from datasets import IterableDataset
 from itertools import cycle
+from random import Random
 from torch.utils.data import IterableDataset as TorchIterableDataset
 from typing import Iterator, Optional
 import numpy as np
@@ -50,39 +51,49 @@ class BalancedSampler(TorchIterableDataset):
             yield sample
 
 
-class BalancedBatchSampler:
-    """Yields precisely balanced batches from a binary classification dataset.
+class FewShotSampler:
+    """Yields batches of few-shot examples that are as balanced as possible.
 
-    Written by a human being because GPT-4 couldn't figure out how to do it.
+    If the number of examples is divisible by the number of shots, this sampler
+    will yield batches of exactly `num_shots` examples. Otherwise, it will
+    use `stochastic_round_constrained` to get as close to balanced batches as
+    possible.
     """
 
     def __init__(
         self,
         dataset: IterableDataset,
+        num_shots: int,
+        rng: Random,
         label_col: Optional[str] = None,
-        batch_size: int = 32,
     ):
-        self.batch_size = batch_size
         self.dataset = dataset
         self.label_col = label_col or infer_label_column(dataset.features)
+        self.num_shots = num_shots
+        self.rng = rng
 
     def __iter__(self) -> Iterator[list[dict]]:
-        batch = []
+        neg_buf, pos_buf = [], []
 
-        max_count = self.batch_size // 2
-        label_counts = Counter()
-
-        # Infinite loop!
+        # Infinite loop over the dataset!
         for sample in cycle(self.dataset):
             label = sample[self.label_col]
-            if label_counts[label] >= max_count:
-                continue
+            if label == 0:
+                neg_buf.append(sample)
+            elif label == 1:
+                pos_buf.append(sample)
+            else:
+                raise ValueError(f"Expected label to be 0 or 1, got {label}")
 
-            batch.append(sample)
-            label_counts[label] += 1
-
-            if len(batch) == self.batch_size:
-                yield batch
-
+            neg_count, pos_count = stochastic_round_constrained(
+                [self.num_shots / 2, self.num_shots / 2], self.rng
+            )
+            while len(neg_buf) >= neg_count and len(pos_buf) >= pos_count:
                 batch = []
-                label_counts.clear()
+                for _ in range(neg_count):
+                    batch.append(neg_buf.pop())
+                for _ in range(pos_count):
+                    batch.append(pos_buf.pop())
+
+                self.rng.shuffle(batch)
+                yield batch
