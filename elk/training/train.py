@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
 
-from ..logging import save_debug_log
 import torch
 from simple_parsing import Serializable, field, subgroups
 from sklearn.metrics import accuracy_score, roc_auc_score
@@ -47,29 +46,10 @@ class Elicit(Serializable):
         {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
     )
     optim: OptimConfig = field(default_factory=OptimConfig)
-
     max_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
     debug: bool = False
-
-    out_dir: Optional[Path] = None
-
-    def execute(self):
-        cols = [
-            "layer",
-            "pseudo_auroc",
-            "train_loss",
-            "acc",
-            "cal_acc",
-            "auroc",
-            "ece",
-        ]
-        if not self.skip_baseline:
-            cols += ["lr_auroc", "lr_acc"]
-        train_run = TrainRun(cfg=self, eval_headers=cols, out_dir=self.out_dir)
-        train_run.train()
-
     out_dir: Optional[Path] = None
 
     def execute(self):
@@ -209,6 +189,3 @@ class TrainRun(Run):
 
     def train(self):
         self.apply_to_layers(func=self.train_reporter)
-
-            if cfg.debug:
-                save_debug_log(ds, out_dir)

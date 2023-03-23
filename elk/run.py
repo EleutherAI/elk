@@ -17,7 +17,8 @@ from tqdm import tqdm
 from datasets import DatasetDict, Split
 
 from elk.extraction.extraction import extract
-from elk.files import create_output_directory, save_config
+from elk.files import create_output_directory, save_config, save_meta
+from elk.logging import save_debug_log
 from elk.training.preprocessing import normalize
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.gpu_utils import select_usable_devices
@@ -40,6 +41,7 @@ class Run(ABC):
         self.dataset = extract(self.cfg.data, max_gpus=self.cfg.max_gpus)
         self.out_dir = create_output_directory(self.out_dir)
         save_config(self.cfg, self.out_dir)
+        save_meta(self.dataset, self.out_dir)
 
     def make_reproducible(self, seed: int):
         np.random.seed(seed)
@@ -98,3 +100,5 @@ class Run(ABC):
                 # Make sure the CSV is written even if we crash or get interrupted
                 for row in sorted(row_buf):
                     writer.writerow(row)
+                if self.cfg.debug:
+                    save_debug_log(self.dataset, self.out_dir)

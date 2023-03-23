@@ -17,7 +17,7 @@ class Eval(Serializable):
     source: str = field(positional=True)
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     max_gpus: int = -1
-
+    debug: bool = False
     out_dir: Optional[Path] = None
 
     def execute(self):
@@ -48,8 +48,6 @@ class EvaluateRun(Run):
         print("reporter_path", reporter_path)
         reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
-
-        test_x0, test_x1 = test_h.unbind(dim=-2)
 
         test_result = reporter.score(
             test_labels,

@@ -7,6 +7,7 @@ import random
 from typing import Optional
 
 from simple_parsing import Serializable
+import yaml
 
 
 def elk_reporter_dir() -> Path:
@@ -61,3 +62,13 @@ def save_config(cfg: Serializable, out_dir: Path):
 
     with open(out_dir / "cfg.yaml", "w") as f:
         cfg.dump_yaml(f)
+
+
+def save_meta(dataset, out_dir: Path):
+    """Save the meta data to a file"""
+
+    meta = {
+        "dataset_fingerprints": {split: dataset[split]._fingerprint for split in dataset.keys()}
+    }
+    with open(out_dir / "metadata.yaml", "w") as meta_f:
+        yaml.dump(meta, meta_f)
