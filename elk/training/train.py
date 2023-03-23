@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
 
+from ..logging import save_debug_log
 import torch
 from simple_parsing import Serializable, field, subgroups
 from sklearn.metrics import accuracy_score, roc_auc_score
@@ -20,6 +21,7 @@ from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig
+import yaml
 
 
 @dataclass
@@ -30,6 +32,14 @@ class Elicit(Serializable):
         data: Config specifying hidden states on which the reporter will be trained.
         net: Config for building the reporter network.
         optim: Config for the `.fit()` loop.
+        max_gpus: The maximum number of GPUs to use. Defaults to -1, which means
+            "use all available GPUs".
+        normalization: The normalization method to use. Defaults to "meanonly". See
+            `elk.training.preprocessing.normalize()` for details.
+        skip_baseline: Whether to skip training the baseline classifier. Defaults to
+            False.
+        debug: When in debug mode, a useful log file is saved to the memorably-named
+            output directory. Defaults to False.
     """
 
     data: Extract
@@ -38,10 +48,27 @@ class Elicit(Serializable):
     )
     optim: OptimConfig = field(default_factory=OptimConfig)
 
-    label_frac: float = 0.0
     max_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
+    debug: bool = False
+
+    out_dir: Optional[Path] = None
+
+    def execute(self):
+        cols = [
+            "layer",
+            "pseudo_auroc",
+            "train_loss",
+            "acc",
+            "cal_acc",
+            "auroc",
+            "ece",
+        ]
+        if not self.skip_baseline:
+            cols += ["lr_auroc", "lr_acc"]
+        train_run = TrainRun(cfg=self, eval_headers=cols, out_dir=self.out_dir)
+        train_run.train()
 
     out_dir: Optional[Path] = None
 
@@ -88,7 +115,7 @@ class TrainRun(Run):
         X = torch.cat([x0, x1]).squeeze()
         d = X.shape[-1]
         lr_model = Classifier(d, device=device)
-        lr_model.fit(X.view(-1, d), train_labels_aug)
+        lr_model.fit_cv(X.view(-1, d), train_labels_aug)
 
         X_val = torch.cat([val_x0, val_x1]).view(-1, d)
         with torch.no_grad():
@@ -182,3 +209,6 @@ class TrainRun(Run):
 
     def train(self):
         self.apply_to_layers(func=self.train_reporter)
+
+            if cfg.debug:
+                save_debug_log(ds, out_dir)

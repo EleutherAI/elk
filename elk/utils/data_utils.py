@@ -1,16 +1,18 @@
 from .typing import assert_type
+from ..promptsource.templates import Template
 from datasets import (
     ClassLabel,
     Dataset,
     DatasetDict,
     Features,
     Split,
+    Value,
     concatenate_datasets,
 )
 from random import Random
-from typing import Iterable, Optional, List
+from typing import Iterable, Optional, List, Any
 import numpy as np
-import torch
+import copy
 
 
 def compute_class_balance(
@@ -84,6 +86,26 @@ def infer_label_column(features: Features) -> str:
         return assert_type(str, label_cols[0])
 
 
+def infer_num_classes(label_feature: Any) -> int:
+    """Return the number of classes in a `Dataset`.
+
+    Returns:
+        The number of classes.
+    Raises:
+        ValueError: If the label column is not a `ClassLabel` or `Value('bool')`.
+    """
+    if isinstance(label_feature, ClassLabel):
+        # We piggyback on the ClassLabel feature type to get the number of classes
+        return label_feature.num_classes  # type: ignore
+    elif isinstance(label_feature, Value) and label_feature.dtype == "bool":
+        return 2
+    else:
+        raise ValueError(
+            f"Can't infer number of classes from label column "
+            f"of type {label_feature}"
+        )
+
+
 def undersample(
     dataset: Dataset, rng: Random, num_classes: int, label_column: Optional[str] = None
 ) -> Dataset:
@@ -110,7 +132,6 @@ def undersample(
 
     return dataset
 
-
 def get_layers(ds: DatasetDict) -> List[int]:
     """Get a list of indices of hidden layers given a `DatasetDict`."""
     layers = [
@@ -119,3 +140,43 @@ def get_layers(ds: DatasetDict) -> List[int]:
         if feat.startswith("hidden_")
     ]
     return layers
+
+def apply_template(template: Template, example: dict) -> str:
+    """Concatenate question and answer if answer is not empty or whitespace."""
+    q, a = template.apply(example)
+
+    # if the jinja template already adds whitespace, don't add more
+    sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
+    return f"{q}{sep}{a}" if a and not a.isspace() else q
+
+def binarize(
+    template: Template, label: int, new_label: int, rng: Random
+) -> tuple[Template, int]:
+    """Binarize a template with >2 answer choices, returning a new template and label.
+
+    Returns:
+        `new_template`:
+            A deepcopy of the original template with with 2 answer choices, one of
+            which is the true answer and the other is a random false answer.
+        `new_label`:
+            the index of the true answer into `new_template.answer_choices`
+    """
+
+
+    # TODO: it would be nice in the future to binarize exhaustively so we're not
+    # cheating here (since this step requires a label). e.g. this function would
+    # also take a candidate answer and the template would ask whether the candidate
+    # answer is true or false. This would require rewriting the jinja templates though.
+    answer_choices = assert_type(str, template.answer_choices).split(" ||| ")
+    assert len(answer_choices) > 2
+
+    true = answer_choices[label]
+    false = rng.choice([c for c in answer_choices if c != true])
+
+    assert new_label in (0, 1)
+
+    new_template = copy.deepcopy(template)
+    new_template.answer_choices = (
+        f"{false} ||| {true}" if new_label else f"{true} ||| {false}"
+    )
+    return new_template, new_label

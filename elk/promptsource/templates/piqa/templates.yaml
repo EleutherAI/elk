@@ -186,9 +186,7 @@ templates:
 
       |||
 
-      {{goal}} {{[sol1[0].lower() + sol1[1:], sol2[0].lower() + sol2[1:]][label]}}
-
-      '
+      {{goal}} {{[sol1[0].lower() + sol1[1:], sol2[0].lower() + sol2[1:]][label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:

@@ -49,6 +49,8 @@ class EvaluateRun(Run):
         reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
+        test_x0, test_x1 = test_h.unbind(dim=-2)
+
         test_result = reporter.score(
             test_labels,
             test_x0,
