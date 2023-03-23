@@ -12,10 +12,12 @@ from elk.training.train import Elicit
 @dataclass
 class CommandRunner:
     """Some top-level command"""
-    command: Union[Elicit, Eval, Extract] 
+
+    command: Union[Elicit, Eval, Extract]
 
     def execute(self):
-        return self.command.execute() 
+        return self.command.execute()
+
 
 def run():
     parser = ArgumentParser(add_help=False)

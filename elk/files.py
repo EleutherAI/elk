@@ -41,7 +41,9 @@ def memorably_named_dir(parent: Path):
     return out_dir
 
 
-def create_output_directory(out_dir: Optional[Path] = None, default_root_dir: Path=elk_reporter_dir()):
+def create_output_directory(
+    out_dir: Optional[Path] = None, default_root_dir: Path = elk_reporter_dir()
+):
     """Creates an output directory"""
     if out_dir is None:
         # default_root_dir.mkdir(parents=True, exist_ok=True)
@@ -53,8 +55,9 @@ def create_output_directory(out_dir: Optional[Path] = None, default_root_dir: Pa
 
     return out_dir
 
+
 def save_config(cfg: Serializable, out_dir: Path):
     """Save the config to a file"""
-    
+
     with open(out_dir / "cfg.yaml", "w") as f:
         cfg.dump_yaml(f)

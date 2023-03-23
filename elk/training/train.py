@@ -48,11 +48,12 @@ class Elicit(Serializable):
         train_run = TrainRun(cfg=self)
         train_run.train()
 
+
 @dataclass
 class TrainRun(Run):
     cfg: Elicit
 
-    def get_reporter(self, x0: Tensor, device: int): 
+    def get_reporter(self, x0: Tensor, device: int):
         if isinstance(self.cfg.net, CcsReporterConfig):
             reporter = CcsReporter(x0.shape[-1], self.cfg.net, device=device)
         elif isinstance(self.cfg.net, EigenReporterConfig):
@@ -61,8 +62,19 @@ class TrainRun(Run):
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
         return reporter
 
-
-    def train_baseline(self, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor, train_labels: Tensor, val_labels: Tensor, device: int, stats: list, layer: int, lr_dir: Path):
+    def train_baseline(
+        self,
+        x0: Tensor,
+        x1: Tensor,
+        val_x0: Tensor,
+        val_x1: Tensor,
+        train_labels: Tensor,
+        val_labels: Tensor,
+        device: int,
+        stats: list,
+        layer: int,
+        lr_dir: Path,
+    ):
         # repeat_interleave makes `num_variants` copies of each label, all within a
         # single dimension of size `num_variants * 2 * n`, such that the labels align
         # with X.view(-1, X.shape[-1])
@@ -99,7 +111,7 @@ class TrainRun(Run):
 
     def save_baseline(self, lr_dir: Path, layer: int, lr_model: Classifier):
         with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
-                pickle.dump(lr_model, file)
+            pickle.dump(lr_model, file)
 
     def train_reporter(
         self,
@@ -107,14 +119,16 @@ class TrainRun(Run):
         out_dir: Path,
         layer: int,
         devices: list[str],
-        world_size: int = 1
+        world_size: int = 1,
     ):
         """Train a single reporter on a single layer."""
         self.make_reproducible(seed=self.cfg.net.seed + layer)
 
         device = self.get_device(devices, world_size)
 
-        x0, x1, val_x0, val_x1, train_labels, val_labels = self.prepare_data(dataset, device, layer) # useful for both
+        x0, x1, val_x0, val_x1, train_labels, val_labels = self.prepare_data(
+            dataset, device, layer
+        )  # useful for both
         pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
 
         reporter = self.get_reporter(x0, device)
@@ -131,7 +145,16 @@ class TrainRun(Run):
 
         if not self.cfg.skip_baseline:
             lr_model, lr_auroc, lr_acc = self.train_baseline(
-                x0, x1, val_x0, val_x1, train_labels, val_labels, device, stats, layer, lr_dir
+                x0,
+                x1,
+                val_x0,
+                val_x1,
+                train_labels,
+                val_labels,
+                device,
+                stats,
+                layer,
+                lr_dir,
             )
             stats += [lr_auroc, lr_acc]
             self.save_baseline(lr_dir, layer, lr_model)
@@ -141,7 +164,9 @@ class TrainRun(Run):
 
         return stats
 
-    def get_pseudo_auroc(self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor):
+    def get_pseudo_auroc(
+        self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor
+    ):
         with torch.no_grad():
             pseudo_auroc = Reporter.check_separability(
                 train_pair=(x0, x1), val_pair=(val_x0, val_x1)
@@ -152,7 +177,7 @@ class TrainRun(Run):
                     f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
                     f"algorithm will not converge to a good solution."
                 )
-                
+
         return pseudo_auroc
 
     def train(self):
@@ -167,5 +192,5 @@ class TrainRun(Run):
         ]
         if not self.cfg.skip_baseline:
             cols += ["lr_auroc", "lr_acc"]
-        
-        self.run(func=self.train_reporter, cols=cols)
+
+        self.run(func=self.train_reporter, cols=cols, out_dir=self.cfg.out_dir)

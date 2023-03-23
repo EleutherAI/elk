@@ -1,4 +1,3 @@
-
 import csv
 import os
 import random
@@ -28,6 +27,7 @@ if TYPE_CHECKING:
     from elk.training.train import Elicit
     from elk.evaluation.evaluate import Eval
 
+
 @dataclass
 class Run(ABC):
     cfg: Union["Elicit", "Eval"]
@@ -42,25 +42,25 @@ class Run(ABC):
         device = devices[rank]
         return device
 
-    def prepare_data(self, 
-                     dataset: DatasetDict, 
-                     device: str, 
-                     layer: int, 
-                     priorities: dict = {
-                        Split.TRAIN: 0,
-                        Split.VALIDATION: 1,
-                        Split.TEST: 2
-                    }):
+    def prepare_data(
+        self,
+        dataset: DatasetDict,
+        device: str,
+        layer: int,
+        priorities: dict = {Split.TRAIN: 0, Split.VALIDATION: 1, Split.TEST: 2},
+    ):
         with dataset.formatted_as("torch", device=device, dtype=torch.int16):
-            train_split, val_split = select_train_val_splits(dataset, priorities=priorities)
+            train_split, val_split = select_train_val_splits(
+                dataset, priorities=priorities
+            )
             train, val = dataset[train_split], dataset[val_split]
 
             train_labels = cast(Tensor, train["label"])
             val_labels = cast(Tensor, val["label"])
 
             train_h, val_h = normalize(
-                upcast_hiddens(train[f"hidden_{layer}"]), # type: ignore
-                upcast_hiddens(val[f"hidden_{layer}"]), # type: ignore
+                upcast_hiddens(train[f"hidden_{layer}"]),  # type: ignore
+                upcast_hiddens(val[f"hidden_{layer}"]),  # type: ignore
                 method=self.cfg.normalization,
             )
 
@@ -68,15 +68,21 @@ class Run(ABC):
             val_x0, val_x1 = val_h.unbind(dim=-2)
 
         return x0, x1, val_x0, val_x1, train_labels, val_labels
-    
-    def run_on_layers(self, func: Callable, cols: List[str], out_dir: Path, cfg: Union["Elicit", "Eval"], ds, layers: List[int]):
+
+    def run_on_layers(
+        self,
+        func: Callable,
+        cols: List[str],
+        out_dir: Path,
+        cfg: Union["Elicit", "Eval"],
+        ds,
+        layers: List[int],
+    ):
         devices = select_usable_devices(cfg.max_gpus)
         num_devices = len(devices)
 
         with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
-            fn = partial(
-                func, ds, out_dir, devices=devices, world_size=num_devices
-            )
+            fn = partial(func, ds, out_dir, devices=devices, world_size=num_devices)
             writer = csv.writer(f)
             writer.writerow(cols)
 
@@ -93,8 +99,8 @@ class Run(ABC):
     def run(self, func: Callable, cols: List[str], out_dir: Optional[Path] = None):
         # Extract the hidden states first if necessary
         ds = extract(self.cfg.data, max_gpus=self.cfg.max_gpus)
-        
-        out_dir = create_output_directory(self.cfg.out_dir)
+
+        out_dir = create_output_directory(out_dir)
         save_config(self.cfg, out_dir)
 
         self.run_on_layers(
@@ -103,5 +109,5 @@ class Run(ABC):
             out_dir=out_dir,
             cfg=self.cfg,
             ds=ds,
-            layers=get_layers(ds)
+            layers=get_layers(ds),
         )

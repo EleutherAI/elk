@@ -30,9 +30,10 @@ from transformers import (
     BatchEncoding,
     PreTrainedModel,
 )
-from typing import Iterable, Literal,  Union, TYPE_CHECKING
+from typing import Iterable, Literal, Union, TYPE_CHECKING
 import logging
 import torch
+
 
 @dataclass
 class Extract(Serializable):
@@ -58,7 +59,7 @@ class Extract(Serializable):
     use_encoder_states: bool = False
 
     max_gpus: int = -1
-    
+
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
             raise ValueError(
@@ -75,6 +76,7 @@ class Extract(Serializable):
 
     def execute(self):
         extract(cfg=self, max_gpus=self.max_gpus)
+
 
 @torch.no_grad()
 def extract_hiddens(

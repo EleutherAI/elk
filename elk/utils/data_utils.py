@@ -47,12 +47,13 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
 
 
 def select_train_val_splits(
-    raw_splits: Iterable[str], 
+    raw_splits: Iterable[str],
     priorities: dict = {
         Split.TRAIN: 0,
         Split.VALIDATION: 1,
         Split.TEST: 2,
-    }) -> tuple[str, str]:
+    },
+) -> tuple[str, str]:
     """Return splits to use for train and validation, given an Iterable of splits."""
 
     splits = sorted(raw_splits, key=lambda k: priorities.get(k, 100))  # type: ignore
@@ -108,6 +109,7 @@ def undersample(
     assert np.all(class_sizes == smallest_size)
 
     return dataset
+
 
 def get_layers(ds: DatasetDict) -> List[int]:
     """Get a list of indices of hidden layers given a `DatasetDict`."""

@@ -26,7 +26,7 @@ class Eval(Serializable):
     out_dir: Optional[Path] = None
 
     def execute(self):
-        evaluate_run = EvaluateRun(cfg=self) 
+        evaluate_run = EvaluateRun(cfg=self)
         evaluate_run.evaluate_reporters()
 
 
@@ -44,28 +44,30 @@ class EvaluateRun(Run):
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
-        _, _, test_x0, test_x1, _, test_labels = self.prepare_data(dataset, 
-                                                                    device, 
-                                                                    layer, 
-                                                                    priorities= {Split.TRAIN: 0, Split.VALIDATION: 1, Split.TEST: 2}) 
-        
-        reporter_path = elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"
+        _, _, test_x0, test_x1, _, test_labels = self.prepare_data(
+            dataset,
+            device,
+            layer,
+            priorities={Split.TRAIN: 0, Split.VALIDATION: 1, Split.TEST: 2},
+        )
+
+        reporter_path = (
+            elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"
+        )
         reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
         test_result = reporter.score(
             test_labels,
-            test_x0, 
+            test_x0,
             test_x1,
         )
 
         stats = [layer, *test_result]
         return stats
 
-
     def evaluate_reporters(self):
         transfer_eval = elk_reporter_dir() / self.cfg.source / "transfer_eval"
-        out_dir = create_output_directory(self.cfg.out_dir, default_root_dir=transfer_eval) 
 
-        cols=["layer", "loss", "acc", "cal_acc", "auroc"]
-        self.run(func=self.evaluate_reporter, cols=cols, out_dir=out_dir)
+        cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
+        self.run(func=self.evaluate_reporter, cols=cols, out_dir=transfer_eval)
