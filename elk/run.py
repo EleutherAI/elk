@@ -82,9 +82,7 @@ class Run(ABC):
         num_devices = len(devices)
         self.out_dir = assert_type(Path, self.out_dir)
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
-            fn = partial(
-                func, devices=devices, world_size=num_devices
-            )
+            fn = partial(func, devices=devices, world_size=num_devices)
 
             writer = csv.writer(f)
             writer.writerow(self.eval_headers)

@@ -142,7 +142,7 @@ class TrainRun(Run):
             val_x0,
             val_x1,
         )
-        
+
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         stats = [layer, pseudo_auroc, train_loss, *val_result]
 
