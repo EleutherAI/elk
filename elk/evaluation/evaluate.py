@@ -1,90 +1,70 @@
-import os
-from pathlib import Path
 from dataclasses import dataclass
-from typing import cast, Optional, Literal
+from pathlib import Path
+from typing import Literal, Optional
+
 import torch
-from simple_parsing.helpers import Serializable, field
+from simple_parsing import Serializable, field
 from torch import Tensor
 
 from datasets import DatasetDict, Split
-from elk.files import create_output_directory, elk_reporter_dir, save_config
+from elk.extraction.extraction import Extract
+from elk.files import create_output_directory, elk_reporter_dir
+from elk.run import Run
 from elk.training.preprocessing import normalize
-from elk.utils.data_utils import get_layers, select_train_val_splits
+from elk.utils.data_utils import select_train_val_splits
 from elk.utils.typing import upcast_hiddens
-from elk.extraction.extraction import extract
-from elk.parallelization import run_on_layers
-
-from ..extraction import ExtractionConfig
 
 
 @dataclass
 class Eval(Serializable):
-    target: ExtractionConfig
+    data: Extract
     source: str = field(positional=True)
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     max_gpus: int = -1
 
+    out_dir: Optional[Path] = None
+
     def execute(self):
-        evaluate_reporters(cfg=self)
+        evaluate_run = EvaluateRun(cfg=self) 
+        evaluate_run.evaluate_reporters()
 
 
-def evaluate_reporter(
-    cfg: Eval,
-    dataset: DatasetDict,
-    layer: int,
-    devices: list[str],
-    world_size: int = 1,
-):
-    """Evaluate a single reporter on a single layer."""
-    rank = os.getpid() % world_size
-    device = devices[rank]
+@dataclass
+class EvaluateRun(Run):
+    def __post_init__(self):
+        transfer_eval = elk_reporter_dir() / self.cfg.source / "transfer_eval"
+        self.cfg.out_dir = create_output_directory(self.cfg.out_dir, default_root_dir=transfer_eval) 
 
-    with dataset.formatted_as("torch", device=device, dtype=torch.int16):
-        train_split, test_split= select_train_val_splits(dataset, priorities= {
-            Split.TRAIN: 0,
-            Split.TEST: 1,
-            Split.VALIDATION: 2
-        })
-        train, test = dataset[train_split], dataset[test_split]
-        test_labels = cast(Tensor, test["label"])
+    def evaluate_reporter(
+        self,
+        dataset: DatasetDict,
+        out_dir: Path,
+        layer: int,
+        devices: list[str],
+        world_size: int = 1,
+    ):
+        """Evaluate a single reporter on a single layer."""
+        device = self.get_device(devices, world_size)
 
-        _, test_h = normalize(
-            upcast_hiddens(train[f"hidden_{layer}"]),  # type: ignore
-            upcast_hiddens(test[f"hidden_{layer}"]), # type: ignore
-            cfg.normalization
+        _, _, test_x0, test_x1, _, test_labels = self.prepare_data(dataset, 
+                                                                    device, 
+                                                                    layer, 
+                                                                    priorities= {Split.TRAIN: 0, Split.VALIDATION: 1, Split.TEST: 2}) 
+        
+        reporter_path = elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"
+        reporter = torch.load(reporter_path, map_location=device)
+        reporter.eval()
+
+        test_result = reporter.score(
+            test_labels,
+            test_x0, 
+            test_x1,
         )
 
-    reporter_path = elk_reporter_dir() / cfg.source / "reporters" / f"layer_{layer}.pt"
-    reporter = torch.load(reporter_path, map_location=device)
-    reporter.eval()
-
-    test_x0, test_x1 = test_h.unbind(dim=-2)
-
-    test_result = reporter.score(
-        test_labels,
-        test_x0, 
-        test_x1,
-    )
-
-    stats = [layer, *test_result]
-    return stats
+        stats = [layer, *test_result]
+        return stats
 
 
-def evaluate_reporters(cfg: Eval, out_dir: Optional[Path] = None):
-    ds = extract(cfg.target, max_gpus=cfg.max_gpus)
-
-    layers = get_layers(ds)
-
-    transfer_eval = elk_reporter_dir() / cfg.source / "transfer_eval"
-    out_dir = create_output_directory(out_dir, default_root_dir=transfer_eval)
-    
-    save_config(cfg, out_dir)
-
-    run_on_layers(
-        func=evaluate_reporter,
-        cols=["layer", "loss", "acc", "cal_acc", "auroc"],
-        out_dir=out_dir,
-        cfg=cfg,
-        ds=ds,
-        layers=layers
-    )
+    def evaluate_reporters(self):
+        cols=["layer", "loss", "acc", "cal_acc", "auroc"]
+        self.run(func=self.evaluate_reporter, cols=cols)

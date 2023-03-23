@@ -1,30 +1,25 @@
 """Main training loop."""
 
-from elk.extraction.extraction import extract
-from elk.files import create_output_directory, save_config
-import elk.parallelization
-from elk.utils.typing import upcast_hiddens
-from ..extraction import ExtractionConfig
-from .classifier import Classifier
-from .ccs_reporter import CcsReporter, CcsReporterConfig
-from .eigen_reporter import EigenReporter, EigenReporterConfig
-from .preprocessing import normalize
-from .reporter import OptimConfig, Reporter, ReporterConfig
+import pickle
+import warnings
 from dataclasses import dataclass
-from datasets import DatasetDict
 from pathlib import Path
-from simple_parsing import field, subgroups, Serializable
+from typing import Literal, Optional
+
+import torch
+from simple_parsing import Serializable, field, subgroups
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
-from typing import cast, Literal, Optional
-import numpy as np
-import os
-import pickle
-import random
-import torch
-import warnings
-from elk.utils.data_utils import get_layers, select_train_val_splits
-from elk.parallelization import run_on_layers
+
+from datasets import DatasetDict
+from elk.extraction.extraction import Extract
+from elk.run import Run
+
+from .ccs_reporter import CcsReporter, CcsReporterConfig
+from .classifier import Classifier
+from .eigen_reporter import EigenReporter, EigenReporterConfig
+from .reporter import OptimConfig, Reporter, ReporterConfig
+
 
 @dataclass
 class Elicit(Serializable):
@@ -36,7 +31,7 @@ class Elicit(Serializable):
         optim: Config for the `.fit()` loop.
     """
 
-    data: ExtractionConfig
+    data: Extract
     net: ReporterConfig = subgroups(
         {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
     )
@@ -50,81 +45,22 @@ class Elicit(Serializable):
     out_dir: Optional[Path] = None
 
     def execute(self):
-        train(cfg=self, out_dir=self.out_dir)
+        train_run = TrainRun(cfg=self)
+        train_run.train()
+
+@dataclass
+class TrainRun(Run):
+    def get_reporter(self, x0: Tensor, device: int): 
+        if isinstance(self.cfg.net, CcsReporterConfig):
+            reporter = CcsReporter(x0.shape[-1], self.cfg.net, device=device)
+        elif isinstance(self.cfg.net, EigenReporterConfig):
+            reporter = EigenReporter(x0.shape[-1], self.cfg.net, device=device)
+        else:
+            raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
+        return reporter
 
 
-def train_reporter(
-    cfg: Elicit,
-    dataset: DatasetDict,
-    out_dir: Path,
-    layer: int,
-    devices: list[str],
-    world_size: int = 1,
-):
-    """Train a single reporter on a single layer."""
-
-    # Reproducibility
-    seed = cfg.net.seed + layer
-    np.random.seed(seed)
-    random.seed(seed)
-    torch.manual_seed(seed)
-
-    rank = os.getpid() % world_size
-    device = devices[rank]
-
-    # Note: currently we're just upcasting to float32 so we don't have to deal with
-    # grad scaling (which isn't supported for LBFGS), while the hidden states are
-    # saved in float16 to save disk space. In the future we could try to use mixed
-    # precision training in at least some cases.
-    with dataset.formatted_as("torch", device=device, dtype=torch.int16):
-        train_split, val_split = select_train_val_splits(dataset)
-        train, val = dataset[train_split], dataset[val_split]
-
-        train_labels = cast(Tensor, train["label"])
-        val_labels = cast(Tensor, val["label"])
-
-        train_h, val_h = normalize(
-            upcast_hiddens(train[f"hidden_{layer}"]), # type: ignore
-            upcast_hiddens(val[f"hidden_{layer}"]), # type: ignore
-            method=cfg.normalization,
-        )
-
-        x0, x1 = train_h.unbind(dim=-2)
-        val_x0, val_x1 = val_h.unbind(dim=-2)
-
-        with torch.no_grad():
-            pseudo_auroc = Reporter.check_separability(
-                train_pair=(x0, x1), val_pair=(val_x0, val_x1)
-            )
-            if pseudo_auroc > 0.6:
-                warnings.warn(
-                    f"The pseudo-labels at layer {layer} are linearly separable with "
-                    f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
-                    f"algorithm will not converge to a good solution."
-                )
-
-    if isinstance(cfg.net, CcsReporterConfig):
-        reporter = CcsReporter(x0.shape[-1], cfg.net, device=device)
-    elif isinstance(cfg.net, EigenReporterConfig):
-        reporter = EigenReporter(x0.shape[-1], cfg.net, device=device)
-    else:
-        raise ValueError(f"Unknown reporter config type: {type(cfg.net)}")
-
-    train_loss = reporter.fit(x0, x1, train_labels)
-    val_result = reporter.score(
-        val_labels,
-        val_x0,
-        val_x1,
-    )
-
-    lr_dir = out_dir / "lr_models"
-    reporter_dir = out_dir / "reporters"
-
-    lr_dir.mkdir(parents=True, exist_ok=True)
-    reporter_dir.mkdir(parents=True, exist_ok=True)
-    stats = [layer, pseudo_auroc, train_loss, *val_result]
-
-    if not cfg.skip_baseline:
+    def train_baseline(self, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor, train_labels: Tensor, val_labels: Tensor, device: int, stats: list, layer: int, lr_dir: Path):
         # repeat_interleave makes `num_variants` copies of each label, all within a
         # single dimension of size `num_variants * 2 * n`, such that the labels align
         # with X.view(-1, X.shape[-1])
@@ -147,40 +83,87 @@ def train_reporter(
         lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
 
-        stats += [lr_auroc, lr_acc]
+        return lr_model, lr_auroc, lr_acc
+
+    def create_models_dir(self, out_dir: Path):
+        lr_dir = None
+        lr_dir = out_dir / "lr_models"
+        reporter_dir = out_dir / "reporters"
+
+        lr_dir.mkdir(parents=True, exist_ok=True)
+        reporter_dir.mkdir(parents=True, exist_ok=True)
+
+        return lr_dir, reporter_dir
+
+    def save_baseline(self, lr_dir: Path, layer: int, lr_model: Classifier):
         with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
-            pickle.dump(lr_model, file)
+                pickle.dump(lr_model, file)
 
-    with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
-        torch.save(reporter, file)
+    def train_reporter(
+        self,
+        dataset: DatasetDict,
+        out_dir: Path,
+        layer: int,
+        devices: list[str],
+        world_size: int = 1
+    ):
+        """Train a single reporter on a single layer."""
+        self.make_reproducible(seed=self.cfg.net.seed + layer)
 
-    return stats
+        device = self.get_device(devices, world_size)
 
+        x0, x1, val_x0, val_x1, train_labels, val_labels = self.prepare_data(dataset, device, layer) # useful for both
+        pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
 
-def train(cfg: Elicit, out_dir: Optional[Path] = None):
-    cols = [
-        "layer",
-        "pseudo_auroc",
-        "train_loss",
-        "acc",
-        "cal_acc",
-        "auroc",
-        "ece",
-    ]
-    if not cfg.skip_baseline:
-        cols += ["lr_auroc", "lr_acc"]
+        reporter = self.get_reporter(x0, device)
 
-    # Extract the hidden states first if necessary
-    ds = extract(cfg.data, max_gpus=cfg.max_gpus)
-    
-    out_dir = create_output_directory(cfg.out_dir)
-    save_config(cfg, out_dir)
+        train_loss = reporter.fit(x0, x1, train_labels)
+        val_result = reporter.score(
+            val_labels,
+            val_x0,
+            val_x1,
+        )
 
-    run_on_layers(
-        func=train_reporter,
-        cols=cols,
-        out_dir=out_dir,
-        cfg=cfg,
-        ds=ds,
-        layers=get_layers(ds)
-    )
+        reporter_dir, lr_dir = self.create_models_dir(out_dir)
+        stats = [layer, pseudo_auroc, train_loss, *val_result]
+
+        if not self.cfg.skip_baseline:
+            lr_model, lr_auroc, lr_acc = self.train_baseline(
+                x0, x1, val_x0, val_x1, train_labels, val_labels, device, stats, layer, lr_dir
+            )
+            stats += [lr_auroc, lr_acc]
+            self.save_baseline(lr_dir, layer, lr_model)
+
+        with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
+            torch.save(reporter, file)
+
+        return stats
+
+    def get_pseudo_auroc(self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor):
+        with torch.no_grad():
+            pseudo_auroc = Reporter.check_separability(
+                train_pair=(x0, x1), val_pair=(val_x0, val_x1)
+            )
+            if pseudo_auroc > 0.6:
+                warnings.warn(
+                    f"The pseudo-labels at layer {layer} are linearly separable with "
+                    f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
+                    f"algorithm will not converge to a good solution."
+                )
+                
+        return pseudo_auroc
+
+    def train(self):
+        cols = [
+            "layer",
+            "pseudo_auroc",
+            "train_loss",
+            "acc",
+            "cal_acc",
+            "auroc",
+            "ece",
+        ]
+        if not self.cfg.skip_baseline:
+            cols += ["lr_auroc", "lr_acc"]
+        
+        self.run(func=self.train_reporter, cols=cols)

@@ -48,7 +48,7 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
 
 def select_train_val_splits(
     raw_splits: Iterable[str], 
-    priorities = {
+    priorities: dict = {
         Split.TRAIN: 0,
         Split.VALIDATION: 1,
         Split.TEST: 2,

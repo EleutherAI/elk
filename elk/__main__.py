@@ -1,30 +1,27 @@
 """Main entry point for `elk`."""
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Union
-
 from simple_parsing import ArgumentParser
+from elk.evaluation.evaluate import Eval
+from elk.extraction.extraction import Extract
 
-from elk.evaluation.evaluate import Eval, evaluate_reporters
-
-from .extraction import ExtractionConfig, extract
-from .training.train import Elicit
+from elk.training.train import Elicit
 
 
 @dataclass
-class Run:
+class CommandRunner:
     """Some top-level command"""
-    command: Union[Elicit, Eval] 
+    command: Union[Elicit, Eval, Extract] 
 
     def execute(self):
-        return self.command.execute() # type: ignore
+        return self.command.execute() 
 
 def run():
     parser = ArgumentParser(add_help=False)
-    parser.add_arguments(Run, dest="run")
+    parser.add_arguments(CommandRunner, dest="run")
     args = parser.parse_args()
-    run: Run = args.run
+    run: CommandRunner = args.run
     run.execute()
 
 
