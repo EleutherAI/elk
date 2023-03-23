@@ -114,7 +114,7 @@ class TrainRun(Run):
         lr_dir.mkdir(parents=True, exist_ok=True)
         reporter_dir.mkdir(parents=True, exist_ok=True)
 
-        return lr_dir, reporter_dir
+        return reporter_dir, lr_dir
 
     def save_baseline(self, lr_dir: Path, layer: int, lr_model: Classifier):
         with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
