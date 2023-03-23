@@ -1,0 +1,47 @@
+{
+    "name": "Python 3",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "args": {
+            "USERNAME": "user"
+        }
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.formatting.autopep8Path": "autopep8",
+                "python.linting.mypyPath": "mypy",
+                "terminal.integrated.defaultProfile.linux": "tmux",
+                "terminal.integrated.profiles.linux": {
+                    "bash": {
+                        "path": "bash",
+                        "icon": "terminal-bash"
+                    },
+                    "tmux": {
+                        "path": "bash",
+                        "args": ["-c", "tmux new -ADs ${PWD##*/}"],
+                        "icon": "terminal-tmux"
+                    }
+                }
+            },
+            "extensions": [
+				"davidanson.vscode-markdownlint",
+				"donjayamanne.githistory",
+				"donjayamanne.python-extension-pack",
+				"github.vscode-pull-request-github",
+				"ms-python.python",
+				"ms-toolsai.jupyter",
+				"ms-vsliveshare.vsliveshare-pack",
+				"njpwerner.autodocstring",
+				"stkb.rewrap",
+				"streetsidesoftware.code-spell-checker",
+				"tushortz.python-extended-snippets",
+				"yzhang.markdown-all-in-one",
+				"elagil.pre-commit-helper",
+                "eamodio.gitlens"
+			]
+        }
+    },
+    "containerUser": "user",
+    "postCreateCommand": "pip install -e .[dev]"
+}
