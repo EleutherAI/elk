@@ -39,6 +39,16 @@ The hidden states resulting from `elk elicit` are cached as a HuggingFace datase
 ## Development
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 
+### Devcontainer
+
+[
+    ![Open in Remote - Containers](
+        https://img.shields.io/static/v1?label=Remote%20-%20Containers&message=Open&color=blue&logo=visualstudiocode
+    )
+](
+    https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/EleutherAI/elk
+)
+
 ### Run tests
 ```bash
 pytest
