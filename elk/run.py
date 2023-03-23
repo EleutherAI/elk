@@ -90,7 +90,7 @@ class Run(ABC):
                 for row in sorted(row_buf):
                     writer.writerow(row)
 
-    def run(self, func: Callable, cols: List[str]):
+    def run(self, func: Callable, cols: List[str], out_dir: Optional[Path] = None):
         # Extract the hidden states first if necessary
         ds = extract(self.cfg.data, max_gpus=self.cfg.max_gpus)
         
