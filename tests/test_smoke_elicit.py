@@ -8,9 +8,9 @@ from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import train, RunConfig
 
 """
-TODO: These tests should
-work with deberta but you'll need to make deberta fp32 instead of fp16
-because cpu doesn't support fp16
+TODO: These tests should work with deberta
+but you'll need to make deberta fp32 instead of fp16
+because pytorch cpu doesn't support fp16
 """
 
 
