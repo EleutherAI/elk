@@ -8,9 +8,7 @@ import warnings
 import time
 
 
-def select_usable_devices(
-    num_gpus: int = -1, *, min_memory: int = -1, max_wait_time: int = 2 * 60 * 60
-) -> list[str]:
+def select_usable_devices(num_gpus: int = -1, *, min_memory: int = -1) -> list[str]:
     """Select a set of devices that have at least `min_memory` bytes of free memory.
 
     When there are more than enough GPUs to satisfy the request, the GPUs with the
@@ -33,8 +31,6 @@ def select_usable_devices(
             meeting the criteria will be selected.
         min_memory: Minimum amount of free memory (in bytes) required to select a GPU.
             If negative, `min_memory` is set to 90% of the per-GPU memory.
-        max_wait_time: Maximum time (in seconds) to wait for the requested number of
-            GPUs to become available. Defaults to 2 hours.
 
     Returns:
         A list of suitable PyTorch device strings, in ascending numerical order, with
@@ -81,75 +77,71 @@ def select_usable_devices(
         )
         return [f"cuda:{i}" for i in range(num_gpus)]
 
-    # PyNVML and PyTorch device indices should agree when CUDA_VISIBLE_DEVICES is
-    # not set. We need them to agree so that the PyNVML indices match the PyTorch
-    # indices, and we don't have to do any complex error-prone conversions.
-    num_installed = pynvml.nvmlDeviceGetCount()
-    assert num_installed == num_visible, "PyNVML and PyTorch disagree on GPU count"
+    try:
+        # PyNVML and PyTorch device indices should agree when CUDA_VISIBLE_DEVICES is
+        # not set. We need them to agree so that the PyNVML indices match the PyTorch
+        # indices, and we don't have to do any complex error-prone conversions.
+        num_installed = pynvml.nvmlDeviceGetCount()
+        assert num_installed == num_visible, "PyNVML and PyTorch disagree on GPU count"
 
-    # Set default value for `min_memory`
-    if min_memory < 0:
-        min_device_ram = min(
-            (
-                assert_type(
-                    int,
-                    pynvml.nvmlDeviceGetMemoryInfo(
-                        pynvml.nvmlDeviceGetHandleByIndex(idx)
-                    ).total,
-                )
-                for idx in range(num_installed)
-            )
-        )
-        min_memory = int(0.9 * min_device_ram)
-
-    # Get free memory for each GPU
-    num_tries = 1
-    start_time = time.time()
-    while (time.time() - start_time) < max_wait_time:
-        # check if at least `num_gpus` GPUs have at least `min_memory`
-        # bytes of free memory
-
-        try:
-            # List of (-free memory, GPU index) tuples. Sorted descending by
-            # free memory, then ascending by GPU index.
-            memories_and_indices = sorted(
+        # Set default value for `min_memory`
+        if min_memory < 0:
+            min_device_ram = min(
                 (
-                    -int(pynvml.nvmlDeviceGetMemoryInfo(handle).free),
-                    pynvml.nvmlDeviceGetIndex(handle),
-                )
-                for handle in map(
-                    pynvml.nvmlDeviceGetHandleByIndex, range(num_installed)
+                    assert_type(
+                        int,
+                        pynvml.nvmlDeviceGetMemoryInfo(
+                            pynvml.nvmlDeviceGetHandleByIndex(idx)
+                        ).total,
+                    )
+                    for idx in range(num_installed)
                 )
             )
-            usable_indices = [
-                index
-                for neg_mem, index in memories_and_indices
-                if -neg_mem >= min_memory
-            ]
-            if len(usable_indices) >= num_gpus:
-                break
-            elif num_tries % 60 == 0:  # Print every 10 minutes
-                print(
-                    f"Waiting for {num_gpus} GPUs with "
-                    f"at least {min_memory / 10 ** 9:.2f} GB "
-                    f"of free memory. {len(usable_indices)} GPUs currently available."
-                )
-        except Exception as e:
-            warnings.warn(
-                f"Unable to query GPU memory: {e}. Will try again in 10 seconds."
-            )
+            min_memory = int(0.9 * min_device_ram)
 
-        # Wait a bit before trying again
-        time.sleep(10)
-        num_tries += 1
-    else:
+        # Get free memory for each GPU
+        num_tries = 0
+        while True:
+            # check if at least `num_gpus` GPUs have at least `min_memory`
+            # bytes of free memory
+
+            try:
+                # List of (-free memory, GPU index) tuples. Sorted descending by
+                # free memory, then ascending by GPU index.
+                memories_and_indices = sorted(
+                    (
+                        -int(pynvml.nvmlDeviceGetMemoryInfo(handle).free),
+                        pynvml.nvmlDeviceGetIndex(handle),
+                    )
+                    for handle in map(
+                        pynvml.nvmlDeviceGetHandleByIndex, range(num_installed)
+                    )
+                )
+                usable_indices = [
+                    index
+                    for neg_mem, index in memories_and_indices
+                    if -neg_mem >= min_memory
+                ]
+                if len(usable_indices) >= num_gpus:
+                    break
+                elif num_tries % 60 == 0:  # Print every 10 minutes
+                    print(
+                        f"Waiting for {num_gpus} GPUs with "
+                        f"at least {min_memory / 10 ** 9:.2f} GB "
+                        f"of free memory. {len(usable_indices)} GPUs "
+                        "currently available."
+                    )
+            except Exception as e:
+                warnings.warn(
+                    f"Unable to query GPU memory: {e}. Will try again in 10 seconds."
+                )
+
+            # Wait a bit before trying again
+            time.sleep(10)
+            num_tries += 1
+    finally:
+        # make sure to shut down PyNVML
         pynvml.nvmlShutdown()
-        raise RuntimeError(
-            f"Unable to find {num_gpus} GPUs"
-            f"with at least {min_memory / 10 ** 9:.2f} GB "
-            f"of free memory after {max_wait_time} seconds."
-        )
-    pynvml.nvmlShutdown()
 
     # Indices are sorted descending by free memory, so we want the first `num_gpus`
     # items. For printing purposes, though, we sort the indices numerically.
