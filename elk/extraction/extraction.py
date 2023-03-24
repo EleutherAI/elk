@@ -1,10 +1,15 @@
 """Functions for extracting the hidden states of a model."""
 
-import logging
+from .prompt_dataset import Prompt, PromptDataset, PromptConfig
+from ..utils import (
+    assert_type,
+    float32_to_int16,
+    infer_label_column,
+    select_train_val_splits,
+    select_usable_devices,
+)
+from .generator import _GeneratorBuilder
 from dataclasses import dataclass, InitVar
-from typing import Iterable, Literal, Union
-
-import torch
 from datasets import (
     Array3D,
     DatasetDict,
@@ -15,7 +20,6 @@ from datasets import (
     SplitDict,
     SplitInfo,
     Value,
-    Dataset,
 )
 from simple_parsing.helpers import field, Serializable
 from transformers import (
@@ -25,16 +29,9 @@ from transformers import (
     BatchEncoding,
     PreTrainedModel,
 )
-
-from .generator import _GeneratorBuilder
-from .prompt_dataset import Prompt, PromptDataset, PromptConfig
-from ..utils import (
-    assert_type,
-    float32_to_int16,
-    infer_label_column,
-    select_train_val_splits,
-    select_usable_devices,
-)
+from typing import Iterable, Literal, Union
+import logging
+import torch
 
 
 @dataclass
@@ -275,7 +272,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
         ),
     }
     devices = select_usable_devices(max_gpus)
-    builders: dict[Split, _GeneratorBuilder] = {
+    builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,
             features=Features({**layer_cols, **other_cols}),
@@ -293,7 +290,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
         for (split_name, split_info) in splits.items()
     }
 
-    ds: dict[Split, Union[Dataset, DatasetDict]] = dict()
+    ds = dict()
     for split, builder in builders.items():
         builder.download_and_prepare(num_proc=len(devices))
         ds[split] = builder.as_dataset(split=split)
