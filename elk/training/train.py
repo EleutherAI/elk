@@ -42,7 +42,7 @@ class RunConfig(Serializable):
         data: Config specifying hidden states on which the reporter will be trained.
         net: Config for building the reporter network.
         optim: Config for the `.fit()` loop.
-        max_gpus: The maximum number of GPUs to use. Defaults to -1, which means
+        num_gpus: The maximum number of GPUs to use. Defaults to -1, which means
             "use all available GPUs".
         normalization: The normalization method to use. Defaults to "meanonly". See
             `elk.training.preprocessing.normalize()` for details.
@@ -58,7 +58,7 @@ class RunConfig(Serializable):
     )
     optim: OptimConfig = field(default_factory=OptimConfig)
 
-    max_gpus: int = -1
+    num_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
     concatenated_layer_offset: int = 0
@@ -181,7 +181,7 @@ def train_reporter(
 
 def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     # Extract the hidden states first if necessary
-    ds = extract(cfg.data, max_gpus=cfg.max_gpus)
+    ds = extract(cfg.data, num_gpus=cfg.num_gpus)
 
     if out_dir is None:
         out_dir = memorably_named_dir(elk_reporter_dir())
@@ -200,7 +200,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     with open(out_dir / "metadata.yaml", "w") as meta_f:
         yaml.dump(meta, meta_f)
 
-    devices = select_usable_devices(cfg.max_gpus)
+    devices = select_usable_devices(cfg.num_gpus)
     num_devices = len(devices)
 
     cols = [

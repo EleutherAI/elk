@@ -103,7 +103,9 @@ def extract_hiddens(
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(cfg.model, torch_dtype="auto").to(device)
+    model = AutoModel.from_pretrained(
+        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+    ).to(device)
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(
@@ -192,7 +194,7 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
+def extract(cfg: ExtractionConfig, num_gpus: int = -1) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
@@ -225,7 +227,6 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             dataset_name=available_splits.dataset_name,
         )
 
-    devices = select_usable_devices(max_gpus)
     model_cfg = AutoConfig.from_pretrained(cfg.model)
     num_variants = cfg.prompts.num_variants
 
@@ -253,7 +254,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
     }
-
+    devices = select_usable_devices(num_gpus)
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,

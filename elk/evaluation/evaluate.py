@@ -27,7 +27,7 @@ class EvaluateConfig(Serializable):
     target: ExtractionConfig
     source: str = field(positional=True)
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
-    max_gpus: int = -1
+    num_gpus: int = -1
 
 
 def evaluate_reporter(
@@ -69,7 +69,7 @@ def evaluate_reporter(
 
 
 def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
-    ds = extract(cfg.target, max_gpus=cfg.max_gpus)
+    ds = extract(cfg.target, num_gpus=cfg.num_gpus)
 
     layers = [
         int(feat[len("hidden_") :])
@@ -77,7 +77,7 @@ def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
         if feat.startswith("hidden_")
     ]
 
-    devices = select_usable_devices(cfg.max_gpus)
+    devices = select_usable_devices(cfg.num_gpus)
     num_devices = len(devices)
 
     transfer_eval = elk_reporter_dir() / cfg.source / "transfer_eval"

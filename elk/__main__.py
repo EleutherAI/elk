@@ -24,7 +24,7 @@ def run():
         required=True,
     )
     extract_parser.add_argument(
-        "--max_gpus",
+        "--num_gpus",
         type=int,
         help="Maximum number of GPUs to use.",
         required=False,
@@ -55,7 +55,7 @@ def run():
     args = parser.parse_args()
 
     if args.command == "extract":
-        extract(args.extraction, args.max_gpus).save_to_disk(args.output)
+        extract(args.extraction, args.num_gpus).save_to_disk(args.output)
     elif args.command == "elicit":
         train(args.run, args.output)
     elif args.command == "eval":
