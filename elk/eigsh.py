@@ -13,13 +13,17 @@ def lanczos_eigsh(
     tol: Optional[float] = None,
     seed: Optional[int] = None,
     v0: Optional[Tensor] = None,
-    which: Literal["LA", "LM", "SA"] = "LM",
+    which: Literal["LA", "LM", "SA"] = "LA",
 ) -> tuple[Tensor, Tensor]:
     """Lanczos method for computing the top k eigenpairs of a symmetric matrix.
 
     Implementation adapted from `cupyx.scipy.sparse.linalg.eigsh`, which in turn is
     based on `scipy.sparse.linalg.eigsh`. Unlike the CuPy and SciPy functions, this
     function supports batched inputs with arbitrary leading dimensions.
+
+    Unlike the above implementations, we use which='LA' as the default instead of
+    which='LM' because we are interested in algebraic eigenvalues, not magnitude.
+    Largest magnitude is also harder to implement in TorchScript.
 
     Args:
         A (Tensor): The matrix or batch of matrices of shape `[..., n, n]` for which to
@@ -42,6 +46,20 @@ def lanczos_eigsh(
     """
     *leading, n, m = A.shape
     assert n == m, "A must be a square matrix or a batch of square matrices."
+
+    # Short circuit if the matrix is too small; we can't outcompete the naive method.
+    if n <= 32:
+        L, Q = torch.linalg.eigh(A)
+        if which == "LA":
+            return L[..., -k:], Q[..., :, -k:]
+        elif which == "LM":
+            # Resort the eigenvalues and eigenvectors.
+            idx = L.abs().argsort(dim=-1, descending=True)
+            L = L.gather(-1, idx)
+            Q = Q.gather(-1, idx.unsqueeze(-1).expand(*idx.shape, n))
+            return L[..., :k], Q[..., :, :k]
+        elif which == "SA":
+            return L[..., :k], Q[..., :, :k]
 
     if ncv is None:
         ncv = min(max(2 * k, k + 32), n - 1)

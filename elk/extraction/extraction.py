@@ -101,7 +101,9 @@ def extract_hiddens(
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(cfg.model, torch_dtype="auto").to(device)
+    model = AutoModel.from_pretrained(
+        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+    ).to(device)
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
