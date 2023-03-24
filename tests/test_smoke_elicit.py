@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from elk import ExtractionConfig
 from elk.extraction import PromptConfig
 from elk.training import CcsReporterConfig, EigenReporterConfig
@@ -34,7 +32,6 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
         assert file in created_file_names
 
 
-@pytest.mark.skip(reason="Fix me: EigenReporter crashes with tiny gpt2")
 def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
     """
     Currently this test fails with
