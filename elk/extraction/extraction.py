@@ -211,7 +211,7 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
+def extract(cfg: ExtractionConfig, num_gpus: int = -1) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
@@ -273,7 +273,7 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
     }
-    devices = select_usable_devices(max_gpus)
+    devices = select_usable_devices(num_gpus)
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,
