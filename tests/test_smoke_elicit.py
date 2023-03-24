@@ -44,7 +44,8 @@ def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
 
     u[:] = torch.einsum("...ij,...j->...i", A, V[..., k, :])
 
-    RuntimeError: select(): index 1 out of range for tensor of size [1, 2] at dimension 0
+    RuntimeError: select(): index 1 out of range for tensor of size [1, 2]
+    at dimension 0
     """
     model_path = "sshleifer/tiny-gpt2"
     dataset_name = "imdb"
