@@ -88,9 +88,7 @@ def int16_to_float32(x: torch.Tensor) -> torch.Tensor:
     return x.view(torch.float16).type(torch.float32)
 
 
-def binarize(
-    template: Template, label: int, new_label: int, rng: Random
-) -> tuple[Template, int]:
+def binarize(template: Template, label: int, new_label: int, rng: Random) -> Template:
     """Binarize a template with >2 answer choices, returning a new template and label.
 
     Returns:
@@ -117,4 +115,4 @@ def binarize(
         f"{false} ||| {true}" if new_label else f"{true} ||| {false}"
     )
 
-    return new_template, new_label
+    return new_template

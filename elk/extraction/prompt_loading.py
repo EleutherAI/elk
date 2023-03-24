@@ -112,7 +112,7 @@ def load_prompts(
         label_column = infer_label_column(ds.features)
         num_classes = infer_num_classes(ds.features[label_column])
 
-        # Remove everything but the label column
+        # Remove everything except the label column
         extra_cols = list(assert_type(Features, ds.features))
         extra_cols.remove(label_column)
 
@@ -156,7 +156,7 @@ def load_prompts(
                     "prompts": Sequence(
                         Sequence(
                             {"answer": "string", "text": "string"},
-                            length=num_classes,
+                            length=2,  # contrast pair
                         ),
                         length=num_variants,
                     ),
@@ -196,15 +196,17 @@ def _convert_to_prompts(
         sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
         return f"{q}{sep}{a}" if a and not a.isspace() else q
 
+    new_label = rng.choice([0, 1]) if num_classes > 2 else example[label_column]
+
     for template in templates:
         choices = []
 
         if num_classes > 2:
-            template, _ = binarize(
-                template, example[label_column], rng.choice([0, 1]), rng
+            template = binarize(
+                template, example[label_column], assert_type(int, new_label), rng
             )
 
-        for answer_idx in range(num_classes):
+        for answer_idx in range(2):
             fake_example = example.copy()
             fake_example[label_column] = answer_idx
 
@@ -231,6 +233,7 @@ def _convert_to_prompts(
         prompts.append(choices)
 
     return dict(
+        label=new_label,
         prompts=prompts,
         template_names=prompter.all_template_names,
     )
