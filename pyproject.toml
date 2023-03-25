@@ -55,3 +55,7 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 include = ["elk*"]
+
+[tool.ruff]
+# Same as Black.
+line-length = 88
