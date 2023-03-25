@@ -23,7 +23,7 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
             # run on all layers, tiny-gpt only has 2 layers
         ),
         net=CcsReporterConfig(),
-        out_dir=tmp_path
+        out_dir=tmp_path,
     )
     elicit.execute()
     # get the files in the tmp_path
@@ -55,7 +55,7 @@ def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
             # run on all layers, tiny-gpt only has 2 layers
         ),
         net=EigenReporterConfig(),
-        out_dir=tmp_path
+        out_dir=tmp_path,
     )
     elicit.execute()
     # get the files in the tmp_path
