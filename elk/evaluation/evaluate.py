@@ -18,7 +18,8 @@ class Eval(Serializable):
 
     Args:
         data: Config specifying hidden states on which the reporter will be evaluated.
-        source: The name of the source run directory which contains the reporters directory.
+        source: The name of the source run directory
+            which contains the reporters directory.
         normalization: The normalization method to use. Defaults to "meanonly". See
             `elk.training.preprocessing.normalize()` for details.
         max_gpus: The maximum number of GPUs to use. Defaults to -1, which means
@@ -53,7 +54,6 @@ class Evaluate(Run):
         _, _, test_x0, test_x1, _, test_labels = self.prepare_data(
             device,
             layer,
-            priorities={Split.TRAIN: 0, Split.VALIDATION: 1, Split.TEST: 2},
         )
 
         reporter_path = (
