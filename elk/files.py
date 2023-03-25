@@ -47,7 +47,6 @@ def create_output_directory(
 ) -> Path:
     """Creates an output directory"""
     if out_dir is None:
-        # default_root_dir.mkdir(parents=True, exist_ok=True)
         out_dir = memorably_named_dir(default_root_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
