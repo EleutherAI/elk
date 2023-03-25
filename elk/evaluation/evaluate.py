@@ -1,6 +1,7 @@
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Callable
 
 import torch
 from simple_parsing import Serializable, field
@@ -9,6 +10,7 @@ from elk.extraction.extraction import Extract
 from elk.files import elk_reporter_dir
 from elk.run import Run
 from elk.training.train_result import EvalStatResult
+from elk.utils import select_usable_devices
 
 
 @dataclass
@@ -49,7 +51,7 @@ class Eval(Serializable):
 class Evaluate(Run):
     cfg: Eval
 
-    def apply_to_single_layer(
+    def evaluate_reporter(
         self, layer: int, devices: list[str], world_size: int = 1
     ) -> EvalStatResult:
         """Evaluate a single reporter on a single layer."""
@@ -77,4 +79,14 @@ class Evaluate(Run):
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
-        self.apply_to_layers()
+        devices = select_usable_devices(self.cfg.num_gpus)
+        num_devices = len(devices)
+        func: Callable[[int], EvalStatResult] = partial(
+            self.evaluate_reporter, devices=devices, world_size=num_devices
+        )
+        self.apply_to_layers(
+            func=func,
+            num_devices=num_devices,
+            to_csv_line=lambda item: item.to_csv_line(),
+            csv_columns=EvalStatResult.csv_columns(),
+        )

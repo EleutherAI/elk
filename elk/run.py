@@ -5,7 +5,16 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Union, Iterator, TextIO, Callable, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Optional,
+    Union,
+    Iterator,
+    TextIO,
+    Callable,
+    Sequence,
+    TypeVar,
+)
 
 import numpy as np
 import torch
@@ -18,7 +27,7 @@ from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
 from elk.logging import save_debug_log
 from elk.training.preprocessing import normalize
-from elk.training.train_result import ElicitStatResult, EvalStatResult
+from elk.training.train_result import ElicitStatResult, EvalStatResult, StatResult
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.gpu_utils import select_usable_devices
 from elk.utils.typing import assert_type, int16_to_float32
@@ -88,59 +97,53 @@ class Run(ABC):
 
         return x0, x1, val_x0, val_x1, train_labels, val_labels
 
-    @abstractmethod
-    def apply_to_single_layer(
+    def apply_to_layers(
         self,
-        layer: int,
-        devices: list[str],
-        world_size: int = 1,
-    ) -> Union[ElicitStatResult, EvalStatResult]:
-        ...
-
-    def apply_to_layers(self):
-        """Apply a function to each layer of the dataset in parallel."""
-        func = self.apply_to_single_layer
-
-        devices = select_usable_devices(self.cfg.num_gpus)
-        num_devices = len(devices)
+        func: Callable[[int], StatResult],
+        num_devices: int,
+        to_csv_line: Callable[[StatResult], list[str]],
+        csv_columns: list[str],
+    ):
+        """Apply a function to each layer of the dataset in parallel
+        and writes the results to a CSV file."""
         self.out_dir = assert_type(Path, self.out_dir)
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
             # Partially apply so the function will just take the layer as an argument
-            fn: Callable[[int], Union[ElicitStatResult, EvalStatResult]] = partial(
-                func, devices=devices, world_size=num_devices
-            )
             layers: list[int] = get_layers(self.dataset)
             mapper = pool.imap_unordered if num_devices > 1 else map
             # Typed as sequence for covariant typing
-            iterator: Sequence[Union[ElicitStatResult, EvalStatResult]] = tqdm(mapper(fn, layers), total=len(layers))  # type: ignore
+            iterator: Sequence[StatResult] = tqdm(mapper(func, layers), total=len(layers))  # type: ignore
             write_func_to_file(
                 iterator=iterator,
                 file=f,
                 debug=self.cfg.debug,
                 dataset=self.dataset,
                 out_dir=self.out_dir,
-                skip_baseline=self.cfg.skip_baseline,
+                csv_columns=csv_columns,
+                to_csv_line=to_csv_line,
             )
 
 
 def write_func_to_file(
-    iterator: Sequence[Union[ElicitStatResult, EvalStatResult]],
+    iterator: Sequence[StatResult],
+    csv_columns: list[str],
+    to_csv_line: Callable[[StatResult], list[str]],
     file: TextIO,
     debug: bool,
     dataset: DatasetDict,
     out_dir: Path,
-    skip_baseline: bool,
 ) -> None:
     row_buf = []
     writer = csv.writer(file)
     # write a single line
-    writer.writerow(ElicitStatResult.to_csv_columns(skip_baseline=skip_baseline))
+    writer.writerow(csv_columns)
     try:
         for row in iterator:
             row_buf.append(row)
     finally:
         # Make sure the CSV is written even if we crash or get interrupted
         for row in sorted(row_buf):
+            row = to_csv_line(row)
             writer.writerow(row)
         if debug:
             save_debug_log(dataset, out_dir)

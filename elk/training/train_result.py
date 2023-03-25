@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TypeVar
 
 from simple_parsing import Serializable
 
@@ -20,8 +20,9 @@ class ElicitStatResult:
     lr_acc: Optional[float] = None
 
     cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
+
     @staticmethod
-    def to_csv_columns(skip_baseline: bool) -> list[str]:
+    def csv_columns(skip_baseline: bool) -> list[str]:
         """Return a CSV header with the column names."""
         cols = [
             "layer",
@@ -35,8 +36,6 @@ class ElicitStatResult:
         if not skip_baseline:
             cols += ["lr_auroc", "lr_acc"]
         return cols
-
-
 
     def to_csv_line(self, skip_baseline: bool) -> list[str]:
         """Return a CSV line with the evaluation results."""
@@ -58,3 +57,13 @@ class ElicitStatResult:
 @dataclass
 class EvalStatResult:
     ...
+
+    @staticmethod
+    def csv_columns() -> list[str]:
+        ...
+
+    def to_csv_line(self) -> list[str]:
+        ...
+
+
+StatResult = TypeVar("StatResult", ElicitStatResult, EvalStatResult)

@@ -21,6 +21,7 @@ from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from .train_result import ElicitStatResult
+from ..utils import select_usable_devices
 
 
 @dataclass
@@ -110,7 +111,7 @@ class Train(Run):
         with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
             pickle.dump(lr_model, file)
 
-    def apply_to_single_layer(
+    def train_reporter(
         self,
         layer: int,
         devices: list[str],
@@ -187,4 +188,16 @@ class Train(Run):
 
     def train(self):
         """Train a reporter on each layer of the network."""
-        self.apply_to_layers()
+        devices = select_usable_devices(self.cfg.num_gpus)
+        num_devices = len(devices)
+        func: Callable[[int], ElicitStatResult] = partial(
+            self.train_reporter, devices=devices, world_size=num_devices
+        )
+        self.apply_to_layers(
+            func=func,
+            num_devices=num_devices,
+            to_csv_line=lambda item: item.to_csv_line(
+                skip_baseline=self.cfg.skip_baseline
+            ),
+            csv_columns=ElicitStatResult.csv_columns(self.cfg.skip_baseline),
+        )
