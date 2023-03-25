@@ -20,7 +20,7 @@ from elk.logging import save_debug_log
 from elk.training.preprocessing import normalize
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.gpu_utils import select_usable_devices
-from elk.utils.typing import assert_type
+from elk.utils.typing import assert_type, int16_to_float32
 
 if TYPE_CHECKING:
     from elk.evaluation.evaluate import Eval
