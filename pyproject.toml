@@ -57,5 +57,8 @@ testpaths = ["tests"]
 include = ["elk*"]
 
 [tool.ruff]
+# Enable pycodestyle (`E`) and Pyflakes (`F`) codes
+# See https://beta.ruff.rs/docs/rules/ for more possible rules
+select = ["E", "F"]
 # Same as Black.
 line-length = 88
