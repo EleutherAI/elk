@@ -5,10 +5,10 @@ from typing import Literal, Optional
 import torch
 from simple_parsing import Serializable, field
 
-from datasets import Split
 from elk.extraction.extraction import Extract
 from elk.files import elk_reporter_dir
 from elk.run import Run
+from elk.training.train_result import EvalStatResult
 
 
 @dataclass
@@ -38,9 +38,10 @@ class Eval(Serializable):
 
     def execute(self):
         transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
-        cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
+        # TODO: Why is this different?
+        # cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
 
-        run = Evaluate(cfg=self, eval_headers=cols, out_dir=transfer_eval)
+        run = Evaluate(cfg=self, out_dir=transfer_eval)
         run.evaluate()
 
 
@@ -48,7 +49,9 @@ class Eval(Serializable):
 class Evaluate(Run):
     cfg: Eval
 
-    def evaluate_reporter(self, layer: int, devices: list[str], world_size: int):
+    def apply_to_single_layer(
+        self, layer: int, devices: list[str], world_size: int = 1
+    ) -> EvalStatResult:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
@@ -74,5 +77,4 @@ class Evaluate(Run):
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
-
-        self.apply_to_layers(func=self.evaluate_reporter)
+        self.apply_to_layers()

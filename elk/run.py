@@ -1,23 +1,24 @@
 import csv
 import os
 import random
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Union, cast
+from typing import TYPE_CHECKING, Optional, Union, Iterator, TextIO, Callable, Sequence
 
 import numpy as np
 import torch
 import torch.multiprocessing as mp
+from datasets import DatasetDict
 from torch import Tensor
 from tqdm import tqdm
 
-from datasets import DatasetDict, Split
 from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
 from elk.logging import save_debug_log
 from elk.training.preprocessing import normalize
+from elk.training.train_result import ElicitStatResult, EvalStatResult
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.gpu_utils import select_usable_devices
 from elk.utils.typing import assert_type, int16_to_float32
@@ -30,7 +31,6 @@ if TYPE_CHECKING:
 @dataclass
 class Run(ABC):
     cfg: Union["Elicit", "Eval"]
-    eval_headers: List[str]
     out_dir: Optional[Path] = None
     dataset: DatasetDict = field(init=False)
 
@@ -88,28 +88,59 @@ class Run(ABC):
 
         return x0, x1, val_x0, val_x1, train_labels, val_labels
 
-    def apply_to_layers(self, func):
+    @abstractmethod
+    def apply_to_single_layer(
+        self,
+        layer: int,
+        devices: list[str],
+        world_size: int = 1,
+    ) -> Union[ElicitStatResult, EvalStatResult]:
+        ...
+
+    def apply_to_layers(self):
         """Apply a function to each layer of the dataset in parallel."""
+        func = self.apply_to_single_layer
 
         devices = select_usable_devices(self.cfg.num_gpus)
         num_devices = len(devices)
         self.out_dir = assert_type(Path, self.out_dir)
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
-            fn = partial(func, devices=devices, world_size=num_devices)
-
-            writer = csv.writer(f)
-            writer.writerow(self.eval_headers)
-
+            # Partially apply so the function will just take the layer as an argument
+            fn: Callable[[int], Union[ElicitStatResult, EvalStatResult]] = partial(
+                func, devices=devices, world_size=num_devices
+            )
+            layers: list[int] = get_layers(self.dataset)
             mapper = pool.imap_unordered if num_devices > 1 else map
-            row_buf = []
+            # Typed as sequence for covariant typing
+            iterator: Sequence[Union[ElicitStatResult, EvalStatResult]] = tqdm(mapper(fn, layers), total=len(layers))  # type: ignore
+            write_func_to_file(
+                iterator=iterator,
+                file=f,
+                debug=self.cfg.debug,
+                dataset=self.dataset,
+                out_dir=self.out_dir,
+                skip_baseline=self.cfg.skip_baseline,
+            )
 
-            layers = get_layers(self.dataset)
-            try:
-                for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
-                    row_buf.append([i] + [f"{s:.4f}" for s in stats])
-            finally:
-                # Make sure the CSV is written even if we crash or get interrupted
-                for row in sorted(row_buf):
-                    writer.writerow(row)
-                if self.cfg.debug:
-                    save_debug_log(self.dataset, self.out_dir)
+
+def write_func_to_file(
+    iterator: Sequence[Union[ElicitStatResult, EvalStatResult]],
+    file: TextIO,
+    debug: bool,
+    dataset: DatasetDict,
+    out_dir: Path,
+    skip_baseline: bool,
+) -> None:
+    row_buf = []
+    writer = csv.writer(file)
+    # write a single line
+    writer.writerow(ElicitStatResult.to_csv_columns(skip_baseline=skip_baseline))
+    try:
+        for row in iterator:
+            row_buf.append(row)
+    finally:
+        # Make sure the CSV is written even if we crash or get interrupted
+        for row in sorted(row_buf):
+            writer.writerow(row)
+        if debug:
+            save_debug_log(dataset, out_dir)
