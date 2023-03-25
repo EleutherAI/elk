@@ -29,7 +29,7 @@ class Elicit(Serializable):
         data: Config specifying hidden states on which the reporter will be trained.
         net: Config for building the reporter network.
         optim: Config for the `.fit()` loop.
-        max_gpus: The maximum number of GPUs to use. Defaults to -1, which means
+        num_gpus: The number of GPUs to use. Defaults to -1, which means
             "use all available GPUs".
         normalization: The normalization method to use. Defaults to "meanonly". See
             `elk.training.preprocessing.normalize()` for details.
@@ -44,7 +44,8 @@ class Elicit(Serializable):
         {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
     )
     optim: OptimConfig = field(default_factory=OptimConfig)
-    max_gpus: int = -1
+
+    num_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
     debug: bool = False

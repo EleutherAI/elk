@@ -36,7 +36,7 @@ class Run(ABC):
 
     def __post_init__(self):
         # Extract the hidden states first if necessary
-        self.dataset = extract(self.cfg.data, max_gpus=self.cfg.max_gpus)
+        self.dataset = extract(self.cfg.data, num_gpus=self.cfg.num_gpus)
 
         self.out_dir = create_output_directory(self.out_dir)
         save_config(self.cfg, self.out_dir)
@@ -91,7 +91,7 @@ class Run(ABC):
     def apply_to_layers(self, func):
         """Apply a function to each layer of the dataset in parallel."""
 
-        devices = select_usable_devices(self.cfg.max_gpus)
+        devices = select_usable_devices(self.cfg.num_gpus)
         num_devices = len(devices)
         self.out_dir = assert_type(Path, self.out_dir)
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:

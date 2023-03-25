@@ -22,7 +22,7 @@ class Eval(Serializable):
             which contains the reporters directory.
         normalization: The normalization method to use. Defaults to "meanonly". See
             `elk.training.preprocessing.normalize()` for details.
-        max_gpus: The maximum number of GPUs to use. Defaults to -1, which means
+        num_gpus: The number of GPUs to use. Defaults to -1, which means
             "use all available GPUs".
         debug: When in debug mode, a useful log file is saved to the memorably-named
             output directory. Defaults to False.
@@ -31,9 +31,10 @@ class Eval(Serializable):
     data: Extract
     source: str = field(positional=True)
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
-    max_gpus: int = -1
+
     debug: bool = False
     out_dir: Optional[Path] = None
+    num_gpus: int = -1
 
     def execute(self):
         transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"

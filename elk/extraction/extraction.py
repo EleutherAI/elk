@@ -55,7 +55,7 @@ class Extract(Serializable):
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
 
-    max_gpus: int = -1
+    num_gpus: int = -1
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -72,7 +72,7 @@ class Extract(Serializable):
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
     def execute(self):
-        extract(cfg=self, max_gpus=self.max_gpus)
+        extract(cfg=self, num_gpus=self.num_gpus)
 
 
 @torch.no_grad()
@@ -107,7 +107,9 @@ def extract_hiddens(
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(cfg.model, torch_dtype="auto").to(device)
+    model = AutoModel.from_pretrained(
+        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+    ).to(device)
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
@@ -215,7 +217,7 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(cfg: "Extract", max_gpus: int = -1) -> DatasetDict:
+def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
@@ -277,7 +279,7 @@ def extract(cfg: "Extract", max_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
     }
-    devices = select_usable_devices(max_gpus)
+    devices = select_usable_devices(num_gpus)
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,
