@@ -129,9 +129,7 @@ def extract_hiddens(
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
     # print(f"Using {prompt_ds} variants for each dataset")
 
-    print("wowza")
     for example in BalancedSampler(prompt_ds):
-        print("holy crap")
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
                 num_variants,
