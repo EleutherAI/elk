@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 import torch
 from simple_parsing import Serializable, field
@@ -17,8 +17,8 @@ class Eval(Serializable):
     Full specification of a reporter evaluation run.
 
     Args:
-        data: Config specifying hidden states on which the reporter will be trained.
-        source: The name of the source directory
+        data: Config specifying hidden states on which the reporter will be evaluated.
+        source: The name of the source run directory which contains the reporters directory.
         normalization: The normalization method to use. Defaults to "meanonly". See
             `elk.training.preprocessing.normalize()` for details.
         max_gpus: The maximum number of GPUs to use. Defaults to -1, which means
@@ -46,7 +46,7 @@ class Eval(Serializable):
 class EvaluateRun(Run):
     cfg: Eval
 
-    def evaluate_reporter(self, layer: int, devices: List[str], world_size: int):
+    def evaluate_reporter(self, layer: int, devices: list[str], world_size: int):
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
