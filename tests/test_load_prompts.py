@@ -9,7 +9,10 @@ import pytest
 def test_load_prompts():
     def test_single_split(cfg: PromptConfig, split_type: Literal["train", "val"]):
         prompt_ds = load_prompts(
-            *cfg.datasets, max_examples=cfg.max_examples[0], split_type=split_type
+            *cfg.datasets,
+            max_examples=cfg.max_examples[0],
+            shuffle=False,
+            split_type=split_type,
         )
         prompters = []
 

@@ -67,6 +67,7 @@ def load_prompts(
     max_examples: int = 0,
     num_shots: int = 0,
     seed: int = 42,
+    shuffle: bool = True,
     split_type: Literal["train", "val"] = "train",
     rank: int = 0,
     world_size: int = 1,
@@ -172,6 +173,8 @@ def load_prompts(
     if world_size > 1:
         # This prints to stdout which is slightly annoying
         master_ds = split_dataset_by_node(master_ds, rank, world_size)
+    if shuffle:
+        master_ds = master_ds.shuffle(seed=seed)
 
     return master_ds
 
