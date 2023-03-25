@@ -70,8 +70,8 @@ class Run(ABC):
             )
             train, val = self.dataset[train_split], self.dataset[val_split]
 
-            train_labels = cast(Tensor, train["label"])
-            val_labels = cast(Tensor, val["label"])
+            train_labels = assert_type(Tensor, train["label"])
+            val_labels = assert_type(Tensor, val["label"])
 
             train_h, val_h = normalize(
                 upcast_hiddens(train[f"hidden_{layer}"]),  # type: ignore
