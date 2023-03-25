@@ -73,9 +73,13 @@ class Run(ABC):
             train_labels = assert_type(Tensor, train["label"])
             val_labels = assert_type(Tensor, val["label"])
 
+            # Note: currently we're just upcasting to float32 so we don't have to deal with
+            # grad scaling (which isn't supported for LBFGS), while the hidden states are
+            # saved in float16 to save disk space. In the future we could try to use mixed
+            # precision training in at least some cases.
             train_h, val_h = normalize(
-                upcast_hiddens(train[f"hidden_{layer}"]),  # type: ignore
-                upcast_hiddens(val[f"hidden_{layer}"]),  # type: ignore
+                int16_to_float32(assert_type(torch.Tensor, train[f"hidden_{layer}"])),
+                int16_to_float32(assert_type(torch.Tensor, val[f"hidden_{layer}"])),
                 method=self.cfg.normalization,
             )
 

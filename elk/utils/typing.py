@@ -22,13 +22,3 @@ def float32_to_int16(x: torch.Tensor) -> torch.Tensor:
 def int16_to_float32(x: torch.Tensor) -> torch.Tensor:
     """Converts int16 to float16, then reinterprets as float32."""
     return x.view(torch.float16).type(torch.float32)
-
-
-def upcast_hiddens(hiddens: torch.Tensor) -> torch.Tensor:
-    """Upcast hidden states to float32."""
-
-    # Note: currently we're just upcasting to float32 so we don't have to deal with
-    # grad scaling (which isn't supported for LBFGS), while the hidden states are
-    # saved in float16 to save disk space. In the future we could try to use mixed
-    # precision training in at least some cases.
-    return int16_to_float32(assert_type(torch.Tensor, hiddens))
