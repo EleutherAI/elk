@@ -12,6 +12,7 @@ from datasets import (
     interleave_datasets,
     load_dataset,
     ClassLabel,
+    Dataset,
     Features,
     IterableDataset,
     Sequence,
@@ -40,9 +41,10 @@ class PromptConfig(Serializable):
             the val split. If empty, use all examples. Defaults to empty.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot. Defaults to 0.
-        seed: The seed to use for prompt randomization. Defaults to 42.
         num_variants: The number of prompt templates to apply to each predicate upon
             call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
+        seed: The seed to use for prompt randomization. Defaults to 42.
+        stream: Whether to stream the dataset from the Internet. Defaults to False.
     """
 
     datasets: list[str] = field(positional=True)
@@ -53,6 +55,7 @@ class PromptConfig(Serializable):
     num_shots: int = 0
     num_variants: int = -1
     seed: int = 42
+    stream: bool = False
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
@@ -69,6 +72,7 @@ def load_prompts(
     seed: int = 42,
     shuffle: bool = True,
     split_type: Literal["train", "val"] = "train",
+    stream: bool = False,
     rank: int = 0,
     world_size: int = 1,
 ) -> IterableDataset:
@@ -82,6 +86,7 @@ def load_prompts(
             are zero-shot.
         seed: The seed to use for prompt randomization.
         split_type: Whether to use the train or val split of the dataset.
+        stream: Whether to stream the dataset from the Internet. Defaults to False.
         rank: The rank of the current process. Defaults to 0.
         world_size: The number of processes. Defaults to 1.
 
@@ -101,14 +106,26 @@ def load_prompts(
         prompters.append(DatasetTemplates(ds_name, config_name))
 
         ds_dict = assert_type(
-            dict, load_dataset(ds_name, config_name or None, streaming=True)
+            dict, load_dataset(ds_name, config_name or None, streaming=stream)
         )
         train_name, val_name = select_train_val_splits(ds_dict)
         split_name = val_name if split_type == "val" else train_name
-        raw_datasets.append(assert_type(IterableDataset, ds_dict[split_name]))
-        train_datasets.append(assert_type(IterableDataset, ds_dict[train_name]))
+
+        # If we're not streaming, take the opportunity to shuffle the dataset.
+        if not stream:
+            ds = assert_type(Dataset, ds_dict[split_name].shuffle(seed=seed))
+            train_ds = assert_type(Dataset, ds_dict[train_name].shuffle(seed=seed))
+            split = ds.to_iterable_dataset().cast(ds.features)
+        else:
+            train_ds = assert_type(IterableDataset, ds_dict[train_name])
+            split = assert_type(IterableDataset, ds_dict[split_name])
+
+        raw_datasets.append(split)
+        train_datasets.append(train_ds)
 
     num_variants = min(len(prompter.templates) for prompter in prompters)
+    assert num_variants > 0
+
     for ds, train_ds, prompter in zip(raw_datasets, train_datasets, prompters):
         label_column = infer_label_column(ds.features)
         num_classes = infer_num_classes(ds.features[label_column])
@@ -176,6 +193,11 @@ def load_prompts(
     if shuffle:
         master_ds = master_ds.shuffle(seed=seed)
 
+    # Try to approximately shuffle the dataset if we're streaming. Note that this is
+    # NOT an adequate shuffle for datasets like IMDB, which are sorted by label.
+    if stream:
+        master_ds = master_ds.shuffle(seed=seed)
+
     return master_ds
 
 
@@ -189,6 +211,7 @@ def _convert_to_prompts(
     fewshot_iter: Optional[Iterator[list[dict]]] = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
+    print(f"label: {example[label_column]}")
     prompts = []
     templates = list(prompter.templates.values())
     if num_variants < len(templates):

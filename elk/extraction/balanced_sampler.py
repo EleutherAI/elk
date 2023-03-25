@@ -1,12 +1,12 @@
-from ..utils import infer_label_column
 from ..math_util import stochastic_round_constrained
-from dataclasses import dataclass, field, InitVar
+from ..utils import infer_label_column
+from collections import deque
+from dataclasses import dataclass
 from datasets import IterableDataset
 from itertools import cycle
 from random import Random
 from torch.utils.data import IterableDataset as TorchIterableDataset
 from typing import Iterator, Optional
-import numpy as np
 
 
 @dataclass
@@ -25,30 +25,25 @@ class BalancedSampler(TorchIterableDataset):
             divided between the two binary label values (0 and 1). Defaults to 1000.
     """
 
-    dataset: IterableDataset
-    label_counts: np.ndarray = field(default_factory=lambda: np.zeros(2))
-    seed: InitVar[int] = 42
+    def __init__(self, dataset: IterableDataset, buffer_size: int = 1000):
+        self.dataset = dataset
 
-    def __post_init__(self, seed: int):
-        self.rng = np.random.default_rng(seed)
+        self.neg_buffer = deque(maxlen=buffer_size)
+        self.pos_buffer = deque(maxlen=buffer_size)
 
     def __iter__(self):
         for sample in self.dataset:
             label = sample["label"]
 
-            # Update class counts
-            self.label_counts[label] += 1
-            current_balance = self.label_counts / self.label_counts.sum()
+            # Add the sample to the appropriate buffer
+            if label == 0:
+                self.neg_buffer.append(sample)
+            else:
+                self.pos_buffer.append(sample)
 
-            # Check if the sample should be dropped
-            majority_class = np.argmax(current_balance)
-            if label == majority_class:
-                # Solution of n * p * q / [n * (1 - p) + n * p * q] = 0.5 for q
-                keep_prob = 1 / current_balance[majority_class] - 1
-                if self.rng.uniform() < 1 - keep_prob:
-                    continue
-
-            yield sample
+            while self.neg_buffer and self.pos_buffer:
+                yield self.neg_buffer.popleft()
+                yield self.pos_buffer.popleft()
 
 
 class FewShotSampler:
