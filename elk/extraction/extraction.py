@@ -16,7 +16,6 @@ from datasets import (
     Features,
     get_dataset_config_info,
     Sequence,
-    Split,
     SplitDict,
     SplitInfo,
     Value,

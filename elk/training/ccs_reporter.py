@@ -8,7 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from torch import Tensor
 from torch.nn.functional import binary_cross_entropy as bce
-from typing import cast, Literal, NamedTuple, Optional
+from typing import cast, Literal, Optional
 import math
 import torch
 import torch.nn as nn

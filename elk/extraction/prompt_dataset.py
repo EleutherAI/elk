@@ -11,7 +11,7 @@ from ..utils import (
     undersample,
 )
 from dataclasses import dataclass
-from datasets import DatasetDict, load_dataset, ClassLabel, Value
+from datasets import DatasetDict, load_dataset
 from numpy.typing import NDArray
 from random import Random
 from simple_parsing.helpers import field, Serializable
