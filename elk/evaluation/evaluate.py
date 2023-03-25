@@ -38,12 +38,12 @@ class Eval(Serializable):
         transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
         cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
 
-        run = EvaluateRun(cfg=self, eval_headers=cols, out_dir=transfer_eval)
+        run = Evaluate(cfg=self, eval_headers=cols, out_dir=transfer_eval)
         run.evaluate()
 
 
 @dataclass
-class EvaluateRun(Run):
+class Evaluate(Run):
     cfg: Eval
 
     def evaluate_reporter(self, layer: int, devices: list[str], world_size: int):

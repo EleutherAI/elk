@@ -62,12 +62,12 @@ class Elicit(Serializable):
         ]
         if not self.skip_baseline:
             cols += ["lr_auroc", "lr_acc"]
-        train_run = TrainRun(cfg=self, eval_headers=cols, out_dir=self.out_dir)
+        train_run = Train(cfg=self, eval_headers=cols, out_dir=self.out_dir)
         train_run.train()
 
 
 @dataclass
-class TrainRun(Run):
+class Train(Run):
     cfg: Elicit
 
     def train_baseline(
