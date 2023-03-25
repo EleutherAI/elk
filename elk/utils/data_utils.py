@@ -48,15 +48,14 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
     return pivot
 
 
-def select_train_val_splits(
-    raw_splits: Iterable[str],
-    priorities: dict = {
+def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
+    """Return splits to use for train and validation, given an Iterable of splits."""
+
+    priorities = {
         Split.TRAIN: 0,
         Split.VALIDATION: 1,
         Split.TEST: 2,
-    },
-) -> tuple[str, str]:
-    """Return splits to use for train and validation, given an Iterable of splits."""
+    }
 
     splits = sorted(raw_splits, key=lambda k: priorities.get(k, 100))  # type: ignore
     assert len(splits) >= 2, "Must have at least two of train, val, and test splits"
