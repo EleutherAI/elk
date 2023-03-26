@@ -12,7 +12,7 @@ class EvalLog:
 
     @staticmethod
     def csv_columns() -> list[str]:
-        return ["layer", "acc", "cal_acc", "auroc"]
+        return ["layer", "acc", "cal_acc", "auroc", "ece"]
 
     def to_csv_line(self) -> list[str]:
         items = [
@@ -20,6 +20,7 @@ class EvalLog:
             self.eval_result.acc,
             self.eval_result.cal_acc,
             self.eval_result.auroc,
+            self.eval_result.ece,
         ]
         return [
             f"{item:.4f}" if isinstance(item, float) else str(item) for item in items
