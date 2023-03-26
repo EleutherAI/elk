@@ -5,13 +5,13 @@ from typing import Iterator, Callable, TextIO
 from datasets import DatasetDict
 
 from elk.logging import save_debug_log
-from elk.run import A
+from elk.run import Log
 
 
 def write_iterator_to_file(
-    iterator: Iterator[A],
+    iterator: Iterator[Log],
     csv_columns: list[str],
-    to_csv_line: Callable[[A], list[str]],
+    to_csv_line: Callable[[Log], list[str]],
     file: TextIO,
     debug: bool,
     dataset: DatasetDict,

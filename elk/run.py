@@ -32,7 +32,9 @@ if TYPE_CHECKING:
     from elk.evaluation.evaluate import Eval
     from elk.training.train import Elicit
 
-A = TypeVar("A", EvalLog, ElicitLog)
+"""A generic log type that contains a layer field
+The layer field is used to sort the logs by layer."""
+Log = TypeVar("Log", EvalLog, ElicitLog)
 
 
 @dataclass
@@ -97,19 +99,18 @@ class Run(ABC):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], A],
+        func: Callable[[int], Log],
         num_devices: int,
-        to_csv_line: Callable[[A], list[str]],
+        to_csv_line: Callable[[Log], list[str]],
         csv_columns: list[str],
     ):
         """Apply a function to each layer of the dataset in parallel
         and writes the results to a CSV file."""
         self.out_dir = assert_type(Path, self.out_dir)
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
-            # Partially apply so the function will just take the layer as an argument
             layers: list[int] = get_layers(self.dataset)
             mapper = pool.imap_unordered if num_devices > 1 else map
-            iterator: Iterator[A] = tqdm(mapper(func, layers), total=len(layers))  # type: ignore
+            iterator: Iterator[Log] = tqdm(mapper(func, layers), total=len(layers))  # type: ignore
             write_iterator_to_file(
                 iterator=iterator,
                 file=f,
