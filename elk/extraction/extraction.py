@@ -1,15 +1,17 @@
 """Functions for extracting the hidden states of a model."""
 
-from .prompt_dataset import Prompt, PromptDataset, PromptConfig
+from dataclasses import InitVar, dataclass
+
+from simple_parsing import Serializable, field
+from elk.utils.typing import float32_to_int16
+from .prompt_dataset import Prompt, PromptConfig, PromptDataset
 from ..utils import (
     assert_type,
-    float32_to_int16,
     infer_label_column,
     select_train_val_splits,
     select_usable_devices,
 )
 from .generator import _GeneratorBuilder
-from dataclasses import dataclass, InitVar
 from datasets import (
     Array3D,
     DatasetDict,
@@ -21,7 +23,6 @@ from datasets import (
     SplitInfo,
     Value,
 )
-from simple_parsing.helpers import field, Serializable
 from transformers import (
     AutoConfig,
     AutoModel,
@@ -29,13 +30,13 @@ from transformers import (
     BatchEncoding,
     PreTrainedModel,
 )
-from typing import Iterable, Literal, Union
+from typing import Iterable, Literal, Union, TYPE_CHECKING
 import logging
 import torch
 
 
 @dataclass
-class ExtractionConfig(Serializable):
+class Extract(Serializable):
     """
     Args:
         model: HuggingFace model string identifying the language model to extract
@@ -54,6 +55,8 @@ class ExtractionConfig(Serializable):
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
 
+    num_gpus: int = -1
+
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
             raise ValueError(
@@ -68,10 +71,13 @@ class ExtractionConfig(Serializable):
             )
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
+    def execute(self):
+        extract(cfg=self, num_gpus=self.num_gpus)
+
 
 @torch.no_grad()
 def extract_hiddens(
-    cfg: ExtractionConfig,
+    cfg: "Extract",
     *,
     device: Union[str, torch.device] = "cpu",
     rank: int = 0,
@@ -211,7 +217,7 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(cfg: ExtractionConfig, num_gpus: int = -1) -> DatasetDict:
+def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
