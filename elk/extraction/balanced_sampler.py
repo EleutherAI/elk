@@ -9,7 +9,6 @@ from torch.utils.data import IterableDataset as TorchIterableDataset
 from typing import Iterator, Optional, Iterable
 
 
-@dataclass
 class BalancedSampler(TorchIterableDataset):
     """
     Approximately balances a binary classification dataset in a streaming fashion.
