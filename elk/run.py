@@ -98,8 +98,18 @@ class Run(ABC):
         csv_columns: list[str],
     ):
         """Apply a function to each layer of the dataset in parallel
-        and writes the results to a CSV file."""
+        and writes the results to a CSV file.
+
+        Args:
+            func: The function to apply to each layer.
+                The int is the index of the layer.
+            num_devices: The number of devices to use.
+            to_csv_line: A function that converts a Log to a list of strings.
+                This has to be injected in because the Run class does not know
+                the extra options e.g. skip_baseline to apply to function.
+            csv_columns: The columns of the CSV file."""
         self.out_dir = assert_type(Path, self.out_dir)
+        # Should we write to different CSV files for elicit vs eval?
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
             layers: list[int] = get_layers(self.dataset)
             mapper = pool.imap_unordered if num_devices > 1 else map
