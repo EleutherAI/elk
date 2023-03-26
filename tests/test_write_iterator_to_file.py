@@ -1,4 +1,5 @@
 import csv
+import time
 from pathlib import Path
 from typing import Iterator
 import multiprocessing as mp
@@ -121,6 +122,9 @@ def log_function(layer: int) -> ElicitLog:
     for multiprocessing
     """
     if layer == 2:
+        # let the other processes finish first
+        time.sleep(3)
+        # crash the process
         raise ValueError()
     return ElicitLog(
         layer=layer,
