@@ -6,7 +6,7 @@ from datasets import IterableDataset
 from itertools import cycle
 from random import Random
 from torch.utils.data import IterableDataset as TorchIterableDataset
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Iterable
 
 
 @dataclass
@@ -25,14 +25,14 @@ class BalancedSampler(TorchIterableDataset):
             divided between the two binary label values (0 and 1). Defaults to 1000.
     """
 
-    def __init__(self, dataset: IterableDataset, buffer_size: int = 1000):
-        self.dataset = dataset
+    def __init__(self, data: Iterable[dict], buffer_size: int = 1000):
+        self.data = data
 
         self.neg_buffer = deque(maxlen=buffer_size)
         self.pos_buffer = deque(maxlen=buffer_size)
 
     def __iter__(self):
-        for sample in self.dataset:
+        for sample in self.data:
             label = sample["label"]
 
             # Add the sample to the appropriate buffer

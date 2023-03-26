@@ -1,6 +1,6 @@
 from elk.extraction import load_prompts, PromptConfig
 from elk.promptsource.templates import DatasetTemplates
-from itertools import cycle
+from itertools import cycle, islice
 from typing import Literal
 import pytest
 
@@ -10,7 +10,6 @@ def test_load_prompts():
     def test_single_split(cfg: PromptConfig, split_type: Literal["train", "val"]):
         prompt_ds = load_prompts(
             *cfg.datasets,
-            max_examples=cfg.max_examples[0],
             shuffle=False,
             split_type=split_type,
         )
@@ -21,7 +20,8 @@ def test_load_prompts():
             prompter = DatasetTemplates(ds_name, config_name or None)
             prompters.append(prompter)
 
-        for prompter, record in zip(cycle(prompters), prompt_ds):
+        limit = cfg.max_examples[0 if split_type == "train" else 1]
+        for prompter, record in zip(cycle(prompters), islice(prompt_ds, limit)):
             true_template_names = prompter.all_template_names
             returned_template_names = record["template_names"]
 

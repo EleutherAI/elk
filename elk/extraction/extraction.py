@@ -33,6 +33,7 @@ from typing import Iterable, Literal, Union, Optional
 import logging
 import os
 import torch
+from itertools import islice
 
 
 @dataclass
@@ -90,19 +91,14 @@ def extract_hiddens(
     # Silence datasets logging messages from all but the first process
     if rank != 0:
         logging.disable(logging.CRITICAL)
-    if rank == 0 and cfg.prompts.num_variants >= 1:
-        print(f"Using {cfg.prompts.num_variants} prompts per example")
 
-    limits = cfg.prompts.max_examples
     prompt_ds = load_prompts(
         *cfg.prompts.datasets,
-        max_examples=limits[0 if split_type == "train" else 1],
         split_type=split_type,
         stream=cfg.prompts.stream,
         rank=rank,
         world_size=world_size,
-    )
-    num_variants = prompt_ds.features["prompts"].length
+    )  # this dataset is already sharded, but hasn't been truncated to max_examples
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
@@ -131,7 +127,9 @@ def extract_hiddens(
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
     # print(f"Using {prompt_ds} variants for each dataset")
 
-    for example in BalancedSampler(prompt_ds):
+    max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
+    for example in islice(BalancedSampler(prompt_ds), max_examples):
+        num_variants = len(example["prompts"])
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
                 num_variants,
@@ -150,7 +148,7 @@ def extract_hiddens(
 
             # Iterate over answers
             for j in range(2):
-                text = record["text"][j]
+                text = record[j]["text"]
                 variant_inputs.append(text)
 
                 inputs = tokenizer(

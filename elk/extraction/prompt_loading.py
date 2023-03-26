@@ -73,21 +73,20 @@ class PromptConfig(Serializable):
 
 def load_prompts(
     *dataset_strings: str,
-    max_examples: int = 0,
     num_shots: int = 0,
+    num_variants: int = -1,
     seed: int = 42,
     shuffle: bool = True,
     split_type: Literal["train", "val"] = "train",
     stream: bool = False,
     rank: int = 0,
     world_size: int = 1,
-) -> IterableDataset:
+) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified datasets.
 
     Args:
         dataset_strings: Space-delimited names of the HuggingFace datasets to use,
             e.g. `"super_glue boolq"` or `"imdb"`.
-        max_examples: The maximum number of examples to use from the dataset.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot.
         seed: The seed to use for prompt randomization.
@@ -99,7 +98,6 @@ def load_prompts(
     Returns:
         An iterable dataset of prompts.
     """
-    prompt_datasets = []
     prompters = []
     raw_datasets = []
     train_datasets = []
@@ -117,94 +115,82 @@ def load_prompts(
         train_name, val_name = select_train_val_splits(ds_dict)
         split_name = val_name if split_type == "val" else train_name
 
-        # If we're not streaming, take the opportunity to shuffle the dataset.
+        # Note that when streaming we can only approximately shuffle the dataset
+        # using a buffer. Streaming shuffling is NOT an adequate shuffle for
+        # datasets like IMDB, which are sorted by label.
+        bad_streaming_datasets = ["imdb"]
+        assert not (
+            stream and ds_name in bad_streaming_datasets
+        ), f"Streaming is not supported for {ds_name}."
+        split = ds_dict[split_name].shuffle(seed=seed)
+        train_ds = ds_dict[train_name].shuffle(seed=seed)
         if not stream:
-            ds = assert_type(Dataset, ds_dict[split_name].shuffle(seed=seed))
-            train_ds = assert_type(Dataset, ds_dict[train_name].shuffle(seed=seed))
-            split = ds.to_iterable_dataset().cast(ds.features)
-        else:
-            train_ds = assert_type(IterableDataset, ds_dict[train_name])
-            split = assert_type(IterableDataset, ds_dict[split_name])
+            split = assert_type(Dataset, split)
+            split = split.to_iterable_dataset().cast(split.features)
+
+        # only keep the datapoints relevant to the current process
+        if world_size > 1:
+            # This prints to stdout which is slightly annoying
+            split = split_dataset_by_node(split, world_size, rank)
 
         raw_datasets.append(split)
         train_datasets.append(train_ds)
 
-    num_variants = min(len(prompter.templates) for prompter in prompters)
+    min_num_templates = min(len(prompter.templates) for prompter in prompters)
+    num_variants = (
+        min_num_templates
+        if num_variants == -1
+        else min(num_variants, min_num_templates)
+    )
     assert num_variants > 0
+    if rank == 0:
+        print(f"Using {num_variants} variants of each prompt")
 
-    for ds, train_ds, prompter in zip(raw_datasets, train_datasets, prompters):
-        label_column = infer_label_column(ds.features)
-        num_classes = infer_num_classes(ds.features[label_column])
+    ds_iterators = [iter(ds) for ds in raw_datasets]
+    while True:  # terminates when the first dataset runs out of examples
+        for ds_iterator, ds, train_ds, prompter in zip(
+            ds_iterators, raw_datasets, train_datasets, prompters
+        ):
+            label_column = infer_label_column(ds.features)
+            num_classes = infer_num_classes(ds.features[label_column])
 
-        # Remove everything except the label column
-        extra_cols = list(assert_type(Features, ds.features))
-        extra_cols.remove(label_column)
+            # Remove everything except the label column
+            extra_cols = list(assert_type(Features, ds.features))
+            extra_cols.remove(label_column)
 
-        if label_column != "label":
-            ds = ds.rename_column(label_column, "label")
-        if num_shots > 0:
-            fewshot = FewShotSampler(
-                train_ds,
-                num_shots=num_shots,
-                rng=rng,
-            )
-            fewshot_iter = iter(fewshot)
-        else:
-            fewshot_iter = None
+            if label_column != "label":
+                ds = ds.rename_column(label_column, "label")
+            if num_shots > 0:
+                fewshot = FewShotSampler(
+                    train_ds,  # TODO: not iterator
+                    num_shots=num_shots,
+                    rng=rng,
+                )
+                fewshot_iter = iter(fewshot)
+            else:
+                fewshot_iter = None
 
-        # Canonicalize the name and dtype of the label column
-        ds = ds.map(
-            _convert_to_prompts,
-            fn_kwargs=dict(
+            try:
+                example = next(ds_iterator)
+            except StopIteration:
+                return
+
+            example = _convert_to_prompts(
+                example,
                 label_column=label_column,
                 num_classes=num_classes,
                 num_variants=num_variants,
                 prompter=prompter,
                 rng=rng,
                 fewshot_iter=fewshot_iter,
-            ),
-            remove_columns=extra_cols,
-        ).map(
+            )
+
             # Add the builder and config name to the records directly to make
             # sure we don't forget what dataset they came from.
-            lambda _: dict(
-                builder_name=ds.info.builder_name,
-                config_name=ds.info.config_name,
-            ),
-            # Explicit typing makes interleave_datasets work a lot faster
-            features=Features(
-                {
-                    label_column: ClassLabel(names=["neg", "pos"]),
-                    "builder_name": "string",
-                    "config_name": "string",
-                    "prompts": Sequence(
-                        Sequence(
-                            {"answer": "string", "text": "string"},
-                            length=2,  # contrast pair
-                        ),
-                        length=num_variants,
-                    ),
-                    "template_names": Sequence("string"),
-                }
-            ),
-        )
-        prompt_datasets.append(ds)
+            example["builder_name"] = ds.info.builder_name
+            example["config_name"] = ds.info.config_name
 
-    master_ds = interleave_datasets(prompt_datasets)
-    if max_examples > 0:
-        master_ds = master_ds.take(max_examples)
-    if world_size > 1:
-        # This prints to stdout which is slightly annoying
-        master_ds = split_dataset_by_node(master_ds, rank, world_size)
-    if shuffle:
-        master_ds = master_ds.shuffle(seed=seed)
-
-    # Try to approximately shuffle the dataset if we're streaming. Note that this is
-    # NOT an adequate shuffle for datasets like IMDB, which are sorted by label.
-    if stream:
-        master_ds = master_ds.shuffle(seed=seed)
-
-    return master_ds
+            yield example
 
 
 def _convert_to_prompts(
