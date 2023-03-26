@@ -76,7 +76,6 @@ def load_prompts(
     num_shots: int = 0,
     num_variants: int = -1,
     seed: int = 42,
-    shuffle: bool = True,
     split_type: Literal["train", "val"] = "train",
     stream: bool = False,
     rank: int = 0,

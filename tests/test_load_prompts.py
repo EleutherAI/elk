@@ -10,7 +10,6 @@ def test_load_prompts():
     def test_single_split(cfg: PromptConfig, split_type: Literal["train", "val"]):
         prompt_ds = load_prompts(
             *cfg.datasets,
-            shuffle=False,
             split_type=split_type,
         )
         prompters = []
