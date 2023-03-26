@@ -43,10 +43,12 @@ def test_write_iterator_to_file(tmp_path: Path):
     # Read the CSV file
     with open(tmp_path / "test.csv", "r") as f:
         reader = csv.reader(f)
+        # read all to lines
+        lines = list(reader)
         # assert that the first line is the header
-        assert next(reader) == csv_columns
+        assert lines[0] == csv_columns
         # assert that the second line is the data
-        assert next(reader) == to_csv_line(items[0])
+        assert lines[1] == to_csv_line(items[0])
 
 
 def test_write_iterator_to_file_crash(tmp_path: Path):
@@ -107,12 +109,14 @@ def test_write_iterator_to_file_crash(tmp_path: Path):
     # Read the CSV file
     with open(tmp_path / "test.csv", "r") as f:
         reader = csv.reader(f)
+        # read all to lines
+        lines = list(reader)
         # assert that the first line is the header
-        assert next(reader) == csv_columns
+        assert lines[0] == csv_columns
         # assert that the second line has the first layer
-        assert next(reader) == to_csv_line(first_layer_log)
+        assert lines[1] == to_csv_line(first_layer_log)
         # assert that the third line has the second layer
-        assert next(reader) == to_csv_line(second_layer_log)
+        assert lines[2] == to_csv_line(second_layer_log)
 
 
 def log_function(layer: int) -> ElicitLog:
@@ -164,9 +168,11 @@ def test_write_iterator_crash_multiprocessing(tmp_path: Path):
     # We should still have results for layer 1, 3, even though layer 2 failed
     with open(tmp_path / "eval.csv", "r") as f:
         reader = csv.reader(f)
+        # read all to lines
+        lines = list(reader)
         # assert that the first line is the header
-        assert next(reader) == csv_columns
+        assert lines[0] == csv_columns
         # assert that the second line has the first layer
-        assert next(reader) == to_csv_line(log_function(1))
+        assert lines[1] == to_csv_line(log_function(1))
         # assert that the third line has the third layer
-        assert next(reader) == to_csv_line(log_function(3))
+        assert lines[2] == to_csv_line(log_function(3))
