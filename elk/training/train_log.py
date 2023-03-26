@@ -20,7 +20,6 @@ class ElicitLog:
     @staticmethod
     def csv_columns(skip_baseline: bool) -> list[str]:
         """Return a CSV header with the column names."""
-        # TODO: Discuss using pandas because it'll be much easier?
         cols = [
             "layer",
             "pseudo_auroc",
