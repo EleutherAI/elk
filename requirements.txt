@@ -9,3 +9,5 @@ scikit-learn==1.2.0
 umap-learn==0.5.3
 tqdm==4.64.1
 pytest==7.2.1
+matplotlib==3.7.0
+seaborn==0.12.2
