@@ -28,8 +28,10 @@ def test_write_iterator_to_file(tmp_path: Path):
     ]
     iterator = iter(items)
     csv_columns = ElicitLog.csv_columns(skip_baseline=True)
+
     def to_csv_line(x):
         return x.to_csv_line(skip_baseline=True)
+
     # Write the CSV file
     with open(tmp_path / "test.csv", "w") as f:
         write_iterator_to_file(
@@ -89,8 +91,10 @@ def test_write_iterator_to_file_crash(tmp_path: Path):
                 raise ValueError()
 
     csv_columns = ElicitLog.csv_columns(skip_baseline=True)
+
     def to_csv_line(x):
         return x.to_csv_line(skip_baseline=True)
+
     # Write the CSV file
     try:
         with open(tmp_path / "test.csv", "w") as f:
@@ -148,6 +152,7 @@ def log_function(layer: int) -> ElicitLog:
 def test_write_iterator_crash_multiprocessing(tmp_path: Path):
     processes = 3
     csv_columns = ElicitLog.csv_columns(skip_baseline=True)
+
     def to_csv_line(x):
         return x.to_csv_line(skip_baseline=True)
 
