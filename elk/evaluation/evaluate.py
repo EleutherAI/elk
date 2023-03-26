@@ -10,7 +10,7 @@ from elk.extraction.extraction import Extract
 from elk.files import elk_reporter_dir
 from elk.run import Run
 from elk.training import Reporter
-from elk.training.train_result import EvalLog
+from elk.evaluation.evaluate_log import EvalLog
 from elk.utils import select_usable_devices
 
 

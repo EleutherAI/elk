@@ -6,7 +6,7 @@ from datasets import DatasetDict
 
 from elk.utils.csv import write_iterator_to_file
 from elk.training.reporter import EvalResult
-from elk.training.train_result import ElicitLog
+from elk.training.train_log import ElicitLog
 
 
 def test_write_iterator_to_file(tmp_path: Path):

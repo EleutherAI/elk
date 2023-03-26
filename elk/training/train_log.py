@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, TypeVar
-
-from simple_parsing import Serializable
+from typing import Optional
 
 from elk.training.reporter import EvalResult
 
@@ -22,6 +20,7 @@ class ElicitLog:
     @staticmethod
     def csv_columns(skip_baseline: bool) -> list[str]:
         """Return a CSV header with the column names."""
+        # TODO: Discuss using pandas because it'll be much easier?
         cols = [
             "layer",
             "pseudo_auroc",
@@ -48,27 +47,7 @@ class ElicitLog:
         ]
         if not skip_baseline:
             items += [self.lr_auroc, self.lr_acc]
-        # TODO: 4f for floats?
-        return [f"{item:.4f}" for item in items if isinstance(item, float)]
 
-
-@dataclass
-class EvalLog:
-    """The result of running eval on a layer of a dataset"""
-    layer: int
-    eval_result: EvalResult
-
-    @staticmethod
-    def csv_columns() -> list[str]:
-        return ["layer", "acc", "cal_acc", "auroc"]
-
-    def to_csv_line(self) -> list[str]:
-        items = [
-            self.layer,
-            self.eval_result.acc,
-            self.eval_result.cal_acc,
-            self.eval_result.auroc,
+        return [
+            f"{item:.4f}" if isinstance(item, float) else str(item) for item in items
         ]
-        return [f"{item:.4f}" for item in items if isinstance(item, float)]
-
-

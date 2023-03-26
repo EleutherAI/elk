@@ -22,7 +22,8 @@ from tqdm import tqdm
 from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
 from elk.training.preprocessing import normalize
-from elk.training.train_result import ElicitLog, EvalLog
+from elk.training.train_log import ElicitLog
+from elk.evaluation.evaluate_log import EvalLog
 from elk.utils.csv import write_iterator_to_file
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.typing import assert_type, int16_to_float32

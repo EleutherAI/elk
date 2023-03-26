@@ -20,7 +20,7 @@ from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig
-from .train_result import ElicitLog
+from .train_log import ElicitLog
 from ..utils import select_usable_devices
 
 
