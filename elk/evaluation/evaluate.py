@@ -41,8 +41,6 @@ class Eval(Serializable):
 
     def execute(self):
         transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
-        # TODO: Why is this different?
-        # cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
 
         run = Evaluate(cfg=self, out_dir=transfer_eval)
         run.evaluate()
