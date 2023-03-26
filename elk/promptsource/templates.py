@@ -192,8 +192,36 @@ class Template(yaml.YAMLObject):
         # Splits on the separator, and then replaces back any occurrences of the
         # separator in the original example
         return [
-            self._unescape_pipe(part).strip() for part in rendered_example.split("|||")
+            Template._strip_spaces(self._unescape_pipe(part))
+            for part in rendered_example.split("|||")
         ]
+
+    @staticmethod
+    def _strip_spaces(string):
+        """Same functionality as str.strip(), but ignores newlines"""
+
+        if string.isspace():
+            return "\n" * string.count("\n")
+
+        num_newlines = 0
+        # Remove leading whitespace
+        while string and string[0].isspace():
+            if string[0] == "\n":
+                num_newlines += 1
+            string = string[1:]
+
+        string = "\n" * num_newlines + string
+
+        num_newlines = 0
+        # Remove trailing whitespace
+        while string and string[-1].isspace():
+            if string[-1] == "\n":
+                num_newlines += 1
+            string = string[:-1]
+
+        string = string + "\n" * num_newlines
+
+        return string
 
     pipe_protector = "3ed2dface8203c4c9dfb1a5dc58e41e0"
 

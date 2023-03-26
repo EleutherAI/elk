@@ -1,28 +1,40 @@
 from ..math_util import stochastic_round_constrained
-from ..promptsource import DatasetTemplates
-from ..utils import assert_type, compute_class_balance, infer_label_column, undersample
+from ..promptsource import DatasetTemplates, Template
+from ..utils import (
+    apply_template,
+    assert_type,
+    binarize,
+    compute_class_balance,
+    infer_label_column,
+    infer_num_classes,
+    select_train_val_splits,
+    undersample,
+)
 from dataclasses import dataclass
 from datasets import DatasetDict, load_dataset, ClassLabel, Value
 from numpy.typing import NDArray
 from random import Random
 from simple_parsing.helpers import field, Serializable
 from torch.utils.data import Dataset as TorchDataset
-from typing import Optional
+from typing import Optional, Any
 import numpy as np
 
 
 @dataclass
 class Prompt:
-    """A question, its possible answers, and the correct answer.
-    A question is a template applied to a predicate."""
+    """A prompt for a single example in a dataset"""
 
-    question: str
-    answers: list[str]
+    prefix: str
+    template: Template
+    example: dict[str, Any]
     label: int
-    template_name: str
+    label_column: str
 
-    def to_string(self, answer_idx: int, sep: str = "\n") -> str:
-        return f"{self.question}{sep}{self.answers[answer_idx]}"
+    def to_string(self, answer_idx: int) -> str:
+        """Return the prompt as a string, with the answer at `answer_idx`."""
+        fake_example = self.example.copy()
+        fake_example[self.label_column] = answer_idx
+        return self.prefix + apply_template(self.template, fake_example)
 
 
 @dataclass
@@ -32,27 +44,34 @@ class PromptConfig(Serializable):
         dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
             `"super_glue boolq"` or `"imdb"`.
         balance: Whether to force class balance in the dataset using undersampling.
+        data_dir: The directory to use for caching the dataset.
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset; if there is only one column
             with a `ClassLabel` datatype, we use that.
+        num_classes: The number of classes in the dataset. By default, we infer this
+            from the datatypes of the columns in the dataset; if there is only one
+            column with a `ClassLabel` datatype, we use the number of classes in that
+            column.
         max_examples: The maximum number of examples to use from the val dataset.
             If a single number, use at most that many examples for each split. If a list
             of length 2, use the first element for the train split and the second for
-            the val split. If empty, use all examples. Defaults to empty.
+            the val split. If empty, use all examples.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
-            are zero-shot. Defaults to 0.
-        seed: The seed to use for prompt randomization. Defaults to 42.
+            are zero-shot.
+        seed: The seed to use for prompt randomization.
         num_variants: The number of prompt templates to apply to each predicate upon
-            call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
+            call to __getitem__. Use -1 to apply all available templates.
     """
 
     dataset: str = field(positional=True)
     balance: bool = False
+    data_dir: Optional[str] = None
     label_column: Optional[str] = None
-    max_examples: list[int] = field(default_factory=list)
+    num_classes: Optional[int] = None
+    max_examples: list[int] = field(default_factory=lambda: [750, 250])
     num_shots: int = 0
+    num_variants: int = -1
     seed: int = 42
-    num_variants: int = 1
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
@@ -65,15 +84,10 @@ class PromptConfig(Serializable):
 class PromptDataset(TorchDataset):
     """Wrapper for a HuggingFace dataset which generates prompts with `promptsource`.
 
-    Usually `promptsource` has multiple prompt templates for a given dataset. We handle
-    this in two ways. When `strategy` is set to `"randomize"` (the default), we sample
-    a random prompt template for each example on-the-fly when `__getitem__` is called,
-    using the seed passed to `__init__`. Note this means that the same example may be
-    assigned a different prompt template if `__getitem__` is called multiple times with
-    the same index.  TODO redo this documentation
-
-    When `strategy` is set to `"all"`, we "broadcast" the prompt templates across the
-    dataset, multiplying its effective size by the number of templates.
+    Usually `promptsource` has multiple prompt templates for a given dataset. We sample
+    `num_variants` of these templates and apply them to each example in the dataset, up
+    to `max_examples` examples. If `num_shots` is greater than zero, we sample that
+    many examples from the dataset and use them to generate a prefix for the prompt.
 
     Example:
     >>> prompts = PromptDataset("super_glue", "boolq", split="train")
@@ -100,7 +114,7 @@ class PromptDataset(TorchDataset):
 
         ds_dict = assert_type(
             DatasetDict,  # TODO: Should we support IterableDataset?
-            load_dataset(ds_name, config_name or None),
+            load_dataset(ds_name, config_name or None, data_dir=cfg.data_dir),
         )
 
         # By default we use the existing train-validation/test split in the dataset.
@@ -123,6 +137,9 @@ class PromptDataset(TorchDataset):
         self.active_split = ds_dict[split]
         label_col = cfg.label_column or infer_label_column(self.active_split.features)
         self.label_column = label_col
+        self.num_classes = cfg.num_classes or infer_num_classes(
+            self.active_split.features[label_col]
+        )
 
         # Enforce class balance if needed
         if cfg.balance:
@@ -146,15 +163,10 @@ class PromptDataset(TorchDataset):
                     f"class; got {cfg.num_shots} examples, {self.num_classes} classes"
                 )
 
-            # Sanity check to prevent train-test leakage via few-shot prompts
-            if "train" not in ds_dict:
-                raise ValueError(
-                    f"Dataset {cfg.dataset} has no train split, so we can't create "
-                    "few-shot prompts"
-                )
+            train_split = select_train_val_splits(ds_dict)[0]
 
             self.fewshot_strata = [
-                ds_dict["train"].filter(lambda ex: ex[label_col] == i)
+                ds_dict[train_split].filter(lambda ex: ex[label_col] == i)
                 for i in range(self.num_classes)
             ]
         else:
@@ -179,29 +191,19 @@ class PromptDataset(TorchDataset):
     def __getitem__(self, index: int) -> list[Prompt]:
         """Get a list of prompts for a given predicate"""
         # get self.num_variants unique prompts from the template pool
-        template_names = self.rng.sample(
-            self.prompter.templates.keys(), self.num_variants
+        template_names = (
+            self.rng.sample(list(self.prompter.templates), self.num_variants)
+            if self.num_variants < len(self.prompter.templates)
+            else list(self.prompter.templates)
         )
 
         example = self.active_split[index]
+        true_label = example[self.label_column]
+        new_label = self.rng.choice([0, 1]) if self.num_classes > 2 else None
 
         prompts = []
         for template_name in template_names:
             template = self.prompter.templates[template_name]
-
-            true_label = example[self.label_column]
-            answers = []
-            questions = set()
-
-            for fake_label in range(self.num_classes):
-                example[self.label_column] = fake_label
-
-                q, a = template.apply(example)
-                answers.append(a)
-                questions.add(q)
-
-            assert len(questions) == 1
-            question = questions.pop()
 
             if self.num_shots > 0:
                 # Use stratified sampling to get `num_shots` examples from train set.
@@ -216,18 +218,28 @@ class PromptDataset(TorchDataset):
                     indices = self.rng.sample(range(len(stratum)), count)
 
                     for idx in indices:
-                        q, a = template.apply(stratum[idx])
-                        examples.append(f"{q}\n{a}")
+                        examples.append(apply_template(template, stratum[idx]))
 
                 self.rng.shuffle(examples)
-                question = "\n\n".join(examples + [question])
+                few_shot_prefix = "\n\n".join(examples) + "\n\n"
+            else:
+                few_shot_prefix = ""
+
+            if self.num_classes > 2:
+                # remove all but the true answer and one random other answer
+                variant_template, variant_label = binarize(
+                    template, true_label, assert_type(int, new_label), self.rng
+                )
+            else:
+                variant_template, variant_label = template, true_label
 
             prompts.append(
                 Prompt(
-                    question=question,
-                    answers=answers,
-                    label=true_label,
-                    template_name=template_name,
+                    template=variant_template,
+                    example=example,
+                    label=variant_label,
+                    label_column=self.label_column,
+                    prefix=few_shot_prefix,
                 )
             )
         return prompts
@@ -238,21 +250,3 @@ class PromptDataset(TorchDataset):
     def __len__(self):
         """Get the number of predicates in the dataset."""
         return len(self.active_split)
-
-    @property
-    def num_classes(self) -> int:
-        """Number of classes in the underlying dataset."""
-        if isinstance(self.active_split.features[self.label_column], ClassLabel):
-            # We piggyback on the ClassLabel feature type to get the number of classes
-            return self.active_split.features[self.label_column].num_classes
-        elif (
-            isinstance(self.active_split.features[self.label_column], Value)
-            and self.active_split.features[self.label_column].dtype == "bool"
-        ):
-            return 2
-        else:
-            raise ValueError(
-                f"Can't infer number of classes from label column "
-                f"{self.label_column} of type "
-                f"{self.active_split.features[self.label_column]}"
-            )

@@ -4,7 +4,7 @@
 
 Because language models are trained to predict the next token in naturally occurring text, they often reproduce common human errors and misconceptions, even when they "know better" in some sense. More worryingly, when models are trained to generate text that's rated highly by humans, they may learn to output false statements that human evaluators can't detect. We aim to circumvent this issue by directly [**eliciting latent knowledge**](https://docs.google.com/document/d/1WwsnJQstPq91_Yh-Ch2XRL8H_EpsnjrC1dwZXR37PC8/edit) (ELK) inside the activations of a language model.
 
-Specifically, we're building on the **Contrast Consistent Search** (CCS) method described in the paper [Discovering Latent Knowledge in Language Models Without Supervision](https://arxiv.org/abs/2212.03827) by Burns et al. (2022). In CCS, we search for features in the hidden states of a language model which satisfy certain logical consistency requirements. It turns out that these features are often useful for question-answering and text classification tasks, even though the features are trained without labels.
+Specifically, we're building on the **Contrastive Representation Clustering** (CRC) method described in the paper [Discovering Latent Knowledge in Language Models Without Supervision](https://arxiv.org/abs/2212.03827) by Burns et al. (2022). In CRC, we search for features in the hidden states of a language model which satisfy certain logical consistency requirements. It turns out that these features are often useful for question-answering and text classification tasks, even though the features are trained without labels.
 
 ### Quick **Start**
 
@@ -20,23 +20,21 @@ elk elicit microsoft/deberta-v2-xxlarge-mnli imdb
 
 This will automatically download the model and dataset, run the model and extract the relevant representations if they aren't cached on disk, fit reporters on them, and save the reporter checkpoints to the `elk-reporters` folder in your home directory. It will also evaluate the reporter classification performance on a held out test set and save it to a CSV file in the same folder.
 
+The following will generate a CCS (Contrast Consistent Search) reporter instead of the CRC-based reporter, which is the default.
+
+```bash
+elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --net ccs
+```
+
+The following command will evaluate the probe from the run naughty-northcutt on the hidden states extracted from the model deberta-v2-xxlarge-mnli for the imdb dataset. It will result in an `eval.csv` and `cfg.yaml` file, which are stored under a subfolder in `elk-reporters/naughty-northcutt/transfer_eval`.
+
 ```bash
 elk eval naughty-northcutt microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
-This will evaluate the probe from the run naughty-northcutt on the hidden states extracted from the model deberta-v2-xxlarge-mnli for the imdb dataset. It will result in an `eval.csv` and `cfg.yaml` file, which are stored under a subfolder in `elk-reporters/naughty-northcutt/transfer_eval`.
-
 ## Caching
 
 The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the same place as all other HuggingFace datasets, which is usually `~/.cache/huggingface/datasets`.
-
-## Other commands
-
-To only extract the hidden states for the model `model` and the dataset `dataset` and save them to `my_output_dir`, without training any reporters, you can run:
-
-```bash
-elk extract microsoft/deberta-v2-xxlarge-mnli imdb -o my_output_dir
-```
 
 ## Development
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.

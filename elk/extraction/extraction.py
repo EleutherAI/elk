@@ -1,14 +1,17 @@
 """Functions for extracting the hidden states of a model."""
 
-from .prompt_dataset import Prompt, PromptDataset, PromptConfig
+from dataclasses import InitVar, dataclass
+
+from simple_parsing import Serializable, field
+from elk.utils.typing import float32_to_int16
+from .prompt_dataset import Prompt, PromptConfig, PromptDataset
 from ..utils import (
     assert_type,
     infer_label_column,
+    select_train_val_splits,
     select_usable_devices,
-    float32_to_int16,
 )
 from .generator import _GeneratorBuilder
-from dataclasses import dataclass, InitVar
 from datasets import (
     Array3D,
     DatasetDict,
@@ -20,7 +23,6 @@ from datasets import (
     SplitInfo,
     Value,
 )
-from simple_parsing.helpers import field, Serializable
 from transformers import (
     AutoConfig,
     AutoModel,
@@ -28,13 +30,13 @@ from transformers import (
     BatchEncoding,
     PreTrainedModel,
 )
-from typing import Iterable, Literal, Union
+from typing import Iterable, Literal, Union, TYPE_CHECKING
 import logging
 import torch
 
 
 @dataclass
-class ExtractionConfig(Serializable):
+class Extract(Serializable):
     """
     Args:
         model: HuggingFace model string identifying the language model to extract
@@ -44,8 +46,6 @@ class ExtractionConfig(Serializable):
         layer_stride: Shortcut for setting `layers` to `range(0, num_layers, stride)`.
         token_loc: The location of the token to extract hidden states from. Can be
             either "first", "last", or "mean". Defaults to "last".
-        use_encoder_states: Whether to extract hiddens from the encoder in
-            encoder-decoder models. Defaults to False.
     """
 
     prompts: PromptConfig
@@ -54,7 +54,8 @@ class ExtractionConfig(Serializable):
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
-    use_encoder_states: bool = False
+
+    num_gpus: int = -1
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -70,9 +71,13 @@ class ExtractionConfig(Serializable):
             )
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
+    def execute(self):
+        extract(cfg=self, num_gpus=self.num_gpus)
 
+
+@torch.no_grad()
 def extract_hiddens(
-    cfg: ExtractionConfig,
+    cfg: "Extract",
     *,
     device: Union[str, torch.device] = "cpu",
     rank: int = 0,
@@ -102,39 +107,23 @@ def extract_hiddens(
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(cfg.model, torch_dtype="auto").to(device)
+    model = AutoModel.from_pretrained(
+        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+    ).to(device)
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(cfg.model, truncation_side="left")
 
-    if cfg.use_encoder_states and not model.config.is_encoder_decoder:
-        raise ValueError(
-            "use_encoder_states is only compatible with encoder-decoder models."
-        )
-
-    # TODO: Make this configurable or something
-    # Token used to separate the question from the answer
-    num_choices = prompt_ds.num_classes
-    sep_token = tokenizer.sep_token or "\n"
-
+    # TODO: test whether using sep_token is important, but this seems low priority
+    # sep_token = tokenizer.sep_token or "\n"
     if not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Whether to concatenate the question and answer before passing to the model.
-    # If False pass them to the encoder and decoder separately.
     is_enc_dec = model.config.is_encoder_decoder
-    should_concat = not is_enc_dec or cfg.use_encoder_states
 
     def tokenize(prompt: Prompt, idx: int, **kwargs):
         return tokenizer(
-            (
-                [prompt.to_string(idx, sep=sep_token)]
-                if should_concat
-                else [prompt.question]
-            ),
-            text_target=(
-                [prompt.answers[idx]] if not should_concat else None
-            ),  # type: ignore
+            ([prompt.to_string(idx)]),
             padding=True,
             return_tensors="pt",
             truncation=True,
@@ -144,12 +133,12 @@ def extract_hiddens(
     # This function returns the flattened questions and answers. After inference we
     # need to reshape the results.
     def collate(prompts: list[Prompt]) -> list[list[BatchEncoding]]:
-        return [[tokenize(prompt, i) for i in range(num_choices)] for prompt in prompts]
+        return [[tokenize(prompt, i) for i in range(2)] for prompt in prompts]
 
-    # If this is an encoder-decoder model and we're passing the answer to the encoder,
-    # we don't need to run the decoder at all. Just strip it off, making the problem
+    # If this is an encoder-decoder model we don't need to run the decoder at all.
+    # Just strip it off, making the problem
     # equivalent to a regular encoder-only model.
-    if is_enc_dec and cfg.use_encoder_states:
+    if is_enc_dec:
         # This isn't actually *guaranteed* by HF, but it's true for all existing models
         if not hasattr(model, "get_encoder") or not callable(model.get_encoder):
             raise ValueError(
@@ -165,14 +154,26 @@ def extract_hiddens(
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
                 prompt_ds.num_variants,
-                num_choices,
+                2,  # contrast pair
                 model.config.hidden_size,
                 device=device,
                 dtype=torch.int16,
             )
             for layer_idx in layer_indices
         }
-        variant_ids = [prompt.template_name for prompt in prompts]
+        variant_ids = [prompt.template.name for prompt in prompts]
+        # decode so that we know exactly what the input was
+        text_inputs = [
+            [
+                tokenizer.decode(
+                    assert_type(torch.Tensor, variant_inputs[0].input_ids)[0]
+                ),
+                tokenizer.decode(
+                    assert_type(torch.Tensor, variant_inputs[1].input_ids)[0]
+                ),
+            ]
+            for variant_inputs in inputs
+        ]
 
         # Iterate over variants
         for i, variant_inputs in enumerate(inputs):
@@ -202,9 +203,11 @@ def extract_hiddens(
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
 
+        assert all([prompts[0].label == prompt.label for prompt in prompts])
         yield dict(
             label=prompts[0].label,
             variant_ids=variant_ids,
+            text_inputs=text_inputs,
             **hidden_dict,
         )
 
@@ -214,32 +217,24 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
+def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
-        base_splits = assert_type(SplitDict, info.splits)
-        splits = set(base_splits) & {Split.TRAIN, Split.VALIDATION, Split.TEST}
-        if Split.VALIDATION in splits and Split.TEST in splits:
-            splits.remove(Split.TEST)
+        available_splits = assert_type(SplitDict, info.splits)
+        splits = select_train_val_splits(available_splits)
+        print(f"Using '{splits[0]}' for training and '{splits[1]}' for validation")
 
-        assert len(splits) == 2, "Must have train and val/test splits"
-        val_split = Split.VALIDATION if Split.VALIDATION in splits else Split.TEST
+        # Empty list means no limit
+        limit_list = cfg.prompts.max_examples
+        if not limit_list:
+            limit_list = [int(1e100)]
 
-        # grab the max number of examples from the config for each split
-        limit = (
-            {
-                Split.TRAIN: cfg.prompts.max_examples[0],
-                val_split: cfg.prompts.max_examples[0]
-                if len(cfg.prompts.max_examples) == 1
-                else cfg.prompts.max_examples[1],
-            }
-            if cfg.prompts.max_examples
-            else {
-                Split.TRAIN: int(1e100),
-                val_split: int(1e100),
-            }
-        )
+        # Broadcast the limit to all splits
+        if len(limit_list) == 1:
+            limit_list *= len(splits)
+
+        limit = {k: v for k, v in zip(splits, limit_list)}
         return SplitDict(
             {
                 k: SplitInfo(
@@ -247,10 +242,10 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
                     num_examples=min(limit[k], v.num_examples),
                     dataset_name=v.dataset_name,
                 )
-                for k, v in base_splits.items()
+                for k, v in available_splits.items()
                 if k in splits
             },
-            dataset_name=base_splits.dataset_name,
+            dataset_name=available_splits.dataset_name,
         )
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
@@ -276,8 +271,15 @@ def extract(cfg: ExtractionConfig, max_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
         "label": features[label_col],
+        "text_inputs": Sequence(
+            Sequence(
+                Value(dtype="string"),
+                length=2,
+            ),
+            length=num_variants,
+        ),
     }
-    devices = select_usable_devices(max_gpus)
+    devices = select_usable_devices(num_gpus)
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,

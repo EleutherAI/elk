@@ -1,9 +1,17 @@
-from elk.math_util import stochastic_round_constrained
+from elk.math_util import batch_cov, cov_mean_fused, stochastic_round_constrained
 from hypothesis import given, strategies as st
 from random import Random
 import math
 import numpy as np
 import pytest
+import torch
+
+
+def test_cov_mean_fused():
+    X = torch.randn(10, 500, 100, dtype=torch.float64)
+    cov_gt = batch_cov(X).mean(dim=0)
+    cov_fused = cov_mean_fused(X)
+    assert torch.allclose(cov_gt, cov_fused)
 
 
 @given(
@@ -12,7 +20,6 @@ import pytest
     # ...and the total sum of the floats
     st.integers(min_value=1, max_value=int(np.finfo(np.float32).max)),
 )
-@pytest.mark.cpu
 def test_stochastic_rounding(num_parts: int, total: int):
     # Randomly sample the breakdown of the total into floats
     rng = np.random.default_rng(42)
