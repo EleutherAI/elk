@@ -1,25 +1,28 @@
-import csv
 import os
 import random
 from abc import ABC
 from dataclasses import dataclass, field
-from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Optional,
+    Union,
+    Callable,
+    Iterator,
+)
 
 import numpy as np
 import torch
 import torch.multiprocessing as mp
+from datasets import DatasetDict
 from torch import Tensor
 from tqdm import tqdm
 
-from datasets import DatasetDict, Split
 from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
-from elk.logging import save_debug_log
 from elk.training.preprocessing import normalize
+from elk.utils.csv import write_iterator_to_file, Log
 from elk.utils.data_utils import get_layers, select_train_val_splits
-from elk.utils.gpu_utils import select_usable_devices
 from elk.utils.typing import assert_type, int16_to_float32
 
 if TYPE_CHECKING:
@@ -30,7 +33,6 @@ if TYPE_CHECKING:
 @dataclass
 class Run(ABC):
     cfg: Union["Elicit", "Eval"]
-    eval_headers: List[str]
     out_dir: Optional[Path] = None
     dataset: DatasetDict = field(init=False)
 
@@ -88,28 +90,38 @@ class Run(ABC):
 
         return x0, x1, val_x0, val_x1, train_labels, val_labels
 
-    def apply_to_layers(self, func):
-        """Apply a function to each layer of the dataset in parallel."""
+    def apply_to_layers(
+        self,
+        func: Callable[[int], Log],
+        num_devices: int,
+        to_csv_line: Callable[[Log], list[str]],
+        csv_columns: list[str],
+    ):
+        """Apply a function to each layer of the dataset in parallel
+        and writes the results to a CSV file.
 
-        devices = select_usable_devices(self.cfg.num_gpus)
-        num_devices = len(devices)
+        Args:
+            func: The function to apply to each layer.
+                The int is the index of the layer.
+            num_devices: The number of devices to use.
+            to_csv_line: A function that converts a Log to a list of strings.
+                This has to be injected in because the Run class does not know
+                the extra options e.g. skip_baseline to apply to function.
+            csv_columns: The columns of the CSV file."""
         self.out_dir = assert_type(Path, self.out_dir)
+        # Should we write to different CSV files for elicit vs eval?
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
-            fn = partial(func, devices=devices, world_size=num_devices)
-
-            writer = csv.writer(f)
-            writer.writerow(self.eval_headers)
-
+            layers: list[int] = get_layers(self.dataset)
             mapper = pool.imap_unordered if num_devices > 1 else map
-            row_buf = []
-
-            layers = get_layers(self.dataset)
-            try:
-                for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
-                    row_buf.append([i] + [f"{s:.4f}" for s in stats])
-            finally:
-                # Make sure the CSV is written even if we crash or get interrupted
-                for row in sorted(row_buf):
-                    writer.writerow(row)
-                if self.cfg.debug:
-                    save_debug_log(self.dataset, self.out_dir)
+            iterator: Iterator[Log] = tqdm(  # type: ignore
+                mapper(func, layers), total=len(layers)
+            )
+            write_iterator_to_file(
+                iterator=iterator,
+                file=f,
+                debug=self.cfg.debug,
+                dataset=self.dataset,
+                out_dir=self.out_dir,
+                csv_columns=csv_columns,
+                to_csv_line=to_csv_line,
+            )

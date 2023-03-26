@@ -3,8 +3,9 @@
 import pickle
 import warnings
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Callable
 
 import torch
 from simple_parsing import Serializable, field, subgroups
@@ -19,6 +20,8 @@ from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig
+from .train_log import ElicitLog
+from ..utils import select_usable_devices
 
 
 @dataclass
@@ -52,18 +55,7 @@ class Elicit(Serializable):
     out_dir: Optional[Path] = None
 
     def execute(self):
-        cols = [
-            "layer",
-            "pseudo_auroc",
-            "train_loss",
-            "acc",
-            "cal_acc",
-            "auroc",
-            "ece",
-        ]
-        if not self.skip_baseline:
-            cols += ["lr_auroc", "lr_acc"]
-        train_run = Train(cfg=self, eval_headers=cols, out_dir=self.out_dir)
+        train_run = Train(cfg=self, out_dir=self.out_dir)
         train_run.train()
 
 
@@ -124,7 +116,7 @@ class Train(Run):
         layer: int,
         devices: list[str],
         world_size: int = 1,
-    ):
+    ) -> ElicitLog:
         """Train a single reporter on a single layer."""
         self.make_reproducible(seed=self.cfg.net.seed + layer)
 
@@ -150,7 +142,12 @@ class Train(Run):
         )
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        stats = [layer, pseudo_auroc, train_loss, *val_result]
+        stats: ElicitLog = ElicitLog(
+            layer=layer,
+            pseudo_auroc=pseudo_auroc,
+            train_loss=train_loss,
+            eval_result=val_result,
+        )
 
         if not self.cfg.skip_baseline:
             lr_model, lr_auroc, lr_acc = self.train_baseline(
@@ -162,7 +159,8 @@ class Train(Run):
                 val_labels,
                 device,
             )
-            stats += [lr_auroc, lr_acc]
+            stats.lr_auroc = lr_auroc
+            stats.lr_acc = lr_acc
             self.save_baseline(lr_dir, layer, lr_model)
 
         with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
@@ -190,5 +188,16 @@ class Train(Run):
 
     def train(self):
         """Train a reporter on each layer of the network."""
-
-        self.apply_to_layers(func=self.train_reporter)
+        devices = select_usable_devices(self.cfg.num_gpus)
+        num_devices = len(devices)
+        func: Callable[[int], ElicitLog] = partial(
+            self.train_reporter, devices=devices, world_size=num_devices
+        )
+        self.apply_to_layers(
+            func=func,
+            num_devices=num_devices,
+            to_csv_line=lambda item: item.to_csv_line(
+                skip_baseline=self.cfg.skip_baseline
+            ),
+            csv_columns=ElicitLog.csv_columns(self.cfg.skip_baseline),
+        )

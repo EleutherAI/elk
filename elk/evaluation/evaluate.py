@@ -1,14 +1,17 @@
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Callable
 
 import torch
 from simple_parsing import Serializable, field
 
-from datasets import Split
 from elk.extraction.extraction import Extract
 from elk.files import elk_reporter_dir
 from elk.run import Run
+from elk.training import Reporter
+from elk.evaluation.evaluate_log import EvalLog
+from elk.utils import select_usable_devices
 
 
 @dataclass
@@ -38,9 +41,8 @@ class Eval(Serializable):
 
     def execute(self):
         transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
-        cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
 
-        run = Evaluate(cfg=self, eval_headers=cols, out_dir=transfer_eval)
+        run = Evaluate(cfg=self, out_dir=transfer_eval)
         run.evaluate()
 
 
@@ -48,7 +50,9 @@ class Eval(Serializable):
 class Evaluate(Run):
     cfg: Eval
 
-    def evaluate_reporter(self, layer: int, devices: list[str], world_size: int):
+    def evaluate_reporter(
+        self, layer: int, devices: list[str], world_size: int = 1
+    ) -> EvalLog:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
@@ -60,7 +64,7 @@ class Evaluate(Run):
         reporter_path = (
             elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"
         )
-        reporter = torch.load(reporter_path, map_location=device)
+        reporter: Reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
         test_result = reporter.score(
@@ -69,10 +73,21 @@ class Evaluate(Run):
             test_x1,
         )
 
-        stats = [layer, *test_result]
-        return stats
+        return EvalLog(
+            layer=layer,
+            eval_result=test_result,
+        )
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
-
-        self.apply_to_layers(func=self.evaluate_reporter)
+        devices = select_usable_devices(self.cfg.num_gpus)
+        num_devices = len(devices)
+        func: Callable[[int], EvalLog] = partial(
+            self.evaluate_reporter, devices=devices, world_size=num_devices
+        )
+        self.apply_to_layers(
+            func=func,
+            num_devices=num_devices,
+            to_csv_line=lambda item: item.to_csv_line(),
+            csv_columns=EvalLog.csv_columns(),
+        )
