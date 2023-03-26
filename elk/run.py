@@ -113,7 +113,9 @@ class Run(ABC):
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
             layers: list[int] = get_layers(self.dataset)
             mapper = pool.imap_unordered if num_devices > 1 else map
-            iterator: Iterator[Log] = tqdm(mapper(func, layers), total=len(layers))  # type: ignore
+            iterator: Iterator[Log] = tqdm(  # type: ignore
+                mapper(func, layers), total=len(layers)
+            )
             write_iterator_to_file(
                 iterator=iterator,
                 file=f,
