@@ -7,6 +7,7 @@ import sys
 import argparse
 import yaml
 
+
 def get_metric_across_layers(metric_name, reporter_name, reporter_dir, save_csv=False):
     """
     Gets the metric score for a specific model/dataset across layers

@@ -12,7 +12,7 @@ templates:
       {% if label != -1 %}
 
       {{answer_choices[label]}}
-      
+
       {% endif %}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -112,7 +112,7 @@ templates:
       {% if label != -1 %}
 
       {{ answer_choices[label] }}
-      
+
       {% endif %}'
     metadata: !TemplateMetadata
       choices_in_prompt: false
