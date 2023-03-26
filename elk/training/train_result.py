@@ -7,8 +7,8 @@ from elk.training.reporter import EvalResult
 
 
 @dataclass
-class ElicitStatResult:
-    """The result of evaluating a reporter on a dataset."""
+class ElicitLog:
+    """The result of running elicit on a layer of a dataset"""
 
     layer: int
     train_loss: float
@@ -18,8 +18,6 @@ class ElicitStatResult:
     lr_auroc: Optional[float] = None
     # Only available if reporting baseline
     lr_acc: Optional[float] = None
-
-    cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
 
     @staticmethod
     def csv_columns(skip_baseline: bool) -> list[str]:
@@ -55,15 +53,23 @@ class ElicitStatResult:
 
 
 @dataclass
-class EvalStatResult:
-    ...
+class EvalLog:
+    """The result of running eval on a layer of a dataset"""
+    layer: int
+    eval_result: EvalResult
 
     @staticmethod
     def csv_columns() -> list[str]:
-        ...
+        return ["layer", "acc", "cal_acc", "auroc"]
 
     def to_csv_line(self) -> list[str]:
-        ...
+        items = [
+            self.layer,
+            self.eval_result.acc,
+            self.eval_result.cal_acc,
+            self.eval_result.auroc,
+        ]
+        return [f"{item:.4f}" for item in items if isinstance(item, float)]
 
 
-StatResult = TypeVar("StatResult", ElicitStatResult, EvalStatResult)
+StatResult = TypeVar("StatResult", ElicitLog, EvalLog)

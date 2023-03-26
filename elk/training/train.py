@@ -20,7 +20,7 @@ from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig
-from .train_result import ElicitStatResult
+from .train_result import ElicitLog
 from ..utils import select_usable_devices
 
 
@@ -116,7 +116,7 @@ class Train(Run):
         layer: int,
         devices: list[str],
         world_size: int = 1,
-    ) -> ElicitStatResult:
+    ) -> ElicitLog:
         """Train a single reporter on a single layer."""
         self.make_reproducible(seed=self.cfg.net.seed + layer)
 
@@ -142,7 +142,7 @@ class Train(Run):
         )
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        stats: ElicitStatResult = ElicitStatResult(
+        stats: ElicitLog = ElicitLog(
             layer=layer,
             pseudo_auroc=pseudo_auroc,
             train_loss=train_loss,
@@ -190,7 +190,7 @@ class Train(Run):
         """Train a reporter on each layer of the network."""
         devices = select_usable_devices(self.cfg.num_gpus)
         num_devices = len(devices)
-        func: Callable[[int], ElicitStatResult] = partial(
+        func: Callable[[int], ElicitLog] = partial(
             self.train_reporter, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(
@@ -199,5 +199,5 @@ class Train(Run):
             to_csv_line=lambda item: item.to_csv_line(
                 skip_baseline=self.cfg.skip_baseline
             ),
-            csv_columns=ElicitStatResult.csv_columns(self.cfg.skip_baseline),
+            csv_columns=ElicitLog.csv_columns(self.cfg.skip_baseline),
         )

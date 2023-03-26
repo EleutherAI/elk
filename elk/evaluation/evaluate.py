@@ -9,7 +9,8 @@ from simple_parsing import Serializable, field
 from elk.extraction.extraction import Extract
 from elk.files import elk_reporter_dir
 from elk.run import Run
-from elk.training.train_result import EvalStatResult
+from elk.training import Reporter
+from elk.training.train_result import EvalLog
 from elk.utils import select_usable_devices
 
 
@@ -53,7 +54,7 @@ class Evaluate(Run):
 
     def evaluate_reporter(
         self, layer: int, devices: list[str], world_size: int = 1
-    ) -> EvalStatResult:
+    ) -> EvalLog:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
@@ -65,7 +66,7 @@ class Evaluate(Run):
         reporter_path = (
             elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"
         )
-        reporter = torch.load(reporter_path, map_location=device)
+        reporter: Reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
         test_result = reporter.score(
@@ -74,19 +75,21 @@ class Evaluate(Run):
             test_x1,
         )
 
-        stats = [layer, *test_result]
-        return stats
+        return EvalLog(
+            layer=layer,
+            eval_result=test_result,
+        )
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
         devices = select_usable_devices(self.cfg.num_gpus)
         num_devices = len(devices)
-        func: Callable[[int], EvalStatResult] = partial(
+        func: Callable[[int], EvalLog] = partial(
             self.evaluate_reporter, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(
             func=func,
             num_devices=num_devices,
             to_csv_line=lambda item: item.to_csv_line(),
-            csv_columns=EvalStatResult.csv_columns(),
+            csv_columns=EvalLog.csv_columns(),
         )

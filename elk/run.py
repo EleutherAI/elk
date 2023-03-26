@@ -1,19 +1,16 @@
 import csv
 import os
 import random
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, field
-from functools import partial
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Optional,
     Union,
-    Iterator,
     TextIO,
     Callable,
     Sequence,
-    TypeVar,
 )
 
 import numpy as np
@@ -27,9 +24,8 @@ from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
 from elk.logging import save_debug_log
 from elk.training.preprocessing import normalize
-from elk.training.train_result import ElicitStatResult, EvalStatResult, StatResult
+from elk.training.train_result import StatResult
 from elk.utils.data_utils import get_layers, select_train_val_splits
-from elk.utils.gpu_utils import select_usable_devices
 from elk.utils.typing import assert_type, int16_to_float32
 
 if TYPE_CHECKING:
