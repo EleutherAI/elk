@@ -1,11 +1,16 @@
 import csv
 from pathlib import Path
-from typing import Iterator, Callable, TextIO
+from typing import Iterator, Callable, TextIO, TypeVar
 
 from datasets import DatasetDict
 
+from elk.evaluation.evaluate_log import EvalLog
 from elk.logging import save_debug_log
-from elk.run import Log
+from elk.training.train_log import ElicitLog
+
+"""A generic log type that contains a layer field
+The layer field is used to sort the logs by layer."""
+Log = TypeVar("Log", EvalLog, ElicitLog)
 
 
 def write_iterator_to_file(
