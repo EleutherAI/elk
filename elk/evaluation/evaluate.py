@@ -77,7 +77,7 @@ def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
         if feat.startswith("hidden_")
     ]
 
-    devices = select_usable_devices(cfg.num_gpus)
+    devices = select_usable_devices(cfg.num_gpus, min_memory=cfg.target.min_gpu_mem)
     num_devices = len(devices)
 
     transfer_eval = elk_reporter_dir() / cfg.source / "transfer_eval"

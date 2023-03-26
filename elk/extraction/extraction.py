@@ -29,7 +29,7 @@ from transformers import (
     AutoTokenizer,
     PreTrainedModel,
 )
-from typing import Iterable, Literal, Union
+from typing import Iterable, Literal, Union, Optional
 import logging
 import os
 import torch
@@ -46,6 +46,7 @@ class ExtractionConfig(Serializable):
         layer_stride: Shortcut for setting `layers` to `range(0, num_layers, stride)`.
         token_loc: The location of the token to extract hidden states from. Can be
             either "first", "last", or "mean". Defaults to "last".
+        min_gpu_mem: Minimum amount of free memory (in bytes) required to select a GPU.
     """
 
     prompts: PromptConfig
@@ -54,6 +55,7 @@ class ExtractionConfig(Serializable):
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
+    min_gpu_mem: Optional[int] = None
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -203,18 +205,7 @@ def extract(cfg: ExtractionConfig, num_gpus: int = -1) -> DatasetDict:
         train_name, val_name = select_train_val_splits(available_splits)
         print(f"Using '{train_name}' for training and '{val_name}' for validation")
 
-        out_splits = SplitDict(
-            train=available_splits[train_name], val=available_splits[val_name]
-        )
-
-        # Empty list means no limit
         limit_list = cfg.prompts.max_examples
-        if not limit_list:
-            limit_list = [int(1e100)]
-
-        # Broadcast the limit to all splits
-        if len(limit_list) == 1:
-            limit_list *= len(out_splits)
 
         return SplitDict(
             {
@@ -255,7 +246,7 @@ def extract(cfg: ExtractionConfig, num_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
     }
-    devices = select_usable_devices(num_gpus)
+    devices = select_usable_devices(num_gpus, min_memory=cfg.min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,

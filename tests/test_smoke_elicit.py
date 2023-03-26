@@ -7,19 +7,22 @@ from elk.training.train import train, RunConfig
 
 
 def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
-    model_path = "sshleifer/tiny-gpt2"
+    # we need about 5 mb of gpu memory to run this test
+    model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024**2
     dataset_name = "imdb"
     config = RunConfig(
         data=ExtractionConfig(
             model=model_path,
             prompts=PromptConfig(datasets=[dataset_name], max_examples=[10]),
+            min_gpu_mem=min_mem,
             # run on all layers, tiny-gpt only has 2 layers
         ),
+        num_gpus=2,
         net=CcsReporterConfig(),
     )
     train(config, tmp_path)
     # get the files in the tmp_path
-    files: Path = list(tmp_path.iterdir())
+    files: list[Path] = list(tmp_path.iterdir())
     created_file_names = {file.name for file in files}
     expected_files = ["cfg.yaml", "metadata.yaml", "lr_models", "reporters", "eval.csv"]
     for file in expected_files:
@@ -27,19 +30,22 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
 
 
 def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
-    model_path = "sshleifer/tiny-gpt2"
+    # we need about 5 mb of gpu memory to run this test
+    model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024**2
     dataset_name = "imdb"
     config = RunConfig(
         data=ExtractionConfig(
             model=model_path,
             prompts=PromptConfig(datasets=[dataset_name], max_examples=[10]),
+            min_gpu_mem=min_mem,
             # run on all layers, tiny-gpt only has 2 layers
         ),
+        num_gpus=2,
         net=EigenReporterConfig(),
     )
     train(config, tmp_path)
     # get the files in the tmp_path
-    files: Path = list(tmp_path.iterdir())
+    files: list[Path] = list(tmp_path.iterdir())
     created_file_names = {file.name for file in files}
     expected_files = ["cfg.yaml", "metadata.yaml", "lr_models", "reporters", "eval.csv"]
     for file in expected_files:

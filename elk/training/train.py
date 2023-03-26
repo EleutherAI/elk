@@ -200,7 +200,7 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
     with open(out_dir / "metadata.yaml", "w") as meta_f:
         yaml.dump(meta, meta_f)
 
-    devices = select_usable_devices(cfg.num_gpus)
+    devices = select_usable_devices(cfg.num_gpus, min_memory=cfg.data.min_gpu_mem)
     num_devices = len(devices)
 
     cols = [

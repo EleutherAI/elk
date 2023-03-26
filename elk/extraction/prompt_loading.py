@@ -63,6 +63,12 @@ class PromptConfig(Serializable):
                 "max_examples should be a list of length 0, 1, or 2,"
                 f"but got {len(self.max_examples)}"
             )
+        if not self.max_examples:
+            self.max_examples = [int(1e100)]
+
+        # Broadcast the limit to all splits
+        if len(self.max_examples) == 1:
+            self.max_examples *= 2
 
 
 def load_prompts(
