@@ -72,4 +72,3 @@ class EvalLog:
         return [f"{item:.4f}" for item in items if isinstance(item, float)]
 
 
-StatResult = TypeVar("StatResult", ElicitLog, EvalLog)

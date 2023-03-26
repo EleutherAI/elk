@@ -1,4 +1,3 @@
-import csv
 import os
 import random
 from abc import ABC
@@ -8,9 +7,9 @@ from typing import (
     TYPE_CHECKING,
     Optional,
     Union,
-    TextIO,
     Callable,
-    Sequence,
+    TypeVar,
+    Iterator,
 )
 
 import numpy as np
@@ -22,15 +21,17 @@ from tqdm import tqdm
 
 from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
-from elk.logging import save_debug_log
 from elk.training.preprocessing import normalize
-from elk.training.train_result import StatResult
+from elk.training.train_result import ElicitLog, EvalLog
+from elk.utils.csv import write_iterator_to_file
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.typing import assert_type, int16_to_float32
 
 if TYPE_CHECKING:
     from elk.evaluation.evaluate import Eval
     from elk.training.train import Elicit
+
+A = TypeVar("A", EvalLog, ElicitLog)
 
 
 @dataclass
@@ -95,9 +96,9 @@ class Run(ABC):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], StatResult],
+        func: Callable[[int], A],
         num_devices: int,
-        to_csv_line: Callable[[StatResult], list[str]],
+        to_csv_line: Callable[[A], list[str]],
         csv_columns: list[str],
     ):
         """Apply a function to each layer of the dataset in parallel
@@ -107,9 +108,8 @@ class Run(ABC):
             # Partially apply so the function will just take the layer as an argument
             layers: list[int] = get_layers(self.dataset)
             mapper = pool.imap_unordered if num_devices > 1 else map
-            # Typed as sequence for covariant typing
-            iterator: Sequence[StatResult] = tqdm(mapper(func, layers), total=len(layers))  # type: ignore
-            write_func_to_file(
+            iterator: Iterator[A] = tqdm(mapper(func, layers), total=len(layers))  # type: ignore
+            write_iterator_to_file(
                 iterator=iterator,
                 file=f,
                 debug=self.cfg.debug,
@@ -118,28 +118,3 @@ class Run(ABC):
                 csv_columns=csv_columns,
                 to_csv_line=to_csv_line,
             )
-
-
-def write_func_to_file(
-    iterator: Sequence[StatResult],
-    csv_columns: list[str],
-    to_csv_line: Callable[[StatResult], list[str]],
-    file: TextIO,
-    debug: bool,
-    dataset: DatasetDict,
-    out_dir: Path,
-) -> None:
-    row_buf = []
-    writer = csv.writer(file)
-    # write a single line
-    writer.writerow(csv_columns)
-    try:
-        for row in iterator:
-            row_buf.append(row)
-    finally:
-        # Make sure the CSV is written even if we crash or get interrupted
-        for row in sorted(row_buf):
-            row = to_csv_line(row)
-            writer.writerow(row)
-        if debug:
-            save_debug_log(dataset, out_dir)
