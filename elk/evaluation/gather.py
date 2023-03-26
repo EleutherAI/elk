@@ -7,7 +7,6 @@ import sys
 import argparse
 import yaml
 
-
 def get_metric_across_layers(metric_name, reporter_name, reporter_dir, save_csv=False):
     """
     Gets the metric score for a specific model/dataset across layers
@@ -49,9 +48,6 @@ def get_metric_across_layers(metric_name, reporter_name, reporter_dir, save_csv=
 
     score_across_layers = data.loc[:, metric_name]
 
-    # score_dict = score_across_layers.to_dict()
-    # print(type(score_across_layers))
-    # print(score_across_layers.head())
     if save_csv:
         print(os.path.join(reporter_path, f"{metric_name}.csv"))
         score_across_layers.to_csv(os.path.join(reporter_path, f"{metric_name}.csv"))
