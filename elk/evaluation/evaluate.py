@@ -99,7 +99,9 @@ class Evaluate(Run):
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
-        devices = select_usable_devices(self.cfg.num_gpus, min_memory=cfg.target.min_gpu_mem)
+        devices = select_usable_devices(
+            self.cfg.num_gpus, min_memory=cfg.target.min_gpu_mem
+        )
 
         num_devices = len(devices)
         func: Callable[[int], EvalLog] = partial(

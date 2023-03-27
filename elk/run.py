@@ -93,7 +93,9 @@ class Run(ABC):
     def concatenate(self, layers):
         """Concatenate hidden states from a previous layer."""
         for layer in range(self.cfg.concatenated_layer_offset, len(layers)):
-            layers[layer] = layers[layer] + [layers[layer][0] - cfg.concatenated_layer_offset]
+            layers[layer] = layers[layer] + [
+                layers[layer][0] - cfg.concatenated_layer_offset
+            ]
         return layers
 
     def apply_to_layers(
