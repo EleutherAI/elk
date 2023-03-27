@@ -56,6 +56,8 @@ class Eval(Serializable):
     out_dir: Optional[Path] = None
     num_gpus: int = -1
 
+    concatenated_layer_offset: int = 0
+
     def execute(self):
         transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
 
