@@ -121,7 +121,7 @@ class Run(ABC):
         layers: list[int] = get_layers(self.dataset)
 
         if self.cfg.concatenated_layer_offset > 0:
-            layers = self.concatenate(cfg, layers)
+            layers = self.concatenate(layers)
 
         # Should we write to different CSV files for elicit vs eval?
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
