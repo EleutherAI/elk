@@ -1,1 +1,1 @@
-from .extraction import extract_hiddens, ExtractionConfig
+from .extraction import extract_hiddens, Extract

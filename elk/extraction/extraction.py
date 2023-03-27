@@ -1,43 +1,27 @@
 """Functions for extracting the hidden states of a model."""
-
-from .prompt_loading import load_prompts, PromptConfig
-from ..utils import (
-    assert_type,
-    float32_to_int16,
-    infer_label_column,
-    select_train_val_splits,
-    select_usable_devices,
-)
-from .balanced_sampler import BalancedSampler
-from .generator import _GeneratorBuilder
-from dataclasses import dataclass, InitVar
-from datasets import (
-    Array3D,
-    ClassLabel,
-    DatasetDict,
-    Features,
-    get_dataset_config_info,
-    Sequence,
-    SplitDict,
-    SplitInfo,
-    Value,
-)
-from simple_parsing.helpers import field, Serializable
-from transformers import (
-    AutoConfig,
-    AutoModel,
-    AutoTokenizer,
-    PreTrainedModel,
-)
-from typing import Iterable, Literal, Union, Optional
 import logging
 import os
-import torch
+from dataclasses import InitVar, dataclass
 from itertools import islice
+from typing import Iterable, Literal, Optional, Union
+
+import torch
+from simple_parsing import Serializable, field
+from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
+
+from datasets import (Array3D, ClassLabel, DatasetDict, Features, Sequence,
+                      SplitDict, SplitInfo, Value, get_dataset_config_info)
+from elk.utils.typing import float32_to_int16
+
+from ..utils import (assert_type, infer_label_column, select_train_val_splits,
+                     select_usable_devices)
+from .balanced_sampler import BalancedSampler
+from .generator import _GeneratorBuilder
+from .prompt_loading import PromptConfig, load_prompts
 
 
 @dataclass
-class ExtractionConfig(Serializable):
+class Extract(Serializable):
     """
     Args:
         model: HuggingFace model string identifying the language model to extract
@@ -57,6 +41,7 @@ class ExtractionConfig(Serializable):
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
     min_gpu_mem: Optional[int] = None
+    num_gpus: int = -1
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -72,10 +57,13 @@ class ExtractionConfig(Serializable):
             )
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
+    def execute(self):
+        extract(cfg=self, num_gpus=self.num_gpus)
+
 
 @torch.no_grad()
 def extract_hiddens(
-    cfg: ExtractionConfig,
+    cfg: "Extract",
     *,
     device: Union[str, torch.device] = "cpu",
     split_type: Literal["train", "val"] = "train",
@@ -195,7 +183,7 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(cfg: ExtractionConfig, num_gpus: int = -1) -> DatasetDict:
+def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:

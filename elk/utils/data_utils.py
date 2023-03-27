@@ -8,8 +8,9 @@ from datasets import (
     Value,
 )
 from random import Random
-from typing import Iterable, Any
 import torch
+from typing import Iterable, Optional, List, Any
+import numpy as np
 import copy
 
 
@@ -25,11 +26,13 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
 
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
     """Return splits to use for train and validation, given an Iterable of splits."""
+
     priorities = {
         Split.TRAIN: 0,
         Split.VALIDATION: 1,
         Split.TEST: 2,
     }
+
     splits = sorted(raw_splits, key=lambda k: priorities.get(k, 100))  # type: ignore
     assert len(splits) >= 2, "Must have at least two of train, val, and test splits"
 
@@ -78,14 +81,14 @@ def infer_num_classes(label_feature: Any) -> int:
         )
 
 
-def float32_to_int16(x: torch.Tensor) -> torch.Tensor:
-    """Converts float32 to float16, then reinterprets as int16."""
-    return x.type(torch.float16).view(torch.int16)
-
-
-def int16_to_float32(x: torch.Tensor) -> torch.Tensor:
-    """Converts int16 to float16, then reinterprets as float32."""
-    return x.view(torch.float16).type(torch.float32)
+def get_layers(ds: DatasetDict) -> List[int]:
+    """Get a list of indices of hidden layers given a `DatasetDict`."""
+    layers = [
+        int(feat[len("hidden_") :])
+        for feat in ds["train"].features
+        if feat.startswith("hidden_")
+    ]
+    return layers
 
 
 def binarize(template: Template, label: int, new_label: int, rng: Random) -> Template:
@@ -110,6 +113,7 @@ def binarize(template: Template, label: int, new_label: int, rng: Random) -> Tem
     false = rng.choice([c for c in answer_choices if c != true])
 
     assert new_label in (0, 1)
+
     new_template = copy.deepcopy(template)
     new_template.answer_choices = (
         f"{false} ||| {true}" if new_label else f"{true} ||| {false}"
