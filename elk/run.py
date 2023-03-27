@@ -94,7 +94,7 @@ class Run(ABC):
         """Concatenate hidden states from a previous layer."""
         for layer in range(self.cfg.concatenated_layer_offset, len(layers)):
             layers[layer] = layers[layer] + [
-                layers[layer][0] - cfg.concatenated_layer_offset
+                layers[layer][0] - self.cfg.concatenated_layer_offset
             ]
         return layers
 
@@ -120,7 +120,7 @@ class Run(ABC):
 
         layers: list[int] = get_layers(self.dataset)
 
-        if cfg.concatenated_layer_offset > 0:
+        if self.cfg.concatenated_layer_offset > 0:
             layers = self.concatenate(cfg, layers)
 
         # Should we write to different CSV files for elicit vs eval?
