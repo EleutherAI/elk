@@ -100,7 +100,7 @@ class Evaluate(Run):
     def evaluate(self):
         """Evaluate the reporter on all layers."""
         devices = select_usable_devices(
-            self.cfg.num_gpus, min_memory=self.cfg.target.min_gpu_mem
+            self.cfg.num_gpus, min_memory=self.cfg.data.min_gpu_mem
         )
 
         num_devices = len(devices)
