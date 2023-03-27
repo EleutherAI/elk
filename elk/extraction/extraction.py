@@ -9,12 +9,25 @@ import torch
 from simple_parsing import Serializable, field
 from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
 
-from datasets import (Array3D, ClassLabel, DatasetDict, Features, Sequence,
-                      SplitDict, SplitInfo, Value, get_dataset_config_info)
+from datasets import (
+    Array3D,
+    ClassLabel,
+    DatasetDict,
+    Features,
+    Sequence,
+    SplitDict,
+    SplitInfo,
+    Value,
+    get_dataset_config_info,
+)
 from elk.utils.typing import float32_to_int16
 
-from ..utils import (assert_type, infer_label_column, select_train_val_splits,
-                     select_usable_devices)
+from ..utils import (
+    assert_type,
+    infer_label_column,
+    select_train_val_splits,
+    select_usable_devices,
+)
 from .balanced_sampler import BalancedSampler
 from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
