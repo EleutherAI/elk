@@ -19,8 +19,12 @@ from elk.training import Reporter
 
 from ..files import elk_reporter_dir, memorably_named_dir
 from ..training.preprocessing import normalize
-from ..utils import (assert_type, int16_to_float32, select_train_val_splits,
-                     select_usable_devices)
+from ..utils import (
+    assert_type,
+    int16_to_float32,
+    select_train_val_splits,
+    select_usable_devices,
+)
 
 
 @dataclass
