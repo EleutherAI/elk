@@ -2,6 +2,7 @@ import os
 import random
 from abc import ABC
 from dataclasses import dataclass, field
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -124,9 +125,8 @@ class Run(ABC):
             layers = self.concatenate(layers)
 
         # Should we write to different CSV files for elicit vs eval?
-        # set spawn start method to avoid issues with CUDA
-        mp.set_start_method("spawn", force=True)
-        with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
+        pool = ThreadPool(num_devices)
+        with pool, open(self.out_dir / "eval.csv", "w") as f:
             mapper = pool.imap_unordered if num_devices > 1 else map
             iterator: Iterator[Log] = tqdm(  # type: ignore
                 mapper(func, layers), total=len(layers)
