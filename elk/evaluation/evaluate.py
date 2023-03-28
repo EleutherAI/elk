@@ -1,17 +1,30 @@
+import csv
+import os
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Literal, Optional, Callable
+from typing import Callable, Literal, Optional, cast
 
 import torch
-from simple_parsing import Serializable, field
+import torch.multiprocessing as mp
+from simple_parsing.helpers import Serializable, field
+from torch import Tensor
+from tqdm.auto import tqdm
 
+from datasets import DatasetDict
+from elk.evaluation.evaluate_log import EvalLog
 from elk.extraction.extraction import Extract
-from elk.files import elk_reporter_dir
 from elk.run import Run
 from elk.training import Reporter
-from elk.evaluation.evaluate_log import EvalLog
-from elk.utils import select_usable_devices
+
+from ..files import elk_reporter_dir, memorably_named_dir
+from ..training.preprocessing import normalize
+from ..utils import (
+    assert_type,
+    int16_to_float32,
+    select_train_val_splits,
+    select_usable_devices,
+)
 
 
 @dataclass
@@ -38,6 +51,8 @@ class Eval(Serializable):
     debug: bool = False
     out_dir: Optional[Path] = None
     num_gpus: int = -1
+
+    concatenated_layer_offset: int = 0
 
     def execute(self):
         transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
@@ -80,7 +95,10 @@ class Evaluate(Run):
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
-        devices = select_usable_devices(self.cfg.num_gpus)
+        devices = select_usable_devices(
+            self.cfg.num_gpus, min_memory=self.cfg.data.min_gpu_mem
+        )
+
         num_devices = len(devices)
         func: Callable[[int], EvalLog] = partial(
             self.evaluate_reporter, devices=devices, world_size=num_devices
