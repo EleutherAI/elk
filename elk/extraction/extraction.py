@@ -266,7 +266,7 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
 
     ds = dict()
     for split, builder in builders.items():
-        builder.download_and_prepare(num_proc=len(devices))
+        builder.download_and_prepare()
         ds[split] = builder.as_dataset(split=split)
 
     return DatasetDict(ds)
