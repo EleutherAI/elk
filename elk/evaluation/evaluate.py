@@ -1,34 +1,26 @@
-from ..training.preprocessing import normalize
+import csv
+import os
 from dataclasses import dataclass
-from datasets import DatasetDict
 from functools import partial
 from pathlib import Path
+from typing import Callable, Literal, Optional, cast
+
+import torch
+import torch.multiprocessing as mp
 from simple_parsing.helpers import Serializable, field
 from torch import Tensor
 from tqdm.auto import tqdm
-from typing import Literal, Optional, cast, Callable
-import csv
-import os
-import torch
-import torch.multiprocessing as mp
 
+from datasets import DatasetDict
+from elk.evaluation.evaluate_log import EvalLog
 from elk.extraction.extraction import Extract
-from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import (
-    assert_type,
-    int16_to_float32,
-    select_train_val_splits,
-    select_usable_devices,
-)
-
-import torch
-from simple_parsing import Serializable, field
-
-from elk.files import elk_reporter_dir
 from elk.run import Run
 from elk.training import Reporter
-from elk.evaluation.evaluate_log import EvalLog
-from elk.utils import select_usable_devices
+
+from ..files import elk_reporter_dir, memorably_named_dir
+from ..training.preprocessing import normalize
+from ..utils import (assert_type, int16_to_float32, select_train_val_splits,
+                     select_usable_devices)
 
 
 @dataclass
