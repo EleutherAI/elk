@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Union
-import multiprocessing as mp
+import torch.multiprocessing as mp
 
 from simple_parsing import ArgumentParser
 
@@ -27,6 +27,7 @@ def run():
     This is so that we can use CUDA properly in the child processes
     """
     mp.set_start_method("spawn")
+    print(f"Set start method to {mp.get_start_method()}")
     parser = ArgumentParser(add_help=False)
     parser.add_arguments(Command, dest="run")
     args = parser.parse_args()
