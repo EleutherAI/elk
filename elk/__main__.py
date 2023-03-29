@@ -1,8 +1,8 @@
 """Main entry point for `elk`."""
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Union
+import multiprocessing as mp
 
 from simple_parsing import ArgumentParser
 
@@ -30,4 +30,9 @@ def run():
 
 
 if __name__ == "__main__":
+    """
+    Sets the spawn start method for multiprocessing
+    This is so that we can use CUDA properly in the child processes
+    """
+    mp.set_start_method("spawn")
     run()
