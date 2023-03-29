@@ -1,13 +1,11 @@
 """Main entry point for `elk`."""
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Union
-
 from simple_parsing import ArgumentParser
-
 from elk.evaluation.evaluate import Eval
 from elk.extraction.extraction import Extract
+
 from elk.training.train import Elicit
 
 

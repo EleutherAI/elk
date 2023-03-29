@@ -20,7 +20,7 @@ def test_lanczos_eigsh(n, which):
     w_scipy, v_scipy = eigsh(A.numpy(), which=which)
 
     # Check that the eigenvalues match to within the tolerance
-    torch.testing.assert_close(w, torch.from_numpy(w_scipy), atol=1e-3, rtol=1e-3)
+    torch.testing.assert_allclose(w, torch.from_numpy(w_scipy), atol=1e-3, rtol=1e-3)
 
     # Normalize the sign of the eigenvectors
     for i in range(v.shape[-1]):
@@ -30,4 +30,4 @@ def test_lanczos_eigsh(n, which):
             v_scipy[:, i] *= -1
 
     # Check that the eigenvectors match to within the tolerance
-    torch.testing.assert_close(v, torch.from_numpy(v_scipy), atol=1e-3, rtol=1e-3)
+    torch.testing.assert_allclose(v, torch.from_numpy(v_scipy), atol=1e-3, rtol=1e-3)

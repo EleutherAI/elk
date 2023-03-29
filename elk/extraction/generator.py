@@ -53,6 +53,5 @@ class _GeneratorBuilder(datasets.GeneratorBasedBuilder):
 
     def _generate_examples(self, **gen_kwargs):
         assert self.config.generator is not None, "generator must be specified"
-
         for idx, ex in enumerate(self.config.generator(**gen_kwargs)):
             yield idx, ex

@@ -90,14 +90,6 @@ class Run(ABC):
 
         return x0, x1, val_x0, val_x1, train_labels, val_labels
 
-    def concatenate(self, layers):
-        """Concatenate hidden states from a previous layer."""
-        for layer in range(self.cfg.concatenated_layer_offset, len(layers)):
-            layers[layer] = layers[layer] + [
-                layers[layer][0] - self.cfg.concatenated_layer_offset
-            ]
-        return layers
-
     def apply_to_layers(
         self,
         func: Callable[[int], Log],
@@ -117,14 +109,9 @@ class Run(ABC):
                 the extra options e.g. skip_baseline to apply to function.
             csv_columns: The columns of the CSV file."""
         self.out_dir = assert_type(Path, self.out_dir)
-
-        layers: list[int] = get_layers(self.dataset)
-
-        if self.cfg.concatenated_layer_offset > 0:
-            layers = self.concatenate(layers)
-
         # Should we write to different CSV files for elicit vs eval?
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
+            layers: list[int] = get_layers(self.dataset)
             mapper = pool.imap_unordered if num_devices > 1 else map
             iterator: Iterator[Log] = tqdm(  # type: ignore
                 mapper(func, layers), total=len(layers)

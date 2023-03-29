@@ -51,8 +51,6 @@ class Elicit(Serializable):
     num_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
-    concatenated_layer_offset: int = 0
-    # if nonzero, appends the hidden states of layer concatenated_layer_offset before
     debug: bool = False
     out_dir: Optional[Path] = None
 

@@ -6,25 +6,28 @@ from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training import train
 from elk.training.train import Elicit
 
+"""
+TODO: These tests should work with deberta
+but you'll need to make deberta fp32 instead of fp16
+because pytorch cpu doesn't support fp16
+"""
+
 
 def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
-    # we need about 5 mb of gpu memory to run this test
-    model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024**2
+    model_path = "sshleifer/tiny-gpt2"
     dataset_name = "imdb"
     elicit = Elicit(
         data=Extract(
             model=model_path,
-            prompts=PromptConfig(datasets=[dataset_name], max_examples=[10]),
-            min_gpu_mem=min_mem,
+            prompts=PromptConfig(dataset=dataset_name, max_examples=[10]),
             # run on all layers, tiny-gpt only has 2 layers
         ),
-        num_gpus=2,
         net=CcsReporterConfig(),
         out_dir=tmp_path,
     )
     elicit.execute()
     # get the files in the tmp_path
-    files: list[Path] = list(tmp_path.iterdir())
+    files: Path = list(tmp_path.iterdir())
     created_file_names = {file.name for file in files}
     expected_files = ["cfg.yaml", "metadata.yaml", "lr_models", "reporters", "eval.csv"]
     for file in expected_files:
@@ -32,23 +35,31 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
 
 
 def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
-    # we need about 5 mb of gpu memory to run this test
-    model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024**2
+    """
+    Currently this test fails with
+    u -= torch.einsum("...ij,...i->...j", V[..., :k, :], proj)
+    V[..., k, :] = F.normalize(u, dim=-1)
+    ~~~~~~~~~ <--- HERE
+
+    u[:] = torch.einsum("...ij,...j->...i", A, V[..., k, :])
+
+    RuntimeError: select(): index 1 out of range for tensor of size [1, 2]
+    at dimension 0
+    """
+    model_path = "sshleifer/tiny-gpt2"
     dataset_name = "imdb"
     elicit = Elicit(
         data=Extract(
             model=model_path,
-            prompts=PromptConfig(datasets=[dataset_name], max_examples=[10]),
-            min_gpu_mem=min_mem,
+            prompts=PromptConfig(dataset=dataset_name, max_examples=[10]),
             # run on all layers, tiny-gpt only has 2 layers
         ),
-        num_gpus=2,
         net=EigenReporterConfig(),
         out_dir=tmp_path,
     )
     elicit.execute()
     # get the files in the tmp_path
-    files: list[Path] = list(tmp_path.iterdir())
+    files: Path = list(tmp_path.iterdir())
     created_file_names = {file.name for file in files}
     expected_files = ["cfg.yaml", "metadata.yaml", "lr_models", "reporters", "eval.csv"]
     for file in expected_files:
