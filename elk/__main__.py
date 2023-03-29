@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Union
-import torch.multiprocessing as mp
+import multiprocessing as mp
 mp.set_start_method("spawn")
 
 from simple_parsing import ArgumentParser
