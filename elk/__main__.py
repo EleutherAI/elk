@@ -22,6 +22,11 @@ class Command:
 
 
 def run():
+    """
+    Sets the spawn start method for multiprocessing
+    This is so that we can use CUDA properly in the child processes
+    """
+    mp.set_start_method("spawn")
     parser = ArgumentParser(add_help=False)
     parser.add_arguments(Command, dest="run")
     args = parser.parse_args()
@@ -30,9 +35,4 @@ def run():
 
 
 if __name__ == "__main__":
-    """
-    Sets the spawn start method for multiprocessing
-    This is so that we can use CUDA properly in the child processes
-    """
-    mp.set_start_method("spawn")
     run()
