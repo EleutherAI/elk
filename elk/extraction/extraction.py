@@ -7,6 +7,7 @@ from typing import Iterable, Literal, Optional, Union
 
 import torch
 import torch.multiprocessing as mp
+import multiprocessing as mp_ori
 from simple_parsing import Serializable, field
 from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
 
@@ -265,6 +266,7 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
         for (split_name, split_info) in get_splits().items()
     }
     print(f"Set builder start method to {mp.get_start_method()}")
+    print(f"Set builder start method to {mp_ori.get_start_method()}")
     ds = dict()
     for split, builder in builders.items():
         builder.download_and_prepare(num_proc=len(devices))
