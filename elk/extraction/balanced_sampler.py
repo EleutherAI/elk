@@ -1,8 +1,9 @@
 from ..math_util import stochastic_round_constrained
 from ..utils import infer_label_column
+from ..utils.typing import assert_type
 from collections import deque
 from dataclasses import dataclass
-from datasets import IterableDataset
+from datasets import IterableDataset, Features
 from itertools import cycle
 from random import Random
 from torch.utils.data import IterableDataset as TorchIterableDataset
@@ -62,7 +63,8 @@ class FewShotSampler:
         label_col: Optional[str] = None,
     ):
         self.dataset = dataset
-        self.label_col = label_col or infer_label_column(dataset.features)
+        feats = assert_type(Features, dataset.features)
+        self.label_col = label_col or infer_label_column(feats)
         self.num_shots = num_shots
         self.rng = rng
 
