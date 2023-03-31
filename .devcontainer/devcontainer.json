@@ -25,23 +25,23 @@
                 }
             },
             "extensions": [
-				"davidanson.vscode-markdownlint",
-				"donjayamanne.githistory",
-				"donjayamanne.python-extension-pack",
-				"github.vscode-pull-request-github",
-				"ms-python.python",
-				"ms-toolsai.jupyter",
-				"ms-vsliveshare.vsliveshare-pack",
-				"njpwerner.autodocstring",
-				"stkb.rewrap",
-				"streetsidesoftware.code-spell-checker",
-				"tushortz.python-extended-snippets",
-				"yzhang.markdown-all-in-one",
-				"elagil.pre-commit-helper",
+                "davidanson.vscode-markdownlint",
+                "donjayamanne.githistory",
+                "donjayamanne.python-extension-pack",
+                "github.vscode-pull-request-github",
+                "ms-python.python",
+                "ms-toolsai.jupyter",
+                "ms-vsliveshare.vsliveshare-pack",
+                "njpwerner.autodocstring",
+                "stkb.rewrap",
+                "streetsidesoftware.code-spell-checker",
+                "tushortz.python-extended-snippets",
+                "yzhang.markdown-all-in-one",
+                "elagil.pre-commit-helper",
                 "eamodio.gitlens"
-			]
+            ]
         }
     },
     "containerUser": "user",
-    "postCreateCommand": "pip install -e .[dev]"
+    "postCreateCommand": "pip install -e .[dev] --no-warn-script-location"
 }

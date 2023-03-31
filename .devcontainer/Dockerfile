@@ -16,27 +16,36 @@ RUN groupadd --gid $USER_GID $USERNAME \
   && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
   && chmod 0440 /etc/sudoers.d/$USERNAME
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install dependencies
-RUN sudo apt-get update && \
-  DEBIAN_FRONTEND=noninteractive apt-get -qq -y install \
-  build-essential \
-  python3.9 \
-  python3.9-dev \
-  python3.9-distutils \
-  python3.9-venv \
-  curl \
-  git \
-  tmux
+RUN apt-get update && \
+    apt-get -qq -y install \
+    software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get -qq -y install \
+    build-essential \
+    python3.10 \
+    python3.10-dev \
+    python3.10-distutils \
+    python3.10-venv \
+    curl \
+    git \
+    tmux
+
+# Update package list, add the deadsnakes PPA, and install dependencies
+
 
 ENV PATH="$HOME/.local/bin:$PATH"
 
 # Install pip (we need the latest version not the standard Ubuntu version, to
 # support modern wheels)
-RUN sudo curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3.9 get-pip.py
+RUN sudo curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3.10 get-pip.py
 
 # Set python aliases
-RUN sudo update-alternatives --install /usr/bin/python python /usr/bin/python3.9 1
-RUN sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
+RUN sudo update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
+RUN sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 
 # User the new user
 USER $USERNAME
