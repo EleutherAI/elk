@@ -15,10 +15,14 @@ def save_debug_log(ds, out_dir):
         filemode="w",
     )
 
-    _, val_split = select_train_val_splits(ds)
+    train_split, val_split = select_train_val_splits(ds)
     text_inputs = ds[val_split][0]["text_inputs"]
     template_ids = ds[val_split][0]["variant_ids"]
     label = ds[val_split][0]["label"]
+
+    # log the train size and val size
+    logging.info(f"Train size: {len(ds[train_split])}")
+    logging.info(f"Val size: {len(ds[val_split])}")
 
     templates_text = f"{len(text_inputs)} templates used:\n"
     trailing_whitespace = False

@@ -128,7 +128,15 @@ def extract_hiddens(
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
     # print(f"Using {prompt_ds} variants for each dataset")
 
-    max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
+    global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
+    # break `max_examples` among the processes roughly equally
+    max_examples = global_max_examples // world_size
+    # the last process gets the remainder (which is usually small)
+    if rank == world_size - 1:
+        max_examples += global_max_examples % world_size
+
+    print(f"Extracting {max_examples} examples from {prompt_ds} on {device}")
+
     for example in islice(BalancedSampler(prompt_ds), max_examples):
         num_variants = len(example["prompts"])
         hidden_dict = {
