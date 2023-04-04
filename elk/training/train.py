@@ -10,13 +10,11 @@ import torch
 from simple_parsing import Serializable, field, subgroups
 from torch import Tensor
 
-from elk.extraction.extraction import Extract
-from elk.run import Run
-from elk.training.baseline import (evaluate_baseline, save_baseline,
-                                   train_baseline)
-from elk.utils.typing import assert_type
-
+from ..extraction.extraction import Extract
+from ..run import Run
+from ..training.baseline import evaluate_baseline, save_baseline, train_baseline
 from ..utils import select_usable_devices
+from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig

@@ -11,7 +11,10 @@ from .classifier import Classifier
 
 # TODO: Create class for baseline?
 
-def evaluate_baseline(lr_model: Classifier, val_x0: Tensor, val_x1: Tensor, val_labels: Tensor) -> Tuple[float, float]:
+
+def evaluate_baseline(
+    lr_model: Classifier, val_x0: Tensor, val_x1: Tensor, val_labels: Tensor
+) -> Tuple[float, float]:
     X = torch.cat([val_x0, val_x1])
     d = X.shape[-1]
     X_val = X.view(-1, d)
@@ -27,6 +30,7 @@ def evaluate_baseline(lr_model: Classifier, val_x0: Tensor, val_x1: Tensor, val_
 
     return assert_type(float, lr_auroc), assert_type(float, lr_acc)
 
+
 def train_baseline(
     x0: Tensor,
     x1: Tensor,
@@ -36,9 +40,9 @@ def train_baseline(
     # repeat_interleave makes `num_variants` copies of each label, all within a
     # single dimension of size `num_variants * 2 * n`, such that the labels align
     # with X.view(-1, X.shape[-1])
-    train_labels_aug = torch.cat(
-        [train_labels, 1 - train_labels]
-    ).repeat_interleave(x0.shape[1])
+    train_labels_aug = torch.cat([train_labels, 1 - train_labels]).repeat_interleave(
+        x0.shape[1]
+    )
 
     X = torch.cat([x0, x1]).squeeze()
     d = X.shape[-1]
@@ -47,9 +51,11 @@ def train_baseline(
 
     return lr_model
 
+
 def save_baseline(lr_dir: Path, layer: int, lr_model: Classifier):
     with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
         pickle.dump(lr_model, file)
+
 
 def load_baseline(lr_dir: Path, layer: int) -> Classifier:
     with open(lr_dir / f"layer_{layer}.pt", "rb") as file:
