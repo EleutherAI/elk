@@ -1,15 +1,7 @@
 """Functions for extracting the hidden states of a model."""
-import logging
-import os
 from dataclasses import InitVar, dataclass
-from itertools import islice
-from typing import Iterable, Literal, Optional, Union
-
-import torch
-from simple_parsing import Serializable, field
-from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
-
 from datasets import (
+    Array2D,
     Array3D,
     ClassLabel,
     DatasetDict,
@@ -20,11 +12,19 @@ from datasets import (
     Value,
     get_dataset_config_info,
 )
-from elk.utils.typing import float32_to_int16
+from itertools import islice
+from simple_parsing import Serializable, field
+from transformers import AutoConfig, AutoTokenizer, PreTrainedModel
+from typing import Iterable, Literal, Optional, Union
+import logging
+import os
+import torch
 
 from ..utils import (
     assert_type,
-    infer_label_column,
+    convert_span,
+    float32_to_int16,
+    get_model_class,
     select_train_val_splits,
     select_usable_devices,
 )
@@ -101,10 +101,12 @@ def extract_hiddens(
         world_size=world_size,
     )  # this dataset is already sharded, but hasn't been truncated to max_examples
 
-    # AutoModel should do the right thing here in nearly all cases. We don't actually
-    # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+    model_cls = get_model_class(cfg.model)
+    model = assert_type(
+        PreTrainedModel,
+        model_cls.from_pretrained(
+            cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+        ),
     ).to(device)
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
@@ -126,7 +128,6 @@ def extract_hiddens(
 
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
-    # print(f"Using {prompt_ds} variants for each dataset")
 
     global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
     # break `max_examples` among the processes roughly equally
@@ -134,8 +135,6 @@ def extract_hiddens(
     # the last process gets the remainder (which is usually small)
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
-
-    print(f"Extracting {max_examples} examples from {prompt_ds} on {device}")
 
     for example in islice(BalancedSampler(prompt_ds), max_examples):
         num_variants = len(example["prompts"])
@@ -149,6 +148,12 @@ def extract_hiddens(
             )
             for layer_idx in layer_indices
         }
+        model_preds = torch.empty(
+            num_variants,
+            2,  # contrast pair
+            device=device,
+            dtype=torch.float32,
+        )
         text_inputs = []
 
         # Iterate over variants
@@ -156,16 +161,33 @@ def extract_hiddens(
             variant_inputs = []
 
             # Iterate over answers
-            for j in range(2):
-                text = record[j]["text"]
+            for j, choice in enumerate(record):
+                text = choice["text"]
                 variant_inputs.append(text)
 
                 inputs = tokenizer(
                     text,
+                    return_offsets_mapping=True,
                     return_tensors="pt",
                     truncation=True,
                 ).to(device)
+
+                # The offset_mapping is a sorted list of (start, end) tuples. We locate
+                # the start of the answer in the tokenized sequence with binary search.
+                offsets = inputs.pop("offset_mapping").squeeze().tolist()
+
                 outputs = model(**inputs, output_hidden_states=True)
+
+                # TODO: Do something smarter than "rindex" here. Really we'd like to
+                # get the span of the answer directly from Jinja, but that doesn't seem
+                # to be supported. The current approach may fail for complex templates.
+                answer_start = text.rindex(choice["answer"])
+                start, end = convert_span(
+                    offsets, (answer_start, answer_start + len(choice["answer"]))
+                )
+                log_p = outputs.logits[..., start - 1 : end - 1, :].log_softmax(dim=-1)
+                tokens = inputs.input_ids[..., start:end, None]
+                model_preds[i, j] = log_p.gather(-1, tokens).sum()
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
@@ -193,6 +215,8 @@ def extract_hiddens(
 
         yield dict(
             label=example["label"],
+            # We only need the probability of the positive example since this is binary
+            model_preds=model_preds.softmax(dim=-1)[..., 1],
             variant_ids=example["template_names"],
             text_inputs=text_inputs,
             **hidden_dict,
@@ -245,6 +269,10 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
         "label": ClassLabel(names=["neg", "pos"]),
+        "model_preds": Sequence(
+            Value(dtype="float32"),
+            length=num_variants,
+        ),
         "text_inputs": Sequence(
             Sequence(
                 Value(dtype="string"),

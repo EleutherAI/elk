@@ -124,7 +124,7 @@ class Train(Run):
 
         device = self.get_device(devices, world_size)
 
-        x0, x1, val_x0, val_x1, train_labels, val_labels = self.prepare_data(
+        x0, x1, val_x0, val_x1, train_gt, val_gt, val_lm_preds = self.prepare_data(
             device, layer
         )
         pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
@@ -136,19 +136,23 @@ class Train(Run):
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
-        train_loss = reporter.fit(x0, x1, train_labels)
+        train_loss = reporter.fit(x0, x1, train_gt)
         val_result = reporter.score(
-            val_labels,
+            val_gt,
             val_x0,
             val_x1,
         )
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        stats: ElicitLog = ElicitLog(
+        val_gt_cpu = val_gt.repeat_interleave(val_lm_preds.shape[1]).float().cpu()
+
+        stats = ElicitLog(
             layer=layer,
             pseudo_auroc=pseudo_auroc,
             train_loss=train_loss,
             eval_result=val_result,
+            lm_auroc=float(roc_auc_score(val_gt_cpu, val_lm_preds.flatten())),
+            lm_acc=float(accuracy_score(val_gt_cpu, val_lm_preds.flatten() > 0.5)),
         )
 
         if not self.cfg.skip_baseline:
@@ -157,8 +161,8 @@ class Train(Run):
                 x1,
                 val_x0,
                 val_x1,
-                train_labels,
-                val_labels,
+                train_gt,
+                val_gt,
                 device,
             )
             stats.lr_auroc = lr_auroc

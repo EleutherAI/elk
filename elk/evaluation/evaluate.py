@@ -1,30 +1,18 @@
-import csv
-import os
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Literal, Optional, cast
+from typing import Callable, Literal, Optional
 
 import torch
-import torch.multiprocessing as mp
 from simple_parsing.helpers import Serializable, field
-from torch import Tensor
-from tqdm.auto import tqdm
 
-from datasets import DatasetDict
 from elk.evaluation.evaluate_log import EvalLog
 from elk.extraction.extraction import Extract
 from elk.run import Run
 from elk.training import Reporter
 
-from ..files import elk_reporter_dir, memorably_named_dir
-from ..training.preprocessing import normalize
-from ..utils import (
-    assert_type,
-    int16_to_float32,
-    select_train_val_splits,
-    select_usable_devices,
-)
+from ..files import elk_reporter_dir
+from ..utils import select_usable_devices
 
 
 @dataclass
@@ -71,7 +59,7 @@ class Evaluate(Run):
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
-        _, _, test_x0, test_x1, _, test_labels = self.prepare_data(
+        _, _, test_x0, test_x1, _, test_labels, _ = self.prepare_data(
             device,
             layer,
         )

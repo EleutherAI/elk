@@ -1,7 +1,6 @@
+from .reporter import EvalResult
 from dataclasses import dataclass
 from typing import Optional
-
-from elk.training.reporter import EvalResult
 
 
 @dataclass
@@ -9,9 +8,13 @@ class ElicitLog:
     """The result of running elicit on a layer of a dataset"""
 
     layer: int
+    pseudo_auroc: float
     train_loss: float
     eval_result: EvalResult
-    pseudo_auroc: float
+
+    lm_auroc: float
+    lm_acc: float
+
     # Only available if reporting baseline
     lr_auroc: Optional[float] = None
     # Only available if reporting baseline
@@ -28,6 +31,8 @@ class ElicitLog:
             "cal_acc",
             "auroc",
             "ece",
+            "lm_auroc",
+            "lm_acc",
         ]
         if not skip_baseline:
             cols += ["lr_auroc", "lr_acc"]
@@ -43,6 +48,8 @@ class ElicitLog:
             self.eval_result.cal_acc,
             self.eval_result.auroc,
             self.eval_result.ece,
+            self.lm_auroc,
+            self.lm_acc,
         ]
         if not skip_baseline:
             items += [self.lr_auroc, self.lr_acc]

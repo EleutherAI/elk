@@ -88,7 +88,10 @@ class Run(ABC):
             x0, x1 = train_h.unbind(dim=-2)
             val_x0, val_x1 = val_h.unbind(dim=-2)
 
-        return x0, x1, val_x0, val_x1, train_labels, val_labels
+        with self.dataset.formatted_as("numpy"):
+            val_lm_preds = assert_type(np.ndarray, val["model_preds"])
+
+        return x0, x1, val_x0, val_x1, train_labels, val_labels, val_lm_preds
 
     def concatenate(self, layers):
         """Concatenate hidden states from a previous layer."""
