@@ -4,6 +4,7 @@ from ..utils import (
     binarize,
     infer_label_column,
     infer_num_classes,
+    is_streamable,
     select_train_val_splits,
 )
 from .balanced_sampler import FewShotSampler
@@ -71,13 +72,14 @@ class PromptConfig(Serializable):
             self.max_examples *= 2
 
 
-def load_prompts(
+def yield_prompts(
     *dataset_strings: str,
     num_shots: int = 0,
     num_variants: int = -1,
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
     stream: bool = False,
+    max_examples: int = 750,
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterator[dict]:
@@ -114,18 +116,17 @@ def load_prompts(
         train_name, val_name = select_train_val_splits(ds_dict)
         split_name = val_name if split_type == "val" else train_name
 
-        # Note that when streaming we can only approximately shuffle the dataset
-        # using a buffer. Streaming shuffling is NOT an adequate shuffle for
-        # datasets like IMDB, which are sorted by label.
-        bad_streaming_datasets = ["imdb"]
-        assert not (
-            stream and ds_name in bad_streaming_datasets
-        ), f"Streaming is not supported for {ds_name}."
         split = ds_dict[split_name].shuffle(seed=seed)
         train_ds = ds_dict[train_name].shuffle(seed=seed)
         if not stream:
             split = assert_type(Dataset, split)
             split = split.to_iterable_dataset().cast(split.features)
+        else:
+            if not is_streamable(split, max_examples=max_examples):
+                raise ValueError(
+                    f"Streaming dataset {ds_name} is not streamable because the first "
+                    f"{max_examples} examples are all of the same label."
+                )
 
         # only keep the datapoints relevant to the current process
         if world_size > 1:

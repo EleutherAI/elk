@@ -30,7 +30,7 @@ from ..utils import (
 )
 from .balanced_sampler import BalancedSampler
 from .generator import _GeneratorBuilder
-from .prompt_loading import PromptConfig, load_prompts
+from .prompt_loading import PromptConfig, yield_prompts
 
 
 @dataclass
@@ -93,10 +93,18 @@ def extract_hiddens(
     if rank != 0:
         logging.disable(logging.CRITICAL)
 
-    prompt_ds = load_prompts(
+    global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
+    # break `max_examples` among the processes roughly equally
+    max_examples = global_max_examples // world_size
+    # the last process gets the remainder (which is usually small)
+    if rank == world_size - 1:
+        max_examples += global_max_examples % world_size
+
+    prompt_ds = yield_prompts(
         *cfg.prompts.datasets,
         split_type=split_type,
         stream=cfg.prompts.stream,
+        max_examples=max_examples,
         rank=rank,
         world_size=world_size,
     )  # this dataset is already sharded, but hasn't been truncated to max_examples
@@ -127,15 +135,6 @@ def extract_hiddens(
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
     # print(f"Using {prompt_ds} variants for each dataset")
-
-    global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
-    # break `max_examples` among the processes roughly equally
-    max_examples = global_max_examples // world_size
-    # the last process gets the remainder (which is usually small)
-    if rank == world_size - 1:
-        max_examples += global_max_examples % world_size
-
-    print(f"Extracting {max_examples} examples from {prompt_ds} on {device}")
 
     for example in islice(BalancedSampler(prompt_ds), max_examples):
         num_variants = len(example["prompts"])
