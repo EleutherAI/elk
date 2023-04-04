@@ -60,7 +60,7 @@ pyright
 ```
 
 ### Run the linter
-We use [ruff](https://beta.ruff.rs/docs/). It is installed as a pre-commit hook, so you don't have to run it manually. 
+We use [ruff](https://beta.ruff.rs/docs/). It is installed as a pre-commit hook, so you don't have to run it manually.
 If you want to run it manually, you can do so with:
 ```bash
 ruff . --fix
