@@ -1,4 +1,4 @@
-from elk.extraction import load_prompts, PromptConfig
+from elk.extraction import yield_prompts, PromptConfig
 from elk.promptsource.templates import DatasetTemplates
 from itertools import cycle, islice
 from typing import Literal
@@ -8,7 +8,7 @@ import pytest
 @pytest.mark.filterwarnings("ignore:Unable to find a decoding function")
 def test_load_prompts():
     def test_single_split(cfg: PromptConfig, split_type: Literal["train", "val"]):
-        prompt_ds = load_prompts(
+        prompt_ds = yield_prompts(
             *cfg.datasets,
             split_type=split_type,
         )
