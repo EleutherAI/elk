@@ -5,12 +5,36 @@ import pytest
 import torch
 
 
-@pytest.mark.parametrize("n", [20, 40])
+def random_symmetric_matrix(n: int, k: int) -> torch.Tensor:
+    """Random symmetric matrix with `k` nonzero eigenvalues centered around zero."""
+    assert k <= n, "Rank k should be less than or equal to the matrix size n."
+
+    # Generate random n x k matrix A with elements drawn from a uniform distribution
+    A = torch.rand(n, k) / k**0.5
+
+    # Create a diagonal matrix D with k eigenvalues evenly distributed around zero
+    eigenvalues = torch.linspace(-1, 1, k)
+    D = torch.diag(eigenvalues)
+
+    # Compute the product A * D * A.T to obtain a symmetric matrix with the desired
+    # eigenvalue distribution
+    symm_matrix = A @ D @ A.T
+
+    return symm_matrix
+
+
+@pytest.mark.parametrize("n", [32, 768, 6144])
+@pytest.mark.parametrize("full_rank", [False, True])
 @pytest.mark.parametrize("which", ["LA", "SA"])
-def test_lanczos_eigsh(n, which):
+def test_lanczos_eigsh(n: int, full_rank: bool, which):
     torch.manual_seed(42)
 
-    A = torch.randn(n, n)
+    if full_rank:
+        A = torch.randn(n, n)
+    else:
+        # Generate a random symmetric matrix with rank n // 2
+        A = random_symmetric_matrix(n, n // 2)
+
     A = A + A.T
 
     # Compute the top k eigenpairs using our implementation

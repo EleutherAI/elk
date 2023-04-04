@@ -25,6 +25,10 @@ def lanczos_eigsh(
     which='LM' because we are interested in algebraic eigenvalues, not magnitude.
     Largest magnitude is also harder to implement in TorchScript.
 
+    For matrices 256 x 256 or smaller, we short-circuit to the naive method of calling
+    `torch.linalg.eigh` and discarding all but the requested number of eigenpairs.
+    Empirically this is faster than our Lanczos implementation for such small matrices.
+
     Args:
         A (Tensor): The matrix or batch of matrices of shape `[..., n, n]` for which to
             compute eigenpairs. Must be symmetric, but need not be positive definite.
@@ -48,7 +52,7 @@ def lanczos_eigsh(
     assert n == m, "A must be a square matrix or a batch of square matrices."
 
     # Short circuit if the matrix is too small; we can't outcompete the naive method.
-    if n <= 32:
+    if n <= 256:
         L, Q = torch.linalg.eigh(A)
         if which == "LA":
             return L[..., -k:], Q[..., :, -k:]
@@ -62,7 +66,9 @@ def lanczos_eigsh(
             return L[..., :k], Q[..., :, :k]
 
     if ncv is None:
-        ncv = min(max(2 * k, k + 32), n - 1)
+        # This is the default used by SciPy; CuPy uses min(n - 1, max(2 * k, k + 32)).
+        # Empirically the SciPy default seems to converge better.
+        ncv = min(n, max(2 * k + 1, 20))
     else:
         ncv = min(max(ncv, k + 2), n - 1)
 
@@ -122,6 +128,11 @@ def lanczos_eigsh(
             ncv,
         )
         cur_iter += ncv - k
+
+    if res > tol:
+        raise RuntimeError(
+            f"Failed to converge after {cur_iter} iterations. " f"Residual: {res}."
+        )
 
     return w, x
 

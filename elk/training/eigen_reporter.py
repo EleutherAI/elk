@@ -162,7 +162,7 @@ class EigenReporter(Reporter):
             - self.config.inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
         )
-        v0 = self.weight.T.squeeze() if warm_start else None
+        v0 = self.weight[0] if warm_start else None
 
         # We use "LA" (largest algebraic) instead of "LM" (largest magnitude) to
         # ensure that the eigenvalue is positive and not a large negative one
