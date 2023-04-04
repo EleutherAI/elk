@@ -62,3 +62,7 @@ include = ["elk*"]
 select = ["E", "F"]
 # Same as Black.
 line-length = 88
+# Avoid automatically removing unused imports in __init__.py files.
+# Such imports will be flagged with a dedicated message suggesting
+# that the import is either added to the module's __all__ symbol
+ignore-init-module-imports = true

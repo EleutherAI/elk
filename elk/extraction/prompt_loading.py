@@ -9,13 +9,9 @@ from ..utils import (
 from .balanced_sampler import FewShotSampler
 from dataclasses import dataclass
 from datasets import (
-    interleave_datasets,
     load_dataset,
-    ClassLabel,
     Dataset,
     Features,
-    IterableDataset,
-    Sequence,
 )
 from datasets.distributed import split_dataset_by_node
 from random import Random

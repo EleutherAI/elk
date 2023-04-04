@@ -24,7 +24,6 @@ from elk.utils.typing import float32_to_int16
 
 from ..utils import (
     assert_type,
-    infer_label_column,
     select_train_val_splits,
     select_usable_devices,
 )
