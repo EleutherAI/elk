@@ -10,8 +10,8 @@ requires-python = ">=3.9"
 keywords = ["nlp", "interpretability", "language-models", "explainable-ai"]
 license = {text = "MIT License"}
 dependencies = [
-    # Added Dataset.from_generator() method
-    "datasets>=2.5.0",
+    # Added distributed.split_dataset_by_node for IterableDatasets
+    "datasets>=2.9.0",
     # Introduced numpy.typing module
     "numpy>=1.20.0",
     # This version is old, but it's needed for certain HF tokenizers to work.

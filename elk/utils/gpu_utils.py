@@ -1,6 +1,7 @@
 """Utilities that use PyNVML to get GPU usage info, and select GPUs accordingly."""
 
 from .typing import assert_type
+from typing import Optional
 import os
 import pynvml
 import torch
@@ -8,8 +9,11 @@ import warnings
 import time
 
 
-def select_usable_devices(num_gpus: int = -1, *, min_memory: int = -1) -> list[str]:
+def select_usable_devices(
+    num_gpus: int = -1, *, min_memory: Optional[int] = None
+) -> list[str]:
     """Select a set of devices that have at least `min_memory` bytes of free memory.
+    Blocks until at least `num_gpus` devices are available.
 
     When there are more than enough GPUs to satisfy the request, the GPUs with the
     most free memory will be selected. With default arguments, this function will
@@ -30,7 +34,7 @@ def select_usable_devices(num_gpus: int = -1, *, min_memory: int = -1) -> list[s
         num_gpus: Number of GPUs to select. If negative, all available GPUs
             meeting the criteria will be selected.
         min_memory: Minimum amount of free memory (in bytes) required to select a GPU.
-            If negative, `min_memory` is set to 90% of the per-GPU memory.
+            If None, `min_memory` is set to 90% of the per-GPU memory.
 
     Returns:
         A list of suitable PyTorch device strings, in ascending numerical order, with
@@ -85,7 +89,7 @@ def select_usable_devices(num_gpus: int = -1, *, min_memory: int = -1) -> list[s
         assert num_installed == num_visible, "PyNVML and PyTorch disagree on GPU count"
 
         # Set default value for `min_memory`
-        if min_memory < 0:
+        if min_memory is None:
             min_device_ram = min(
                 (
                     assert_type(

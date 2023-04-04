@@ -39,6 +39,16 @@ The hidden states resulting from `elk elicit` are cached as a HuggingFace datase
 ## Development
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 
+### Devcontainer
+
+[
+    ![Open in Remote - Containers](
+        https://img.shields.io/static/v1?label=Remote%20-%20Containers&message=Open&color=blue&logo=visualstudiocode
+    )
+](
+    https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/EleutherAI/elk
+)
+
 ### Run tests
 ```bash
 pytest
@@ -48,5 +58,7 @@ We use [pyright](https://github.com/microsoft/pyright), which is built into the 
 ```bash
 pyright
 ```
+
+### Contributing to this repository
 
 If you work on a new feature / fix or some other code task, make sure to create an issue and assign it to yourself (Maybe, even share it in the elk channel of Eleuther's Discord with a small note). In this way, others know you are working on the issue and people won't do the same thing twice 👍 Also others can contact you easily.

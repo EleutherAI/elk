@@ -1,7 +1,6 @@
-from .extraction import extract_hiddens, ExtractionConfig, PromptDataset
+from .extraction import extract_hiddens, Extract
 
 __all__ = [
     "extract_hiddens",
-    "ExtractionConfig",
-    "PromptDataset",
+    "Extract"
 ]
