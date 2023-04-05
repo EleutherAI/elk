@@ -6,7 +6,6 @@ mapped over. See <https://jax.readthedocs.io/en/latest/pytrees.html>.
 
 from typing import Callable, Mapping, TypeVar
 
-
 TreeType = TypeVar("TreeType")
 
 

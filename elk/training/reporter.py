@@ -1,16 +1,18 @@
 """An ELK reporter network."""
 
-from ..calibration import CalibrationError
-from .classifier import Classifier
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal, NamedTuple, Optional, Union
+
+import torch
+import torch.nn as nn
 from simple_parsing.helpers import Serializable
 from sklearn.metrics import roc_auc_score
 from torch import Tensor
-from typing import Literal, NamedTuple, Optional, Union
-import torch
-import torch.nn as nn
+
+from ..calibration import CalibrationError
+from .classifier import Classifier
 
 
 class EvalResult(NamedTuple):

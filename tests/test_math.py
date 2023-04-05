@@ -1,9 +1,12 @@
-from elk.math_util import batch_cov, cov_mean_fused, stochastic_round_constrained
-from hypothesis import given, strategies as st
-from random import Random
 import math
+from random import Random
+
 import numpy as np
 import torch
+from hypothesis import given
+from hypothesis import strategies as st
+
+from elk.math_util import batch_cov, cov_mean_fused, stochastic_round_constrained
 
 
 def test_cov_mean_fused():
