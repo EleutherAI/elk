@@ -2,7 +2,6 @@ from ..math_util import stochastic_round_constrained
 from ..utils import infer_label_column
 from ..utils.typing import assert_type
 from collections import deque
-from dataclasses import dataclass
 from datasets import IterableDataset, Features
 from itertools import cycle
 from random import Random
