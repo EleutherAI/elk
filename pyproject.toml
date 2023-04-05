@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "eleuther-elk"
 description = "Keeping language models honest by directly eliciting knowledge encoded in their activations"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = ["nlp", "interpretability", "language-models", "explainable-ai"]
 license = {text = "MIT License"}
 dependencies = [
