@@ -12,8 +12,9 @@ class ElicitLog:
     train_loss: float
     eval_result: EvalResult
 
-    lm_auroc: float
-    lm_acc: float
+    # Only available when the LM is autoregressive
+    lm_auroc: Optional[float] = None
+    lm_acc: Optional[float] = None
 
     # Only available if reporting baseline
     lr_auroc: Optional[float] = None
@@ -48,9 +49,9 @@ class ElicitLog:
             self.eval_result.cal_acc,
             self.eval_result.auroc,
             self.eval_result.ece,
-            self.lm_auroc,
-            self.lm_acc,
         ]
+        if self.lm_auroc is not None and self.lm_acc is not None:
+            items += [self.lm_auroc, self.lm_acc]
         if not skip_baseline:
             items += [self.lr_auroc, self.lr_acc]
 

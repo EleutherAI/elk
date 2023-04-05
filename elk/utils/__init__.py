@@ -8,6 +8,6 @@ from .data_utils import (
 )
 
 from .gpu_utils import select_usable_devices
-from .hf_utils import get_model_class
+from .hf_utils import instantiate_model, is_autoregressive
 from .tree_utils import pytree_map
 from .typing import assert_type, float32_to_int16, int16_to_float32

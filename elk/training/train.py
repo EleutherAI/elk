@@ -144,15 +144,21 @@ class Train(Run):
         )
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        val_gt_cpu = val_gt.repeat_interleave(val_lm_preds.shape[1]).float().cpu()
+        if val_lm_preds is not None:
+            val_gt_cpu = val_gt.repeat_interleave(val_lm_preds.shape[1]).float().cpu()
+            val_lm_auroc = float(roc_auc_score(val_gt_cpu, val_lm_preds.flatten()))
+            val_lm_acc = float(accuracy_score(val_gt_cpu, val_lm_preds.flatten() > 0.5))
+        else:
+            val_lm_auroc = None
+            val_lm_acc = None
 
         stats = ElicitLog(
             layer=layer,
             pseudo_auroc=pseudo_auroc,
             train_loss=train_loss,
             eval_result=val_result,
-            lm_auroc=float(roc_auc_score(val_gt_cpu, val_lm_preds.flatten())),
-            lm_acc=float(accuracy_score(val_gt_cpu, val_lm_preds.flatten() > 0.5)),
+            lm_auroc=val_lm_auroc,
+            lm_acc=val_lm_acc,
         )
 
         if not self.cfg.skip_baseline:
@@ -165,8 +171,8 @@ class Train(Run):
                 val_gt,
                 device,
             )
-            stats.lr_auroc = lr_auroc
-            stats.lr_acc = lr_acc
+            stats.lr_auroc = float(lr_auroc)
+            stats.lr_acc = float(lr_acc)
             self.save_baseline(lr_dir, layer, lr_model)
 
         with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:

@@ -7,7 +7,7 @@ import torch
 from simple_parsing.helpers import Serializable, field
 
 from elk.evaluation.evaluate_log import EvalLog
-from elk.extraction.extraction import Extract
+from elk.extraction import Extract
 from elk.run import Run
 from elk.training import Reporter
 

@@ -1,7 +1,6 @@
 """Functions for extracting the hidden states of a model."""
 from dataclasses import InitVar, dataclass
 from datasets import (
-    Array2D,
     Array3D,
     ClassLabel,
     DatasetDict,
@@ -14,17 +13,22 @@ from datasets import (
 )
 from itertools import islice
 from simple_parsing import Serializable, field
-from transformers import AutoConfig, AutoTokenizer, PreTrainedModel
+from torch import Tensor
+from transformers import AutoConfig, AutoTokenizer
+from transformers.modeling_outputs import Seq2SeqLMOutput
 from typing import Iterable, Literal, Optional, Union
 import logging
 import os
 import torch
 
+# import torch.nn.functional as F
+
 from ..utils import (
     assert_type,
     convert_span,
     float32_to_int16,
-    get_model_class,
+    instantiate_model,
+    is_autoregressive,
     select_train_val_splits,
     select_usable_devices,
 )
@@ -101,30 +105,12 @@ def extract_hiddens(
         world_size=world_size,
     )  # this dataset is already sharded, but hasn't been truncated to max_examples
 
-    model_cls = get_model_class(cfg.model)
-    model = assert_type(
-        PreTrainedModel,
-        model_cls.from_pretrained(
-            cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
-        ),
+    model = instantiate_model(
+        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
     ).to(device)
-    # TODO: Maybe also make this configurable?
-    # We want to make sure the answer is never truncated
     tokenizer = AutoTokenizer.from_pretrained(
         cfg.model, truncation_side="left", verbose=False
     )
-    is_enc_dec = model.config.is_encoder_decoder
-
-    # If this is an encoder-decoder model we don't need to run the decoder at all.
-    # Just strip it off, making the problem equivalent to a regular encoder-only model.
-    if is_enc_dec:
-        # This isn't actually *guaranteed* by HF, but it's true for all existing models
-        if not hasattr(model, "get_encoder") or not callable(model.get_encoder):
-            raise ValueError(
-                "Encoder-decoder model doesn't have expected get_encoder() method"
-            )
-
-        model = assert_type(PreTrainedModel, model.get_encoder())
 
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
@@ -148,7 +134,7 @@ def extract_hiddens(
             )
             for layer_idx in layer_indices
         }
-        model_preds = torch.empty(
+        lm_preds = torch.empty(
             num_variants,
             2,  # contrast pair
             device=device,
@@ -165,29 +151,51 @@ def extract_hiddens(
                 text = choice["text"]
                 variant_inputs.append(text)
 
+                # TODO: Do something smarter than "rindex" here. Really we want to
+                # get the span of the answer directly from Jinja, but that doesn't
+                # seem possible. This approach may fail for complex templates.
+                answer_start = text.rindex(choice["answer"])
+
+                # Only feed question, not the answer, to the encoder for enc-dec models
+                if model.config.is_encoder_decoder:
+                    # TODO: Maybe make this more generic for complex templates?
+                    text = text[:answer_start].rstrip()
+                    target = choice["answer"]
+                else:
+                    target = None
+
                 inputs = tokenizer(
                     text,
                     return_offsets_mapping=True,
                     return_tensors="pt",
+                    text_target=target,  # type: ignore[arg-type]
                     truncation=True,
-                ).to(device)
+                )
 
                 # The offset_mapping is a sorted list of (start, end) tuples. We locate
                 # the start of the answer in the tokenized sequence with binary search.
                 offsets = inputs.pop("offset_mapping").squeeze().tolist()
+                inputs = inputs.to(device)
 
+                # Run the forward pass
                 outputs = model(**inputs, output_hidden_states=True)
 
-                # TODO: Do something smarter than "rindex" here. Really we'd like to
-                # get the span of the answer directly from Jinja, but that doesn't seem
-                # to be supported. The current approach may fail for complex templates.
-                answer_start = text.rindex(choice["answer"])
-                start, end = convert_span(
-                    offsets, (answer_start, answer_start + len(choice["answer"]))
-                )
-                log_p = outputs.logits[..., start - 1 : end - 1, :].log_softmax(dim=-1)
-                tokens = inputs.input_ids[..., start:end, None]
-                model_preds[i, j] = log_p.gather(-1, tokens).sum()
+                # Compute the log probability of the answer tokens if available
+                if type(outputs).__name__.startswith("CausalLMOutput"):
+                    start, end = convert_span(
+                        offsets, (answer_start, answer_start + len(choice["answer"]))
+                    )
+                    log_p = outputs.logits[..., start - 1 : end - 1, :].log_softmax(
+                        dim=-1
+                    )
+                    tokens = inputs.input_ids[..., start:end, None]
+                    lm_preds[i, j] = log_p.gather(-1, tokens).sum()
+
+                elif isinstance(outputs, Seq2SeqLMOutput):
+                    # The cross entropy loss is averaged over tokens, so we need to
+                    # multiply by the length to get the total log probability.
+                    length = inputs.labels.shape[-1]
+                    lm_preds[i, j] = -assert_type(Tensor, outputs.loss) * length
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
@@ -216,7 +224,7 @@ def extract_hiddens(
         yield dict(
             label=example["label"],
             # We only need the probability of the positive example since this is binary
-            model_preds=model_preds.softmax(dim=-1)[..., 1],
+            model_preds=lm_preds.softmax(dim=-1)[..., 1],
             variant_ids=example["template_names"],
             text_inputs=text_inputs,
             **hidden_dict,
@@ -269,10 +277,6 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
         "label": ClassLabel(names=["neg", "pos"]),
-        "model_preds": Sequence(
-            Value(dtype="float32"),
-            length=num_variants,
-        ),
         "text_inputs": Sequence(
             Sequence(
                 Value(dtype="string"),
@@ -281,6 +285,14 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         ),
     }
+
+    # Only add model_preds if the model is an autoregressive model
+    if is_autoregressive(model_cfg):
+        other_cols["model_preds"] = Sequence(
+            Value(dtype="float32"),
+            length=num_variants,
+        )
+
     devices = select_usable_devices(num_gpus, min_memory=cfg.min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
