@@ -3,7 +3,7 @@ import logging
 import os
 from dataclasses import InitVar, dataclass
 from itertools import islice
-from typing import Any, Iterable, Literal, Optional, Union
+from typing import Any, Iterable, Literal, Optional
 
 import torch
 from datasets import (
@@ -82,7 +82,7 @@ class Extract(Serializable):
 def extract_hiddens(
     cfg: "Extract",
     *,
-    device: Union[str, torch.device] = "cpu",
+    device: str | torch.device = "cpu",
     split_type: Literal["train", "val"] = "train",
     rank: int = 0,
     world_size: int = 1,

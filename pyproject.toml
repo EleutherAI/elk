@@ -16,6 +16,8 @@ dependencies = [
     "numpy>=1.20.0",
     # This version is old, but it's needed for certain HF tokenizers to work.
     "protobuf==3.20.*",
+    # For logging. Indirectly required by datasets, but just to be safe we specify it here.
+    "pandas",
     # Basically any version should work as long as it supports the user's CUDA version
     "pynvml",
     # Doesn't really matter but before 1.0.0 there might be weird breaking changes
