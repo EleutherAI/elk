@@ -1,7 +1,8 @@
-from torch import Tensor
 import math
 import random
+
 import torch
+from torch import Tensor
 
 
 @torch.jit.script

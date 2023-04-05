@@ -57,9 +57,9 @@ testpaths = ["tests"]
 include = ["elk*"]
 
 [tool.ruff]
-# Enable pycodestyle (`E`) and Pyflakes (`F`) codes
+# Enable pycodestyle (`E`), Pyflakes (`F`), and isort (`I`) codes
 # See https://beta.ruff.rs/docs/rules/ for more possible rules
-select = ["E", "F"]
+select = ["E", "F", "I"]
 # Same as Black.
 line-length = 88
 # Avoid automatically removing unused imports in __init__.py files.

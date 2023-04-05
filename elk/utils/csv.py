@@ -1,6 +1,6 @@
 import csv
 from pathlib import Path
-from typing import Iterator, Callable, TextIO, TypeVar
+from typing import Callable, Iterator, TextIO, TypeVar
 
 from datasets import DatasetDict
 

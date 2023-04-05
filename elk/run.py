@@ -5,10 +5,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
-    Optional,
-    Union,
     Callable,
     Iterator,
+    Optional,
+    Union,
 )
 
 import numpy as np
@@ -21,7 +21,7 @@ from tqdm import tqdm
 from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
 from elk.training.preprocessing import normalize
-from elk.utils.csv import write_iterator_to_file, Log
+from elk.utils.csv import Log, write_iterator_to_file
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.typing import assert_type, int16_to_float32
 

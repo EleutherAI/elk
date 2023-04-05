@@ -6,9 +6,6 @@ from itertools import islice
 from typing import Iterable, Literal, Optional, Union
 
 import torch
-from simple_parsing import Serializable, field
-from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
-
 from datasets import (
     Array3D,
     ClassLabel,
@@ -20,6 +17,9 @@ from datasets import (
     Value,
     get_dataset_config_info,
 )
+from simple_parsing import Serializable, field
+from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
+
 from elk.utils.typing import float32_to_int16
 
 from ..utils import (

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Callable, Optional, Any, Dict
+from typing import Any, Callable, Dict, Optional
 
 import datasets
 from datasets.splits import NamedSplit
