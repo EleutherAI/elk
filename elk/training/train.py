@@ -157,7 +157,7 @@ class Train(Run):
                 "layer": layer,
                 "pseudo_auroc": pseudo_auroc,
                 "train_loss": train_loss,
-                "eval_result": val_result,
+                **val_result._asdict(),
                 "lm_auroc": val_lm_auroc,
                 "lm_acc": val_lm_acc,
             }

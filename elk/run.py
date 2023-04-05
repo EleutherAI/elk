@@ -89,7 +89,7 @@ class Run(ABC):
             val_x0, val_x1 = val_h.unbind(dim=-2)
 
         with self.dataset.formatted_as("numpy"):
-            val_lm_preds = assert_type(np.ndarray, val["model_preds"])
+            val_lm_preds = val["model_preds"] if "model_preds" in val else None
 
         return x0, x1, val_x0, val_x1, train_labels, val_labels, val_lm_preds
 

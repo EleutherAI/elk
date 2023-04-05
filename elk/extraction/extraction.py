@@ -3,7 +3,7 @@ import logging
 import os
 from dataclasses import InitVar, dataclass
 from itertools import islice
-from typing import Iterable, Literal, Optional, Union
+from typing import Any, Iterable, Literal, Optional, Union
 
 import torch
 from datasets import (
@@ -111,6 +111,7 @@ def extract_hiddens(
     tokenizer = AutoTokenizer.from_pretrained(
         cfg.model, truncation_side="left", verbose=False
     )
+    has_lm_preds = is_autoregressive(model.config)
 
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
@@ -221,14 +222,17 @@ def extract_hiddens(
 
             text_inputs.append(variant_inputs)
 
-        yield dict(
+        out_record: dict[str, Any] = dict(
             label=example["label"],
-            # We only need the probability of the positive example since this is binary
-            model_preds=lm_preds.softmax(dim=-1)[..., 1],
             variant_ids=example["template_names"],
             text_inputs=text_inputs,
             **hidden_dict,
         )
+        if has_lm_preds:
+            # We only need the probability of the positive example since this is binary
+            out_record["model_preds"] = lm_preds.softmax(dim=-1)[..., 1]
+
+        yield out_record
 
 
 # Dataset.from_generator wraps all the arguments in lists, so we unpack them here
