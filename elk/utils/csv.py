@@ -1,12 +1,10 @@
-import csv
+from ..evaluation.evaluate_log import EvalLog
+from ..logging import save_debug_log
+from ..training.train_log import ElicitLog
+from datasets import DatasetDict
 from pathlib import Path
 from typing import Iterator, Callable, TextIO, TypeVar
-
-from datasets import DatasetDict
-
-from elk.evaluation.evaluate_log import EvalLog
-from elk.logging import save_debug_log
-from elk.training.train_log import ElicitLog
+import csv
 
 """A generic log type that contains a layer field
 The layer field is used to sort the logs by layer."""

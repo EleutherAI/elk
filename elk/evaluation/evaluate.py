@@ -1,18 +1,15 @@
+from ..extraction import Extract
+from ..files import elk_reporter_dir
+from ..run import Run
+from ..training import Reporter
+from ..utils import select_usable_devices
+from .evaluate_log import EvalLog
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Literal, Optional
-
-import torch
 from simple_parsing.helpers import Serializable, field
-
-from elk.evaluation.evaluate_log import EvalLog
-from elk.extraction import Extract
-from elk.run import Run
-from elk.training import Reporter
-
-from ..files import elk_reporter_dir
-from ..utils import select_usable_devices
+from typing import Callable, Literal, Optional
+import torch
 
 
 @dataclass

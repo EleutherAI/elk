@@ -6,7 +6,6 @@ from torch.nn.functional import (
 from torch import Tensor
 from typing import Optional
 import torch
-import warnings
 
 
 @dataclass
