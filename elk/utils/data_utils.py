@@ -1,6 +1,9 @@
-from .typing import assert_type
-from ..promptsource.templates import Template
+import copy
 from bisect import bisect_left, bisect_right
+from operator import itemgetter
+from random import Random
+from typing import Any, Iterable, List
+
 from datasets import (
     ClassLabel,
     DatasetDict,
@@ -8,10 +11,9 @@ from datasets import (
     Split,
     Value,
 )
-from operator import itemgetter
-from random import Random
-from typing import Iterable, List, Any
-import copy
+
+from ..promptsource.templates import Template
+from .typing import assert_type
 
 
 def convert_span(

@@ -1,7 +1,7 @@
-from .typing import assert_type
-from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
 import transformers
+from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
 
+from .typing import assert_type
 
 # Ordered by preference
 _AUTOREGRESSIVE_SUFFIXES = [

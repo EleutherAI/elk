@@ -5,8 +5,9 @@ import warnings
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Literal, Optional, Callable
+from typing import Callable, Literal, Optional
 
+import pandas as pd
 import torch
 from simple_parsing import Serializable, field, subgroups
 from sklearn.metrics import accuracy_score, roc_auc_score
@@ -16,12 +17,11 @@ from elk.extraction.extraction import Extract
 from elk.run import Run
 from elk.utils.typing import assert_type
 
+from ..utils import select_usable_devices
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig
-from .train_log import ElicitLog
-from ..utils import select_usable_devices
 
 
 @dataclass
@@ -118,7 +118,7 @@ class Train(Run):
         layer: int,
         devices: list[str],
         world_size: int = 1,
-    ) -> ElicitLog:
+    ) -> pd.Series:
         """Train a single reporter on a single layer."""
         self.make_reproducible(seed=self.cfg.net.seed + layer)
 
@@ -152,13 +152,15 @@ class Train(Run):
             val_lm_auroc = None
             val_lm_acc = None
 
-        stats = ElicitLog(
-            layer=layer,
-            pseudo_auroc=pseudo_auroc,
-            train_loss=train_loss,
-            eval_result=val_result,
-            lm_auroc=val_lm_auroc,
-            lm_acc=val_lm_acc,
+        row = pd.Series(
+            {
+                "layer": layer,
+                "pseudo_auroc": pseudo_auroc,
+                "train_loss": train_loss,
+                "eval_result": val_result,
+                "lm_auroc": val_lm_auroc,
+                "lm_acc": val_lm_acc,
+            }
         )
 
         if not self.cfg.skip_baseline:
@@ -171,14 +173,14 @@ class Train(Run):
                 val_gt,
                 device,
             )
-            stats.lr_auroc = float(lr_auroc)
-            stats.lr_acc = float(lr_acc)
+            row["lr_auroc"] = lr_auroc
+            row["lr_acc"] = lr_acc
             self.save_baseline(lr_dir, layer, lr_model)
 
         with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
             torch.save(reporter, file)
 
-        return stats
+        return row
 
     def get_pseudo_auroc(
         self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor
@@ -202,14 +204,7 @@ class Train(Run):
         """Train a reporter on each layer of the network."""
         devices = select_usable_devices(self.cfg.num_gpus)
         num_devices = len(devices)
-        func: Callable[[int], ElicitLog] = partial(
+        func: Callable[[int], pd.Series] = partial(
             self.train_reporter, devices=devices, world_size=num_devices
         )
-        self.apply_to_layers(
-            func=func,
-            num_devices=num_devices,
-            to_csv_line=lambda item: item.to_csv_line(
-                skip_baseline=self.cfg.skip_baseline
-            ),
-            csv_columns=ElicitLog.csv_columns(self.cfg.skip_baseline),
-        )
+        self.apply_to_layers(func=func, num_devices=num_devices)

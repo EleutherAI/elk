@@ -1,12 +1,14 @@
+from collections import deque
+from itertools import cycle
+from random import Random
+from typing import Iterable, Iterator, Optional
+
+from datasets import Features, IterableDataset
+from torch.utils.data import IterableDataset as TorchIterableDataset
+
 from ..math_util import stochastic_round_constrained
 from ..utils import infer_label_column
 from ..utils.typing import assert_type
-from collections import deque
-from datasets import IterableDataset, Features
-from itertools import cycle
-from random import Random
-from torch.utils.data import IterableDataset as TorchIterableDataset
-from typing import Iterator, Optional, Iterable
 
 
 class BalancedSampler(TorchIterableDataset):

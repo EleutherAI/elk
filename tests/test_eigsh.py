@@ -1,8 +1,9 @@
-from elk.eigsh import lanczos_eigsh
-from scipy.sparse.linalg import eigsh
 import numpy as np
 import pytest
 import torch
+from scipy.sparse.linalg import eigsh
+
+from elk.eigsh import lanczos_eigsh
 
 
 @pytest.mark.parametrize("n", [20, 40])

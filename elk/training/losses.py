@@ -1,9 +1,10 @@
 """Loss functions for training reporters."""
 
-from torch import Tensor
-import torch
 import warnings
 from inspect import signature
+
+import torch
+from torch import Tensor
 
 LOSSES = dict()  # Registry of loss functions
 

@@ -1,7 +1,9 @@
-from elk.utils import convert_span
-from hypothesis import given, strategies as st
-from transformers import AutoTokenizer
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+from transformers import AutoTokenizer
+
+from elk.utils import convert_span
 
 
 # Define a fixture with session scope that initializes the tokenizer

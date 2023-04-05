@@ -1,12 +1,14 @@
 """An ELK reporter network."""
 
-from ..math_util import cov_mean_fused
-from ..eigsh import lanczos_eigsh
-from .reporter import Reporter, ReporterConfig
 from dataclasses import dataclass
-from torch import nn, optim, Tensor
 from typing import Optional
+
 import torch
+from torch import Tensor, nn, optim
+
+from ..eigsh import lanczos_eigsh
+from ..math_util import cov_mean_fused
+from .reporter import Reporter, ReporterConfig
 
 
 @dataclass

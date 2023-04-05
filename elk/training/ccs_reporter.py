@@ -1,17 +1,19 @@
 """An ELK reporter network."""
 
+import math
+from copy import deepcopy
+from dataclasses import dataclass, field
+from typing import Literal, Optional, cast
+
+import torch
+import torch.nn as nn
+from torch import Tensor
+from torch.nn.functional import binary_cross_entropy as bce
+
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
 from .losses import LOSSES
 from .reporter import Reporter, ReporterConfig
-from copy import deepcopy
-from dataclasses import dataclass, field
-from torch import Tensor
-from torch.nn.functional import binary_cross_entropy as bce
-from typing import cast, Literal, Optional
-import math
-import torch
-import torch.nn as nn
 
 
 @dataclass

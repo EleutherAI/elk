@@ -1,5 +1,11 @@
 """Functions for extracting the hidden states of a model."""
+import logging
+import os
 from dataclasses import InitVar, dataclass
+from itertools import islice
+from typing import Iterable, Literal, Optional, Union
+
+import torch
 from datasets import (
     Array3D,
     ClassLabel,
@@ -11,18 +17,12 @@ from datasets import (
     Value,
     get_dataset_config_info,
 )
-from itertools import islice
 from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
-from typing import Iterable, Literal, Optional, Union
-import logging
-import os
-import torch
 
 # import torch.nn.functional as F
-
 from ..utils import (
     assert_type,
     convert_span,

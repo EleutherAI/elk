@@ -1,15 +1,17 @@
+from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
+from typing import Callable, Literal, Optional
+
+import pandas as pd
+import torch
+from simple_parsing.helpers import Serializable, field
+
 from ..extraction import Extract
 from ..files import elk_reporter_dir
 from ..run import Run
 from ..training import Reporter
 from ..utils import select_usable_devices
-from .evaluate_log import EvalLog
-from dataclasses import dataclass
-from functools import partial
-from pathlib import Path
-from simple_parsing.helpers import Serializable, field
-from typing import Callable, Literal, Optional
-import torch
 
 
 @dataclass
@@ -52,7 +54,7 @@ class Evaluate(Run):
 
     def evaluate_reporter(
         self, layer: int, devices: list[str], world_size: int = 1
-    ) -> EvalLog:
+    ) -> pd.Series:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
@@ -73,9 +75,11 @@ class Evaluate(Run):
             test_x1,
         )
 
-        return EvalLog(
-            layer=layer,
-            eval_result=test_result,
+        return pd.Series(
+            {
+                "layer": layer,
+                **test_result._asdict(),
+            }
         )
 
     def evaluate(self):
@@ -85,12 +89,10 @@ class Evaluate(Run):
         )
 
         num_devices = len(devices)
-        func: Callable[[int], EvalLog] = partial(
+        func: Callable[[int], pd.Series] = partial(
             self.evaluate_reporter, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(
             func=func,
             num_devices=num_devices,
-            to_csv_line=lambda item: item.to_csv_line(),
-            csv_columns=EvalLog.csv_columns(),
         )
