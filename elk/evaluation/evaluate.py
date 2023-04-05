@@ -1,118 +1,111 @@
 import csv
 import os
-import pickle
 from dataclasses import dataclass
 from functools import partial
-from hashlib import md5
 from pathlib import Path
-from typing import List, Literal, Optional, cast
+from typing import Callable, Literal, Optional, cast
 
 import torch
 import torch.multiprocessing as mp
-import yaml
 from simple_parsing.helpers import Serializable, field
 from torch import Tensor
 from tqdm.auto import tqdm
 
 from datasets import DatasetDict
-from elk.training.preprocessing import normalize
+from elk.evaluation.evaluate_log import EvalLog
+from elk.extraction.extraction import Extract
+from elk.run import Run
+from elk.training import Reporter
 
-from ..extraction import ExtractionConfig, extract
 from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import assert_type, held_out_split, int16_to_float32, select_usable_devices
+from ..training.preprocessing import normalize
+from ..utils import (
+    assert_type,
+    int16_to_float32,
+    select_train_val_splits,
+    select_usable_devices,
+)
 
 
 @dataclass
-class EvaluateConfig(Serializable):
-    target: ExtractionConfig
+class Eval(Serializable):
+    """
+    Full specification of a reporter evaluation run.
+
+    Args:
+        data: Config specifying hidden states on which the reporter will be evaluated.
+        source: The name of the source run directory
+            which contains the reporters directory.
+        normalization: The normalization method to use. Defaults to "meanonly". See
+            `elk.training.preprocessing.normalize()` for details.
+        num_gpus: The number of GPUs to use. Defaults to -1, which means
+            "use all available GPUs".
+        debug: When in debug mode, a useful log file is saved to the memorably-named
+            output directory. Defaults to False.
+    """
+
+    data: Extract
     source: str = field(positional=True)
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
-    max_gpus: int = -1
+
+    debug: bool = False
+    out_dir: Optional[Path] = None
+    num_gpus: int = -1
+
+    concatenated_layer_offset: int = 0
+
+    def execute(self):
+        transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
+
+        run = Evaluate(cfg=self, out_dir=transfer_eval)
+        run.evaluate()
 
 
-def evaluate_reporter(
-    cfg: EvaluateConfig,
-    dataset: DatasetDict,
-    layer: int,
-    devices: list[str],
-    world_size: int = 1,
-):
-    """Evaluate a single reporter on a single layer."""
-    rank = os.getpid() % world_size
-    device = devices[rank]
+@dataclass
+class Evaluate(Run):
+    cfg: Eval
 
-    # Note: currently we're just upcasting to float32 so we don't have to deal with
-    # grad scaling (which isn't supported for LBFGS), while the hidden states are
-    # saved in float16 to save disk space. In the future we could try to use mixed
-    # precision training in at least some cases.
-    with dataset.formatted_as("torch", device=device, dtype=torch.int16):
-        train, test = dataset["train"], held_out_split(dataset)
-        test_labels = cast(Tensor, test["label"])
+    def evaluate_reporter(
+        self, layer: int, devices: list[str], world_size: int = 1
+    ) -> EvalLog:
+        """Evaluate a single reporter on a single layer."""
+        device = self.get_device(devices, world_size)
 
-        _, test_h = normalize(
-            int16_to_float32(assert_type(Tensor, train[f"hidden_{layer}"])),
-            int16_to_float32(assert_type(Tensor, test[f"hidden_{layer}"])),
-            method=cfg.normalization,
+        _, _, test_x0, test_x1, _, test_labels = self.prepare_data(
+            device,
+            layer,
         )
 
-    reporter_path = elk_reporter_dir() / cfg.source / "reporters" / f"layer_{layer}.pt"
-    reporter = torch.load(reporter_path, map_location=device)
-    reporter.eval()
-
-    test_x0, test_x1 = test_h.unbind(dim=-2)
-
-    test_result = reporter.score(
-        (test_x0, test_x1),
-        test_labels,
-    )
-
-    stats = [layer, *test_result]
-    return stats
-
-
-def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
-    ds = extract(cfg.target, max_gpus=cfg.max_gpus)
-
-    layers = [
-        int(feat[len("hidden_") :])
-        for feat in ds["train"].features
-        if feat.startswith("hidden_")
-    ]
-
-    devices = select_usable_devices(cfg.max_gpus)
-    num_devices = len(devices)
-
-    transfer_eval = elk_reporter_dir() / cfg.source / "transfer_eval"
-    transfer_eval.mkdir(parents=True, exist_ok=True)
-
-    if out_dir is None:
-        out_dir = memorably_named_dir(transfer_eval)
-    else:
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Print the output directory in bold with escape codes
-    print(f"Saving results to \033[1m{out_dir}\033[0m")
-
-    with open(out_dir / "cfg.yaml", "w") as f:
-        cfg.dump_yaml(f)
-
-    cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
-    # Evaluate reporters for each layer in parallel
-    with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
-        fn = partial(
-            evaluate_reporter, cfg, ds, devices=devices, world_size=num_devices
+        reporter_path = (
+            elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"
         )
-        writer = csv.writer(f)
-        writer.writerow(cols)
+        reporter: Reporter = torch.load(reporter_path, map_location=device)
+        reporter.eval()
 
-        mapper = pool.imap_unordered if num_devices > 1 else map
-        row_buf = []
-        try:
-            for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
-                row_buf.append([i] + [f"{s:.4f}" for s in stats])
-        finally:
-            # Make sure the CSV is written even if we crash or get interrupted
-            for row in sorted(row_buf):
-                writer.writerow(row)
+        test_result = reporter.score(
+            test_labels,
+            test_x0,
+            test_x1,
+        )
 
-    print("Results saved")
+        return EvalLog(
+            layer=layer,
+            eval_result=test_result,
+        )
+
+    def evaluate(self):
+        """Evaluate the reporter on all layers."""
+        devices = select_usable_devices(
+            self.cfg.num_gpus, min_memory=self.cfg.data.min_gpu_mem
+        )
+
+        num_devices = len(devices)
+        func: Callable[[int], EvalLog] = partial(
+            self.evaluate_reporter, devices=devices, world_size=num_devices
+        )
+        self.apply_to_layers(
+            func=func,
+            num_devices=num_devices,
+            to_csv_line=lambda item: item.to_csv_line(),
+            csv_columns=EvalLog.csv_columns(),
+        )

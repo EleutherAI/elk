@@ -85,22 +85,22 @@ templates:
       original_task: true
     name: pick_correct_choice_index
     reference: ''
-  5f4b4645-9438-4375-9062-083130e6d04e: !Template
-    answer_choices: null
-    id: 5f4b4645-9438-4375-9062-083130e6d04e
-    jinja: "Given a goal and a wrong solution, rewrite it to give a correct solution.\n\
-      Goal: {{goal}} \nSolution: {{[sol1, sol2][1 - label]}}\nCorrected solution:\n\
-      |||\n{{[sol1, sol2][label]}}\n"
-    metadata: !TemplateMetadata
-      choices_in_prompt: false
-      languages:
-      - en
-      metrics:
-      - BLEU
-      - ROUGE
-      original_task: false
-    name: Correct the solution
-    reference: ''
+  # 5f4b4645-9438-4375-9062-083130e6d04e: !Template
+  #   answer_choices: null
+  #   id: 5f4b4645-9438-4375-9062-083130e6d04e
+  #   jinja: "Given a goal and a wrong solution, rewrite it to give a correct solution.\n\
+  #     Goal: {{goal}} \nSolution: {{[sol1, sol2][1 - label]}}\nCorrected solution:\n\
+  #     |||\n{{[sol1, sol2][label]}}\n"
+  #   metadata: !TemplateMetadata
+  #     choices_in_prompt: false
+  #     languages:
+  #     - en
+  #     metrics:
+  #     - BLEU
+  #     - ROUGE
+  #     original_task: false
+  #   name: Correct the solution
+  #   reference: ''
   94c39589-7bfb-4c09-9337-672369459545: !Template
     answer_choices: '{{sol1}} ||| {{sol2}}'
     id: 94c39589-7bfb-4c09-9337-672369459545
@@ -186,9 +186,7 @@ templates:
 
       |||
 
-      {{goal}} {{[sol1[0].lower() + sol1[1:], sol2[0].lower() + sol2[1:]][label]}}
-
-      '
+      {{goal}} {{[sol1[0].lower() + sol1[1:], sol2[0].lower() + sol2[1:]][label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
@@ -238,28 +236,28 @@ templates:
       original_task: false
     name: Does this solution make sense? sol1
     reference: ''
-  f42cd457-a14b-465a-a139-d7d2407a3bac: !Template
-    answer_choices: null
-    id: f42cd457-a14b-465a-a139-d7d2407a3bac
-    jinja: 'Sentence: {{goal}} {{sol1[0].lower() + sol1[1:]}}
+  # f42cd457-a14b-465a-a139-d7d2407a3bac: !Template
+  #   answer_choices: null
+  #   id: f42cd457-a14b-465a-a139-d7d2407a3bac
+  #   jinja: 'Sentence: {{goal}} {{sol1[0].lower() + sol1[1:]}}
 
-      If the sentence does not make sense, correct it so that it does make sense.
-      Otherwise, just copy it.
+  #     If the sentence does not make sense, correct it so that it does make sense.
+  #     Otherwise, just copy it.
 
-      Answer:
+  #     Answer:
 
-      |||
+  #     |||
 
-      {{goal}} {{[sol1[0].lower() + sol1[1:], sol2[0].lower() + sol2[1:]][label]}}
+  #     {{goal}} {{[sol1[0].lower() + sol1[1:], sol2[0].lower() + sol2[1:]][label]}}
 
-      '
-    metadata: !TemplateMetadata
-      choices_in_prompt: false
-      languages:
-      - en
-      metrics:
-      - BLEU
-      - ROUGE
-      original_task: false
-    name: 'Correct the solution if false: from sol 1'
-    reference: ''
+  #     '
+  #   metadata: !TemplateMetadata
+  #     choices_in_prompt: false
+  #     languages:
+  #     - en
+  #     metrics:
+  #     - BLEU
+  #     - ROUGE
+  #     original_task: false
+  #   name: 'Correct the solution if false: from sol 1'
+  #   reference: ''

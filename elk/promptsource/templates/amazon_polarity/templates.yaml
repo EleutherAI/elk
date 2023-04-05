@@ -28,9 +28,7 @@ templates:
 
       Review: {{content}}
 
-      Answer: |||
-
-      {{answer_choices[label]}}'
+      Answer: ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
@@ -50,9 +48,7 @@ templates:
 
       Review: {{content}}
 
-      Answer: |||
-
-      {{answer_choices[label]}}'
+      Answer: ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
@@ -142,9 +138,7 @@ templates:
 
       Review: {{content}}
 
-      Answer: |||
-
-      {{answer_choices[label]}}'
+      Answer: ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:

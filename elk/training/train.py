@@ -1,119 +1,80 @@
 """Main training loop."""
 
-from ..extraction import extract, ExtractionConfig
-from ..files import elk_reporter_dir, memorably_named_dir
-from ..utils import assert_type, held_out_split, select_usable_devices, int16_to_float32
-from .classifier import Classifier
-from .preprocessing import normalize
-from .reporter import OptimConfig, Reporter, ReporterConfig
+import pickle
+import warnings
 from dataclasses import dataclass
-from datasets import DatasetDict
 from functools import partial
 from pathlib import Path
-from simple_parsing import Serializable
+from typing import Literal, Optional, Callable
+
+import torch
+from simple_parsing import Serializable, field, subgroups
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
-from tqdm.auto import tqdm
-from typing import cast, Literal, Optional
-import csv
-import numpy as np
-import os
-import pickle
-import random
-import torch
-import torch.multiprocessing as mp
-import warnings
+
+from elk.extraction.extraction import Extract
+from elk.run import Run
+from elk.utils.typing import assert_type
+
+from .ccs_reporter import CcsReporter, CcsReporterConfig
+from .classifier import Classifier
+from .eigen_reporter import EigenReporter, EigenReporterConfig
+from .reporter import OptimConfig, Reporter, ReporterConfig
+from .train_log import ElicitLog
+from ..utils import select_usable_devices
 
 
 @dataclass
-class RunConfig(Serializable):
+class Elicit(Serializable):
     """Full specification of a reporter training run.
 
     Args:
         data: Config specifying hidden states on which the reporter will be trained.
         net: Config for building the reporter network.
         optim: Config for the `.fit()` loop.
+        num_gpus: The number of GPUs to use. Defaults to -1, which means
+            "use all available GPUs".
+        normalization: The normalization method to use. Defaults to "meanonly". See
+            `elk.training.preprocessing.normalize()` for details.
+        skip_baseline: Whether to skip training the baseline classifier. Defaults to
+            False.
+        debug: When in debug mode, a useful log file is saved to the memorably-named
+            output directory. Defaults to False.
     """
 
-    data: ExtractionConfig
-    net: ReporterConfig
-    optim: OptimConfig
+    data: Extract
+    net: ReporterConfig = subgroups(
+        {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
+    )
+    optim: OptimConfig = field(default_factory=OptimConfig)
 
-    label_frac: float = 0.0
-    max_gpus: int = -1
+    num_gpus: int = -1
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
+    concatenated_layer_offset: int = 0
+    # if nonzero, appends the hidden states of layer concatenated_layer_offset before
+    debug: bool = False
+    out_dir: Optional[Path] = None
+
+    def execute(self):
+        train_run = Train(cfg=self, out_dir=self.out_dir)
+        train_run.train()
 
 
-def train_reporter(
-    cfg: RunConfig,
-    dataset: DatasetDict,
-    out_dir: Path,
-    layer: int,
-    devices: list[str],
-    world_size: int = 1,
-):
-    """Train a single reporter on a single layer."""
+@dataclass
+class Train(Run):
+    cfg: Elicit
 
-    # Reproducibility
-    seed = cfg.net.seed + layer
-    np.random.seed(seed)
-    random.seed(seed)
-    torch.manual_seed(seed)
-
-    rank = os.getpid() % world_size
-    device = devices[rank]
-
-    # Note: currently we're just upcasting to float32 so we don't have to deal with
-    # grad scaling (which isn't supported for LBFGS), while the hidden states are
-    # saved in float16 to save disk space. In the future we could try to use mixed
-    # precision training in at least some cases.
-    with dataset.formatted_as("torch", device=device, dtype=torch.int16):
-        train, val = dataset["train"], held_out_split(dataset)
-        train_labels = cast(Tensor, train["label"])
-        val_labels = cast(Tensor, val["label"])
-
-        train_h, val_h = normalize(
-            int16_to_float32(assert_type(Tensor, train[f"hidden_{layer}"])),
-            int16_to_float32(assert_type(Tensor, val[f"hidden_{layer}"])),
-            method=cfg.normalization,
-        )
-
-        x0, x1 = train_h.unbind(dim=-2)
-        val_x0, val_x1 = val_h.unbind(dim=-2)
-
-        with torch.no_grad():
-            pseudo_auroc = Reporter.check_separability(
-                train_pair=(x0, x1), val_pair=(val_x0, val_x1)
-            )
-            if pseudo_auroc > 0.6:
-                warnings.warn(
-                    f"The pseudo-labels at layer {layer} are linearly separable with "
-                    f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
-                    f"algorithm will not converge to a good solution."
-                )
-
-    reporter = Reporter(x0.shape[-1], cfg.net, device=device)
-    if cfg.label_frac:
-        num_labels = round(cfg.label_frac * len(train_labels))
-        labels = train_labels[:num_labels]
-    else:
-        labels = None
-
-    train_loss = reporter.fit((x0, x1), labels, cfg.optim)
-    val_result = reporter.score(
-        (val_x0, val_x1),
-        val_labels,
-    )
-
-    lr_dir = out_dir / "lr_models"
-    reporter_dir = out_dir / "reporters"
-
-    lr_dir.mkdir(parents=True, exist_ok=True)
-    reporter_dir.mkdir(parents=True, exist_ok=True)
-    stats = [layer, pseudo_auroc, train_loss, *val_result]
-
-    if not cfg.skip_baseline:
+    def train_baseline(
+        self,
+        x0: Tensor,
+        x1: Tensor,
+        val_x0: Tensor,
+        val_x1: Tensor,
+        train_labels: Tensor,
+        val_labels: Tensor,
+        device: str,
+    ):
         # repeat_interleave makes `num_variants` copies of each label, all within a
         # single dimension of size `num_variants * 2 * n`, such that the labels align
         # with X.view(-1, X.shape[-1])
@@ -127,7 +88,7 @@ def train_reporter(
         X = torch.cat([x0, x1]).squeeze()
         d = X.shape[-1]
         lr_model = Classifier(d, device=device)
-        lr_model.fit(X.view(-1, d), train_labels_aug)
+        lr_model.fit_cv(X.view(-1, d), train_labels_aug)
 
         X_val = torch.cat([val_x0, val_x1]).view(-1, d)
         with torch.no_grad():
@@ -136,67 +97,109 @@ def train_reporter(
         lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
         lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
 
-        stats += [lr_auroc, lr_acc]
-        with open(lr_dir / f"layer_{layer}.pkl", "wb") as file:
+        return lr_model, lr_auroc, lr_acc
+
+    def create_models_dir(self, out_dir: Path):
+        lr_dir = None
+        lr_dir = out_dir / "lr_models"
+        reporter_dir = out_dir / "reporters"
+
+        lr_dir.mkdir(parents=True, exist_ok=True)
+        reporter_dir.mkdir(parents=True, exist_ok=True)
+
+        return reporter_dir, lr_dir
+
+    def save_baseline(self, lr_dir: Path, layer: int, lr_model: Classifier):
+        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
             pickle.dump(lr_model, file)
 
-    with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
-        torch.save(reporter, file)
+    def train_reporter(
+        self,
+        layer: int,
+        devices: list[str],
+        world_size: int = 1,
+    ) -> ElicitLog:
+        """Train a single reporter on a single layer."""
+        self.make_reproducible(seed=self.cfg.net.seed + layer)
 
-    return stats
+        device = self.get_device(devices, world_size)
 
+        x0, x1, val_x0, val_x1, train_labels, val_labels = self.prepare_data(
+            device, layer
+        )
+        pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
 
-def train(cfg: RunConfig, out_dir: Optional[Path] = None):
-    # Extract the hidden states first if necessary
-    is_prompt_based_loss = (
-        "ccs_prompt_var" in cfg.net.loss_dict.keys()
-        or "prompt_var_squared" in cfg.net.loss_dict.keys()
-    )
-    if cfg.data.prompts.num_variants == 1 and is_prompt_based_loss:
-        raise ValueError(
-            "Loss functions ccs_prompt_var and prompt_var_squared "
-            "incompatible with --num_variants 1."
+        if isinstance(self.cfg.net, CcsReporterConfig):
+            reporter = CcsReporter(x0.shape[-1], self.cfg.net, device=device)
+        elif isinstance(self.cfg.net, EigenReporterConfig):
+            reporter = EigenReporter(x0.shape[-1], self.cfg.net, device=device)
+        else:
+            raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
+
+        train_loss = reporter.fit(x0, x1, train_labels)
+        val_result = reporter.score(
+            val_labels,
+            val_x0,
+            val_x1,
         )
 
-    ds = extract(cfg.data, max_gpus=cfg.max_gpus)
-
-    if out_dir is None:
-        out_dir = memorably_named_dir(elk_reporter_dir())
-    else:
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Print the output directory in bold with escape codes
-    print(f"Saving results to \033[1m{out_dir}\033[0m")
-
-    with open(out_dir / "cfg.yaml", "w") as f:
-        cfg.dump_yaml(f)
-
-    devices = select_usable_devices(cfg.max_gpus)
-    num_devices = len(devices)
-
-    cols = ["layer", "pseudo_auroc", "train_loss", "loss", "acc", "cal_acc", "auroc"]
-    if not cfg.skip_baseline:
-        cols += ["lr_auroc", "lr_acc"]
-
-    layers = [
-        int(feat[len("hidden_") :])
-        for feat in ds["train"].features
-        if feat.startswith("hidden_")
-    ]
-    # Train reporters for each layer in parallel
-    with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
-        fn = partial(
-            train_reporter, cfg, ds, out_dir, devices=devices, world_size=num_devices
+        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
+        stats: ElicitLog = ElicitLog(
+            layer=layer,
+            pseudo_auroc=pseudo_auroc,
+            train_loss=train_loss,
+            eval_result=val_result,
         )
-        writer = csv.writer(f)
-        writer.writerow(cols)
 
-        mapper = pool.imap_unordered if num_devices > 1 else map
-        row_buf = []
-        try:
-            for i, *stats in tqdm(mapper(fn, layers), total=len(layers)):
-                row_buf.append([i] + [f"{s:.4f}" for s in stats])
-        finally:
-            # Make sure the CSV is written even if we crash or get interrupted
-            for row in sorted(row_buf):
-                writer.writerow(row)
+        if not self.cfg.skip_baseline:
+            lr_model, lr_auroc, lr_acc = self.train_baseline(
+                x0,
+                x1,
+                val_x0,
+                val_x1,
+                train_labels,
+                val_labels,
+                device,
+            )
+            stats.lr_auroc = lr_auroc
+            stats.lr_acc = lr_acc
+            self.save_baseline(lr_dir, layer, lr_model)
+
+        with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
+            torch.save(reporter, file)
+
+        return stats
+
+    def get_pseudo_auroc(
+        self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor
+    ):
+        """Check the separability of the pseudo-labels at a given layer."""
+
+        with torch.no_grad():
+            pseudo_auroc = Reporter.check_separability(
+                train_pair=(x0, x1), val_pair=(val_x0, val_x1)
+            )
+            if pseudo_auroc > 0.6:
+                warnings.warn(
+                    f"The pseudo-labels at layer {layer} are linearly separable with "
+                    f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
+                    f"algorithm will not converge to a good solution."
+                )
+
+        return pseudo_auroc
+
+    def train(self):
+        """Train a reporter on each layer of the network."""
+        devices = select_usable_devices(self.cfg.num_gpus)
+        num_devices = len(devices)
+        func: Callable[[int], ElicitLog] = partial(
+            self.train_reporter, devices=devices, world_size=num_devices
+        )
+        self.apply_to_layers(
+            func=func,
+            num_devices=num_devices,
+            to_csv_line=lambda item: item.to_csv_line(
+                skip_baseline=self.cfg.skip_baseline
+            ),
+            csv_columns=ElicitLog.csv_columns(self.cfg.skip_baseline),
+        )

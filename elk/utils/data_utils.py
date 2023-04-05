@@ -1,32 +1,17 @@
 from .typing import assert_type
-from datasets import ClassLabel, Dataset, DatasetDict, Features, concatenate_datasets
+from ..promptsource.templates import Template
+from datasets import (
+    ClassLabel,
+    DatasetDict,
+    Features,
+    Split,
+    Value,
+)
 from random import Random
-from typing import Optional
-import numpy as np
 import torch
-
-
-def compute_class_balance(
-    dataset: Dataset,
-    num_classes: int,
-    label_column: Optional[str] = None,
-) -> np.ndarray:
-    """Compute the class balance of a `Dataset`."""
-
-    features = dataset.features
-    name = dataset.info.builder_name
-    if label_column is None:
-        label_column = infer_label_column(dataset.features)
-    elif label_column not in features:
-        raise ValueError(f"{name} has no column '{label_column}'")
-
-    class_sizes = np.bincount(dataset[label_column], minlength=num_classes)
-
-    if not np.all(class_sizes > 0):
-        missing = np.flatnonzero(class_sizes == 0).tolist()
-        raise ValueError(f"{name} has missing classes: {missing}")
-
-    return class_sizes
+from typing import Iterable, Optional, List, Any
+import numpy as np
+import copy
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
@@ -39,14 +24,19 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
     return pivot
 
 
-def held_out_split(dataset: DatasetDict) -> Dataset:
-    """Return the validation set if it exits, otherwise the test set."""
-    if "validation" in dataset:
-        return dataset["validation"]
-    elif "test" in dataset:
-        return dataset["test"]
-    else:
-        raise ValueError("No validation or test split found")
+def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
+    """Return splits to use for train and validation, given an Iterable of splits."""
+
+    priorities = {
+        Split.TRAIN: 0,
+        Split.VALIDATION: 1,
+        Split.TEST: 2,
+    }
+
+    splits = sorted(raw_splits, key=lambda k: priorities.get(k, 100))  # type: ignore
+    assert len(splits) >= 2, "Must have at least two of train, val, and test splits"
+
+    return tuple(splits[:2])
 
 
 def infer_label_column(features: Features) -> str:
@@ -71,38 +61,62 @@ def infer_label_column(features: Features) -> str:
         return assert_type(str, label_cols[0])
 
 
-def undersample(
-    dataset: Dataset, rng: Random, num_classes: int, label_column: Optional[str] = None
-) -> Dataset:
-    """Undersample a `Dataset` to the smallest class size."""
-    label_column = label_column or infer_label_column(dataset.features)
-    class_sizes = compute_class_balance(dataset, num_classes, label_column)
-    smallest_size = class_sizes.min()
+def infer_num_classes(label_feature: Any) -> int:
+    """Return the number of classes in a `Dataset`.
 
-    # First group the active split by class
-    strata = (
-        dataset.filter(lambda ex: ex[label_column] == i)
-        for i in range(len(class_sizes))
-    )
-    # Then randomly sample `smallest_size` examples from each class and merge
-    strata = [
-        stratum.select(rng.sample(range(len(stratum)), k=smallest_size))
-        for stratum in strata
+    Returns:
+        The number of classes.
+    Raises:
+        ValueError: If the label column is not a `ClassLabel` or `Value('bool')`.
+    """
+    if isinstance(label_feature, ClassLabel):
+        # We piggyback on the ClassLabel feature type to get the number of classes
+        return label_feature.num_classes  # type: ignore
+    elif isinstance(label_feature, Value) and label_feature.dtype == "bool":
+        return 2
+    else:
+        raise ValueError(
+            f"Can't infer number of classes from label column "
+            f"of type {label_feature}"
+        )
+
+
+def get_layers(ds: DatasetDict) -> List[int]:
+    """Get a list of indices of hidden layers given a `DatasetDict`."""
+    layers = [
+        int(feat[len("hidden_") :])
+        for feat in ds["train"].features
+        if feat.startswith("hidden_")
     ]
-    dataset = assert_type(Dataset, concatenate_datasets(strata))
-
-    # Sanity check that we successfully balanced the classes
-    class_sizes = np.bincount(dataset[label_column], minlength=len(class_sizes))
-    assert np.all(class_sizes == smallest_size)
-
-    return dataset
+    return layers
 
 
-def float32_to_int16(x: torch.Tensor) -> torch.Tensor:
-    """Converts float32 to float16, then reinterprets as int16."""
-    return x.type(torch.float16).view(torch.int16)
+def binarize(template: Template, label: int, new_label: int, rng: Random) -> Template:
+    """Binarize a template with >2 answer choices, returning a new template and label.
 
+    Returns:
+        `new_template`:
+            A deepcopy of the original template with with 2 answer choices, one of
+            which is the true answer and the other is a random false answer.
+        `new_label`:
+            the index of the true answer into `new_template.answer_choices`
+    """
 
-def int16_to_float32(x: torch.Tensor) -> torch.Tensor:
-    """Converts int16 to float16, then reinterprets as float32."""
-    return x.view(torch.float16).type(torch.float32)
+    # TODO: it would be nice in the future to binarize exhaustively so we're not
+    # cheating here (since this step requires a label). e.g. this function would
+    # also take a candidate answer and the template would ask whether the candidate
+    # answer is true or false. This would require rewriting the jinja templates though.
+    answer_choices = assert_type(str, template.answer_choices).split(" ||| ")
+    assert len(answer_choices) > 2
+
+    true = answer_choices[label]
+    false = rng.choice([c for c in answer_choices if c != true])
+
+    assert new_label in (0, 1)
+
+    new_template = copy.deepcopy(template)
+    new_template.answer_choices = (
+        f"{false} ||| {true}" if new_label else f"{true} ||| {false}"
+    )
+
+    return new_template
