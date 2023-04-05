@@ -107,11 +107,11 @@ class EigenReporter(Reporter):
 
     @property
     def confidence(self) -> Tensor:
-        return self.weight.mT @ self.intercluster_cov @ self.weight
+        return -self.weight.mT @ self.intercluster_cov @ self.weight
 
     @property
     def invariance(self) -> Tensor:
-        return self.weight.mT @ self.intracluster_cov @ self.weight
+        return -self.weight.mT @ self.intracluster_cov @ self.weight
 
     @property
     def consistency(self) -> Tensor:
