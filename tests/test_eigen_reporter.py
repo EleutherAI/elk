@@ -1,6 +1,7 @@
+import torch
+
 from elk.math_util import batch_cov, cov_mean_fused
 from elk.training import EigenReporter, EigenReporterConfig
-import torch
 
 
 def test_eigen_reporter():

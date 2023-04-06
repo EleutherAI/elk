@@ -1,15 +1,14 @@
 import csv
+import multiprocessing as mp
 import time
 from pathlib import Path
 from typing import Iterator
-import multiprocessing as mp
-
 
 from datasets import DatasetDict
 
-from elk.utils.csv import write_iterator_to_file
 from elk.training.reporter import EvalResult
 from elk.training.train_log import ElicitLog
+from elk.utils.csv import write_iterator_to_file
 
 
 def test_write_iterator_to_file(tmp_path: Path):

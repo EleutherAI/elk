@@ -1,13 +1,15 @@
 """An ELK reporter network."""
 
+from dataclasses import dataclass
+from typing import Optional
+from warnings import warn
+
+import torch
+from torch import Tensor, nn, optim
+
 from ..math_util import cov_mean_fused
 from ..truncated_eigh import ConvergenceError, truncated_eigh
 from .reporter import Reporter, ReporterConfig
-from dataclasses import dataclass
-from torch import nn, optim, Tensor
-from typing import Optional
-from warnings import warn
-import torch
 
 
 @dataclass

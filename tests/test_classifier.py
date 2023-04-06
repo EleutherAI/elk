@@ -1,7 +1,8 @@
-from elk.training.classifier import Classifier
+import torch
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
-import torch
+
+from elk.training.classifier import Classifier
 
 
 @torch.no_grad()
