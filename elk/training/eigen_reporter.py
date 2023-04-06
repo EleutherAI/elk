@@ -122,6 +122,9 @@ class EigenReporter(Reporter):
     def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
         """Update the running statistics of the reporter."""
 
+        # Reset the normalization function on each update
+        # because the model may be trained between updates
+        self.fit_normalization_function(x_pos, x_neg)
         x_pos, x_neg = self.normalize(x_pos, x_neg)
 
         # Sanity checks
@@ -203,7 +206,6 @@ class EigenReporter(Reporter):
         """
         assert x_pos.shape == x_neg.shape
 
-        self.fit_normalization_function(x_pos, x_neg)
         self.update(x_pos, x_neg)
         loss = self.fit_streaming()
         if labels is not None and platt_scale:

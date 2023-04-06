@@ -194,9 +194,12 @@ class Reporter(nn.Module, ABC):
             x_pos: The positive hidden states. [batch, num_variants, hidden_size]
             x_neg: The negative hidden states. [batch, num_variants, hidden_size]
         """
+        device = x_pos.device
         if self.normalization == "none":
-            self.pos_norm_mean, self.neg_norm_mean = 0, 0
-            self.pos_norm_scale, self.neg_norm_scale = 1, 1
+            self.pos_norm_mean = torch.tensor(0.0).to(device)
+            self.neg_norm_mean = torch.tensor(0.0).to(device)
+            self.pos_norm_scale = torch.tensor(1.0).to(device)
+            self.neg_norm_scale = torch.tensor(1.0).to(device)
         else:
             self.pos_norm_mean = x_pos.float().mean(dim=0)
             self.neg_norm_mean = x_neg.float().mean(dim=0)
@@ -207,7 +210,8 @@ class Reporter(nn.Module, ABC):
                 self.pos_norm_scale = 1 / x_pos_centered.norm(dim=0, keepdim=True)
                 self.neg_norm_scale = 1 / x_neg_centered.norm(dim=0, keepdim=True)
             elif self.normalization == "meanonly":
-                self.pos_norm_scale, self.neg_norm_scale = 1, 1
+                self.pos_norm_scale = torch.tensor(1.0).to(device)
+                self.neg_norm_scale = torch.tensor(1.0).to(device)
             else:
                 raise NotImplementedError(
                     f"Normalization '{self.normalization}' " "not implemented."
