@@ -92,6 +92,10 @@ class Reporter(nn.Module, ABC):
         self.register_buffer(
             "pos_mean", torch.zeros(in_features, device=device, dtype=dtype)
         )
+        self.register_buffer("pos_norm_mean", None)
+        self.register_buffer("neg_norm_mean", None)
+        self.register_buffer("pos_norm_scale", None)
+        self.register_buffer("neg_norm_scale", None)
         self.normalization = normalization
 
     @classmethod

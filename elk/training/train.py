@@ -82,7 +82,7 @@ class Train(Run):
 
         # repeat_interleave makes `num_variants` copies of each label, all within a
         # single dimension of size `num_variants * 2 * n`, such that the labels align
-        # with X.view(-1, X.shape[-1])
+        # with X.view(-1, d)
         train_labels_aug = torch.cat(
             [train_labels, 1 - train_labels]
         ).repeat_interleave(x0.shape[1])
@@ -153,16 +153,11 @@ class Train(Run):
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
         train_loss = reporter.fit(x0, x1, train_labels)
-        val_result = reporter.score(
-            val_labels,
-            val_x0,
-            val_x1,
-        )
+        val_result = reporter.score(val_labels, val_x0, val_x1)
 
         # TODO: also check if this step is slow
-        normalize_fn = assert_type(Callable, reporter.normalize)
         pseudo_auroc = self.get_pseudo_auroc(
-            layer, x0, x1, val_x0, val_x1, normalize_fn
+            layer, x0, x1, val_x0, val_x1, reporter.normalize
         )
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
@@ -173,14 +168,13 @@ class Train(Run):
             eval_result=val_result,
         )
 
-        # TODO make normalization a property of a classifier
         if not self.cfg.skip_baseline:
             lr_model, lr_auroc, lr_acc = self.train_baseline(
                 x0,
                 x1,
                 val_x0,
                 val_x1,
-                normalize_fn,
+                reporter.normalize,
                 train_labels,
                 val_labels,
                 device,
