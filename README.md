@@ -39,6 +39,16 @@ The hidden states resulting from `elk elicit` are cached as a HuggingFace datase
 ## Development
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
 
+### Devcontainer
+
+[
+    ![Open in Remote - Containers](
+        https://img.shields.io/static/v1?label=Remote%20-%20Containers&message=Open&color=blue&logo=visualstudiocode
+    )
+](
+    https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/EleutherAI/elk
+)
+
 ### Run tests
 ```bash
 pytest
@@ -47,6 +57,13 @@ pytest
 We use [pyright](https://github.com/microsoft/pyright), which is built into the VSCode editor. If you'd like to run it as a standalone tool, it requires a [nodejs installation.](https://nodejs.org/en/download/)
 ```bash
 pyright
+```
+
+### Run the linter
+We use [ruff](https://beta.ruff.rs/docs/). It is installed as a pre-commit hook, so you don't have to run it manually.
+If you want to run it manually, you can do so with:
+```bash
+ruff . --fix
 ```
 
 ### Contributing to this repository

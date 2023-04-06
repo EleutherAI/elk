@@ -1,8 +1,9 @@
-from dataclasses import dataclass, field
-from torch import Tensor
-from typing import NamedTuple
-import torch
 import warnings
+from dataclasses import dataclass, field
+from typing import NamedTuple
+
+import torch
+from torch import Tensor
 
 
 class CalibrationEstimate(NamedTuple):

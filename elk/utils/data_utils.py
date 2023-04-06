@@ -1,5 +1,8 @@
-from .typing import assert_type
-from ..promptsource.templates import Template
+import copy
+from itertools import islice
+from random import Random
+from typing import Any, Iterable, List
+
 from datasets import (
     ClassLabel,
     DatasetDict,
@@ -8,10 +11,9 @@ from datasets import (
     Split,
     Value,
 )
-from random import Random
-from itertools import islice
-from typing import Iterable, List, Any
-import copy
+
+from ..promptsource.templates import Template
+from .typing import assert_type
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:

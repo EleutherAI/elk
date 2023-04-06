@@ -5,7 +5,7 @@ import warnings
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Literal, Optional, Callable
+from typing import Callable, Literal, Optional
 
 import torch
 from simple_parsing import Serializable, field, subgroups
@@ -16,12 +16,12 @@ from elk.extraction.extraction import Extract
 from elk.run import Run
 from elk.utils.typing import assert_type
 
+from ..utils import select_usable_devices
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig
 from .train_log import ElicitLog
-from ..utils import select_usable_devices
 
 
 @dataclass

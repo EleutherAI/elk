@@ -1,6 +1,7 @@
 """Preprocessing functions for training."""
 
 from typing import Literal
+
 import torch
 
 

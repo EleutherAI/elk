@@ -1,8 +1,10 @@
-from elk.extraction import yield_prompts, PromptConfig
-from elk.promptsource.templates import DatasetTemplates
 from itertools import cycle, islice
 from typing import Literal
+
 import pytest
+
+from elk.extraction import PromptConfig, yield_prompts
+from elk.promptsource.templates import DatasetTemplates
 
 
 @pytest.mark.filterwarnings("ignore:Unable to find a decoding function")

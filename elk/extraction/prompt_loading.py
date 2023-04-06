@@ -1,3 +1,15 @@
+from dataclasses import dataclass
+from random import Random
+from typing import Any, Iterator, Literal, Optional
+
+from datasets import (
+    Dataset,
+    Features,
+    load_dataset,
+)
+from datasets.distributed import split_dataset_by_node
+from simple_parsing.helpers import Serializable, field
+
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
@@ -8,20 +20,6 @@ from ..utils import (
     select_train_val_splits,
 )
 from .balanced_sampler import FewShotSampler
-from dataclasses import dataclass
-from datasets import (
-    interleave_datasets,
-    load_dataset,
-    ClassLabel,
-    Dataset,
-    Features,
-    IterableDataset,
-    Sequence,
-)
-from datasets.distributed import split_dataset_by_node
-from random import Random
-from simple_parsing.helpers import field, Serializable
-from typing import Any, Iterator, Literal, Optional
 
 
 @dataclass
