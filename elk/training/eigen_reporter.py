@@ -107,7 +107,7 @@ class EigenReporter(Reporter):
 
     @property
     def confidence(self) -> Tensor:
-        return -self.weight.mT @ self.intercluster_cov @ self.weight
+        return self.weight.mT @ self.intercluster_cov @ self.weight
 
     @property
     def invariance(self) -> Tensor:
@@ -115,7 +115,7 @@ class EigenReporter(Reporter):
 
     @property
     def consistency(self) -> Tensor:
-        return self.weight.mT @ self.contrastive_xcov @ self.weight
+        return -self.weight.mT @ self.contrastive_xcov @ self.weight
 
     def clear(self) -> None:
         """Clear the running statistics of the reporter."""
