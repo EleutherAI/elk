@@ -1,4 +1,4 @@
-from elk.eigsh import lanczos_eigsh
+from elk.truncated_eigh import truncated_eigh
 from scipy.sparse.linalg import eigsh
 import numpy as np
 import pytest
@@ -26,7 +26,7 @@ def random_symmetric_matrix(n: int, k: int) -> torch.Tensor:
 @pytest.mark.parametrize("n", [32, 768, 6144])
 @pytest.mark.parametrize("full_rank", [False, True])
 @pytest.mark.parametrize("which", ["LA", "SA"])
-def test_lanczos_eigsh(n: int, full_rank: bool, which):
+def test_truncated_eigh(n: int, full_rank: bool, which):
     torch.manual_seed(42)
 
     if full_rank:
@@ -38,7 +38,7 @@ def test_lanczos_eigsh(n: int, full_rank: bool, which):
     A = A + A.T
 
     # Compute the top k eigenpairs using our implementation
-    w, v = lanczos_eigsh(A, which=which)
+    w, v = truncated_eigh(A, k=6, which=which, tol=1e-5)
 
     # Compute the top k eigenpairs using scipy
     w_scipy, v_scipy = eigsh(A.numpy(), which=which)
