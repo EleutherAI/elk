@@ -168,6 +168,13 @@ class Reporter(nn.Module, ABC):
 
     def normalize(self, x_pos: Tensor, x_neg: Tensor) -> tuple[Tensor, Tensor]:
         """Normalize the given data."""
+        assert (
+            self.pos_norm_mean is not None
+            and self.neg_norm_mean is not None
+            and self.pos_norm_scale is not None
+            and self.neg_norm_scale is not None
+        ), "Must fit normalization function before normalizing data."
+
         return (
             (x_pos - self.pos_norm_mean) * self.pos_norm_scale,
             (x_neg - self.neg_norm_mean) * self.neg_norm_scale,

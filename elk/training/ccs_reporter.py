@@ -89,7 +89,9 @@ class CcsReporter(Reporter):
         normalization: Literal["none", "elementwise", "meanonly"] = "meanonly",
         dtype: Optional[torch.dtype] = None,
     ):
-        super().__init__(in_features, cfg, device=device, dtype=dtype)
+        super().__init__(
+            in_features, cfg, device=device, normalization=normalization, dtype=dtype
+        )
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
@@ -166,7 +168,6 @@ class CcsReporter(Reporter):
         return self.probe(x).squeeze(-1)
 
     def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
-        assert self.normalize is not None, "`normalize` must be set before fitting"
         x_pos, x_neg = self.normalize(x_pos, x_neg)
 
         return 0.5 * (self(x_pos).sigmoid() + (1 - self(x_neg).sigmoid()))
@@ -235,7 +236,10 @@ class CcsReporter(Reporter):
             ValueError: If `optimizer` is not "adam" or "lbfgs".
             RuntimeError: If the best loss is not finite.
         """
-        # TODO: Implement normalization here to fix issue #96
+        assert x_pos.shape == x_neg.shape
+
+        # Fit normalization parameters
+        self.fit_normalization_function(x_pos, x_neg)
         # self.update(x_pos, x_neg)
 
         # Record the best acc, loss, and params found so far

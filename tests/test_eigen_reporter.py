@@ -14,7 +14,10 @@ def test_eigen_reporter():
     x_pos1, x_pos2 = x_pos.chunk(2, dim=0)
     x_neg1, x_neg2 = x_neg.chunk(2, dim=0)
 
-    reporter = EigenReporter(hidden_size, EigenReporterConfig(), dtype=torch.float64)
+    reporter = EigenReporter(
+        hidden_size, EigenReporterConfig(), normalization="none", dtype=torch.float64
+    )
+    reporter.fit_normalization_function(x_pos, x_neg)
     reporter.update(x_pos1, x_neg1)
     reporter.update(x_pos2, x_neg2)
 

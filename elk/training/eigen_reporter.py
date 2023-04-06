@@ -68,7 +68,9 @@ class EigenReporter(Reporter):
         normalization: Literal["none", "elementwise", "meanonly"] = "meanonly",
         dtype: Optional[torch.dtype] = None,
     ):
-        super().__init__(in_features, cfg, device=device, dtype=dtype)
+        super().__init__(
+            in_features, cfg, device=device, normalization=normalization, dtype=dtype
+        )
 
         # Learnable Platt scaling parameters
         self.bias = nn.Parameter(torch.zeros(cfg.num_heads, device=device, dtype=dtype))
@@ -98,10 +100,7 @@ class EigenReporter(Reporter):
 
     def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
         """Return the predicted log odds on the contrast pair `(x_pos, x_neg)`."""
-
-        assert self.normalize is not None, "`normalize` must be set before predicting"
         x_pos, x_neg = self.normalize(x_pos, x_neg)
-
         return 0.5 * (self(x_pos) - self(x_neg))
 
     @property
@@ -123,7 +122,6 @@ class EigenReporter(Reporter):
     def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
         """Update the running statistics of the reporter."""
 
-        assert self.normalize is not None, "`normalize` must be set before updating"
         x_pos, x_neg = self.normalize(x_pos, x_neg)
 
         # Sanity checks
