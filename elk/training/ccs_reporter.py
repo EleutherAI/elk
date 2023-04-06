@@ -86,6 +86,7 @@ class CcsReporter(Reporter):
         in_features: int,
         cfg: CcsReporterConfig,
         device: Optional[str] = None,
+        normalization: Literal["none", "elementwise", "meanonly"] = "meanonly",
         dtype: Optional[torch.dtype] = None,
     ):
         super().__init__(in_features, cfg, device=device, dtype=dtype)
@@ -165,6 +166,9 @@ class CcsReporter(Reporter):
         return self.probe(x).squeeze(-1)
 
     def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
+        assert self.normalize is not None, "`normalize` must be set before fitting"
+        x_pos, x_neg = self.normalize(x_pos, x_neg)
+
         return 0.5 * (self(x_pos).sigmoid() + (1 - self(x_neg).sigmoid()))
 
     def loss(

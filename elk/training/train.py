@@ -14,6 +14,7 @@ from torch import Tensor
 
 from elk.extraction.extraction import Extract
 from elk.run import Run
+from elk.utils.data_utils import select_train_val_splits
 from elk.utils.typing import assert_type
 
 from ..utils import select_usable_devices
@@ -49,7 +50,7 @@ class Elicit(Serializable):
     optim: OptimConfig = field(default_factory=OptimConfig)
 
     num_gpus: int = -1
-    normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
+    normalization: Literal["none", "elementwise", "meanonly"] = "meanonly"
     skip_baseline: bool = False
     concatenated_layer_offset: int = 0
     # if nonzero, appends the hidden states of layer concatenated_layer_offset before
@@ -71,10 +72,14 @@ class Train(Run):
         x1: Tensor,
         val_x0: Tensor,
         val_x1: Tensor,
+        normalize_fn: Callable[[Tensor, Tensor], tuple[Tensor, Tensor]],
         train_labels: Tensor,
         val_labels: Tensor,
         device: str,
     ):
+        x0, x1 = normalize_fn(x0, x1)
+        val_x0, val_x1 = normalize_fn(val_x0, val_x1)
+
         # repeat_interleave makes `num_variants` copies of each label, all within a
         # single dimension of size `num_variants * 2 * n`, such that the labels align
         # with X.view(-1, X.shape[-1])
@@ -124,15 +129,26 @@ class Train(Run):
 
         device = self.get_device(devices, world_size)
 
-        x0, x1, val_x0, val_x1, train_labels, val_labels = self.prepare_data(
-            device, layer
-        )
-        pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
+        # hiddens are not normalized; shape [n, num_variants, d]
+        train_name, val_name = select_train_val_splits(self.dataset)
+        train_ds, val_ds = self.dataset[train_name], self.dataset[val_name]
+        x0, x1, train_labels = self.prepare_data(train_ds, device, layer)
+        val_x0, val_x1, val_labels = self.prepare_data(val_ds, device, layer)
 
         if isinstance(self.cfg.net, CcsReporterConfig):
-            reporter = CcsReporter(x0.shape[-1], self.cfg.net, device=device)
+            reporter = CcsReporter(
+                x0.shape[-1],
+                self.cfg.net,
+                device=device,
+                normalization=self.cfg.normalization,
+            )
         elif isinstance(self.cfg.net, EigenReporterConfig):
-            reporter = EigenReporter(x0.shape[-1], self.cfg.net, device=device)
+            reporter = EigenReporter(
+                x0.shape[-1],
+                self.cfg.net,
+                device=device,
+                normalization=self.cfg.normalization,
+            )
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
@@ -143,6 +159,12 @@ class Train(Run):
             val_x1,
         )
 
+        # TODO: also check if this step is slow
+        normalize_fn = assert_type(Callable, reporter.normalize)
+        pseudo_auroc = self.get_pseudo_auroc(
+            layer, x0, x1, val_x0, val_x1, normalize_fn
+        )
+
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         stats: ElicitLog = ElicitLog(
             layer=layer,
@@ -151,18 +173,20 @@ class Train(Run):
             eval_result=val_result,
         )
 
+        # TODO make normalization a property of a classifier
         if not self.cfg.skip_baseline:
             lr_model, lr_auroc, lr_acc = self.train_baseline(
                 x0,
                 x1,
                 val_x0,
                 val_x1,
+                normalize_fn,
                 train_labels,
                 val_labels,
                 device,
             )
-            stats.lr_auroc = lr_auroc
-            stats.lr_acc = lr_acc
+            stats.lr_auroc = assert_type(float, lr_auroc)
+            stats.lr_acc = assert_type(float, lr_acc)
             self.save_baseline(lr_dir, layer, lr_model)
 
         with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
@@ -171,9 +195,19 @@ class Train(Run):
         return stats
 
     def get_pseudo_auroc(
-        self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor
+        self,
+        layer: int,
+        x0: Tensor,
+        x1: Tensor,
+        val_x0: Tensor,
+        val_x1: Tensor,
+        normalize: Callable[[Tensor, Tensor], tuple[Tensor, Tensor]],
     ):
         """Check the separability of the pseudo-labels at a given layer."""
+
+        # normalize the data
+        x0, x1 = normalize(x0, x1)
+        val_x0, val_x1 = normalize(val_x0, val_x1)
 
         with torch.no_grad():
             pseudo_auroc = Reporter.check_separability(

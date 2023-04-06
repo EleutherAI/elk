@@ -68,12 +68,18 @@ class Reporter(nn.Module, ABC):
     n: Tensor
     neg_mean: Tensor
     pos_mean: Tensor
+    normalization: Literal["none", "elementwise", "meanonly"]
+    pos_norm_mean: Union[Tensor, float]
+    neg_norm_mean: Union[Tensor, float]
+    pos_norm_scale: Union[Tensor, float]
+    neg_norm_scale: Union[Tensor, float]
 
     def __init__(
         self,
         in_features: int,
         cfg: ReporterConfig,
         device: Optional[str] = None,
+        normalization: Literal["none", "elementwise", "meanonly"] = "meanonly",
         dtype: Optional[torch.dtype] = None,
     ):
         super().__init__()
@@ -86,6 +92,7 @@ class Reporter(nn.Module, ABC):
         self.register_buffer(
             "pos_mean", torch.zeros(in_features, device=device, dtype=dtype)
         )
+        self.normalization = normalization
 
     @classmethod
     def check_separability(
@@ -158,6 +165,42 @@ class Reporter(nn.Module, ABC):
     def save(self, path: Union[Path, str]):
         # TODO: Save separate JSON and PT files for the reporter.
         torch.save(self, path)
+
+    def normalize(self, x_pos: Tensor, x_neg: Tensor) -> tuple[Tensor, Tensor]:
+        """Normalize the given data."""
+        return (
+            (x_pos - self.pos_norm_mean) * self.pos_norm_scale,
+            (x_neg - self.neg_norm_mean) * self.neg_norm_scale,
+        )
+
+    def fit_normalization_function(self, x_pos: torch.Tensor, x_neg: torch.Tensor):
+        """Fit the normalization function to the given data.
+
+        The "elementwise" method normalizes each element.
+        The "meanonly" method normalizes the mean.
+
+        Args:
+            x_pos: The positive hidden states. [batch, num_variants, hidden_size]
+            x_neg: The negative hidden states. [batch, num_variants, hidden_size]
+        """
+        if self.normalization == "none":
+            self.pos_norm_mean, self.neg_norm_mean = 0, 0
+            self.pos_norm_scale, self.neg_norm_scale = 1, 1
+        else:
+            self.pos_norm_mean = x_pos.float().mean(dim=0)
+            self.neg_norm_mean = x_neg.float().mean(dim=0)
+            x_pos_centered = x_pos - self.pos_norm_mean
+            x_neg_centered = x_neg - self.neg_norm_mean
+
+            if self.normalization == "elementwise":
+                self.pos_norm_scale = 1 / x_pos_centered.norm(dim=0, keepdim=True)
+                self.neg_norm_scale = 1 / x_neg_centered.norm(dim=0, keepdim=True)
+            elif self.normalization == "meanonly":
+                self.pos_norm_scale, self.neg_norm_scale = 1, 1
+            else:
+                raise NotImplementedError(
+                    f"Normalization '{self.normalization}' " "not implemented."
+                )
 
     @abstractmethod
     def fit(

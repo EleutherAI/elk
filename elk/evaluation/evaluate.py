@@ -10,6 +10,7 @@ from elk.evaluation.evaluate_log import EvalLog
 from elk.extraction.extraction import Extract
 from elk.run import Run
 from elk.training import Reporter
+from elk.utils.data_utils import select_train_val_splits
 
 from ..files import elk_reporter_dir
 from ..utils import (
@@ -36,7 +37,7 @@ class Eval(Serializable):
 
     data: Extract
     source: str = field(positional=True)
-    normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
+    normalization: Literal["none", "elementwise", "meanonly"] = "meanonly"
 
     debug: bool = False
     out_dir: Optional[Path] = None
@@ -61,10 +62,12 @@ class Evaluate(Run):
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
-        _, _, test_x0, test_x1, _, test_labels = self.prepare_data(
-            device,
-            layer,
-        )
+        if len(self.dataset) == 1:
+            test_name = next(iter(self.dataset.keys()))  # get the only key
+        else:
+            _, test_name = select_train_val_splits(self.dataset)
+        test_ds = self.dataset[test_name]
+        test_x0, test_x1, test_labels = self.prepare_data(test_ds, device, layer)
 
         reporter_path = (
             elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"

@@ -1,7 +1,7 @@
 """An ELK reporter network."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 from torch import Tensor, nn, optim
@@ -65,6 +65,7 @@ class EigenReporter(Reporter):
         in_features: int,
         cfg: EigenReporterConfig,
         device: Optional[str] = None,
+        normalization: Literal["none", "elementwise", "meanonly"] = "meanonly",
         dtype: Optional[torch.dtype] = None,
     ):
         super().__init__(in_features, cfg, device=device, dtype=dtype)
@@ -97,6 +98,10 @@ class EigenReporter(Reporter):
 
     def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
         """Return the predicted log odds on the contrast pair `(x_pos, x_neg)`."""
+
+        assert self.normalize is not None, "`normalize` must be set before predicting"
+        x_pos, x_neg = self.normalize(x_pos, x_neg)
+
         return 0.5 * (self(x_pos) - self(x_neg))
 
     @property
@@ -116,6 +121,11 @@ class EigenReporter(Reporter):
 
     @torch.no_grad()
     def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
+        """Update the running statistics of the reporter."""
+
+        assert self.normalize is not None, "`normalize` must be set before updating"
+        x_pos, x_neg = self.normalize(x_pos, x_neg)
+
         # Sanity checks
         assert x_pos.ndim == 3, "x_pos must be of shape [batch, num_variants, d]"
         assert x_pos.shape == x_neg.shape, "x_pos and x_neg must have the same shape"
@@ -184,8 +194,8 @@ class EigenReporter(Reporter):
         """Fit the probe to the contrast pair (x_pos, x_neg).
 
         Args:
-            x_pos: The positive examples.
-            x_neg: The negative examples.
+            x_pos: Raw hidden states of the positive examples (not normalized).
+            x_neg: Raw hidden states of the negative examples (not normalized).
             labels: The ground truth labels if available.
             platt_scale: Whether to fit the scale and bias terms to data with LBFGS.
                 This is only used if labels are available.
@@ -194,6 +204,8 @@ class EigenReporter(Reporter):
             loss: Negative eigenvalue associated with the VINC direction.
         """
         assert x_pos.shape == x_neg.shape
+
+        self.fit_normalization_function(x_pos, x_neg)
         self.update(x_pos, x_neg)
         loss = self.fit_streaming()
         if labels is not None and platt_scale:
@@ -206,6 +218,8 @@ class EigenReporter(Reporter):
     ):
         """Fit the scale and bias terms to data with LBFGS."""
 
+        # TODO: do we want to do inference and platt scaling on the unnormalized data?
+        # we might want to support both kinds of inference (w/ and w/o contrast pairs)
         opt = optim.LBFGS(
             [self.bias, self.scale],
             line_search_fn="strong_wolfe",

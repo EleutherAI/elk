@@ -14,15 +14,14 @@ from typing import (
 import numpy as np
 import torch
 import torch.multiprocessing as mp
-from datasets import DatasetDict
+from datasets import Dataset, DatasetDict
 from torch import Tensor
 from tqdm import tqdm
 
 from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
-from elk.training.preprocessing import normalize
 from elk.utils.csv import Log, write_iterator_to_file
-from elk.utils.data_utils import get_layers, select_train_val_splits
+from elk.utils.data_utils import get_layers
 from elk.utils.typing import assert_type, int16_to_float32
 
 if TYPE_CHECKING:
@@ -58,19 +57,15 @@ class Run(ABC):
         device = devices[rank]
         return device
 
+    @staticmethod
     def prepare_data(
-        self,
+        ds: Dataset,
         device: str,
         layer: int,
     ) -> tuple:
         """Prepare the data for training and validation."""
-
-        with self.dataset.formatted_as("torch", device=device, dtype=torch.int16):
-            train_split, val_split = select_train_val_splits(self.dataset)
-            train, val = self.dataset[train_split], self.dataset[val_split]
-
-            train_labels = assert_type(Tensor, train["label"])
-            val_labels = assert_type(Tensor, val["label"])
+        with ds.formatted_as("torch", device=device, dtype=torch.int16):
+            labels = assert_type(Tensor, ds["label"])
 
             # Note: currently we're just upcasting to float32
             # so we don't have to deal with
@@ -79,16 +74,12 @@ class Run(ABC):
             # saved in float16 to save disk space.
             # In the future we could try to use mixed
             # precision training in at least some cases.
-            train_h, val_h = normalize(
-                int16_to_float32(assert_type(torch.Tensor, train[f"hidden_{layer}"])),
-                int16_to_float32(assert_type(torch.Tensor, val[f"hidden_{layer}"])),
-                method=self.cfg.normalization,
-            )
+            hidden = int16_to_float32(assert_type(torch.Tensor, ds[f"hidden_{layer}"]))
 
-            x0, x1 = train_h.unbind(dim=-2)
-            val_x0, val_x1 = val_h.unbind(dim=-2)
+            # [n, n_variants, 2, d] -> ([n, n_variants, d], [n, n_variants, d])
+            x0, x1 = hidden.unbind(dim=-2)
 
-        return x0, x1, val_x0, val_x1, train_labels, val_labels
+        return x0, x1, labels
 
     def concatenate(self, layers):
         """Concatenate hidden states from a previous layer."""
