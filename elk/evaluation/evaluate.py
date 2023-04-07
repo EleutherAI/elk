@@ -39,16 +39,20 @@ class Eval(Serializable):
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
 
     debug: bool = False
-    out_dir_suffix: Optional[Path] = None # custom name for subdir in transfer_eval folder
+    out_dir_suffix: Optional[
+        Path
+    ] = None  # custom name for subdir in transfer_eval folder
     num_gpus: int = -1
 
     concatenated_layer_offset: int = 0
 
     def execute(self):
-        if self.out_dir_suffix == None:
-            self.out_dir_suffix = '-'.join(self.data.prompts.datasets).replace(' ', '_')
+        if self.out_dir_suffix is None:
+            self.out_dir_suffix = "-".join(self.data.prompts.datasets).replace(" ", "_")
 
-        transfer_eval = elk_reporter_dir() / self.source / "transfer_eval" / self.out_dir_suffix
+        transfer_eval = (
+            elk_reporter_dir() / self.source / "transfer_eval" / self.out_dir_suffix
+        )
 
         run = Evaluate(cfg=self, out_dir=transfer_eval)
         run.evaluate()
