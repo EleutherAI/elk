@@ -152,7 +152,6 @@ def extract_hiddens(
             # Iterate over answers
             for j, choice in enumerate(record):
                 text = choice["text"]
-                variant_inputs.append(text)
 
                 # TODO: Do something smarter than "rindex" here. Really we want to
                 # get the span of the answer directly from Jinja, but that doesn't
@@ -167,6 +166,8 @@ def extract_hiddens(
                 else:
                     target = None
 
+                # Record the EXACT string we fed to the model
+                variant_inputs.append(text)
                 inputs = tokenizer(
                     text,
                     return_offsets_mapping=True,
@@ -317,6 +318,10 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
         )
         for (split_name, split_info) in get_splits().items()
     }
+
+    import multiprocess as mp
+
+    mp.set_start_method("spawn")  # type: ignore[attr-defined]
 
     ds = dict()
     for split, builder in builders.items():
