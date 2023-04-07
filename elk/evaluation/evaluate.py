@@ -1,28 +1,18 @@
-import csv
-import os
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Literal, Optional, cast
+from typing import Callable, Literal, Optional
 
 import torch
-import torch.multiprocessing as mp
 from simple_parsing.helpers import Serializable, field
-from torch import Tensor
-from tqdm.auto import tqdm
 
-from datasets import DatasetDict
 from elk.evaluation.evaluate_log import EvalLog
 from elk.extraction.extraction import Extract
 from elk.run import Run
 from elk.training import Reporter
 
-from ..files import elk_reporter_dir, memorably_named_dir
-from ..training.preprocessing import normalize
+from ..files import elk_reporter_dir
 from ..utils import (
-    assert_type,
-    int16_to_float32,
-    select_train_val_splits,
     select_usable_devices,
 )
 
@@ -49,13 +39,16 @@ class Eval(Serializable):
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
 
     debug: bool = False
-    out_dir: Optional[Path] = None
+    out_dir_suffix: Optional[Path] = None # custom name for subdir in transfer_eval folder
     num_gpus: int = -1
 
     concatenated_layer_offset: int = 0
 
     def execute(self):
-        transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
+        if self.out_dir_suffix == None:
+            self.out_dir_suffix = '-'.join(self.data.prompts.datasets).replace(' ', '_')
+
+        transfer_eval = elk_reporter_dir() / self.source / "transfer_eval" / self.out_dir_suffix
 
         run = Evaluate(cfg=self, out_dir=transfer_eval)
         run.evaluate()

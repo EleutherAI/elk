@@ -1,14 +1,14 @@
-from collections import Counter, defaultdict
-from jinja2 import BaseLoader, Environment, meta
-from pathlib import Path
-from shutil import rmtree
-from typing import Optional
 import logging
 import os
 import random
 import uuid
-import yaml
+from collections import Counter, defaultdict
+from pathlib import Path
+from shutil import rmtree
+from typing import Optional
 
+import yaml
+from jinja2 import BaseLoader, Environment, meta
 
 # Truncation of jinja template variables
 # 1710 = 300 words x 4.7 avg characters per word + 300 spaces

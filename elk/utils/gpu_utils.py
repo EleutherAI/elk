@@ -1,12 +1,14 @@
 """Utilities that use PyNVML to get GPU usage info, and select GPUs accordingly."""
 
-from .typing import assert_type
-from typing import Optional
 import os
+import time
+import warnings
+from typing import Optional
+
 import pynvml
 import torch
-import warnings
-import time
+
+from .typing import assert_type
 
 
 def select_usable_devices(
