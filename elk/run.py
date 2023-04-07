@@ -6,16 +6,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterator, Optional, Union
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.multiprocessing as mp
+from datasets import DatasetDict
 from torch import Tensor
 from tqdm import tqdm
 
-from datasets import DatasetDict
 from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
+from elk.logging import save_debug_log
 from elk.training.preprocessing import normalize
-from elk.utils.csv import Log, write_iterator_to_file
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.typing import assert_type, int16_to_float32
 
@@ -94,10 +95,8 @@ class Run(ABC):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], Log],
+        func: Callable[[int], pd.Series],
         num_devices: int,
-        to_csv_line: Callable[[Log], list[str]],
-        csv_columns: list[str],
     ):
         """Apply a function to each layer of the dataset in parallel
         and writes the results to a CSV file.
@@ -120,15 +119,14 @@ class Run(ABC):
         # Should we write to different CSV files for elicit vs eval?
         with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
             mapper = pool.imap_unordered if num_devices > 1 else map
-            iterator: Iterator[Log] = tqdm(  # type: ignore
-                mapper(func, layers), total=len(layers)
-            )
-            write_iterator_to_file(
-                iterator=iterator,
-                file=f,
-                debug=self.cfg.debug,
-                dataset=self.dataset,
-                out_dir=self.out_dir,
-                csv_columns=csv_columns,
-                to_csv_line=to_csv_line,
-            )
+            row_buf = []
+
+            try:
+                for row in tqdm(mapper(func, layers), total=len(layers)):
+                    row_buf.append(row)
+            finally:
+                # Make sure the CSV is written even if we crash or get interrupted
+                df = pd.DataFrame(row_buf).sort_values(by="layer")
+                df.to_csv(f, index=False)
+                if self.cfg.debug:
+                    save_debug_log(self.dataset, self.out_dir)

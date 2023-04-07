@@ -1,6 +1,6 @@
 import pickle
 from pathlib import Path
-from typing import Tuple
+from typing import NamedTuple, Tuple
 
 import torch
 from sklearn.metrics import accuracy_score, roc_auc_score
