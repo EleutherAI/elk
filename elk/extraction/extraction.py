@@ -112,6 +112,8 @@ def extract_hiddens(
         cfg.model, truncation_side="left", verbose=False
     )
     has_lm_preds = is_autoregressive(model.config)
+    if has_lm_preds and rank == 0:
+        print("Model has language model head, will store predictions.")
 
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
@@ -182,7 +184,7 @@ def extract_hiddens(
                 outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
-                if type(outputs).__name__.startswith("CausalLMOutput"):
+                if has_lm_preds:
                     start, end = convert_span(
                         offsets, (answer_start, answer_start + len(choice["answer"]))
                     )
