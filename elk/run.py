@@ -19,7 +19,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 from elk.extraction.extraction import extract
-from elk.files import create_output_directory, save_config, save_meta
+from elk.files import elk_reporter_dir, memorably_named_dir, save_config, save_meta
 from elk.training.preprocessing import normalize
 from elk.utils.csv import Log, write_iterator_to_file
 from elk.utils.data_utils import get_layers, select_train_val_splits
@@ -40,7 +40,18 @@ class Run(ABC):
         # Extract the hidden states first if necessary
         self.dataset = extract(self.cfg.data, num_gpus=self.cfg.num_gpus)
 
-        self.out_dir = create_output_directory(self.out_dir)
+        if self.out_dir is None:
+            # Save in a memorably-named directory inside of
+            # ELK_REPORTER_DIR/<model_name>/<dataset_name>
+            ds_name = ", ".join(self.cfg.data.prompts.datasets)
+            root = elk_reporter_dir() / self.cfg.data.model / ds_name
+
+            self.out_dir = memorably_named_dir(root)
+
+        # Print the output directory in bold with escape codes
+        print(f"Output directory at \033[1m{self.out_dir}\033[0m")
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+
         save_config(self.cfg, self.out_dir)
         save_meta(self.dataset, self.out_dir)
 
