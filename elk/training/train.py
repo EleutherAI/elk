@@ -13,8 +13,7 @@ from torch import Tensor
 
 from ..extraction.extraction import Extract
 from ..run import Run
-from ..training.baseline import (evaluate_baseline, save_baseline,
-                                 train_baseline)
+from ..training.baseline import evaluate_baseline, save_baseline, train_baseline
 from ..utils import select_usable_devices
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
