@@ -1,7 +1,6 @@
-from typing import cast, Any, Type, TypeVar
+from typing import Any, Type, TypeVar, cast
 
 import torch
-
 
 T = TypeVar("T")
 

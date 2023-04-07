@@ -8,7 +8,7 @@ import torch
 from simple_parsing.helpers import Serializable, field
 
 from ..extraction.extraction import Extract
-from ..files import create_output_directory, elk_reporter_dir, memorably_named_dir
+from ..files import elk_reporter_dir, memorably_named_dir
 from ..run import Run
 from ..training import Reporter
 from ..training.baseline import evaluate_baseline, load_baseline

@@ -3,7 +3,7 @@ import random
 from abc import ABC
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator, Optional, Union
+from typing import TYPE_CHECKING, Callable, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -17,6 +17,7 @@ from elk.extraction.extraction import extract
 from elk.files import create_output_directory, save_config, save_meta
 from elk.logging import save_debug_log
 from elk.training.preprocessing import normalize
+
 from elk.utils.data_utils import get_layers, select_train_val_splits
 from elk.utils.typing import assert_type, int16_to_float32
 
