@@ -107,6 +107,18 @@ class EigenReporter(Reporter):
     def intercluster_cov(self) -> Tensor:
         return self.intercluster_cov_M2 / self.n
 
+    @property
+    def confidence(self) -> Tensor:
+        return self.weight.mT @ self.intercluster_cov @ self.weight
+
+    @property
+    def invariance(self) -> Tensor:
+        return -self.weight.mT @ self.intracluster_cov @ self.weight
+
+    @property
+    def consistency(self) -> Tensor:
+        return -self.weight.mT @ self.contrastive_xcov @ self.weight
+
     def clear(self) -> None:
         """Clear the running statistics of the reporter."""
         self.contrastive_xcov_M2.zero_()
