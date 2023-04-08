@@ -96,14 +96,11 @@ class Run(ABC):
                 method=self.cfg.normalization,
             )
 
-            x0, x1 = train_h.unbind(dim=-2)
-            val_x0, val_x1 = val_h.unbind(dim=-2)
-
-        with self.dataset.formatted_as("numpy"):
+        with self.dataset.formatted_as("torch"):
             has_preds = "model_preds" in val.features
             val_lm_preds = val["model_preds"] if has_preds else None
 
-        return x0, x1, val_x0, val_x1, train_labels, val_labels, val_lm_preds
+        return train_h, val_h, train_labels, val_labels, val_lm_preds
 
     def concatenate(self, layers):
         """Concatenate hidden states from a previous layer."""
@@ -134,7 +131,8 @@ class Run(ABC):
             layers = self.concatenate(layers)
 
         # Should we write to different CSV files for elicit vs eval?
-        with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
             mapper = pool.imap_unordered if num_devices > 1 else map
             row_buf = []
 
@@ -143,7 +141,8 @@ class Run(ABC):
                     row_buf.append(row)
             finally:
                 # Make sure the CSV is written even if we crash or get interrupted
-                df = pd.DataFrame(row_buf).sort_values(by="layer")
-                df.to_csv(f, index=False)
+                if row_buf:
+                    df = pd.DataFrame(row_buf).sort_values(by="layer")
+                    df.to_csv(f, index=False)
                 if self.cfg.debug:
                     save_debug_log(self.dataset, self.out_dir)

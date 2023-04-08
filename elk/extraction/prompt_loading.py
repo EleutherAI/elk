@@ -14,7 +14,6 @@ from simple_parsing.helpers import Serializable, field
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
-    binarize,
     infer_label_column,
     infer_num_classes,
     select_train_val_splits,
@@ -220,10 +219,7 @@ def _convert_to_prompts(
     for template in templates:
         choices = []
 
-        if num_classes > 2:
-            template, label = binarize(template, label, rng)
-
-        for answer_idx in range(2):
+        for answer_idx in range(num_classes):
             fake_example = example.copy()
             fake_example[label_column] = answer_idx
 

@@ -60,7 +60,7 @@ class Evaluate(Run):
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
-        _, _, test_x0, test_x1, _, test_labels, _ = self.prepare_data(
+        _, test_h, _, test_labels, _ = self.prepare_data(
             device,
             layer,
         )
@@ -71,12 +71,7 @@ class Evaluate(Run):
         reporter: Reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
-        test_result = reporter.score(
-            test_labels,
-            test_x0,
-            test_x1,
-        )
-
+        test_result = reporter.score(test_labels, test_h)
         stats_row = pd.Series(
             {
                 "layer": layer,
@@ -89,7 +84,7 @@ class Evaluate(Run):
             lr_model = load_baseline(lr_dir, layer)
             lr_model.eval()
             lr_auroc, lr_acc = evaluate_baseline(
-                lr_model.cuda(), test_x0.cuda(), test_x1.cuda(), test_labels
+                lr_model.cuda(), test_h.cuda(), test_labels
             )
 
             stats_row["lr_auroc"] = lr_auroc

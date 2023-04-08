@@ -165,6 +165,9 @@ class CcsReporter(Reporter):
         return self.probe(x).squeeze(-1)
 
     def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
+        return self.predict_prob(x_pos, x_neg).logit()
+
+    def predict_prob(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
         return 0.5 * (self(x_pos).sigmoid() + (1 - self(x_neg).sigmoid()))
 
     def loss(

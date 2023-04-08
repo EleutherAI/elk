@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 
 import datasets
 from datasets.splits import NamedSplit
@@ -20,7 +20,7 @@ class _SplitGenerator:
 
     name: str
     split_info: datasets.SplitInfo
-    gen_kwargs: Dict = field(default_factory=dict)
+    gen_kwargs: dict = field(default_factory=dict)
 
     def __post_init__(self):
         self.name = str(self.name)  # Make sure we convert NamedSplits in strings

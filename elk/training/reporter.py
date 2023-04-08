@@ -7,11 +7,13 @@ from typing import Literal, NamedTuple, Optional
 
 import torch
 import torch.nn as nn
+from einops import rearrange, repeat
 from simple_parsing.helpers import Serializable
 from sklearn.metrics import roc_auc_score
 from torch import Tensor
 
 from ..calibration import CalibrationError
+from ..metrics import mean_auc, to_one_hot
 from .classifier import Classifier
 
 
@@ -66,13 +68,13 @@ class Reporter(nn.Module, ABC):
     """
 
     n: Tensor
-    neg_mean: Tensor
-    pos_mean: Tensor
+    class_means: Tensor
 
     def __init__(
         self,
-        in_features: int,
         cfg: ReporterConfig,
+        in_features: int,
+        num_classes: int = 2,
         device: Optional[str] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -81,10 +83,8 @@ class Reporter(nn.Module, ABC):
         self.config = cfg
         self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
         self.register_buffer(
-            "neg_mean", torch.zeros(in_features, device=device, dtype=dtype)
-        )
-        self.register_buffer(
-            "pos_mean", torch.zeros(in_features, device=device, dtype=dtype)
+            "class_means",
+            torch.zeros(num_classes, in_features, device=device, dtype=dtype),
         )
 
     @classmethod
@@ -139,15 +139,18 @@ class Reporter(nn.Module, ABC):
         """Reset the parameters of the probe."""
 
     @torch.no_grad()
-    def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
+    def update(self, *hiddens: Tensor) -> None:
         """Update the running mean of the positive and negative examples."""
 
-        x_pos, x_neg = x_pos.flatten(0, -2), x_neg.flatten(0, -2)
-        self.n += x_pos.shape[0]
+        assert len(hiddens) > 1, "Must provide at least two hidden representations"
+
+        # Flatten the hidden representations
+        hiddens = tuple(h.flatten(0, -2) for h in hiddens)
+        self.n += hiddens[0].shape[0]
 
         # Update the running means
-        self.neg_mean += (x_neg.sum(dim=0) - self.neg_mean) / self.n
-        self.pos_mean += (x_pos.sum(dim=0) - self.pos_mean) / self.n
+        for i, h in enumerate(hiddens):
+            self.class_means[i] += (h.sum(dim=0) - self.class_means[i]) / self.n
 
     # TODO: These methods will do something fancier in the future
     @classmethod
@@ -162,55 +165,62 @@ class Reporter(nn.Module, ABC):
     @abstractmethod
     def fit(
         self,
-        x_pos: Tensor,
-        x_neg: Tensor,
+        *hiddens: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         ...
 
     @abstractmethod
-    def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
-        """Pool the probe output on the contrast pair (x_pos, x_neg)."""
+    def predict(self, *hiddens: Tensor) -> Tensor:
+        """Return pooled logits for the contrast set `hiddens`."""
+
+    @abstractmethod
+    def predict_prob(self, *hiddens: Tensor) -> Tensor:
+        """Like `predict` but returns normalized probabilities, not logits."""
 
     @torch.no_grad()
-    def score(self, labels: Tensor, x_pos: Tensor, x_neg: Tensor) -> EvalResult:
-        """Score the probe on the contrast pair (x_pos, x1).
+    def score(self, labels: Tensor, hiddens: Tensor) -> EvalResult:
+        """Score the probe on the contrast set `hiddens`.
 
         Args:
-            x_pos: The positive examples.
-            x_neg: The negative examples.
-            labels: The labels of the contrast pair.
+        labels: The labels of the contrast pair.
+        hiddens: The hidden representations of the contrast set.
 
         Returns:
             an instance of EvalResult containing the loss, accuracy, calibrated
-                accuracy, and AUROC of the probe on the contrast pair (x0, x1).
+                accuracy, and AUROC of the probe on `hiddens`.
         """
+        pred_probs = self.predict_prob(hiddens)
+        (_, v, c) = pred_probs.shape
 
-        pred_probs = self.predict(x_pos, x_neg)
+        # makes `num_variants` copies of each label
+        Y = repeat(labels, "n -> (n v)", v=v).float()
+        to_one_hot(Y, n_classes=c).long().flatten()
 
-        # makes `num_variants` copies of each label, all within a single
-        # dimension of size `num_variants * n`, such that the labels align
-        # with pred_probs.flatten()
-        broadcast_labels = labels.repeat_interleave(pred_probs.shape[1]).float()
-        cal_err = (
-            CalibrationError()
-            .update(broadcast_labels.cpu(), pred_probs.cpu())
-            .compute()
-        )
+        if c == 2:
+            cal_err = CalibrationError().update(Y.cpu(), pred_probs.cpu()).compute().ece
+            # Calibrated accuracy
+            cal_thresh = pred_probs.float().quantile(labels.float().mean())
+            cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
+            cal_acc = cal_preds.flatten().eq(Y).float().mean().item()
 
-        # Calibrated accuracy
-        cal_thresh = pred_probs.float().quantile(labels.float().mean())
-        cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
-        raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
+            raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
+        else:
+            # TODO: Implement calibration error for k > 2?
+            cal_acc = 0.0
+            cal_err = 0.0
+
+            raw_preds = pred_probs.argmax(dim=-1)
 
         # roc_auc_score only takes flattened input
-        auroc = float(roc_auc_score(broadcast_labels.cpu(), pred_probs.cpu().flatten()))
-        cal_acc = cal_preds.flatten().eq(broadcast_labels).float().mean()
-        raw_acc = raw_preds.flatten().eq(broadcast_labels).float().mean()
+        auroc = mean_auc(
+            Y.cpu(), rearrange(pred_probs.cpu(), "n v ... -> (n v) ..."), curve="roc"
+        )
+        raw_acc = raw_preds.flatten().eq(Y).float().mean()
 
         return EvalResult(
-            acc=torch.max(raw_acc, 1 - raw_acc).item(),
-            cal_acc=torch.max(cal_acc, 1 - cal_acc).item(),
-            auroc=max(auroc, 1 - auroc),
-            ece=cal_err.ece,
+            acc=raw_acc.item(),
+            cal_acc=cal_acc,
+            auroc=float(auroc),
+            ece=cal_err,
         )

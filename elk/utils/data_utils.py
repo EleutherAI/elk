@@ -2,7 +2,7 @@ import copy
 from bisect import bisect_left, bisect_right
 from operator import itemgetter
 from random import Random
-from typing import Any, Iterable, List
+from typing import Any, Iterable
 
 from datasets import (
     ClassLabel,
@@ -101,11 +101,12 @@ def infer_num_classes(label_feature: Any) -> int:
         )
 
 
-def get_layers(ds: DatasetDict) -> List[int]:
+def get_layers(ds: DatasetDict) -> list[int]:
     """Get a list of indices of hidden layers given a `DatasetDict`."""
+    train, _ = select_train_val_splits(ds.keys())
     layers = [
         int(feat[len("hidden_") :])
-        for feat in ds["train"].features
+        for feat in ds[train].features
         if feat.startswith("hidden_")
     ]
     return layers

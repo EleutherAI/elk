@@ -7,8 +7,8 @@ from typing import Any, Iterable, Literal, Optional
 
 import torch
 from datasets import (
+    Array2D,
     Array3D,
-    ClassLabel,
     DatasetDict,
     Features,
     Sequence,
@@ -22,11 +22,12 @@ from torch import Tensor
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
-# import torch.nn.functional as F
 from ..utils import (
     assert_type,
     convert_span,
     float32_to_int16,
+    infer_label_column,
+    infer_num_classes,
     instantiate_model,
     is_autoregressive,
     select_train_val_splits,
@@ -103,7 +104,7 @@ def extract_hiddens(
         stream=cfg.prompts.stream,
         rank=rank,
         world_size=world_size,
-    )  # this dataset is already sharded, but hasn't been truncated to max_examples
+    )  # this dataset is already sharded, buqt hasn't been truncated to max_examples
 
     model = instantiate_model(
         cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
@@ -125,12 +126,14 @@ def extract_hiddens(
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
 
-    for example in islice(BalancedSampler(prompt_ds), max_examples):
+    for example in islice(BalancedSampler(prompt_ds, 3), max_examples):
         num_variants = len(example["prompts"])
+        num_choices = len(example["prompts"][0])
+
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
                 num_variants,
-                2,  # contrast pair
+                num_choices,
                 model.config.hidden_size,
                 device=device,
                 dtype=torch.int16,
@@ -139,7 +142,7 @@ def extract_hiddens(
         }
         lm_preds = torch.empty(
             num_variants,
-            2,  # contrast pair
+            num_choices,
             device=device,
             dtype=torch.float32,
         )
@@ -232,8 +235,7 @@ def extract_hiddens(
             **hidden_dict,
         )
         if has_lm_preds:
-            # We only need the probability of the positive example since this is binary
-            out_record["model_preds"] = lm_preds.softmax(dim=-1)[..., 1]
+            out_record["model_preds"] = lm_preds.softmax(dim=-1)
 
         yield out_record
 
@@ -271,10 +273,14 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
 
+    ds_features = assert_type(Features, info.features)
+    label_col = infer_label_column(ds_features)
+    num_classes = infer_num_classes(ds_features[label_col])
+
     layer_cols = {
         f"hidden_{layer}": Array3D(
             dtype="int16",
-            shape=(num_variants, 2, model_cfg.hidden_size),
+            shape=(num_variants, num_classes, model_cfg.hidden_size),
         )
         for layer in cfg.layers or range(model_cfg.num_hidden_layers)
     }
@@ -283,11 +289,10 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             Value(dtype="string"),
             length=num_variants,
         ),
-        "label": ClassLabel(names=["neg", "pos"]),
+        "label": Value(dtype="int64"),
         "text_inputs": Sequence(
             Sequence(
                 Value(dtype="string"),
-                length=2,
             ),
             length=num_variants,
         ),
@@ -295,9 +300,9 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
 
     # Only add model_preds if the model is an autoregressive model
     if is_autoregressive(model_cfg):
-        other_cols["model_preds"] = Sequence(
-            Value(dtype="float32"),
-            length=num_variants,
+        other_cols["model_preds"] = Array2D(
+            shape=(num_variants, num_classes),
+            dtype="float32",
         )
 
     devices = select_usable_devices(num_gpus, min_memory=cfg.min_gpu_mem)
@@ -318,7 +323,6 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
         )
         for (split_name, split_info) in get_splits().items()
     }
-
     import multiprocess as mp
 
     mp.set_start_method("spawn")  # type: ignore[attr-defined]

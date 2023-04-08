@@ -1,11 +1,11 @@
 import pickle
 from pathlib import Path
-from typing import Tuple
 
 import torch
-from sklearn.metrics import accuracy_score, roc_auc_score
+from einops import rearrange, repeat
 from torch import Tensor
 
+from ..metrics import accuracy, mean_auc, to_one_hot
 from ..utils.typing import assert_type
 from .classifier import Classifier
 
@@ -13,41 +13,36 @@ from .classifier import Classifier
 
 
 def evaluate_baseline(
-    lr_model: Classifier, val_x0: Tensor, val_x1: Tensor, val_labels: Tensor
-) -> Tuple[float, float]:
-    X = torch.cat([val_x0, val_x1])
-    d = X.shape[-1]
-    X_val = X.view(-1, d)
+    lr_model: Classifier, hiddens: Tensor, labels: Tensor
+) -> tuple[float, float]:
+    # n = batch, v = variants, c = classes, d = hidden dim
+    (_, v, c, _) = hiddens.shape
+
+    Y = repeat(labels, "n -> (n v)", v=v)
+    Y_one_hot = to_one_hot(Y, n_classes=c).long().flatten()
+    X = rearrange(hiddens, "n v c d -> (n v c) d")
     with torch.no_grad():
-        lr_preds = lr_model(X_val).sigmoid().cpu()
+        lr_preds = lr_model(X)
 
-    val_labels_aug = (
-        torch.cat([val_labels, 1 - val_labels]).repeat_interleave(val_x0.shape[1])
-    ).cpu()
-
-    lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
-    lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
+    # Top-1 accuracy
+    lr_acc = accuracy(
+        Y.cpu(), rearrange(lr_preds.squeeze(-1), "(n v c) -> (n v) c", v=v, c=c).cpu()
+    )
+    lr_auroc = mean_auc(Y_one_hot.cpu(), lr_preds.cpu(), curve="roc")
 
     return assert_type(float, lr_auroc), assert_type(float, lr_acc)
 
 
-def train_baseline(
-    x0: Tensor,
-    x1: Tensor,
-    train_labels: Tensor,
-    device: str,
-) -> Classifier:
-    # repeat_interleave makes `num_variants` copies of each label, all within a
-    # single dimension of size `num_variants * 2 * n`, such that the labels align
-    # with X.view(-1, X.shape[-1])
-    train_labels_aug = torch.cat([train_labels, 1 - train_labels]).repeat_interleave(
-        x0.shape[1]
-    )
+def train_baseline(hiddens: Tensor, labels: Tensor) -> Classifier:
+    # n = batch, v = variants, c = classes, d = hidden dim
+    (_, v, c, d) = hiddens.shape
 
-    X = torch.cat([x0, x1]).squeeze()
-    d = X.shape[-1]
-    lr_model = Classifier(d, device=device)
-    lr_model.fit_cv(X.view(-1, d), train_labels_aug)
+    Y = repeat(labels, "n -> (n v)", v=v)
+    Y = to_one_hot(Y, n_classes=c).long().flatten()
+    X = rearrange(hiddens, "n v c d -> (n v c) d")
+
+    lr_model = Classifier(d, device=X.device)
+    lr_model.fit(X, Y)
 
     return lr_model
 

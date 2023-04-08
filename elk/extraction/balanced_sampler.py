@@ -1,4 +1,5 @@
 from collections import deque
+from dataclasses import dataclass, field
 from itertools import cycle
 from random import Random
 from typing import Iterable, Iterator, Optional
@@ -11,39 +12,42 @@ from ..utils import infer_label_column
 from ..utils.typing import assert_type
 
 
+@dataclass
 class BalancedSampler(TorchIterableDataset):
     """
-    Approximately balances a binary classification dataset in a streaming fashion.
+    A sampler that approximately balances a multi-class classification dataset in a
+    streaming fashion.
 
-    Args:
-        dataset (IterableDataset): The HuggingFace IterableDataset to balance.
-        label_col (Optional[str], optional): The name of the column containing the
-            binary label. If not provided, the label column will be inferred from
-            the dataset features. Defaults to None.
-        buffer_size (int, optional): The total buffer size to use for balancing the
-            dataset. This value should be divisible by 2, as it will be equally
-            divided between the two binary label values (0 and 1). Defaults to 1000.
+    Attributes:
+        data: The input dataset to balance.
+        num_classes: The total number of classes expected in the data.
+        buffer_size: The total buffer size to use for balancing the dataset. Each class
+            will have its own buffer with this size.
     """
 
-    def __init__(self, data: Iterable[dict], buffer_size: int = 1000):
-        self.data = data
+    data: Iterable[dict]
+    num_classes: int
+    buffer_size: int = 1000
+    buffers: dict[int, deque[dict]] = field(default_factory=dict, init=False)
 
-        self.neg_buffer = deque(maxlen=buffer_size)
-        self.pos_buffer = deque(maxlen=buffer_size)
+    def __post_init__(self):
+        # Initialize empty buffers
+        self.buffers = {
+            label: deque(maxlen=self.buffer_size) for label in range(self.num_classes)
+        }
 
     def __iter__(self):
         for sample in self.data:
             label = sample["label"]
 
-            # Add the sample to the appropriate buffer
-            if label == 0:
-                self.neg_buffer.append(sample)
-            else:
-                self.pos_buffer.append(sample)
+            # Add the sample to the buffer for its class label
+            self.buffers[label].append(sample)
 
-            while self.neg_buffer and self.pos_buffer:
-                yield self.neg_buffer.popleft()
-                yield self.pos_buffer.popleft()
+            # Check if all buffers have at least one sample
+            while all(len(buffer) > 0 for buffer in self.buffers.values()):
+                # Yield one sample from each buffer in a round-robin fashion
+                for buf in self.buffers.values():
+                    yield buf.popleft()
 
 
 class FewShotSampler:
