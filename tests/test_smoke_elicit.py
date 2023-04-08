@@ -3,7 +3,6 @@ from pathlib import Path
 from elk import Extract
 from elk.extraction import PromptConfig
 from elk.training import CcsReporterConfig, EigenReporterConfig
-from elk.training import train
 from elk.training.train import Elicit
 
 

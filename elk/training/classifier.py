@@ -1,12 +1,14 @@
 from dataclasses import dataclass
+from typing import Optional
+
+import torch
+from torch import Tensor
 from torch.nn.functional import (
     binary_cross_entropy_with_logits as bce_with_logits,
+)
+from torch.nn.functional import (
     cross_entropy,
 )
-from torch import Tensor
-from typing import Optional
-import torch
-import warnings
 
 
 @dataclass

@@ -1,9 +1,11 @@
 from collections import Counter
-from datasets import load_dataset, IterableDataset
-from elk.extraction import FewShotSampler, BalancedSampler
-from elk.utils import assert_type, infer_label_column
 from itertools import islice
 from random import Random
+
+from datasets import IterableDataset, load_dataset
+
+from elk.extraction import BalancedSampler, FewShotSampler
+from elk.utils import assert_type, infer_label_column
 
 
 def test_output_batches_are_balanced():
