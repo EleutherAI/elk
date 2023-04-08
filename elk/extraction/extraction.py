@@ -181,10 +181,14 @@ def extract_hiddens(
                     model(**inputs, output_hidden_states=True)
 
                 hiddens = (
-                    outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                    outputs
+                    if cfg.model == "elmo"
+                    else (
+                        outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                    )
                 )
                 # First element of list is the input embeddings
-                hiddens = hiddens[1:]
+                hiddens = outputs if cfg.model == "elmo" else hiddens[1:]
 
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
