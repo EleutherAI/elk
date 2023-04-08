@@ -2,9 +2,8 @@ from ..math_util import stochastic_round_constrained
 from ..utils import infer_label_column
 from ..utils.typing import assert_type
 from collections import deque
-from dataclasses import dataclass
 from datasets import IterableDataset, Features
-from itertools import cycle
+from itertools import cycle, islice
 from random import Random
 from torch.utils.data import IterableDataset as TorchIterableDataset
 from typing import Iterator, Optional, Iterable
@@ -25,11 +24,17 @@ class BalancedSampler(TorchIterableDataset):
             divided between the two binary label values (0 and 1). Defaults to 1000.
     """
 
-    def __init__(self, data: Iterable[dict], buffer_size: int = 1000):
+    def __init__(
+        self, data: Iterable[dict], max_examples: int, min_buffer_size: int = 100
+    ):
         self.data = data
 
-        self.neg_buffer = deque(maxlen=buffer_size)
-        self.pos_buffer = deque(maxlen=buffer_size)
+        self.max_examples = max_examples
+        self.buffer_size = max(min_buffer_size, max_examples)
+        self.neg_buffer = deque(maxlen=self.buffer_size)
+        self.pos_buffer = deque(maxlen=self.buffer_size)
+
+        self.idx = 0  # The number of samples yielded so far
 
     def __iter__(self):
         for sample in self.data:
@@ -41,9 +46,33 @@ class BalancedSampler(TorchIterableDataset):
             else:
                 self.pos_buffer.append(sample)
 
+            # Check if the input was too unbalanced to begin with
+            if self.idx == 0 and (
+                not self.neg_buffer
+                and len(self.pos_buffer) == self.buffer_size
+                or not self.pos_buffer
+                and len(self.neg_buffer) == self.buffer_size
+            ):
+                raise ValueError(
+                    "The input dataset was too unbalanced to balance while streaming. "
+                    "If streaming a dataset such as IMDB where the data is sorted by "
+                    "label, streaming data cannot be balanced. "
+                    "Try removing the `--stream` flag."
+                )
+
             while self.neg_buffer and self.pos_buffer:
                 yield self.neg_buffer.popleft()
+                self.idx += 1
+                if self.idx == self.max_examples:
+                    return
+
                 yield self.pos_buffer.popleft()
+                self.idx += 1
+                if self.idx == self.max_examples:
+                    return
+
+    def __len__(self):
+        return self.max_examples
 
 
 class FewShotSampler:

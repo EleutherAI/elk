@@ -4,19 +4,14 @@ from ..utils import (
     binarize,
     infer_label_column,
     infer_num_classes,
-    is_streamable,
     select_train_val_splits,
 )
 from .balanced_sampler import FewShotSampler
 from dataclasses import dataclass
 from datasets import (
-    interleave_datasets,
     load_dataset,
-    ClassLabel,
     Dataset,
     Features,
-    IterableDataset,
-    Sequence,
 )
 from datasets.distributed import split_dataset_by_node
 from random import Random
@@ -79,7 +74,6 @@ def yield_prompts(
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
     stream: bool = False,
-    max_examples: int = 750,
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterator[dict]:
@@ -121,12 +115,6 @@ def yield_prompts(
         if not stream:
             split = assert_type(Dataset, split)
             split = split.to_iterable_dataset().cast(split.features)
-        else:
-            if not is_streamable(split, max_examples=max_examples):
-                raise ValueError(
-                    f"Streaming dataset {ds_name} is not streamable because the first "
-                    f"{max_examples} examples are all of the same label."
-                )
 
         # only keep the datapoints relevant to the current process
         if world_size > 1:

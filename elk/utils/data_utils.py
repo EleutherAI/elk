@@ -120,15 +120,3 @@ def binarize(template: Template, label: int, new_label: int, rng: Random) -> Tem
     )
 
     return new_template
-
-
-def is_streamable(ds: IterableDataset, max_examples: int) -> bool:
-    """Checks that the first `max_examples` are not all of the same label.
-
-    Note that when streaming we can only approximately shuffle the dataset
-    using a buffer. Streaming shuffling is NOT an adequate shuffle for
-    datasets like IMDB, which are sorted by label.
-    """
-    label_column = infer_label_column(assert_type(Features, ds.features))
-    labels = [ex[label_column] for ex in islice(ds, max_examples)]
-    return len(set(labels)) > 1

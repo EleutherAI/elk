@@ -3,7 +3,6 @@ from .data_utils import (
     get_columns_all_equal,
     infer_label_column,
     infer_num_classes,
-    is_streamable,
     select_train_val_splits,
 )
 

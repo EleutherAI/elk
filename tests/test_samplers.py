@@ -39,7 +39,7 @@ def test_output_is_roughly_balanced():
     )
 
     col = infer_label_column(dataset.features)
-    reservoir = BalancedSampler(dataset)
+    reservoir = BalancedSampler(dataset, max_examples=3000)
 
     # Count the number of samples for each label
     counter = Counter()
