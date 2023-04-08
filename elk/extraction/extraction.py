@@ -113,13 +113,13 @@ def extract_hiddens(
 
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
-    tokenizer = tokenizer = (
-        ElmoTokenizer()
-        if cfg.model == "elmo"
-        else AutoTokenizer.from_pretrained(
+    tokenizer = None
+    if cfg.model == "elmo":
+        tokenizer = ElmoTokenizer()
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(
             cfg.model, truncation_side="left", verbose=False
         )
-    )
     is_enc_dec = model.config.is_encoder_decoder
 
     # If this is an encoder-decoder model we don't need to run the decoder at all.
@@ -174,11 +174,11 @@ def extract_hiddens(
                     return_tensors="pt",
                     truncation=True,
                 ).to(device)
-                outputs = outputs = (
-                    model(inputs)
-                    if cfg.model == "elmo"
-                    else model(**inputs, output_hidden_states=True)
-                )
+                outputs = None
+                if cfg.model == "elmo":
+                    outputs = model(inputs)
+                else:
+                    model(**inputs, output_hidden_states=True)
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
