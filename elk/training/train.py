@@ -88,7 +88,7 @@ class Train(Run):
         X = torch.cat([x0, x1]).squeeze()
         d = X.shape[-1]
         lr_model = Classifier(d, device=device)
-        lr_model.fit_cv(X.view(-1, d), train_labels_aug)
+        lr_model.fit(X.view(-1, d), train_labels_aug)
 
         X_val = torch.cat([val_x0, val_x1]).view(-1, d)
         with torch.no_grad():

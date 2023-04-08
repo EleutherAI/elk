@@ -11,7 +11,9 @@
             "args": [
                 "elicit",
                 "elmo",
-                "imdb"
+                "imdb",
+                "--token_loc",
+                "last"
             ],
             "env": {
                 "CUDA_VISIBLE_DEVICES": "7"
