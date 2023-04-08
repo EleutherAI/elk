@@ -135,7 +135,8 @@ class Run(ABC):
             layers = self.concatenate(layers)
 
         # Should we write to different CSV files for elicit vs eval?
-        with mp.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
             mapper = pool.imap_unordered if num_devices > 1 else map
             iterator: Iterator[Log] = tqdm(  # type: ignore
                 mapper(func, layers), total=len(layers)
