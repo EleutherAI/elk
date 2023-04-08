@@ -25,13 +25,17 @@ dependencies = [
     # We upstreamed bugfixes for Literal types in 0.1.1
     "simple-parsing>=0.1.1",
     # Version 1.11 introduced Fully Sharded Data Parallel, which we plan to use soon
-    "torch>=1.11.0",
+    # "torch==1.11.0",
     # Doesn't really matter but versions < 4.0 are very very old (pre-2016)
     "tqdm>=4.0.0",
     # 4.0 introduced the breaking change of using return_dict=True by default
     "transformers>=4.0.0",
     # required by promptsource, which doesn't specify a version
-    "jinja2"
+    "jinja2",
+    # Where ELMo model is stored
+    "allennlp",
+    # Necessary for ELMo tokenmizer
+    "sacremoses",
 ]
 version = "0.1.1"
 

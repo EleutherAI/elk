@@ -6,6 +6,10 @@ nohup.out
 .idea
 *.pkl
 
+# ELMo
+elk/rnn/elmo_*.json
+elk/rnn/elmo_*.hdf5
+
 # scripts for experiments in progress
 my_*.sh
 

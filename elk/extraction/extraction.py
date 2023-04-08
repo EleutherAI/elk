@@ -20,6 +20,7 @@ from datasets import (
 from simple_parsing import Serializable, field
 from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
 
+from elk.rnn.elmo import ElmoConfig, ElmoModel, ElmoTokenizer
 from elk.utils.typing import float32_to_int16
 
 from ..utils import (
@@ -102,13 +103,22 @@ def extract_hiddens(
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
     # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
-    ).to(device)
+    model = None
+    if cfg.model == "elmo":
+        model = ElmoModel.from_pretrained("").to(device)
+    else:
+        model = AutoModel.from_pretrained(
+            cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+        ).to(device)
+
     # TODO: Maybe also make this configurable?
     # We want to make sure the answer is never truncated
-    tokenizer = AutoTokenizer.from_pretrained(
-        cfg.model, truncation_side="left", verbose=False
+    tokenizer = tokenizer = (
+        ElmoTokenizer()
+        if cfg.model == "elmo"
+        else AutoTokenizer.from_pretrained(
+            cfg.model, truncation_side="left", verbose=False
+        )
     )
     is_enc_dec = model.config.is_encoder_decoder
 
@@ -164,7 +174,11 @@ def extract_hiddens(
                     return_tensors="pt",
                     truncation=True,
                 ).to(device)
-                outputs = model(**inputs, output_hidden_states=True)
+                outputs = outputs = (
+                    model(inputs)
+                    if cfg.model == "elmo"
+                    else model(**inputs, output_hidden_states=True)
+                )
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
@@ -225,7 +239,9 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             dataset_name=available_splits.dataset_name,
         )
 
-    model_cfg = AutoConfig.from_pretrained(cfg.model)
+    model_cfg = (
+        ElmoConfig() if cfg.model == "elmo" else AutoConfig.from_pretrained(cfg.model)
+    )
     num_variants = cfg.prompts.num_variants
 
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
