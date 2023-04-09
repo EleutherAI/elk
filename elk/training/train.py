@@ -217,7 +217,8 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
         if feat.startswith("hidden_")
     ]
     # Train reporters for each layer in parallel
-    with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
         fn = partial(
             train_reporter, cfg, ds, out_dir, devices=devices, world_size=num_devices
         )

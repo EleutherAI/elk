@@ -104,7 +104,8 @@ def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
 
     cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
     # Evaluate reporters for each layer in parallel
-    with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
         fn = partial(
             evaluate_reporter, cfg, ds, devices=devices, world_size=num_devices
         )
