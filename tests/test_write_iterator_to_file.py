@@ -156,7 +156,8 @@ def test_write_iterator_crash_multiprocessing(tmp_path: Path):
         return x.to_csv_line(skip_baseline=True)
 
     try:
-        with mp.Pool(processes) as pool, open(tmp_path / "eval.csv", "w") as f:
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes) as pool, open(tmp_path / "eval.csv", "w") as f:
             layers = [1, 2, 3]
             iterator = pool.imap_unordered(log_function, layers)
             write_iterator_to_file(
