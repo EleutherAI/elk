@@ -151,6 +151,10 @@ class EigenReporter(Reporter):
         )  # 2 x d
         return cat_mat.T @ cat_mat / 2
 
+    @classmethod
+    def _cfg_from_dict(cls, d: dict) -> EigenReporterConfig:
+        return EigenReporterConfig.from_dict(d)
+
     def clear(self) -> None:
         """Clear the running statistics of the reporter."""
         self.contrastive_xcov_M2.zero_()

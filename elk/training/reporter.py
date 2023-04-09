@@ -4,6 +4,7 @@ from ..calibration import CalibrationError
 from .classifier import Classifier
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from simple_parsing.helpers import Serializable
 from sklearn.metrics import roc_auc_score
@@ -147,15 +148,43 @@ class Reporter(nn.Module, ABC):
         self.neg_mean += (x_neg.sum(dim=0) - self.neg_mean) / self.n
         self.pos_mean += (x_pos.sum(dim=0) - self.pos_mean) / self.n
 
-    # TODO: These methods will do something fancier in the future
-    @classmethod
-    def load(cls, path: Union[Path, str]):
-        """Load a reporter from a file."""
-        return torch.load(path)
-
     def save(self, path: Union[Path, str]):
-        # TODO: Save separate JSON and PT files for the reporter.
-        torch.save(self, path)
+        """Save separate JSON and PT files for the reporter."""
+
+        # json state
+        json_path = Path(path).with_suffix(".json")
+        with open(json_path, "w") as f:
+            j_dict = {"cfg": self.config.to_dict(), "in_features": self.in_features}
+            f.write(json.dumps(j_dict))
+
+        # state dict
+        state_path = Path(path).with_suffix(".pt")
+        torch.save(self.state_dict(), state_path)
+
+    @classmethod
+    def load(cls, path: Union[Path, str], device: Optional[str] = None):
+        """Load a reporter from a directory containing a JSON and a state dict."""
+
+        # json state
+        json_path = Path(path).with_suffix(".json")
+        with open(json_path, "r") as f:
+            j_dict = json.loads(f.read())
+        cfg = cls._cfg_from_dict(j_dict["cfg"])
+        in_features = j_dict["in_features"]
+
+        # state dict
+        state_path = Path(path).with_suffix(".pt")
+        state_dict = torch.load(state_path)
+
+        reporter = cls(in_features, cfg, device=device)
+        reporter.load_state_dict(state_dict)
+        return reporter
+
+    @classmethod
+    def _cfg_from_dict(cls, d: dict):
+        """Create a ReporterConfig from a dictionary.
+        This is a separate method so that subclasses can override it."""
+        return ReporterConfig.from_dict(d)
 
     @abstractmethod
     def fit(

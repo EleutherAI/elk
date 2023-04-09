@@ -18,6 +18,7 @@ from datasets import DatasetDict
 from elk.training.preprocessing import normalize
 
 from ..extraction import ExtractionConfig, extract
+from ..training import EigenReporter, CcsReporter, Reporter
 from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import (
     assert_type,
@@ -61,16 +62,22 @@ def evaluate_reporter(
             method=cfg.normalization,
         )
 
-    reporter_path = elk_reporter_dir() / cfg.source / "reporters" / f"layer_{layer}.pt"
-    reporter = torch.load(reporter_path, map_location=device)
+    # load yaml to dict
+    with open(elk_reporter_dir() / cfg.source / "cfg.yaml", "r") as f:
+        source_cfg = yaml.safe_load(f)
+    is_eigen = "neg_cov_weight" in source_cfg["net"]  # TODO: this is a hack
+
+    reporter_path = elk_reporter_dir() / cfg.source / "reporters" / f"layer_{layer}"
+    reporter = (
+        EigenReporter.load(reporter_path, device=device)
+        if is_eigen
+        else CcsReporter.load(reporter_path, device=device)
+    )
     reporter.eval()
 
     test_x0, test_x1 = test_h.unbind(dim=-2)
 
-    test_result = reporter.score(
-        (test_x0, test_x1),
-        test_labels,
-    )
+    test_result = reporter.score(test_labels, test_x0, test_x1)
 
     stats = [layer, *test_result]
     return stats
@@ -104,7 +111,8 @@ def evaluate_reporters(cfg: EvaluateConfig, out_dir: Optional[Path] = None):
 
     cols = ["layer", "loss", "acc", "cal_acc", "auroc"]
     # Evaluate reporters for each layer in parallel
-    with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
         fn = partial(
             evaluate_reporter, cfg, ds, devices=devices, world_size=num_devices
         )

@@ -118,6 +118,10 @@ class CcsReporter(Reporter):
                 )
             )
 
+    @classmethod
+    def _cfg_from_dict(cls, d: dict) -> CcsReporterConfig:
+        return CcsReporterConfig.from_dict(d)
+
     def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         loss = sum(
             LOSSES[name](logit0, logit1, coef)

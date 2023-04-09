@@ -8,7 +8,7 @@ from ..utils import (
     select_usable_devices,
     int16_to_float32,
 )
-from ..logging import save_debug_log
+from ..debug_log import save_debug_log
 from .classifier import Classifier
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .eigen_reporter import EigenReporter, EigenReporterConfig
@@ -168,8 +168,7 @@ def train_reporter(
         with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
             pickle.dump(lr_model, file)
 
-    with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
-        torch.save(reporter, file)
+    reporter.save(reporter_dir / f"layer_{layer}")
 
     return stats
 
@@ -217,7 +216,8 @@ def train(cfg: RunConfig, out_dir: Optional[Path] = None):
         if feat.startswith("hidden_")
     ]
     # Train reporters for each layer in parallel
-    with mp.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(num_devices) as pool, open(out_dir / "eval.csv", "w") as f:
         fn = partial(
             train_reporter, cfg, ds, out_dir, devices=devices, world_size=num_devices
         )
