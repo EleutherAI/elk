@@ -215,8 +215,6 @@ def _convert_to_prompts(
 
     # For sanity checking that prompts are unique
     prompt_counter = Counter()
-    rng.choice([0, 1]) if num_classes > 2 else example[label_column]
-
     for template in templates:
         choices = []
 
