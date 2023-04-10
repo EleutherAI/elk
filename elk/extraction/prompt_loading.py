@@ -232,6 +232,7 @@ def _convert_to_prompts(
 
             q, a = template.apply(fake_example)
             text = qa_cat(q, a)
+            prompt_counter[text] += 1
 
             if fewshot_iter is not None:
                 # Infinite iterator so we don't need to worry about StopIteration
