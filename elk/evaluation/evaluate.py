@@ -8,7 +8,7 @@ import torch
 from simple_parsing.helpers import Serializable, field
 
 from ..extraction.extraction import Extract
-from ..files import elk_reporter_dir, memorably_named_dir
+from ..files import elk_reporter_dir
 from ..run import Run
 from ..training import Reporter
 from ..training.baseline import evaluate_baseline, load_baseline
@@ -43,11 +43,13 @@ class Eval(Serializable):
     concatenated_layer_offset: int = 0
 
     def execute(self):
-        transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
-        out_dir = memorably_named_dir(transfer_eval)
+        datasets = self.data.prompts.datasets
 
-        run = Evaluate(cfg=self, out_dir=out_dir)
-        run.evaluate()
+        transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
+
+        for dataset in datasets:
+            run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
+            run.evaluate()
 
 
 @dataclass
