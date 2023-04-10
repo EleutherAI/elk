@@ -216,12 +216,15 @@ def _convert_to_prompts(
 
     # For sanity checking that prompts are unique
     prompt_counter = Counter()
+    new_label = rng.choice([0, 1]) if num_classes > 2 else example[label_column]
 
     for template in templates:
         choices = []
 
         if num_classes > 2:
-            template, label = binarize(template, label, rng)
+            template = binarize(
+                template, example[label_column], assert_type(int, new_label), rng
+            )
 
         for answer_idx in range(2):
             fake_example = example.copy()
@@ -229,7 +232,6 @@ def _convert_to_prompts(
 
             q, a = template.apply(fake_example)
             text = qa_cat(q, a)
-            prompt_counter[text] += 1
 
             if fewshot_iter is not None:
                 # Infinite iterator so we don't need to worry about StopIteration
