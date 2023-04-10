@@ -1,27 +1,25 @@
 """Main training loop."""
 
-import pickle
 import warnings
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Callable, Literal, Optional
 
+import pandas as pd
 import torch
 from simple_parsing import Serializable, field, subgroups
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch import Tensor
 
-from elk.extraction.extraction import Extract
-from elk.run import Run
-from elk.utils.typing import assert_type
-
+from ..extraction.extraction import Extract
+from ..run import Run
+from ..training.baseline import evaluate_baseline, save_baseline, train_baseline
 from ..utils import select_usable_devices
+from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
-from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, Reporter, ReporterConfig
-from .train_log import ElicitLog
 
 
 @dataclass
@@ -65,40 +63,6 @@ class Elicit(Serializable):
 class Train(Run):
     cfg: Elicit
 
-    def train_baseline(
-        self,
-        x0: Tensor,
-        x1: Tensor,
-        val_x0: Tensor,
-        val_x1: Tensor,
-        train_labels: Tensor,
-        val_labels: Tensor,
-        device: str,
-    ):
-        # repeat_interleave makes `num_variants` copies of each label, all within a
-        # single dimension of size `num_variants * 2 * n`, such that the labels align
-        # with X.view(-1, X.shape[-1])
-        train_labels_aug = torch.cat(
-            [train_labels, 1 - train_labels]
-        ).repeat_interleave(x0.shape[1])
-        val_labels_aug = (
-            torch.cat([val_labels, 1 - val_labels]).repeat_interleave(x0.shape[1])
-        ).cpu()
-
-        X = torch.cat([x0, x1]).squeeze()
-        d = X.shape[-1]
-        lr_model = Classifier(d, device=device)
-        lr_model.fit_cv(X.view(-1, d), train_labels_aug)
-
-        X_val = torch.cat([val_x0, val_x1]).view(-1, d)
-        with torch.no_grad():
-            lr_preds = lr_model(X_val).sigmoid().cpu()
-
-        lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
-        lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
-
-        return lr_model, lr_auroc, lr_acc
-
     def create_models_dir(self, out_dir: Path):
         lr_dir = None
         lr_dir = out_dir / "lr_models"
@@ -109,22 +73,18 @@ class Train(Run):
 
         return reporter_dir, lr_dir
 
-    def save_baseline(self, lr_dir: Path, layer: int, lr_model: Classifier):
-        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
-            pickle.dump(lr_model, file)
-
     def train_reporter(
         self,
         layer: int,
         devices: list[str],
         world_size: int = 1,
-    ) -> ElicitLog:
+    ) -> pd.Series:
         """Train a single reporter on a single layer."""
         self.make_reproducible(seed=self.cfg.net.seed + layer)
 
         device = self.get_device(devices, world_size)
 
-        x0, x1, val_x0, val_x1, train_labels, val_labels = self.prepare_data(
+        x0, x1, val_x0, val_x1, train_gt, val_gt, val_lm_preds = self.prepare_data(
             device, layer
         )
         pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
@@ -136,39 +96,46 @@ class Train(Run):
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
-        train_loss = reporter.fit(x0, x1, train_labels)
+        train_loss = reporter.fit(x0, x1, train_gt)
         val_result = reporter.score(
-            val_labels,
+            val_gt,
             val_x0,
             val_x1,
         )
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        stats: ElicitLog = ElicitLog(
-            layer=layer,
-            pseudo_auroc=pseudo_auroc,
-            train_loss=train_loss,
-            eval_result=val_result,
+        if val_lm_preds is not None:
+            val_gt_cpu = val_gt.repeat_interleave(val_lm_preds.shape[1]).float().cpu()
+            val_lm_auroc = float(roc_auc_score(val_gt_cpu, val_lm_preds.flatten()))
+            val_lm_acc = float(accuracy_score(val_gt_cpu, val_lm_preds.flatten() > 0.5))
+        else:
+            val_lm_auroc = None
+            val_lm_acc = None
+
+        row = pd.Series(
+            {
+                "layer": layer,
+                "pseudo_auroc": pseudo_auroc,
+                "train_loss": train_loss,
+                **val_result._asdict(),
+                "lm_auroc": val_lm_auroc,
+                "lm_acc": val_lm_acc,
+            }
         )
 
         if not self.cfg.skip_baseline:
-            lr_model, lr_auroc, lr_acc = self.train_baseline(
-                x0,
-                x1,
-                val_x0,
-                val_x1,
-                train_labels,
-                val_labels,
-                device,
-            )
-            stats.lr_auroc = lr_auroc
-            stats.lr_acc = lr_acc
-            self.save_baseline(lr_dir, layer, lr_model)
+            lr_model = train_baseline(x0, x1, train_gt, device=device)
+
+            lr_auroc, lr_acc = evaluate_baseline(lr_model, val_x0, val_x1, val_gt)
+
+            row["lr_auroc"] = lr_auroc
+            row["lr_acc"] = lr_acc
+            save_baseline(lr_dir, layer, lr_model)
 
         with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
             torch.save(reporter, file)
 
-        return stats
+        return row
 
     def get_pseudo_auroc(
         self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor
@@ -192,14 +159,7 @@ class Train(Run):
         """Train a reporter on each layer of the network."""
         devices = select_usable_devices(self.cfg.num_gpus)
         num_devices = len(devices)
-        func: Callable[[int], ElicitLog] = partial(
+        func: Callable[[int], pd.Series] = partial(
             self.train_reporter, devices=devices, world_size=num_devices
         )
-        self.apply_to_layers(
-            func=func,
-            num_devices=num_devices,
-            to_csv_line=lambda item: item.to_csv_line(
-                skip_baseline=self.cfg.skip_baseline
-            ),
-            csv_columns=ElicitLog.csv_columns(self.cfg.skip_baseline),
-        )
+        self.apply_to_layers(func=func, num_devices=num_devices)
