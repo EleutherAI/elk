@@ -322,10 +322,6 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
 
     mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
 
-    import multiprocess as mp
-
-    mp.set_start_method("spawn")  # type: ignore[attr-defined]
-
     ds = dict()
     for split, builder in builders.items():
         builder.download_and_prepare(num_proc=len(devices))
