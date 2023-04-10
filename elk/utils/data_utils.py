@@ -112,9 +112,8 @@ def get_layers(ds: DatasetDict) -> list[int]:
     return layers
 
 
-def binarize(template: Template, label: int, rng: Random) -> tuple[Template, int]:
+def binarize(template: Template, label: int, new_label: int, rng: Random) -> Template:
     """Binarize a template with >2 answer choices, returning a new template and label.
-
     Returns:
         `new_template`:
             A deepcopy of the original template with with 2 answer choices, one of
@@ -133,12 +132,11 @@ def binarize(template: Template, label: int, rng: Random) -> tuple[Template, int
     true = answer_choices[label]
     false = rng.choice([c for c in answer_choices if c != true])
 
-    # What order are we going to present the answer choices in?
-    new_label = rng.choice([0, 1])
+    assert new_label in (0, 1)
 
     new_template = copy.deepcopy(template)
     new_template.answer_choices = (
         f"{false} ||| {true}" if new_label else f"{true} ||| {false}"
     )
 
-    return new_template, new_label
+    return new_template
