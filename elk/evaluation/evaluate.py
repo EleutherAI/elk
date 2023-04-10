@@ -45,10 +45,13 @@ class Eval(Serializable):
     concatenated_layer_offset: int = 0
 
     def execute(self):
-        transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
+        datasets = self.data.prompts.datasets
 
-        run = Evaluate(cfg=self, out_dir=transfer_eval)
-        run.evaluate()
+        transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
+
+        for dataset in datasets:
+            run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
+            run.evaluate()
 
 
 @dataclass
