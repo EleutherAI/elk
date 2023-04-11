@@ -14,7 +14,6 @@ from ..utils.typing import assert_type
 class BalancedSampler(TorchIterableDataset):
     """
     Approximately balances a binary classification dataset in a streaming fashion.
-    Written mostly by GPT-4.
 
     Args:
         dataset (IterableDataset): The HuggingFace IterableDataset to balance.
