@@ -543,6 +543,16 @@ class DatasetTemplates:
             if len(os.listdir(base_folder)) == 0:
                 rmtree(base_folder)
 
+    def get_templates_with_new_uuids(self) -> dict:
+        """
+        Generate new uuids for templates, used when merging template datasets.
+        """
+        new_templates = {}
+        for template in self.templates.values():
+            template.id = str(uuid.uuid4())
+            new_templates[template.id] = template
+        return new_templates
+
     def __getitem__(self, template_key: str) -> "Template":
         return self.templates[self.name_to_id_mapping[template_key]]
 

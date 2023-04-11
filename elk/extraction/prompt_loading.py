@@ -1,3 +1,4 @@
+from os.path import exists
 from dataclasses import dataclass
 from random import Random
 from typing import Any, Iterator, Literal, Optional
@@ -40,7 +41,7 @@ class PromptConfig(Serializable):
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot. Defaults to 0.
         num_variants: The number of prompt templates to apply to each predicate upon
-            call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
+            call to __getitem__. Use -1 to apply all available templates. Defaults to -1.
         seed: The seed to use for prompt randomization. Defaults to 42.
         stream: Whether to stream the dataset from the Internet. Defaults to False.
     """
@@ -78,6 +79,7 @@ def load_prompts(
     stream: bool = False,
     rank: int = 0,
     world_size: int = 1,
+    combined_prompter_path: str = ""
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified datasets.
 
@@ -100,10 +102,24 @@ def load_prompts(
     train_datasets = []
     rng = Random(seed)
 
+    # If combined template is not empty and does not exist as a file yet, need to aggregate
+    # Init/create a new file for combining templates
+    combined_prompter = None
+    if combined_prompter_path:
+        print("Combining templates into shared prompter.")
+        combined_prompter = DatasetTemplates("combined_templates", combined_prompter_path)
+    # should_aggregate_templates = (combined_prompter and not exists(combined_prompter.yaml_path))
+    # print("should aggregate: ", should_aggregate_templates)
+
     # First load the datasets and prompters. We need to know the minimum number of
     # templates for any dataset in order to make sure we don't run out of prompts.
     for ds_string in dataset_strings:
         ds_name, _, config_name = ds_string.partition(" ")
+        prompter = DatasetTemplates(ds_name, config_name)
+        # Populate combined prompter with templates from different datasets
+        # if should_aggregate_templates:
+        combined_prompter.templates.update(prompter.get_templates_with_new_uuids())
+        print("len of prompter templates is ", len(combined_prompter.templates))
         prompters.append(DatasetTemplates(ds_name, config_name))
 
         ds_dict = assert_type(
@@ -136,11 +152,22 @@ def load_prompts(
         train_datasets.append(train_ds)
 
     min_num_templates = min(len(prompter.templates) for prompter in prompters)
+    # if should_aggregate_templates:
+    
+    if combined_prompter:
+        # save combined templates to yaml file
+        print("saving aggregate templates")
+        combined_prompter.sync_mapping()
+        combined_prompter.write_to_file()
+        min_num_templates = len(combined_prompter.templates)
+        print("length of combined_prompter templates is ", min_num_templates)
+
     num_variants = (
         min_num_templates
         if num_variants == -1
         else min(num_variants, min_num_templates)
     )
+    print()
     assert num_variants > 0
     if rank == 0:
         print(f"Using {num_variants} variants of each prompt")
@@ -179,7 +206,7 @@ def load_prompts(
                 label_column=label_column,
                 num_classes=num_classes,
                 num_variants=num_variants,
-                prompter=prompter,
+                prompter=prompter if not combined_prompter else combined_prompter,
                 rng=rng,
                 fewshot_iter=fewshot_iter,
             )

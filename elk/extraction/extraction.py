@@ -54,6 +54,7 @@ class Extract(Serializable):
     token_loc: Literal["first", "last", "mean"] = "last"
     min_gpu_mem: Optional[int] = None
     num_gpus: int = -1
+    combined_prompter_path: Optional[str] = None # if template file does not exist, combine from datasets and save to this path
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -98,6 +99,7 @@ def extract_hiddens(
         stream=cfg.prompts.stream,
         rank=rank,
         world_size=world_size,
+        combined_prompter_path=cfg.combined_prompter_path
     )  # this dataset is already sharded, but hasn't been truncated to max_examples
 
     # AutoModel should do the right thing here in nearly all cases. We don't actually
