@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, NamedTuple, Optional, Union
+from typing import Literal, NamedTuple, Optional
 
 import torch
 import torch.nn as nn
@@ -69,10 +69,10 @@ class Reporter(nn.Module, ABC):
     neg_mean: Tensor
     pos_mean: Tensor
     normalization: Literal["none", "elementwise", "meanonly"]
-    pos_norm_mean: Union[Tensor, float]
-    neg_norm_mean: Union[Tensor, float]
-    pos_norm_scale: Union[Tensor, float]
-    neg_norm_scale: Union[Tensor, float]
+    pos_norm_mean: Tensor
+    neg_norm_mean: Tensor
+    pos_norm_scale: Tensor
+    neg_norm_scale: Tensor
 
     def __init__(
         self,
@@ -162,11 +162,11 @@ class Reporter(nn.Module, ABC):
 
     # TODO: These methods will do something fancier in the future
     @classmethod
-    def load(cls, path: Union[Path, str]):
+    def load(cls, path: Path | str):
         """Load a reporter from a file."""
         return torch.load(path)
 
-    def save(self, path: Union[Path, str]):
+    def save(self, path: Path | str):
         # TODO: Save separate JSON and PT files for the reporter.
         torch.save(self, path)
 
@@ -178,10 +178,11 @@ class Reporter(nn.Module, ABC):
             and self.pos_norm_scale is not None
             and self.neg_norm_scale is not None
         ), "Must fit normalization function before normalizing data."
+        device = x_pos.device
 
         return (
-            (x_pos - self.pos_norm_mean) * self.pos_norm_scale,
-            (x_neg - self.neg_norm_mean) * self.neg_norm_scale,
+            (x_pos - self.pos_norm_mean.to(device)) * self.pos_norm_scale.to(device),
+            (x_neg - self.neg_norm_mean.to(device)) * self.neg_norm_scale.to(device),
         )
 
     def fit_normalization_function(self, x_pos: torch.Tensor, x_neg: torch.Tensor):

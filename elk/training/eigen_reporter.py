@@ -2,12 +2,13 @@
 
 from dataclasses import dataclass
 from typing import Literal, Optional
+from warnings import warn
 
 import torch
 from torch import Tensor, nn, optim
 
-from ..eigsh import lanczos_eigsh
 from ..math_util import cov_mean_fused
+from ..truncated_eigh import ConvergenceError, truncated_eigh
 from .reporter import Reporter, ReporterConfig
 
 
@@ -111,6 +112,18 @@ class EigenReporter(Reporter):
     def intercluster_cov(self) -> Tensor:
         return self.intercluster_cov_M2 / self.n
 
+    @property
+    def confidence(self) -> Tensor:
+        return self.weight.mT @ self.intercluster_cov @ self.weight
+
+    @property
+    def invariance(self) -> Tensor:
+        return -self.weight.mT @ self.intracluster_cov @ self.weight
+
+    @property
+    def consistency(self) -> Tensor:
+        return -self.weight.mT @ self.contrastive_xcov @ self.weight
+
     def clear(self) -> None:
         """Clear the running statistics of the reporter."""
         self.contrastive_xcov_M2.zero_()
@@ -168,20 +181,26 @@ class EigenReporter(Reporter):
         self.contrastive_xcov_M2.addmm_(neg_delta.mT, pos_delta2)
         self.contrastive_xcov_M2.addmm_(pos_delta.mT, neg_delta2)
 
-    def fit_streaming(self, warm_start: bool = False) -> float:
+    def fit_streaming(self) -> float:
         """Fit the probe using the current streaming statistics."""
         A = (
             self.config.var_weight * self.intercluster_cov
             - self.config.inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
         )
-        v0 = self.weight.T.squeeze() if warm_start else None
 
-        # We use "LA" (largest algebraic) instead of "LM" (largest magnitude) to
-        # ensure that the eigenvalue is positive and not a large negative one
-        L, Q = lanczos_eigsh(A, k=self.config.num_heads, v0=v0, which="LA")
+        try:
+            L, Q = truncated_eigh(A, k=self.config.num_heads)
+        except ConvergenceError:
+            warn(
+                "Truncated eigendecomposition failed to converge. Falling back on "
+                "PyTorch's dense eigensolver."
+            )
+
+            L, Q = torch.linalg.eigh(A)
+            L, Q = L[-self.config.num_heads :], Q[:, -self.config.num_heads :]
+
         self.weight.data = Q.T
-
         return -float(L[-1])
 
     def fit(

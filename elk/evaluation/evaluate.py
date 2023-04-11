@@ -3,19 +3,17 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Literal, Optional
 
+import pandas as pd
 import torch
 from simple_parsing.helpers import Serializable, field
 
-from elk.evaluation.evaluate_log import EvalLog
-from elk.extraction.extraction import Extract
-from elk.run import Run
-from elk.training import Reporter
-from elk.utils.data_utils import select_train_val_splits
-
+from ..extraction.extraction import Extract
 from ..files import elk_reporter_dir
-from ..utils import (
-    select_usable_devices,
-)
+from ..run import Run
+from ..training import Reporter
+from ..training.baseline import evaluate_baseline, load_baseline
+from ..utils import select_usable_devices
+from ..utils.data_utils import select_train_val_splits
 
 
 @dataclass
@@ -42,14 +40,17 @@ class Eval(Serializable):
     debug: bool = False
     out_dir: Optional[Path] = None
     num_gpus: int = -1
-
+    skip_baseline: bool = False
     concatenated_layer_offset: int = 0
 
     def execute(self):
-        transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
+        datasets = self.data.prompts.datasets
 
-        run = Evaluate(cfg=self, out_dir=transfer_eval)
-        run.evaluate()
+        transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
+
+        for dataset in datasets:
+            run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
+            run.evaluate()
 
 
 @dataclass
@@ -58,7 +59,7 @@ class Evaluate(Run):
 
     def evaluate_reporter(
         self, layer: int, devices: list[str], world_size: int = 1
-    ) -> EvalLog:
+    ) -> pd.Series:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
@@ -67,11 +68,11 @@ class Evaluate(Run):
         else:
             _, test_name = select_train_val_splits(self.dataset)
         test_ds = self.dataset[test_name]
-        test_x0, test_x1, test_labels = self.prepare_data(test_ds, device, layer)
+        test_x0, test_x1, test_labels, _ = self.prepare_data(test_ds, device, layer)
 
-        reporter_path = (
-            elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"
-        )
+        experiment_dir = elk_reporter_dir() / self.cfg.source
+
+        reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
         reporter: Reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
@@ -81,10 +82,29 @@ class Evaluate(Run):
             test_x1,
         )
 
-        return EvalLog(
-            layer=layer,
-            eval_result=test_result,
+        stats_row = pd.Series(
+            {
+                "layer": layer,
+                **test_result._asdict(),
+            }
         )
+
+        lr_dir = experiment_dir / "lr_models"
+        if not self.cfg.skip_baseline and lr_dir.exists():
+            lr_model = load_baseline(lr_dir, layer)
+            lr_model.eval()
+            lr_auroc, lr_acc = evaluate_baseline(
+                lr_model.cuda(),
+                test_x0.cuda(),
+                test_x1.cuda(),
+                test_labels,
+                reporter.normalize,
+            )
+
+            stats_row["lr_auroc"] = lr_auroc
+            stats_row["lr_acc"] = lr_acc
+
+        return stats_row
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
@@ -93,12 +113,7 @@ class Evaluate(Run):
         )
 
         num_devices = len(devices)
-        func: Callable[[int], EvalLog] = partial(
+        func: Callable[[int], pd.Series] = partial(
             self.evaluate_reporter, devices=devices, world_size=num_devices
         )
-        self.apply_to_layers(
-            func=func,
-            num_devices=num_devices,
-            to_csv_line=lambda item: item.to_csv_line(),
-            csv_columns=EvalLog.csv_columns(),
-        )
+        self.apply_to_layers(func=func, num_devices=num_devices)
