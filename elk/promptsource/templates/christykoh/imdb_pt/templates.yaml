@@ -1,0 +1,219 @@
+dataset: imdb_pt
+templates:
+  02ff2949-0f45-4d97-941e-6fa4c0afbc2d: !Template
+    answer_choices: negativo ||| positivo
+    id: 02ff2949-0f45-4d97-941e-6fa4c0afbc2d
+    jinja: 'A crítica de filme a seguir expressa que sentimento? {{text}}
+
+
+      ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Movie Expressed Sentiment 2
+    reference: ''
+  2351d12a-e630-4d19-8b41-e199266e38f7: !Template
+    answer_choices: ruim ||| bom
+    id: 2351d12a-e630-4d19-8b41-e199266e38f7
+    jinja: '{{text}}
+
+
+      O crítico achou este filme {{"bom ou mal"}}? ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Opinion bad good choices
+    reference: ''
+  5f372fb1-795a-47b6-8ddf-c4fd1579e76a: !Template
+    answer_choices: negativo ||| positivo
+    id: 5f372fb1-795a-47b6-8ddf-c4fd1579e76a
+    jinja: "{{text}} \nEsta avaliação é {{\"positivo ou negativo\"}}? ||| \n{{answer_choices[label]}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: 'Sentiment with choices '
+    reference: ''
+  866474a5-1498-46b7-bfee-ac0c5160707f: !Template
+    answer_choices: negativo ||| positivo
+    id: 866474a5-1498-46b7-bfee-ac0c5160707f
+    jinja: '{{text}}
+
+
+      Como o espectador se sente sobre o filme?
+
+
+      ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Sentiment Feeling
+    reference: ''
+  96538f30-f2c1-430e-8fc6-936a16966d9c: !Template
+    answer_choices: negativo ||| positivo
+    id: 96538f30-f2c1-430e-8fc6-936a16966d9c
+    jinja: '{{text}} Que sentimento o escritor expressa pelo filme? ||| {{
+      answer_choices [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Writer Expressed Sentiment
+    reference: ''
+  af51297c-38a3-4d6c-a8b5-04b1243d7443: !Template
+    answer_choices: negativo ||| positivo
+    id: af51297c-38a3-4d6c-a8b5-04b1243d7443
+    jinja: '{{text}}
+
+      O sentimento expresso pelo filme é ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Movie Expressed Sentiment
+    reference: ''
+  b93b74ac-fe95-40b4-9610-318b46ab820f: !Template
+    answer_choices: negativo ||| positivo
+    id: b93b74ac-fe95-40b4-9610-318b46ab820f
+    jinja: '{{text}}
+
+
+      Qual é o sentimento expresso neste texto?
+
+
+      ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Text Expressed Sentiment
+    reference: ''
+  b9b5d79d-f0b3-4bec-a724-f585db3e93ff: !Template
+    answer_choices: negativo ||| positivo
+    id: b9b5d79d-f0b3-4bec-a724-f585db3e93ff
+    jinja: '{{text}}
+
+
+    Isso definitivamente não é um ||| {{ answer_choices [1-label]}} avaliação.'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: false
+    name: Negation template for positive and negative
+    reference: ''
+  bd82ba0f-01d4-4fa1-bf8d-07e392c00cd9: !Template
+    answer_choices: Não ||| Sim
+    id: bd82ba0f-01d4-4fa1-bf8d-07e392c00cd9
+    jinja: '{{text}}
+
+      O crítico gostou do filme? ||| {{ answer_choices [label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Enjoyment Yes No
+    reference: ''
+  c70d1687-2421-49a2-9553-91b8bac4cfbe: !Template
+    answer_choices: negativo ||| positivo
+    id: c70d1687-2421-49a2-9553-91b8bac4cfbe
+    jinja: '{{text}}
+
+      Qual é o sentimento expresso pelo crítico para o filme?
+
+      ||| {{ answer_choices [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Expressed Sentiment
+    reference: ''
+  dacb5f03-dc80-428c-b707-8574436675c9: !Template
+    answer_choices: 0 ||| 1
+    id: dacb5f03-dc80-428c-b707-8574436675c9
+    jinja: 'Considere o seguinte exemplo:  '''''' {{text}} ''''''
+
+
+      Entre {{ answer_choices[0] }} e {{answer_choices[1] }}, que é o sentimento
+      deste exemplo?
+
+      ||| {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: burns_2
+    reference: ''
+  e01970ab-42c0-4e6e-a08f-4940d889ef37: !Template
+    answer_choices: Eles não gostaram! ||| Eles adoraram
+    id: e01970ab-42c0-4e6e-a08f-4940d889ef37
+    jinja: '{{text}}
+
+      Como o crítico se sente sobre o filme? |||
+
+      {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Enjoyment
+    reference: ''
+  eb791ab2-d2b4-4be6-a569-64086983abee: !Template
+    answer_choices: 0 ||| 1
+    id: eb791ab2-d2b4-4be6-a569-64086983abee
+    jinja: 'Considere o seguinte exemplo:  '''''' {{text}} ''''''
+
+      Entre {{ answer_choices[0] }} e {{answer_choices[1] }}, o sentimento de
+      este exemplo é ||| {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - pt
+      metrics:
+      - Accuracy
+      original_task: true
+    name: burns_1
+    reference: ''
