@@ -33,7 +33,6 @@ from ..utils import (
     select_train_val_splits,
     select_usable_devices,
 )
-from .balanced_sampler import BalancedSampler
 from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
 
@@ -126,7 +125,7 @@ def extract_hiddens(
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
 
-    for example in islice(BalancedSampler(prompt_ds, 3), max_examples):
+    for example in islice(prompt_ds, max_examples):
         num_variants = len(example["prompts"])
         num_choices = len(example["prompts"][0])
 

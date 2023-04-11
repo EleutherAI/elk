@@ -83,12 +83,12 @@ class CcsReporter(Reporter):
 
     def __init__(
         self,
-        in_features: int,
         cfg: CcsReporterConfig,
+        in_features: int,
         device: Optional[str] = None,
         dtype: Optional[torch.dtype] = None,
     ):
-        super().__init__(in_features, cfg, device=device, dtype=dtype)
+        super().__init__(cfg, in_features, device=device, dtype=dtype)
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 

@@ -1,11 +1,11 @@
 from collections import Counter
 from dataclasses import dataclass
+from itertools import cycle
 from random import Random
 from typing import Any, Iterator, Literal, Optional
 
 from datasets import (
     Dataset,
-    Features,
     load_dataset,
 )
 from datasets.distributed import split_dataset_by_node
@@ -18,7 +18,7 @@ from ..utils import (
     infer_num_classes,
     select_train_val_splits,
 )
-from .balanced_sampler import FewShotSampler
+from .balanced_sampler import BalancedSampler
 
 
 @dataclass
@@ -95,10 +95,12 @@ def load_prompts(
     Returns:
         An iterable dataset of prompts.
     """
+    class_counts = []
     prompters = []
-    raw_datasets = []
+    datasets = []
     train_datasets = []
     rng = Random(seed)
+    assert num_shots == 0
 
     # First load the datasets and prompters. We need to know the minimum number of
     # templates for any dataset in order to make sure we don't run out of prompts.
@@ -112,28 +114,36 @@ def load_prompts(
         train_name, val_name = select_train_val_splits(ds_dict)
         split_name = val_name if split_type == "val" else train_name
 
-        # Note that when streaming we can only approximately shuffle the dataset
-        # using a buffer. Streaming shuffling is NOT an adequate shuffle for
-        # datasets like IMDB, which are sorted by label.
-        bad_streaming_datasets = ["imdb"]
-        assert not (
-            stream and ds_name in bad_streaming_datasets
-        ), f"Streaming is not supported for {ds_name}."
-        split = ds_dict[split_name].shuffle(seed=seed)
+        ds = ds_dict[split_name].shuffle(seed=seed)
         train_ds = ds_dict[train_name].shuffle(seed=seed)
+
         if not stream:
-            split = assert_type(Dataset, split)
-            split = split.to_iterable_dataset().cast(split.features)
+            ds = assert_type(Dataset, ds)
+            if world_size > 1:
+                ds = ds.shard(world_size, rank)
 
-        # only keep the datapoints relevant to the current process
-        if world_size > 1:
+            ds = ds.to_iterable_dataset().cast(ds.features)
+
+        elif world_size > 1:
             # This prints to stdout which is slightly annoying
-            split = split_dataset_by_node(
-                dataset=split, rank=rank, world_size=world_size
-            )
+            ds = split_dataset_by_node(dataset=ds, rank=rank, world_size=world_size)
 
-        raw_datasets.append(split)
+        label_column = infer_label_column(ds.features)
+        num_classes = infer_num_classes(ds.features[label_column])
+        if label_column != "label":
+            ds = ds.rename_column(label_column, "label")
+            train_ds = train_ds.rename_column(label_column, "label")
+
+        class_counts.append(num_classes)
+        datasets.append(ds)
         train_datasets.append(train_ds)
+
+    # Number of classes should be the same for all datasets
+    num_classes, *rest = class_counts
+    if not all(num_classes == x for x in rest):
+        raise ValueError(
+            f"# classes should be the same for all datasets, but got {class_counts}"
+        )
 
     min_num_templates = min(len(prompter.templates) for prompter in prompters)
     num_variants = (
@@ -145,51 +155,29 @@ def load_prompts(
     if rank == 0:
         print(f"Using {num_variants} variants of each prompt")
 
-    ds_iterators = [iter(ds) for ds in raw_datasets]
-    while True:  # terminates when the first dataset runs out of examples
-        for ds_iterator, ds, train_ds, prompter in zip(
-            ds_iterators, raw_datasets, train_datasets, prompters
-        ):
-            label_column = infer_label_column(ds.features)
-            num_classes = infer_num_classes(ds.features[label_column])
+    ds_iters = [iter(BalancedSampler(ds, num_classes)) for ds in datasets]
+    for ds_iter, ds, prompter in cycle(zip(ds_iters, datasets, prompters)):
+        try:
+            example = next(ds_iter)
+        except StopIteration:
+            return
 
-            # Remove everything except the label column
-            extra_cols = list(assert_type(Features, ds.features))
-            extra_cols.remove(label_column)
+        example = _convert_to_prompts(
+            example,
+            label_column="label",
+            num_classes=num_classes,
+            num_variants=num_variants,
+            prompter=prompter,
+            rng=rng,
+            fewshot_iter=None,
+        )
 
-            if label_column != "label":
-                ds = ds.rename_column(label_column, "label")
-            if num_shots > 0:
-                fewshot = FewShotSampler(
-                    train_ds,  # TODO: not iterator
-                    num_shots=num_shots,
-                    rng=rng,
-                )
-                fewshot_iter = iter(fewshot)
-            else:
-                fewshot_iter = None
+        # Add the builder and config name to the records directly to make
+        # sure we don't forget what dataset they came from.
+        example["builder_name"] = ds.info.builder_name
+        example["config_name"] = ds.info.config_name
 
-            try:
-                example = next(ds_iterator)
-            except StopIteration:
-                return
-
-            example = _convert_to_prompts(
-                example,
-                label_column=label_column,
-                num_classes=num_classes,
-                num_variants=num_variants,
-                prompter=prompter,
-                rng=rng,
-                fewshot_iter=fewshot_iter,
-            )
-
-            # Add the builder and config name to the records directly to make
-            # sure we don't forget what dataset they came from.
-            example["builder_name"] = ds.info.builder_name
-            example["config_name"] = ds.info.config_name
-
-            yield example
+        yield example
 
 
 def _convert_to_prompts(

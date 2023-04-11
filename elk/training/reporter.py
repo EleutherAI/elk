@@ -90,13 +90,13 @@ class Reporter(nn.Module, ABC):
     @classmethod
     def check_separability(
         cls,
-        train_pair: tuple[Tensor, Tensor],
-        val_pair: tuple[Tensor, Tensor],
+        train_hiddens: Tensor,
+        val_hiddens: Tensor,
     ) -> float:
         """Measure how linearly separable the pseudo-labels are for a contrast pair.
 
         Args:
-            train_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+            train_hiddens: Tensor of shape [n, ], where x0 and x1 are the
                 contrastive representations. Used for training the classifier.
             val_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
                 contrastive representations. Used for evaluating the classifier.
@@ -104,8 +104,8 @@ class Reporter(nn.Module, ABC):
         Returns:
             The AUROC of a linear classifier fit on the pseudo-labels.
         """
-        x0, x1 = train_pair
-        val_x0, val_x1 = val_pair
+        x0, x1 = train_hiddens
+        val_x0, val_x1 = val_hiddens
 
         pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
         pseudo_train_labels = torch.cat(
@@ -198,13 +198,15 @@ class Reporter(nn.Module, ABC):
         to_one_hot(Y, n_classes=c).long().flatten()
 
         if c == 2:
-            cal_err = CalibrationError().update(Y.cpu(), pred_probs.cpu()).compute().ece
+            pos_probs = pred_probs[..., 0].flatten()
+            cal_err = CalibrationError().update(Y.cpu(), pos_probs.cpu()).compute().ece
+
             # Calibrated accuracy
-            cal_thresh = pred_probs.float().quantile(labels.float().mean())
-            cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
+            cal_thresh = pos_probs.float().quantile(labels.float().mean())
+            cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
             cal_acc = cal_preds.flatten().eq(Y).float().mean().item()
 
-            raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
+            raw_preds = pos_probs.gt(0.5).to(torch.int)
         else:
             # TODO: Implement calibration error for k > 2?
             cal_acc = 0.0

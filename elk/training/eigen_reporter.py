@@ -25,9 +25,9 @@ class EigenReporterConfig(ReporterConfig):
             of eigenvectors to compute from the VINC matrix.
     """
 
-    var_weight: float = 1.0
-    inv_weight: float = 5.0
-    neg_cov_weight: float = 5.0
+    var_weight: float = 0.2
+    inv_weight: float = 1.0
+    neg_cov_weight: float = 1.0
 
     num_heads: int = 1
 
@@ -100,7 +100,6 @@ class EigenReporter(Reporter):
 
     def predict(self, *hiddens: Tensor) -> Tensor:
         """Return the predicted logits on the contrast set `hiddens`."""
-        # breakpoint()
         if len(hiddens) == 1:
             return self(hiddens[0])
 

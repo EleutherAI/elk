@@ -1,7 +1,6 @@
 from functools import partial
 from typing import Literal
 
-import torch
 from sklearn.metrics import average_precision_score, roc_auc_score
 from torch import Tensor
 
@@ -17,7 +16,7 @@ def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
     Returns:
         Tensor: A one-hot representation tensor of shape (N, n_classes).
     """
-    one_hot_labels = torch.zeros(labels.size(0), n_classes, dtype=torch.float32)
+    one_hot_labels = labels.new_zeros(labels.size(0), n_classes)
     return one_hot_labels.scatter_(1, labels.unsqueeze(1).long(), 1)
 
 

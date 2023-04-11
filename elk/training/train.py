@@ -90,14 +90,14 @@ class Train(Run):
         # pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
 
         if isinstance(self.cfg.net, CcsReporterConfig):
-            reporter = CcsReporter(d, self.cfg.net, device=device)
+            reporter = CcsReporter(self.cfg.net, d, device=device)
         elif isinstance(self.cfg.net, EigenReporterConfig):
             reporter = EigenReporter(self.cfg.net, d, c, device=device)
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
         train_loss = reporter.fit(*train_h.unbind(2), labels=train_gt)
-        val_result = reporter.score(val_gt, val_h)
+        val_result = reporter.score(val_gt.to(device), val_h)
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         if val_lm_preds is not None:
