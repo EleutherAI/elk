@@ -164,10 +164,11 @@ class CcsReporter(Reporter):
         """Return the raw score output of the probe on `x`."""
         return self.probe(x).squeeze(-1)
 
-    def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
-        return self.predict_prob(x_pos, x_neg).logit()
+    def predict(self, hiddens: Tensor) -> Tensor:
+        return self.predict_prob(hiddens).logit()
 
-    def predict_prob(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
+    def predict_prob(self, hiddens: Tensor) -> Tensor:
+        x_pos, x_neg = hiddens.unbind(2)
         return 0.5 * (self(x_pos).sigmoid() + (1 - self(x_neg).sigmoid()))
 
     def loss(
@@ -216,8 +217,7 @@ class CcsReporter(Reporter):
 
     def fit(
         self,
-        x_pos: Tensor,
-        x_neg: Tensor,
+        hiddens: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         """Fit the probe to the contrast pair (x0, x1).
@@ -236,6 +236,7 @@ class CcsReporter(Reporter):
         """
         # TODO: Implement normalization here to fix issue #96
         # self.update(x_pos, x_neg)
+        x_pos, x_neg = hiddens.unbind(2)
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf

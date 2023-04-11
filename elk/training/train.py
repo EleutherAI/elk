@@ -96,7 +96,7 @@ class Train(Run):
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
-        train_loss = reporter.fit(*train_h.unbind(2), labels=train_gt)
+        train_loss = reporter.fit(train_h, labels=train_gt)
         val_result = reporter.score(val_gt.to(device), val_h)
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))

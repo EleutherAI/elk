@@ -165,17 +165,17 @@ class Reporter(nn.Module, ABC):
     @abstractmethod
     def fit(
         self,
-        *hiddens: Tensor,
+        hiddens: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         ...
 
     @abstractmethod
-    def predict(self, *hiddens: Tensor) -> Tensor:
+    def predict(self, hiddens: Tensor) -> Tensor:
         """Return pooled logits for the contrast set `hiddens`."""
 
     @abstractmethod
-    def predict_prob(self, *hiddens: Tensor) -> Tensor:
+    def predict_prob(self, hiddens: Tensor) -> Tensor:
         """Like `predict` but returns normalized probabilities, not logits."""
 
     @torch.no_grad()
@@ -198,7 +198,7 @@ class Reporter(nn.Module, ABC):
         to_one_hot(Y, n_classes=c).long().flatten()
 
         if c == 2:
-            pos_probs = pred_probs[..., 0].flatten()
+            pos_probs = pred_probs[..., 1].flatten()
             cal_err = CalibrationError().update(Y.cpu(), pos_probs.cpu()).compute().ece
 
             # Calibrated accuracy

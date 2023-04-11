@@ -43,7 +43,7 @@ def normalize(
         val_hiddens -= means
 
         if method == "elementwise":
-            scale = 1 / train_hiddens.norm(dim=0, keepdim=True)
+            scale = 1 / train_hiddens.std(dim=0, keepdim=True)
         elif method == "meanonly":
             scale = 1
         else:

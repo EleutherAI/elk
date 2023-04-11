@@ -9,6 +9,7 @@ from einops import rearrange, repeat
 from torch import Tensor, nn, optim
 
 from ..math_util import cov_mean_fused
+from ..metrics import to_one_hot
 from ..truncated_eigh import ConvergenceError, truncated_eigh
 from .reporter import Reporter, ReporterConfig
 
@@ -19,17 +20,21 @@ class EigenReporterConfig(ReporterConfig):
 
     Args:
         var_weight: The weight of the variance term in the loss.
-        inv_weight: The weight of the invariance term in the loss.
         neg_cov_weight: The weight of the negative covariance term in the loss.
         num_heads: The number of reporter heads to fit. In other words, the number
             of eigenvectors to compute from the VINC matrix.
     """
 
-    var_weight: float = 0.2
-    inv_weight: float = 1.0
-    neg_cov_weight: float = 1.0
+    var_weight: float = 0.1
+    neg_cov_weight: float = 0.5
 
     num_heads: int = 1
+
+    def __post_init__(self):
+        if not (0 <= self.neg_cov_weight <= 1):
+            raise ValueError("neg_cov_weight must be in [0, 1]")
+        if self.num_heads <= 0:
+            raise ValueError("num_heads must be positive")
 
 
 class EigenReporter(Reporter):
@@ -93,24 +98,16 @@ class EigenReporter(Reporter):
             torch.zeros(cfg.num_heads, in_features, device=device, dtype=dtype),
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, hiddens: Tensor) -> Tensor:
         """Return the predicted log odds on input `x`."""
-        raw_scores = x @ self.weight.mT
+        raw_scores = hiddens @ self.weight.mT
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
-    def predict(self, *hiddens: Tensor) -> Tensor:
-        """Return the predicted logits on the contrast set `hiddens`."""
-        if len(hiddens) == 1:
-            return self(hiddens[0])
+    predict = forward
 
-        elif len(hiddens) == 2:
-            return 0.5 * (self(hiddens[0]) - self(hiddens[1]))
-        else:
-            return torch.stack(list(map(self, hiddens)), dim=-1)
-
-    def predict_prob(self, *hiddens: Tensor) -> Tensor:
+    def predict_prob(self, hiddens: Tensor) -> Tensor:
         """Return the predicted probabilities on the contrast set `hiddens`."""
-        logits = self.predict(*hiddens)
+        logits = self(hiddens)
         if len(hiddens) == 2:
             return logits.sigmoid()
         else:
@@ -126,15 +123,15 @@ class EigenReporter(Reporter):
 
     @property
     def confidence(self) -> Tensor:
-        return self.weight.mT @ self.intercluster_cov @ self.weight
+        return self.weight @ self.intercluster_cov @ self.weight.mT
 
     @property
     def invariance(self) -> Tensor:
-        return -self.weight.mT @ self.intracluster_cov @ self.weight
+        return -self.weight @ self.intracluster_cov @ self.weight.mT
 
     @property
     def consistency(self) -> Tensor:
-        return -self.weight.mT @ self.contrastive_xcov @ self.weight
+        return -self.weight @ self.contrastive_xcov @ self.weight.mT
 
     def clear(self) -> None:
         """Clear the running statistics of the reporter."""
@@ -144,36 +141,33 @@ class EigenReporter(Reporter):
         self.n.zero_()
 
     @torch.no_grad()
-    def update(self, *hiddens: Tensor) -> None:
-        k = len(hiddens)
-        assert k > 1, "Must provide at least two hidden states"
+    def update(self, hiddens: Tensor) -> None:
+        (n, _, k, d) = hiddens.shape
+
+        # Zero out shared info
+        hiddens = hiddens - hiddens.mean(dim=2, keepdim=True)
 
         # Sanity checks
-        pivot, *rest = hiddens
-        assert pivot.ndim == 3, "hidden must be of shape [batch, num_variants, d]"
-        for h in rest:
-            assert h.shape == pivot.shape, "All hiddens must have the same shape"
+        assert k > 1, "Must provide at least two hidden states"
+        assert hiddens.ndim == 4, "Must be of shape [batch, variants, choices, dim]"
 
         # We don't actually call super because we need access to the earlier estimate
         # of the population mean in order to update (cross-)covariances properly
-        # super().update(x_pos, x_neg)
+        # super().update(hiddens)
 
-        sample_n = pivot.shape[0]
-        self.n += sample_n
+        self.n += n
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
         # mean of covariance matrices, not the covariance matrix of means.
-        sample_invar = sum(map(cov_mean_fused, hiddens)) / k
-        self.intracluster_cov += (sample_n / self.n) * (
-            sample_invar - self.intracluster_cov
-        )
+        intra_cov = cov_mean_fused(rearrange(hiddens, "n v k d -> (n k) v d"))
+        self.intracluster_cov += (n / self.n) * (intra_cov - self.intracluster_cov)
 
-        # [n, v, d] -> [n, d]
-        centroids = [h.mean(1) for h in hiddens]
+        # [n, v, k, d] -> [n, k, d]
+        centroids = hiddens.mean(1)
         deltas, deltas2 = [], []
 
-        for i, h in enumerate(centroids):
+        for i, h in enumerate(centroids.unbind(1)):
             # Update the running means; super().update() does this usually
             delta = h - self.class_means[i]
             self.class_means[i] += delta.sum(dim=0) / self.n
@@ -199,12 +193,12 @@ class EigenReporter(Reporter):
 
     def fit_streaming(self) -> float:
         """Fit the probe using the current streaming statistics."""
+        inv_weight = 1 - self.config.neg_cov_weight
         A = (
             self.config.var_weight * self.intercluster_cov
-            - self.config.inv_weight * self.intracluster_cov
+            - inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
         )
-
         try:
             L, Q = truncated_eigh(A, k=self.config.num_heads)
         except (ConvergenceError, RuntimeError):
@@ -221,48 +215,45 @@ class EigenReporter(Reporter):
 
     def fit(
         self,
-        *hiddens: Tensor,
+        hiddens: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         """Fit the probe to the contrast set `hiddens`.
 
         Args:
-            hiddens: The contrast set of hidden states.
+            hiddens: The contrast set of shape [batch, variants, choices, dim].
             labels: The ground truth labels if available.
 
         Returns:
             loss: Negative eigenvalue associated with the VINC direction.
         """
-        self.update(*hiddens)
+        self.update(hiddens)
         loss = self.fit_streaming()
 
         if labels is not None:
-            self.platt_scale(labels, *hiddens)
+            self.platt_scale(labels, hiddens)
 
         return loss
 
-    def platt_scale(self, labels: Tensor, *hiddens: Tensor, max_iter: int = 100):
+    def platt_scale(self, labels: Tensor, hiddens: Tensor, max_iter: int = 100):
         """Fit the scale and bias terms to data with LBFGS."""
 
-        pivot, *_ = hiddens
         opt = optim.LBFGS(
             [self.bias, self.scale],
             line_search_fn="strong_wolfe",
             max_iter=max_iter,
-            tolerance_change=torch.finfo(pivot.dtype).eps,
-            tolerance_grad=torch.finfo(pivot.dtype).eps,
+            tolerance_change=torch.finfo(hiddens.dtype).eps,
+            tolerance_grad=torch.finfo(hiddens.dtype).eps,
         )
-        labels = repeat(labels, "n -> (n v)", v=pivot.shape[1])
+        (_, v, k, _) = hiddens.shape
+        labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k)
 
         def closure():
             opt.zero_grad()
-            logits = rearrange(self.predict(*hiddens), "n v ... -> (n v) ...")
-            if len(logits.shape) == 1:
-                loss = nn.functional.binary_cross_entropy_with_logits(
-                    logits, labels.float()
-                )
-            else:
-                loss = nn.functional.cross_entropy(logits, labels.long())
+            logits = rearrange(self(hiddens), "n v k -> (n v) k")
+            loss = nn.functional.binary_cross_entropy_with_logits(
+                logits, labels.float()
+            )
 
             loss.backward()
             return float(loss)
