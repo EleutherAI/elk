@@ -13,7 +13,7 @@ from sklearn.metrics import roc_auc_score
 from torch import Tensor
 
 from ..calibration import CalibrationError
-from ..metrics import mean_auc, to_one_hot
+from ..metrics import to_one_hot
 from .classifier import Classifier
 
 
@@ -96,42 +96,43 @@ class Reporter(nn.Module, ABC):
         """Measure how linearly separable the pseudo-labels are for a contrast pair.
 
         Args:
-            train_hiddens: Tensor of shape [n, ], where x0 and x1 are the
-                contrastive representations. Used for training the classifier.
-            val_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
-                contrastive representations. Used for evaluating the classifier.
+            train_hiddens: Contrast set of shape [n, v, k, d]. Used for training the
+                classifier.
+            val_hiddens: Contrast set of shape [n, v, k, d]. Used for evaluating the
+                classifier.
 
         Returns:
             The AUROC of a linear classifier fit on the pseudo-labels.
         """
-        x0, x1 = train_hiddens
-        val_x0, val_x1 = val_hiddens
+        (n_train, v, k, d) = train_hiddens.shape
+        (n_val, _, k_val, d_val) = val_hiddens.shape
+        assert d == d_val, "Must have the same number of features in each split"
+        assert k == k_val == 2, "Must be a binary contrast set"
 
-        pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
+        pseudo_clf = Classifier(d, device=train_hiddens.device)
         pseudo_train_labels = torch.cat(
             [
-                x0.new_zeros(x0.shape[0]),
-                x0.new_ones(x0.shape[0]),
+                train_hiddens.new_zeros(n_train),
+                train_hiddens.new_ones(n_train),
             ]
         ).repeat_interleave(
-            x0.shape[1]
+            v
         )  # make num_variants copies of each pseudo-label
+
         pseudo_val_labels = torch.cat(
             [
-                val_x0.new_zeros(val_x0.shape[0]),
-                val_x0.new_ones(val_x0.shape[0]),
+                val_hiddens.new_zeros(n_val),
+                val_hiddens.new_ones(n_val),
             ]
-        ).repeat_interleave(val_x0.shape[1])
+        ).repeat_interleave(v)
 
         pseudo_clf.fit(
-            # b v d -> (b v) d
-            torch.cat([x0, x1]).flatten(0, 1),
+            rearrange(train_hiddens, "n v k d -> (k n v) d"),
             pseudo_train_labels,
         )
         with torch.no_grad():
             pseudo_preds = pseudo_clf(
-                # b v d -> (b v) d
-                torch.cat([val_x0, val_x1]).flatten(0, 1)
+                rearrange(val_hiddens, "n v k d -> (k n v) d"),
             )
             return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
 
@@ -170,35 +171,27 @@ class Reporter(nn.Module, ABC):
     ) -> float:
         ...
 
-    @abstractmethod
-    def predict(self, hiddens: Tensor) -> Tensor:
-        """Return pooled logits for the contrast set `hiddens`."""
-
-    @abstractmethod
-    def predict_prob(self, hiddens: Tensor) -> Tensor:
-        """Like `predict` but returns normalized probabilities, not logits."""
-
     @torch.no_grad()
     def score(self, labels: Tensor, hiddens: Tensor) -> EvalResult:
         """Score the probe on the contrast set `hiddens`.
 
         Args:
         labels: The labels of the contrast pair.
-        hiddens: The hidden representations of the contrast set.
+        hiddens: Contrast set of shape [n, v, k, d].
 
         Returns:
             an instance of EvalResult containing the loss, accuracy, calibrated
                 accuracy, and AUROC of the probe on `hiddens`.
         """
-        pred_probs = self.predict_prob(hiddens)
-        (_, v, c) = pred_probs.shape
+        logits = self(hiddens)
+        (_, v, c) = logits.shape
 
         # makes `num_variants` copies of each label
+        logits = rearrange(logits, "n v c -> (n v) c")
         Y = repeat(labels, "n -> (n v)", v=v).float()
-        to_one_hot(Y, n_classes=c).long().flatten()
 
         if c == 2:
-            pos_probs = pred_probs[..., 1].flatten()
+            pos_probs = logits[..., 1].flatten().sigmoid()
             cal_err = CalibrationError().update(Y.cpu(), pos_probs.cpu()).compute().ece
 
             # Calibrated accuracy
@@ -212,12 +205,10 @@ class Reporter(nn.Module, ABC):
             cal_acc = 0.0
             cal_err = 0.0
 
-            raw_preds = pred_probs.argmax(dim=-1)
+            raw_preds = to_one_hot(logits.argmax(dim=-1), c).long()
+            Y = to_one_hot(Y, c).long().flatten()
 
-        # roc_auc_score only takes flattened input
-        auroc = mean_auc(
-            Y.cpu(), rearrange(pred_probs.cpu(), "n v ... -> (n v) ..."), curve="roc"
-        )
+        auroc = roc_auc_score(Y.cpu(), logits.cpu().flatten())
         raw_acc = raw_preds.flatten().eq(Y).float().mean()
 
         return EvalResult(

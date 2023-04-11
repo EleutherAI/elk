@@ -99,6 +99,8 @@ def extract_hiddens(
 
     prompt_ds = load_prompts(
         *cfg.prompts.datasets,
+        label_column=cfg.prompts.label_column,
+        num_classes=cfg.prompts.num_classes,
         split_type=split_type,
         stream=cfg.prompts.stream,
         rank=rank,
@@ -273,8 +275,8 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     info = get_dataset_config_info(ds_name, config_name or None)
 
     ds_features = assert_type(Features, info.features)
-    label_col = infer_label_column(ds_features)
-    num_classes = infer_num_classes(ds_features[label_col])
+    label_col = cfg.prompts.label_column or infer_label_column(ds_features)
+    num_classes = cfg.prompts.num_classes or infer_num_classes(ds_features[label_col])
 
     layer_cols = {
         f"hidden_{layer}": Array3D(

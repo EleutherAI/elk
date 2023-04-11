@@ -103,16 +103,6 @@ class EigenReporter(Reporter):
         raw_scores = hiddens @ self.weight.mT
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
-    predict = forward
-
-    def predict_prob(self, hiddens: Tensor) -> Tensor:
-        """Return the predicted probabilities on the contrast set `hiddens`."""
-        logits = self(hiddens)
-        if len(hiddens) == 2:
-            return logits.sigmoid()
-        else:
-            return logits.softmax(dim=-1)
-
     @property
     def contrastive_xcov(self) -> Tensor:
         return self.contrastive_xcov_M2 / self.n

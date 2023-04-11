@@ -164,13 +164,6 @@ class CcsReporter(Reporter):
         """Return the raw score output of the probe on `x`."""
         return self.probe(x).squeeze(-1)
 
-    def predict(self, hiddens: Tensor) -> Tensor:
-        return self.predict_prob(hiddens).logit()
-
-    def predict_prob(self, hiddens: Tensor) -> Tensor:
-        x_pos, x_neg = hiddens.unbind(2)
-        return 0.5 * (self(x_pos).sigmoid() + (1 - self(x_neg).sigmoid()))
-
     def loss(
         self,
         logit0: Tensor,

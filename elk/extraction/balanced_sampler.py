@@ -29,6 +29,7 @@ class BalancedSampler(TorchIterableDataset):
     num_classes: int
     buffer_size: int = 1000
     buffers: dict[int, deque[dict]] = field(default_factory=dict, init=False)
+    label_col: str = "label"
 
     def __post_init__(self):
         # Initialize empty buffers
@@ -38,7 +39,12 @@ class BalancedSampler(TorchIterableDataset):
 
     def __iter__(self):
         for sample in self.data:
-            label = sample["label"]
+            label = sample[self.label_col]
+
+            # This whole class is a no-op if the label is not an integer
+            if not isinstance(label, int):
+                yield sample
+                continue
 
             # Add the sample to the buffer for its class label
             self.buffers[label].append(sample)

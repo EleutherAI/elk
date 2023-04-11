@@ -50,6 +50,7 @@ class PromptConfig(Serializable):
     data_dir: Optional[str] = None
     label_column: Optional[str] = None
     max_examples: list[int] = field(default_factory=lambda: [750, 250])
+    num_classes: int = 0
     num_shots: int = 0
     num_variants: int = -1
     seed: int = 42
@@ -71,6 +72,8 @@ class PromptConfig(Serializable):
 
 def load_prompts(
     *dataset_strings: str,
+    label_column: Optional[str] = None,
+    num_classes: int = 0,
     num_shots: int = 0,
     num_variants: int = -1,
     seed: int = 42,
@@ -98,6 +101,7 @@ def load_prompts(
     class_counts = []
     prompters = []
     datasets = []
+    label_cols = []
     train_datasets = []
     rng = Random(seed)
     assert num_shots == 0
@@ -128,14 +132,11 @@ def load_prompts(
             # This prints to stdout which is slightly annoying
             ds = split_dataset_by_node(dataset=ds, rank=rank, world_size=world_size)
 
-        label_column = infer_label_column(ds.features)
-        num_classes = infer_num_classes(ds.features[label_column])
-        if label_column != "label":
-            ds = ds.rename_column(label_column, "label")
-            train_ds = train_ds.rename_column(label_column, "label")
-
+        ds_label_col = label_column or infer_label_column(ds.features)
+        num_classes = num_classes or infer_num_classes(ds.features[ds_label_col])
         class_counts.append(num_classes)
         datasets.append(ds)
+        label_cols.append(ds_label_col)
         train_datasets.append(train_ds)
 
     # Number of classes should be the same for all datasets
@@ -155,8 +156,13 @@ def load_prompts(
     if rank == 0:
         print(f"Using {num_variants} variants of each prompt")
 
-    ds_iters = [iter(BalancedSampler(ds, num_classes)) for ds in datasets]
-    for ds_iter, ds, prompter in cycle(zip(ds_iters, datasets, prompters)):
+    ds_iters = [
+        iter(BalancedSampler(ds, num_classes, label_col=label_col))
+        for ds, label_col in zip(datasets, label_cols)
+    ]
+    for ds_iter, ds, label_col, prompter in cycle(
+        zip(ds_iters, datasets, label_cols, prompters)
+    ):
         try:
             example = next(ds_iter)
         except StopIteration:
@@ -164,7 +170,7 @@ def load_prompts(
 
         example = _convert_to_prompts(
             example,
-            label_column="label",
+            label_column=label_col,
             num_classes=num_classes,
             num_variants=num_variants,
             prompter=prompter,
@@ -190,7 +196,7 @@ def _convert_to_prompts(
     fewshot_iter: Optional[Iterator[list[dict]]] = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
-    label = assert_type(int, example[label_column])
+    labels_are_strings = isinstance(example[label_column], str)
     prompts = []
     templates = list(prompter.templates.values())
     if num_variants < len(templates):
@@ -203,15 +209,24 @@ def _convert_to_prompts(
 
     # For sanity checking that prompts are unique
     prompt_counter = Counter()
+    label_indices = set()
+
     for template in templates:
         choices = []
+        string_choices = template.get_answer_choices_list(example)
+
+        label = example[label_column]
+        label_indices.add(string_choices.index(label) if labels_are_strings else label)
 
         for answer_idx in range(num_classes):
             fake_example = example.copy()
-            fake_example[label_column] = answer_idx
+            if labels_are_strings:
+                fake_example[label_column] = string_choices[answer_idx]
+            else:
+                fake_example[label_column] = answer_idx
 
             q, a = template.apply(fake_example)
-            text = qa_cat(q, a)
+            text = qa_cat(q, a or string_choices[answer_idx])
             prompt_counter[text] += 1
 
             if fewshot_iter is not None:
@@ -238,8 +253,14 @@ def _convert_to_prompts(
     if dup_count > 1:
         raise ValueError(f'Prompt duplicated {dup_count} times! "{maybe_dup}"')
 
+    # Sanity check: label should be the same across all variants
+    if len(label_indices) > 1:
+        raise ValueError(
+            f"Label index should be the same all variants, but got {label_indices}"
+        )
+
     return dict(
-        label=label,
+        label=label_indices.pop(),
         prompts=prompts,
-        template_names=prompter.all_template_names,
+        template_names=[template.name for template in templates],
     )

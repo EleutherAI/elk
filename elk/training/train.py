@@ -1,5 +1,6 @@
 """Main training loop."""
 
+import warnings
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -9,16 +10,18 @@ import pandas as pd
 import torch
 from einops import rearrange, repeat
 from simple_parsing import Serializable, field, subgroups
+from sklearn.metrics import roc_auc_score
+from torch import Tensor
 
 from ..extraction.extraction import Extract
-from ..metrics import accuracy, mean_auc
+from ..metrics import accuracy, to_one_hot
 from ..run import Run
 from ..training.baseline import evaluate_baseline, save_baseline, train_baseline
 from ..utils import select_usable_devices
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .eigen_reporter import EigenReporter, EigenReporterConfig
-from .reporter import OptimConfig, ReporterConfig
+from .reporter import OptimConfig, Reporter, ReporterConfig
 
 
 @dataclass
@@ -87,7 +90,7 @@ class Train(Run):
             device, layer
         )
         (_, v, c, d) = train_h.shape
-        # pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
+        pseudo_auroc = self.get_pseudo_auroc(layer, train_h, val_h)
 
         if isinstance(self.cfg.net, CcsReporterConfig):
             reporter = CcsReporter(self.cfg.net, d, device=device)
@@ -103,7 +106,9 @@ class Train(Run):
         if val_lm_preds is not None:
             val_gt_cpu = repeat(val_gt, "n -> (n v)", v=v).cpu()
             val_lm_preds = rearrange(val_lm_preds, "n v ... -> (n v) ...")
-            val_lm_auroc = mean_auc(val_gt_cpu, val_lm_preds, "roc")
+            val_lm_auroc = roc_auc_score(
+                to_one_hot(val_gt_cpu, c).long().flatten(), val_lm_preds.cpu().flatten()
+            )
 
             val_lm_acc = accuracy(val_gt_cpu, val_lm_preds)
         else:
@@ -113,7 +118,7 @@ class Train(Run):
         row = pd.Series(
             {
                 "layer": layer,
-                # "pseudo_auroc": pseudo_auroc,
+                "pseudo_auroc": pseudo_auroc,
                 "train_loss": train_loss,
                 **val_result._asdict(),
                 "lm_auroc": val_lm_auroc,
@@ -134,23 +139,19 @@ class Train(Run):
 
         return row
 
-    # def get_pseudo_auroc(
-    #     self, layer: int, train_h: Tensor, val_h: Tensor
-    # ):
-    #     """Check the separability of the pseudo-labels at a given layer."""
-    #
-    #     with torch.no_grad():
-    #         pseudo_auroc = Reporter.check_separability(
-    #             train_pair=(x0, x1), val_pair=(val_x0, val_x1)
-    #         )
-    #         if pseudo_auroc > 0.6:
-    #             warnings.warn(
-    #                 f"The pseudo-labels at layer {layer} are linearly separable with "
-    #                 f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
-    #                 f"algorithm will not converge to a good solution."
-    #             )
-    #
-    #     return pseudo_auroc
+    def get_pseudo_auroc(self, layer: int, train_h: Tensor, val_h: Tensor):
+        """Check the separability of the pseudo-labels at a given layer."""
+
+        with torch.no_grad():
+            pseudo_auroc = Reporter.check_separability(train_h, val_h)
+            if pseudo_auroc > 0.6:
+                warnings.warn(
+                    f"The pseudo-labels at layer {layer} are linearly separable with "
+                    f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
+                    f"algorithm will not converge to a good solution."
+                )
+
+        return pseudo_auroc
 
     def train(self):
         """Train a reporter on each layer of the network."""
