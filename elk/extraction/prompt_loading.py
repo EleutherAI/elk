@@ -49,7 +49,8 @@ class PromptConfig(Serializable):
     balance: bool = False
     data_dir: Optional[str] = None
     label_column: Optional[str] = None
-    max_examples: list[int] = field(default_factory=lambda: [750, 250])
+    # max_examples: list[int] = field(default_factory=lambda: [755, 250])
+    max_examples: list[int] = field(default_factory=lambda: [50, 250])
     num_shots: int = 0
     num_variants: int = -1
     seed: int = 42

@@ -178,7 +178,7 @@ def extract_hiddens(
                 if cfg.model == "elmo":
                     outputs = model(inputs)
                 else:
-                    model(**inputs, output_hidden_states=True)
+                    outputs = model(**inputs, output_hidden_states=True)
 
                 hiddens = (
                     outputs
@@ -191,7 +191,11 @@ def extract_hiddens(
                 hiddens = outputs if cfg.model == "elmo" else hiddens[1:]
 
                 # Throw out layers we don't care about
-                hiddens = [hiddens[i] for i in layer_indices]
+                hiddens = (
+                    hiddens
+                    if cfg.model == "elmo"
+                    else [hiddens[i] for i in layer_indices]
+                )
 
                 # Current shape of each element: (batch_size, seq_len, hidden_size)
                 if cfg.token_loc == "first":
@@ -199,7 +203,8 @@ def extract_hiddens(
                 elif cfg.token_loc == "last":
                     hiddens = [h[..., -1, :] for h in hiddens]
                 elif cfg.token_loc == "mean":
-                    hiddens = [h.mean(dim=-2) for h in hiddens]
+                    # hiddens = [h.mean(dim=-2) for h in hiddens]
+                    hiddens = hiddens[0].mean(dim=1)
                 else:
                     raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 

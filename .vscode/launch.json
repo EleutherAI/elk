@@ -13,7 +13,11 @@
                 "elmo",
                 "imdb",
                 "--token_loc",
-                "last"
+                "mean",
+                "--data.num_gpus",
+                "3",
+                // "--max_examples",
+                // "50"
             ],
             "env": {
                 "CUDA_VISIBLE_DEVICES": "7"

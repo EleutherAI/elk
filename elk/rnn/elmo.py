@@ -1,4 +1,6 @@
+import nltk
 from allennlp.modules.elmo import Elmo, batch_to_ids
+from nltk.stem import WordNetLemmatizer
 from sacremoses import MosesTokenizer
 from transformers import (
     PretrainedConfig,
@@ -45,12 +47,18 @@ class ElmoModel(PreTrainedModel):
 class ElmoTokenizer(PreTrainedTokenizer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        nltk.download("wordnet")
         self.tokenizer = MosesTokenizer()
+        self.wnl = WordNetLemmatizer()
 
     def __call__(self, text, return_tensors, truncation):
         sequences = text if isinstance(text, list) else [text]
         tokens = [
-            self.tokenizer.tokenize(sequence, escape=False) for sequence in sequences
+            [
+                self.wnl.lemmatize(token)
+                for token in self.tokenizer.tokenize(sequence, escape=False)
+            ]
+            for sequence in sequences
         ]
         character_ids = batch_to_ids(tokens)  # type: ignore
         return character_ids
