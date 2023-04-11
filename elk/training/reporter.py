@@ -198,17 +198,15 @@ class Reporter(nn.Module, ABC):
             cal_thresh = pos_probs.float().quantile(labels.float().mean())
             cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
             cal_acc = cal_preds.flatten().eq(Y).float().mean().item()
-
-            raw_preds = pos_probs.gt(0.5).to(torch.int)
         else:
             # TODO: Implement calibration error for k > 2?
             cal_acc = 0.0
             cal_err = 0.0
 
-            raw_preds = to_one_hot(logits.argmax(dim=-1), c).long()
-            Y = to_one_hot(Y, c).long().flatten()
-
-        auroc = roc_auc_score(Y.cpu(), logits.cpu().flatten())
+        raw_preds = to_one_hot(logits.argmax(dim=-1), c).long()
+        auroc = roc_auc_score(
+            to_one_hot(Y, c).long().flatten().cpu(), logits.cpu().flatten()
+        )
         raw_acc = raw_preds.flatten().eq(Y).float().mean()
 
         return EvalResult(
