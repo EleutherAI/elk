@@ -1,4 +1,6 @@
 import copy
+from bisect import bisect_left, bisect_right
+from operator import itemgetter
 from random import Random
 from typing import Any, Iterable, List
 
@@ -12,6 +14,24 @@ from datasets import (
 
 from ..promptsource.templates import Template
 from .typing import assert_type
+
+
+def convert_span(
+    offsets: list[tuple[int, int]], span: tuple[int, int]
+) -> tuple[int, int]:
+    """Convert `span` from string coordinates to token coordinates.
+
+    Args:
+        offsets: The offset mapping of the target tokenization.
+        span: The span to convert.
+
+    Returns:
+        (start, end): The converted span.
+    """
+    start, end = span
+    start = bisect_right(offsets, start, key=itemgetter(1))
+    end = bisect_left(offsets, end, lo=start, key=itemgetter(0))
+    return start, end
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
@@ -93,7 +113,6 @@ def get_layers(ds: DatasetDict) -> List[int]:
 
 def binarize(template: Template, label: int, new_label: int, rng: Random) -> Template:
     """Binarize a template with >2 answer choices, returning a new template and label.
-
     Returns:
         `new_template`:
             A deepcopy of the original template with with 2 answer choices, one of

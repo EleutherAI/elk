@@ -4,7 +4,6 @@ import json
 import os
 import random
 from pathlib import Path
-from typing import Optional
 
 import yaml
 from simple_parsing import Serializable
@@ -31,7 +30,9 @@ def memorably_named_dir(parent: Path):
     with open(resource_dir / "names.json", "r") as f:
         names = json.load(f)
 
+    parent.mkdir(parents=True, exist_ok=True)
     sub_dir = "."
+
     while parent.joinpath(sub_dir).exists():
         adj = random.choice(adjectives)
         name = random.choice(names)
@@ -39,20 +40,6 @@ def memorably_named_dir(parent: Path):
 
     out_dir = parent / sub_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    return out_dir
-
-
-def create_output_directory(
-    out_dir: Optional[Path] = None, default_root_dir: Path = elk_reporter_dir()
-) -> Path:
-    """Creates an output directory"""
-    if out_dir is None:
-        out_dir = memorably_named_dir(default_root_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Print the output directory in bold with escape codes
-    print(f"Output directory at \033[1m{out_dir}\033[0m")
-
     return out_dir
 
 
