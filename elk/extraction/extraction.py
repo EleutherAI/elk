@@ -22,6 +22,8 @@ from torch import Tensor
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from ..rnn.elmo import ElmoConfig, ElmoTokenizer
+
 # import torch.nn.functional as F
 from ..utils import (
     assert_type,
@@ -108,8 +110,12 @@ def extract_hiddens(
     model = instantiate_model(
         cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
     ).to(device)
-    tokenizer = AutoTokenizer.from_pretrained(
-        cfg.model, truncation_side="left", verbose=False
+    tokenizer = (
+        ElmoTokenizer.from_pretrained("")
+        if cfg.model == "elmo"
+        else AutoTokenizer.from_pretrained(
+            cfg.model, truncation_side="left", verbose=False
+        )
     )
     has_lm_preds = is_autoregressive(model.config)
     if has_lm_preds and rank == 0:
@@ -178,11 +184,19 @@ def extract_hiddens(
 
                 # The offset_mapping is a sorted list of (start, end) tuples. We locate
                 # the start of the answer in the tokenized sequence with binary search.
-                offsets = inputs.pop("offset_mapping").squeeze().tolist()
+                offsets = (
+                    []
+                    if cfg.model == "elmo"
+                    else inputs.pop("offset_mapping").squeeze().tolist()
+                )
                 inputs = inputs.to(device)
 
                 # Run the forward pass
-                outputs = model(**inputs, output_hidden_states=True)
+                outputs = (
+                    model(inputs)
+                    if cfg.model == "elmo"
+                    else model(**inputs, output_hidden_states=True)
+                )
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
@@ -202,10 +216,14 @@ def extract_hiddens(
                     lm_preds[i, j] = -assert_type(Tensor, outputs.loss) * length
 
                 hiddens = (
-                    outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                    outputs
+                    if cfg.model == "elmo"
+                    else (
+                        outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                    )
                 )
                 # First element of list is the input embeddings
-                hiddens = hiddens[1:]
+                hiddens = hiddens if cfg.model == "elmo" else hiddens[1:]
 
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
@@ -216,7 +234,8 @@ def extract_hiddens(
                 elif cfg.token_loc == "last":
                     hiddens = [h[..., -1, :] for h in hiddens]
                 elif cfg.token_loc == "mean":
-                    hiddens = [h.mean(dim=-2) for h in hiddens]
+                    # hiddens = [h.mean(dim=-2) for h in hiddens]
+                    hiddens = hiddens[0].mean(dim=0)
                 else:
                     raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
@@ -265,7 +284,9 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             dataset_name=available_splits.dataset_name,
         )
 
-    model_cfg = AutoConfig.from_pretrained(cfg.model)
+    model_cfg = (
+        ElmoConfig() if cfg.model == "elmo" else AutoConfig.from_pretrained(cfg.model)
+    )
     num_variants = cfg.prompts.num_variants
 
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")

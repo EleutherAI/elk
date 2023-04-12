@@ -172,15 +172,15 @@ class EigenReporter(Reporter):
 
     def fit_streaming(self) -> float:
         """Fit the probe using the current streaming statistics."""
+        inv_weight = 1 - self.config.neg_cov_weight
         A = (
             self.config.var_weight * self.intercluster_cov
-            - self.config.inv_weight * self.intracluster_cov
+            - inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
         )
-
         try:
             L, Q = truncated_eigh(A, k=self.config.num_heads)
-        except ConvergenceError:
+        except (ConvergenceError, RuntimeError):
             warn(
                 "Truncated eigendecomposition failed to converge. Falling back on "
                 "PyTorch's dense eigensolver."

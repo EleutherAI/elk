@@ -1,6 +1,7 @@
 import transformers
 from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
 
+from ..rnn.elmo import ElmoModel
 from .typing import assert_type
 
 # Ordered by preference
@@ -15,6 +16,9 @@ _AUTOREGRESSIVE_SUFFIXES = [
 
 def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class."""
+    if model_str.startswith("elmo"):
+        return ElmoModel.from_pretrained(model_str)
+
     model_cfg = AutoConfig.from_pretrained(model_str)
     archs = assert_type(list, model_cfg.architectures)
 
