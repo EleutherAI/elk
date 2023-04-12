@@ -76,6 +76,7 @@ class PromptConfig(Serializable):
             self.max_examples *= 2
 
         # Combining prompts
+        combined_prompter: "DatasetTemplates" = None
         if self.combined_template_path:
             print(
                 "Copying templates across datasets to combined_templates/ "
