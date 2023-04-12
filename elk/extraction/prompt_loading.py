@@ -121,8 +121,9 @@ class PromptConfig(Serializable):
 
         # Write to file if successfully merged all prompts.
         if self.combined_template_path:
-            print("Total number of templates: ", len(combined_prompter.templates))
-            combined_prompter.write_to_file()
+            prompter = assert_type(DatasetTemplates, combined_prompter)
+            print("Total number of templates: ", len(prompter.templates))
+            prompter.write_to_file()
             print(
                 "Saved to promptsource/templates/combined_templates/"
                 + f"{self.combined_template_path}.yaml"
