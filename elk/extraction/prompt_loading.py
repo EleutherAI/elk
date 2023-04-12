@@ -46,7 +46,7 @@ class PromptConfig(Serializable):
         seed: The seed to use for prompt randomization. Defaults to 42.
         stream: Whether to stream the dataset from the Internet. Defaults to False.
         combined_template_path: Path to save a combined template file to, when testing
-            prompt invariance across multiple datasets, and will be interpreted as a 
+            prompt invariance across multiple datasets, and will be interpreted as a
             subpath of `combined_paths` in the templates dir. Defaults to empty string.
     """
 
@@ -87,7 +87,7 @@ class PromptConfig(Serializable):
             for ds_string in self.datasets:
                 ds_name, _, config_name = ds_string.partition(" ")
                 prompter = DatasetTemplates(ds_name, config_name)
-                # TODO: Verify that cols are same; if not, warn that templates 
+                # TODO: Verify that cols are same; if not, warn that templates
                 #       could not be combined.
                 combined_prompter.merge_templates_from(prompter)
             print("Total number of templates: ", len(combined_prompter.templates))
