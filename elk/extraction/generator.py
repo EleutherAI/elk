@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
 import datasets
+from datasets import Features
 from datasets.splits import NamedSplit
 
 
@@ -10,6 +11,20 @@ class _GeneratorConfig(datasets.BuilderConfig):
     generator: Optional[Callable] = None
     gen_kwargs: dict[str, Any] = field(default_factory=dict)
     features: Optional[datasets.Features] = None
+
+    def create_config_id(
+        self, config_kwargs: dict, custom_features: Features | None
+    ) -> str:
+        # These are implementation details that don't need to be hashed into the id
+        # TODO: Make this customizable or something? Right now we're just hard-coding
+        # these values from extraction.py. OTOH maybe it's not terrible because this is
+        # a private class anyway.
+        gen_kwargs = config_kwargs.get("gen_kwargs", {})
+        gen_kwargs.pop("device", None)
+        gen_kwargs.pop("rank", None)
+        gen_kwargs.pop("world_size", None)
+
+        return super().create_config_id(config_kwargs, custom_features)
 
 
 @dataclass
