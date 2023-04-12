@@ -270,8 +270,12 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     model_cfg = AutoConfig.from_pretrained(cfg.model)
     num_variants = cfg.prompts.num_variants
 
+    # if combined prompter flag is set, combine prompt templates
+
+    # extraneous, remove ?
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
+    # ? end
 
     layer_cols = {
         f"hidden_{layer}": Array3D(

@@ -26,8 +26,8 @@ from .balanced_sampler import FewShotSampler
 class PromptConfig(Serializable):
     """
     Args:
-        dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
-            `"super_glue boolq"` or `"imdb"`.
+        datasets: List of space-delimited names of the HuggingFace datasets to use, e.g.
+            [`"super_glue boolq", "imdb"]`.
         balance: Whether to force class balance in the dataset using undersampling.
         data_dir: The directory to use for caching the dataset. Defaults to
             `~/.cache/huggingface/datasets`.
@@ -44,6 +44,9 @@ class PromptConfig(Serializable):
             call to __getitem__. Use -1 to apply all available templates. Defaults to -1.
         seed: The seed to use for prompt randomization. Defaults to 42.
         stream: Whether to stream the dataset from the Internet. Defaults to False.
+        combined_prompter_path: Path to save a combined template file to, when testing
+            prompt invariance across multiple datasets, and will be interpreted as a subpath
+            of `combined_paths` in the promptsource templates dir. Defaults to empty string.
     """
 
     datasets: list[str] = field(positional=True)
@@ -55,6 +58,7 @@ class PromptConfig(Serializable):
     num_variants: int = -1
     seed: int = 42
     stream: bool = False
+    combined_prompter_path: str = ""
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
@@ -69,6 +73,21 @@ class PromptConfig(Serializable):
         if len(self.max_examples) == 1:
             self.max_examples *= 2
 
+        # Combining prompts
+        if self.combined_prompter_path:
+            print("Copying templates across datasets to combined_templates/ " +
+                f"{self.combined_prompter_path}/templates.yaml")
+            combined_prompter = DatasetTemplates("combined_templates", self.combined_prompter_path)
+            for ds_string in self.datasets:
+                ds_name, _, config_name = ds_string.partition(" ")
+                prompter = DatasetTemplates(ds_name, config_name)
+                combined_prompter.templates.update(prompter.get_templates_with_new_uuids())
+                print("len of prompter templates is ", len(combined_prompter.templates))
+            combined_prompter.write_to_file()
+
+            # Update datasets reference to use combined prompter
+            self.datasets = [f"combined_templates {self.combined_prompter_path}"] *  len(self.datasets)
+
 
 def load_prompts(
     *dataset_strings: str,
@@ -78,8 +97,7 @@ def load_prompts(
     split_type: Literal["train", "val"] = "train",
     stream: bool = False,
     rank: int = 0,
-    world_size: int = 1,
-    combined_prompter_path: str = ""
+    world_size: int = 1
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified datasets.
 
@@ -102,22 +120,11 @@ def load_prompts(
     train_datasets = []
     rng = Random(seed)
 
-    # If flag is set, init/create a new file for combining templates
-    combined_prompter = None
-    if combined_prompter_path:
-        print("Combining templates into shared prompter.")
-        combined_prompter = DatasetTemplates("combined_templates", combined_prompter_path)
-
     # First load the datasets and prompters. We need to know the minimum number of
     # templates for any dataset in order to make sure we don't run out of prompts.
     for ds_string in dataset_strings:
         ds_name, _, config_name = ds_string.partition(" ")
         prompter = DatasetTemplates(ds_name, config_name)
-        # Populate combined prompter with templates from different datasets
-        # if should_aggregate_templates:
-        if combined_prompter:
-            combined_prompter.templates.update(prompter.get_templates_with_new_uuids())
-            print("len of prompter templates is ", len(combined_prompter.templates))
         prompters.append(DatasetTemplates(ds_name, config_name))
 
         ds_dict = assert_type(
@@ -149,16 +156,7 @@ def load_prompts(
         raw_datasets.append(split)
         train_datasets.append(train_ds)
     
-    min_num_templates = -1
-    if combined_prompter:
-        # save combined templates to yaml file
-        print("saving aggregate templates")
-        combined_prompter.sync_mapping()
-        combined_prompter.write_to_file()
-        min_num_templates = len(combined_prompter.templates)
-        print("length of combined_prompter templates is ", min_num_templates)
-    else: 
-        min_num_templates = min(len(prompter.templates) for prompter in prompters)
+    min_num_templates = min(len(prompter.templates) for prompter in prompters)
 
     num_variants = (
         min_num_templates
@@ -283,7 +281,7 @@ def _convert_to_prompts(
         raise ValueError(f'Prompt duplicated {dup_count} times! "{maybe_dup}"')
 
     return dict(
-        label=label,
+        label=new_label,
         prompts=prompts,
         template_names=prompter.all_template_names,
     )
