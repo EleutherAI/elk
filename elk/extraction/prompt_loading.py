@@ -118,9 +118,10 @@ def load_prompts(
         prompter = DatasetTemplates(ds_name, config_name)
         # Populate combined prompter with templates from different datasets
         # if should_aggregate_templates:
-        combined_prompter.templates.update(prompter.get_templates_with_new_uuids())
-        print("len of prompter templates is ", len(combined_prompter.templates))
-        prompters.append(DatasetTemplates(ds_name, config_name))
+        if combined_prompter:
+            combined_prompter.templates.update(prompter.get_templates_with_new_uuids())
+            print("len of prompter templates is ", len(combined_prompter.templates))
+            prompters.append(DatasetTemplates(ds_name, config_name))
 
         ds_dict = assert_type(
             dict, load_dataset(ds_name, config_name or None, streaming=stream)
@@ -150,17 +151,17 @@ def load_prompts(
 
         raw_datasets.append(split)
         train_datasets.append(train_ds)
-
-    min_num_templates = min(len(prompter.templates) for prompter in prompters)
-    # if should_aggregate_templates:
     
-    if combined_prompter:
+    min_num_templates = -1
+    if combined_prompter != None:
         # save combined templates to yaml file
         print("saving aggregate templates")
         combined_prompter.sync_mapping()
         combined_prompter.write_to_file()
         min_num_templates = len(combined_prompter.templates)
         print("length of combined_prompter templates is ", min_num_templates)
+    else: 
+        min_num_templates = min(len(prompter.templates) for prompter in prompters)
 
     num_variants = (
         min_num_templates
