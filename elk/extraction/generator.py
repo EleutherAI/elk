@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
@@ -15,15 +16,17 @@ class _GeneratorConfig(datasets.BuilderConfig):
     def create_config_id(
         self, config_kwargs: dict, custom_features: Features | None
     ) -> str:
-        # These are implementation details that don't need to be hashed into the id
-        # TODO: Make this customizable or something? Right now we're just hard-coding
-        # these values from extraction.py. OTOH maybe it's not terrible because this is
-        # a private class anyway.
-        gen_kwargs = config_kwargs.get("gen_kwargs", {})
-        gen_kwargs.pop("device", None)
-        gen_kwargs.pop("rank", None)
-        gen_kwargs.pop("world_size", None)
+        config_kwargs = deepcopy(config_kwargs)
 
+        # By default the values in gen_kwargs are lists of length world_size. We want
+        # to erase the world_size dimension so that the config id is the same no matter
+        # how many processes are used. We also remove the explicit device, rank, and
+        # world_size keys.
+        config_kwargs["gen_kwargs"] = {
+            k: v[0]
+            for k, v in config_kwargs.get("gen_kwargs", {}).items()
+            if k not in ("device", "rank", "world_size")
+        }
         return super().create_config_id(config_kwargs, custom_features)
 
 

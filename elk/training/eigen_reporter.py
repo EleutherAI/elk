@@ -180,7 +180,7 @@ class EigenReporter(Reporter):
 
         try:
             L, Q = truncated_eigh(A, k=self.config.num_heads)
-        except ConvergenceError:
+        except (ConvergenceError, RuntimeError):
             warn(
                 "Truncated eigendecomposition failed to converge. Falling back on "
                 "PyTorch's dense eigensolver."
