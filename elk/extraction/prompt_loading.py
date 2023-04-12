@@ -44,7 +44,7 @@ class PromptConfig(Serializable):
             call to __getitem__. Use -1 to apply all available templates. Defaults to -1.
         seed: The seed to use for prompt randomization. Defaults to 42.
         stream: Whether to stream the dataset from the Internet. Defaults to False.
-        combined_prompter_path: Path to save a combined template file to, when testing
+        combined_template_path: Path to save a combined template file to, when testing
             prompt invariance across multiple datasets, and will be interpreted as a subpath
             of `combined_paths` in the promptsource templates dir. Defaults to empty string.
     """
@@ -58,7 +58,7 @@ class PromptConfig(Serializable):
     num_variants: int = -1
     seed: int = 42
     stream: bool = False
-    combined_prompter_path: str = ""
+    combined_template_path: str = ""
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
@@ -74,20 +74,19 @@ class PromptConfig(Serializable):
             self.max_examples *= 2
 
         # Combining prompts
-        if self.combined_prompter_path:
+        if self.combined_template_path:
             print("Copying templates across datasets to combined_templates/ " +
-                f"{self.combined_prompter_path}/templates.yaml")
-            combined_prompter = DatasetTemplates("combined_templates", self.combined_prompter_path)
+                f"{self.combined_template_path}/templates.yaml")
+            combined_prompter = DatasetTemplates("combined_templates", self.combined_template_path)
+            combined_prompter.templates = {}
             for ds_string in self.datasets:
                 ds_name, _, config_name = ds_string.partition(" ")
                 prompter = DatasetTemplates(ds_name, config_name)
-                combined_prompter.templates.update(prompter.get_templates_with_new_uuids())
-                print("len of prompter templates is ", len(combined_prompter.templates))
+                # TODO: Verify that cols are same; if not, warn that templates could not be combined.
+                combined_prompter.merge_templates_from(prompter)
+                # combined_prompter.templates.update(prompter.get_templates_with_new_uuids())
+            print("Total number of templates gathered: ", len(combined_prompter.templates))
             combined_prompter.write_to_file()
-
-            # Update datasets reference to use combined prompter
-            self.datasets = [f"combined_templates {self.combined_prompter_path}"] *  len(self.datasets)
-
 
 def load_prompts(
     *dataset_strings: str,
@@ -97,7 +96,8 @@ def load_prompts(
     split_type: Literal["train", "val"] = "train",
     stream: bool = False,
     rank: int = 0,
-    world_size: int = 1
+    world_size: int = 1,
+    combined_template_path: str = ""
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified datasets.
 
@@ -124,8 +124,10 @@ def load_prompts(
     # templates for any dataset in order to make sure we don't run out of prompts.
     for ds_string in dataset_strings:
         ds_name, _, config_name = ds_string.partition(" ")
-        prompter = DatasetTemplates(ds_name, config_name)
-        prompters.append(DatasetTemplates(ds_name, config_name))
+
+        if combined_template_path == "":
+            prompter = DatasetTemplates(ds_name, config_name)
+            prompters.append(DatasetTemplates(ds_name, config_name))
 
         ds_dict = assert_type(
             dict, load_dataset(ds_name, config_name or None, streaming=stream)
@@ -156,6 +158,10 @@ def load_prompts(
         raw_datasets.append(split)
         train_datasets.append(train_ds)
     
+    if combined_template_path:
+        combined_prompter = DatasetTemplates("combined_templates", combined_template_path)
+        prompters = [combined_prompter] * len(dataset_strings)
+
     min_num_templates = min(len(prompter.templates) for prompter in prompters)
 
     num_variants = (
