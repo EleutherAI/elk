@@ -76,10 +76,13 @@ class PromptConfig(Serializable):
 
         # Combining prompts
         if self.combined_template_path:
-            print("Copying templates across datasets to combined_templates/ " +
-                f"{self.combined_template_path}/templates.yaml")
-            combined_prompter = DatasetTemplates("combined_templates", 
-                self.combined_template_path)
+            print(
+                "Copying templates across datasets to combined_templates/ "
+                + f"{self.combined_template_path}/templates.yaml"
+            )
+            combined_prompter = DatasetTemplates(
+                "combined_templates", self.combined_template_path
+            )
             combined_prompter.templates = {}
             for ds_string in self.datasets:
                 ds_name, _, config_name = ds_string.partition(" ")
@@ -90,6 +93,7 @@ class PromptConfig(Serializable):
             print("Total number of templates: ", len(combined_prompter.templates))
             combined_prompter.write_to_file()
 
+
 def load_prompts(
     *dataset_strings: str,
     num_shots: int = 0,
@@ -99,7 +103,7 @@ def load_prompts(
     stream: bool = False,
     rank: int = 0,
     world_size: int = 1,
-    combined_template_path: str = ""
+    combined_template_path: str = "",
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified datasets.
 
@@ -159,9 +163,11 @@ def load_prompts(
 
         raw_datasets.append(split)
         train_datasets.append(train_ds)
-    
+
     if combined_template_path:
-        combined_prompter = DatasetTemplates("combined_templates", combined_template_path)
+        combined_prompter = DatasetTemplates(
+            "combined_templates", combined_template_path
+        )
         prompters = [combined_prompter] * len(dataset_strings)
 
     min_num_templates = min(len(prompter.templates) for prompter in prompters)
