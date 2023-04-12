@@ -1,4 +1,4 @@
-from os.path import exists
+from collections import Counter
 from dataclasses import dataclass
 from random import Random
 from typing import Any, Iterator, Literal, Optional
@@ -102,14 +102,11 @@ def load_prompts(
     train_datasets = []
     rng = Random(seed)
 
-    # If combined template is not empty and does not exist as a file yet, need to aggregate
-    # Init/create a new file for combining templates
+    # If flag is set, init/create a new file for combining templates
     combined_prompter = None
     if combined_prompter_path:
         print("Combining templates into shared prompter.")
         combined_prompter = DatasetTemplates("combined_templates", combined_prompter_path)
-    # should_aggregate_templates = (combined_prompter and not exists(combined_prompter.yaml_path))
-    # print("should aggregate: ", should_aggregate_templates)
 
     # First load the datasets and prompters. We need to know the minimum number of
     # templates for any dataset in order to make sure we don't run out of prompts.
@@ -230,6 +227,7 @@ def _convert_to_prompts(
     fewshot_iter: Optional[Iterator[list[dict]]] = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
+    label = assert_type(int, example[label_column])
     prompts = []
     templates = list(prompter.templates.values())
     if num_variants < len(templates):
@@ -240,6 +238,8 @@ def _convert_to_prompts(
         sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
         return f"{q}{sep}{a}" if a and not a.isspace() else q
 
+    # For sanity checking that prompts are unique
+    prompt_counter = Counter()
     new_label = rng.choice([0, 1]) if num_classes > 2 else example[label_column]
 
     for template in templates:
@@ -256,6 +256,7 @@ def _convert_to_prompts(
 
             q, a = template.apply(fake_example)
             text = qa_cat(q, a)
+            prompt_counter[text] += 1
 
             if fewshot_iter is not None:
                 # Infinite iterator so we don't need to worry about StopIteration
@@ -276,8 +277,13 @@ def _convert_to_prompts(
 
         prompts.append(choices)
 
+    # Sanity check: variants should be unique
+    ((maybe_dup, dup_count),) = prompt_counter.most_common(1)
+    if dup_count > 1:
+        raise ValueError(f'Prompt duplicated {dup_count} times! "{maybe_dup}"')
+
     return dict(
-        label=new_label,
+        label=label,
         prompts=prompts,
         template_names=prompter.all_template_names,
     )

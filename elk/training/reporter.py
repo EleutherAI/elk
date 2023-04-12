@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, NamedTuple, Optional, Union
+from typing import Literal, NamedTuple, Optional
 
 import torch
 import torch.nn as nn
@@ -151,11 +151,11 @@ class Reporter(nn.Module, ABC):
 
     # TODO: These methods will do something fancier in the future
     @classmethod
-    def load(cls, path: Union[Path, str]):
+    def load(cls, path: Path | str):
         """Load a reporter from a file."""
         return torch.load(path)
 
-    def save(self, path: Union[Path, str]):
+    def save(self, path: Path | str):
         # TODO: Save separate JSON and PT files for the reporter.
         torch.save(self, path)
 
