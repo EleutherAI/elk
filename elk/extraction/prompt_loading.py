@@ -203,7 +203,7 @@ def _convert_to_prompts(
     fewshot_iter: Optional[Iterator[list[dict]]] = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
-    label = assert_type(int, example[label_column])
+    assert_type(int, example[label_column])
     prompts = []
     templates = list(prompter.templates.values())
     if num_variants < len(templates):
@@ -259,7 +259,7 @@ def _convert_to_prompts(
         raise ValueError(f'Prompt duplicated {dup_count} times! "{maybe_dup}"')
 
     return dict(
-        label=label,
+        label=new_label,
         prompts=prompts,
         template_names=prompter.all_template_names,
     )
