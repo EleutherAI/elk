@@ -202,7 +202,7 @@ def load_prompts(
                 label_column=label_column,
                 num_classes=num_classes,
                 num_variants=num_variants,
-                prompter=prompter if not combined_prompter else combined_prompter,
+                prompter=prompter,
                 rng=rng,
                 fewshot_iter=fewshot_iter,
             )

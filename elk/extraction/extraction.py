@@ -59,7 +59,6 @@ class Extract(Serializable):
     token_loc: Literal["first", "last", "mean"] = "last"
     min_gpu_mem: Optional[int] = None
     num_gpus: int = -1
-    combined_prompter_path: Optional[str] = None # if template file does not exist, combine from datasets and save to this path
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -103,8 +102,7 @@ def extract_hiddens(
         split_type=split_type,
         stream=cfg.prompts.stream,
         rank=rank,
-        world_size=world_size,
-        combined_prompter_path=cfg.combined_prompter_path
+        world_size=world_size
     )  # this dataset is already sharded, but hasn't been truncated to max_examples
 
     model = instantiate_model(
@@ -269,8 +267,6 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
     num_variants = cfg.prompts.num_variants
-
-    # if combined prompter flag is set, combine prompt templates
 
     # extraneous, remove ?
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
