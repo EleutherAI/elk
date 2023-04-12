@@ -37,7 +37,7 @@ class Eval(Serializable):
     normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
 
     debug: bool = False
-    out_dir_suffix: Optional[Path] = None # custom name for subdir in transfer_eval folder
+    out_dir: Optional[Path] = None
     num_gpus: int = -1
     skip_baseline: bool = False
     concatenated_layer_offset: int = 0

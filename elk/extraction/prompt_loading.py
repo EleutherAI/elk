@@ -259,7 +259,7 @@ def _convert_to_prompts(
         raise ValueError(f'Prompt duplicated {dup_count} times! "{maybe_dup}"')
 
     return dict(
-        label=label,
+        label=new_label,
         prompts=prompts,
         template_names=prompter.all_template_names,
     )
