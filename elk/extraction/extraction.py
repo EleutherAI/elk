@@ -103,7 +103,7 @@ def extract_hiddens(
         stream=cfg.prompts.stream,
         rank=rank,
         world_size=world_size,
-        combined_template_path=cfg.prompts.combined_template_path
+        combined_template_path=cfg.prompts.combined_template_path,
     )  # this dataset is already sharded, but hasn't been truncated to max_examples
 
     model = instantiate_model(
