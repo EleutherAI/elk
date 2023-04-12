@@ -18,7 +18,7 @@ templates:
     name: Movie Expressed Sentiment 2
     reference: ''
   2351d12a-e630-4d19-8b41-e199266e38f7: !Template
-    answer_choices: ruim ||| bom
+    answer_choices: mal ||| bom
     id: 2351d12a-e630-4d19-8b41-e199266e38f7
     jinja: '{{text}}
 
