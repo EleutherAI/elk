@@ -26,15 +26,15 @@ The following will generate a CCS (Contrast Consistent Search) reporter instead 
 elk elicit microsoft/deberta-v2-xxlarge-mnli imdb --net ccs
 ```
 
-To test prompt invariance across multiple datasets, use the `--combined_template_path` command line argument, which will create a new `templates.yaml` file with templates from all the datasets.
-```bash
-elk elicit bigscience/bloomz-560m christykoh/ag_news_pt ag_news --combined_template_path=spar_w/ag_news
-```
-
 The following command will evaluate the probe from the run naughty-northcutt on the hidden states extracted from the model deberta-v2-xxlarge-mnli for the imdb dataset. It will result in an `eval.csv` and `cfg.yaml` file, which are stored under a subfolder in `elk-reporters/naughty-northcutt/transfer_eval`.
 
 ```bash
 elk eval naughty-northcutt microsoft/deberta-v2-xxlarge-mnli imdb
+```
+
+For prompt invariance across multiple datasets, use the `--combined_template_path` command line argument, which will create a new `templates.yaml` file with templates from all the datasets.
+```bash
+elk elicit bigscience/bloomz-560m christykoh/ag_news_pt ag_news --combined_template_path=spar_w/ag_news
 ```
 
 ## Caching
