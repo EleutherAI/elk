@@ -1,6 +1,7 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
+from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
 from typing import Any, Iterable, Literal, Optional
@@ -22,7 +23,6 @@ from torch import Tensor
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
-# import torch.nn.functional as F
 from ..utils import (
     assert_type,
     convert_span,
@@ -87,10 +87,7 @@ def extract_hiddens(
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterable[dict]:
-    """Run inference on a model with a set of prompts, yielding the hidden states.
-
-    This is a lightweight, functional version of the `Extractor` API.
-    """
+    """Run inference on a model with a set of prompts, yielding the hidden states."""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     # Silence datasets logging messages from all but the first process
@@ -301,6 +298,12 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
         )
 
     devices = select_usable_devices(num_gpus, min_memory=cfg.min_gpu_mem)
+
+    # Prevent the GPU-related config options from invalidating the cache
+    _cfg = copy(cfg)
+    _cfg.min_gpu_mem = None
+    _cfg.num_gpus = -1
+
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,
@@ -309,7 +312,7 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             split_name=split_name,
             split_info=split_info,
             gen_kwargs=dict(
-                cfg=[cfg] * len(devices),
+                cfg=[_cfg] * len(devices),
                 device=devices,
                 rank=list(range(len(devices))),
                 split_type=[split_name] * len(devices),
