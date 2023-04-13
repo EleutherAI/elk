@@ -41,7 +41,7 @@ class Eval(Serializable):
     num_gpus: int = -1
     skip_baseline: bool = False
     concatenated_layer_offset: int = 0
-    custom_ds_n: Optional[str] = None
+    custom_ds_n: Optional[Path] = None
 
     def execute(self):
         datasets = self.data.prompts.datasets

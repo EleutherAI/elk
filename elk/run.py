@@ -35,7 +35,7 @@ class Run(ABC):
     cfg: Union["Elicit", "Eval"]
     out_dir: Optional[Path] = None
     dataset: DatasetDict = field(init=False)
-    custom_ds_n: Optional[str] = None
+    custom_ds_n: Optional[Path] = None
 
     def __post_init__(self):
         # Extract the hidden states first if necessary

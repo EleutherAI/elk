@@ -53,7 +53,7 @@ class Elicit(Serializable):
     # if nonzero, appends the hidden states of layer concatenated_layer_offset before
     debug: bool = False
     out_dir: Optional[Path] = None
-    custom_ds_n: str = None
+    custom_ds_n: Optional[Path] = None
 
     def execute(self):
         train_run = Train(cfg=self, out_dir=self.out_dir, custom_ds_n=self.custom_ds_n)
