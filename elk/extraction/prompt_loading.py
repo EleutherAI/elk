@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass
 from random import Random
 from typing import Any, Iterator, Literal, Optional
@@ -202,6 +203,7 @@ def _convert_to_prompts(
     fewshot_iter: Optional[Iterator[list[dict]]] = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
+    assert_type(int, example[label_column])
     prompts = []
     templates = list(prompter.templates.values())
     if num_variants < len(templates):
@@ -212,6 +214,8 @@ def _convert_to_prompts(
         sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
         return f"{q}{sep}{a}" if a and not a.isspace() else q
 
+    # For sanity checking that prompts are unique
+    prompt_counter = Counter()
     new_label = rng.choice([0, 1]) if num_classes > 2 else example[label_column]
 
     for template in templates:
@@ -228,6 +232,7 @@ def _convert_to_prompts(
 
             q, a = template.apply(fake_example)
             text = qa_cat(q, a)
+            prompt_counter[text] += 1
 
             if fewshot_iter is not None:
                 # Infinite iterator so we don't need to worry about StopIteration
@@ -247,6 +252,11 @@ def _convert_to_prompts(
             )
 
         prompts.append(choices)
+
+    # Sanity check: variants should be unique
+    ((maybe_dup, dup_count),) = prompt_counter.most_common(1)
+    if dup_count > 1:
+        raise ValueError(f'Prompt duplicated {dup_count} times! "{maybe_dup}"')
 
     return dict(
         label=new_label,

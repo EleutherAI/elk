@@ -1,7 +1,6 @@
 """Main entry point for `elk`."""
 
 from dataclasses import dataclass
-from typing import Union
 
 from simple_parsing import ArgumentParser
 
@@ -14,7 +13,7 @@ from elk.training.train import Elicit
 class Command:
     """Some top-level command"""
 
-    command: Union[Elicit, Eval, Extract]
+    command: Elicit | Eval | Extract
 
     def execute(self):
         return self.command.execute()
