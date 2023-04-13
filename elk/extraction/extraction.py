@@ -101,15 +101,16 @@ def extract_hiddens(
     if rank != 0:
         logging.disable(logging.CRITICAL)
 
-    ds_names = cfg.prompts.datasets
+    p_cfg = cfg.prompts
+    ds_names = p_cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
     prompt_ds = load_prompts(
         ds_names[0],
-        label_column=cfg.prompts.label_columns[0],
-        num_classes=cfg.prompts.num_classes,
+        label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
+        num_classes=p_cfg.num_classes,
         split_type=split_type,
-        stream=cfg.prompts.stream,
+        stream=p_cfg.stream,
         rank=rank,
         world_size=world_size,
     )  # this dataset is already sharded, buqt hasn't been truncated to max_examples
@@ -127,7 +128,7 @@ def extract_hiddens(
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
 
-    global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
+    global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
     # break `max_examples` among the processes roughly equally
     max_examples = global_max_examples // world_size
     # the last process gets the remainder (which is usually small)
@@ -286,7 +287,11 @@ def extract(
     info = get_dataset_config_info(ds_name, config_name or None)
 
     ds_features = assert_type(Features, info.features)
-    label_col = cfg.prompts.label_columns[0] or infer_label_column(ds_features)
+    label_col = (
+        cfg.prompts.label_columns[0]
+        if cfg.prompts.label_columns
+        else infer_label_column(ds_features)
+    )
     num_classes = cfg.prompts.num_classes or infer_num_classes(ds_features[label_col])
     num_variants = cfg.prompts.num_variants
     if num_variants < 0:
