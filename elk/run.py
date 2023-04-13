@@ -35,7 +35,7 @@ class Run(ABC):
     cfg: Union["Elicit", "Eval"]
     out_dir: Optional[Path] = None
     dataset: DatasetDict = field(init=False)
-    custom_ds_n: str = None
+    custom_ds_n: Optional[str] = None
 
     def __post_init__(self):
         # Extract the hidden states first if necessary
@@ -45,7 +45,6 @@ class Run(ABC):
             # Save in a memorably-named directory inside of
             # ELK_REPORTER_DIR/<model_name>/<dataset_name>
             ds_name = ", ".join(self.cfg.data.prompts.datasets)
-            print(f"self.custom_root_name: {self.custom_ds_n}")
             if self.custom_ds_n:
                 ds_name = self.custom_ds_n
             root = elk_reporter_dir() / self.cfg.data.model / ds_name
