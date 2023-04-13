@@ -138,7 +138,7 @@ def extract_hiddens(
             num_variants,
             2,  # contrast pair
             device=device,
-            dtype=torch.float32,
+            dtype=torch.float16,
         )
         text_inputs = []
 
@@ -294,7 +294,7 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     # Only add model_preds if the model is an autoregressive model
     if is_autoregressive(model_cfg):
         other_cols["model_preds"] = Sequence(
-            Value(dtype="float32"),
+            Value(dtype="float16"),
             length=num_variants,
         )
 
