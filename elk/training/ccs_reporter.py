@@ -35,6 +35,7 @@ class CcsReporterConfig(ReporterConfig):
             Example: --loss 1.0*consistency_squared 0.5*prompt_var
             corresponds to the loss function 1.0*consistency_squared + 0.5*prompt_var.
             Defaults to "ccs_prompt_var".
+        normalization: The kind of normalization to apply to the hidden states.
         num_layers: The number of layers in the MLP. Defaults to 1.
         pre_ln: Whether to include a LayerNorm module before the first linear
             layer. Defaults to False.
@@ -54,6 +55,7 @@ class CcsReporterConfig(ReporterConfig):
     init: Literal["default", "pca", "spherical", "zero"] = "default"
     loss: list[str] = field(default_factory=lambda: ["ccs"])
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
+    normalization: Literal["none", "meanonly", "full"] = "full"
     num_layers: int = 1
     pre_ln: bool = False
     seed: int = 42
@@ -94,8 +96,12 @@ class CcsReporter(Reporter):
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
-        self.neg_norm = Normalizer((in_features,), device=device, dtype=dtype)
-        self.pos_norm = Normalizer((in_features,), device=device, dtype=dtype)
+        self.neg_norm = Normalizer(
+            (in_features,), device=device, dtype=dtype, mode=cfg.normalization
+        )
+        self.pos_norm = Normalizer(
+            (in_features,), device=device, dtype=dtype, mode=cfg.normalization
+        )
 
         self.probe = nn.Sequential(
             nn.Linear(
