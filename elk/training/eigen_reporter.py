@@ -2,12 +2,11 @@
 
 from dataclasses import dataclass
 from typing import Optional
-from warnings import warn
 
 import torch
 from torch import Tensor, nn, optim
 
-from ..truncated_eigh import ConvergenceError, truncated_eigh
+from ..truncated_eigh import truncated_eigh
 from ..utils.math_util import cov_mean_fused
 from .reporter import Reporter, ReporterConfig
 
@@ -184,7 +183,7 @@ class EigenReporter(Reporter):
         self.contrastive_xcov_M2.addmm_(neg_delta.mT, pos_delta2)
         self.contrastive_xcov_M2.addmm_(pos_delta.mT, neg_delta2)
 
-    def fit_streaming(self) -> float:
+    def fit_streaming(self, truncated: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
         A = (
             self.config.var_weight * self.intercluster_cov
@@ -192,14 +191,9 @@ class EigenReporter(Reporter):
             - self.config.neg_cov_weight * self.contrastive_xcov
         )
 
-        try:
+        if truncated:
             L, Q = truncated_eigh(A, k=self.config.num_heads)
-        except (ConvergenceError, RuntimeError):
-            warn(
-                "Truncated eigendecomposition failed to converge. Falling back on "
-                "PyTorch's dense eigensolver."
-            )
-
+        else:
             L, Q = torch.linalg.eigh(A)
             L, Q = L[-self.config.num_heads :], Q[:, -self.config.num_heads :]
 

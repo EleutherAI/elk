@@ -23,6 +23,7 @@ from torch import Tensor
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
     convert_span,
@@ -257,8 +258,9 @@ def extract(
         available_splits = assert_type(SplitDict, info.splits)
         train_name, val_name = select_train_val_splits(available_splits)
         print(
-            f"{info.builder_name}: using '{train_name}' for training and '{val_name}'"
-            f" for validation"
+            # Cyan color for dataset name
+            f"\033[36m{info.builder_name}\033[0m: using '{train_name}' for training and"
+            f" '{val_name}' for validation"
         )
         limit_list = cfg.prompts.max_examples
 
@@ -275,10 +277,14 @@ def extract(
         )
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
-    num_variants = cfg.prompts.num_variants
 
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
+
+    num_variants = cfg.prompts.num_variants
+    if num_variants < 0:
+        prompter = DatasetTemplates(ds_name, config_name)
+        num_variants = len(prompter.templates)
 
     layer_cols = {
         f"hidden_{layer}": Array3D(

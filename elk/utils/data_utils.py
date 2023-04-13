@@ -1,5 +1,6 @@
 import copy
 from bisect import bisect_left, bisect_right
+from functools import cache
 from operator import itemgetter
 from random import Random
 from typing import Any, Iterable
@@ -10,6 +11,7 @@ from datasets import (
     Features,
     Split,
     Value,
+    get_dataset_config_names,
 )
 
 from ..promptsource.templates import Template
@@ -58,7 +60,14 @@ def get_dataset_name(dataset: DatasetDict) -> str:
             f"All splits must have the same config name; got {[config_name, *rest]}"
         )
 
-    return builder_name + " " + config_name if config_name else builder_name
+    include_config = config_name and has_multiple_configs(builder_name)
+    return builder_name + " " + config_name if include_config else builder_name
+
+
+@cache
+def has_multiple_configs(ds_name: str) -> bool:
+    """Return whether a dataset has multiple configs."""
+    return len(get_dataset_config_names(ds_name)) > 1
 
 
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:

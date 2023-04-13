@@ -11,7 +11,7 @@ from ..extraction.extraction import Extract
 from ..files import elk_reporter_dir
 from ..run import Run
 from ..training import Reporter
-from ..training.baseline import evaluate_baseline
+from ..training.supervised import evaluate_supervised
 from ..utils import select_usable_devices
 
 
@@ -61,11 +61,7 @@ class Evaluate(Run):
     ) -> pd.DataFrame:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
-
-        _, _, _, val_output = self.prepare_data(
-            device,
-            layer,
-        )
+        val_output = self.prepare_data(device, layer, "val")
 
         experiment_dir = elk_reporter_dir() / self.cfg.source
 
@@ -94,7 +90,7 @@ class Evaluate(Run):
                 with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
                     lr_model = torch.load(f, map_location=device).eval()
 
-                lr_auroc, lr_acc = evaluate_baseline(lr_model, val_x0, val_x1, val_gt)
+                lr_auroc, lr_acc = evaluate_supervised(lr_model, val_x0, val_x1, val_gt)
 
                 stats_row["lr_auroc"] = lr_auroc
                 stats_row["lr_acc"] = lr_acc
