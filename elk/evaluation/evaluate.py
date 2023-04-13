@@ -48,6 +48,7 @@ class Eval(Serializable):
         transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
 
         for dataset in datasets:
+            self.data.prompts.datasets = [dataset]
             run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
             run.evaluate()
 
