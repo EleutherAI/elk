@@ -41,6 +41,7 @@ class Eval(Serializable):
     num_gpus: int = -1
     skip_baseline: bool = False
     concatenated_layer_offset: int = 0
+    custom_ds_n: str = None
 
     def execute(self):
         datasets = self.data.prompts.datasets
@@ -48,7 +49,9 @@ class Eval(Serializable):
         transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
 
         for dataset in datasets:
-            run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
+            run = Evaluate(
+                cfg=self, out_dir=transfer_dir / dataset, custom_ds_n=self.custom_ds_n
+            )
             run.evaluate()
 
 
