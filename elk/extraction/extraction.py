@@ -103,7 +103,7 @@ def extract_hiddens(
     )  # this dataset is already sharded, but hasn't been truncated to max_examples
 
     model = instantiate_model(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+        cfg.model, torch_dtype=torch.float16
     ).to(device)
     tokenizer = AutoTokenizer.from_pretrained(
         cfg.model, truncation_side="left", verbose=False
@@ -171,6 +171,7 @@ def extract_hiddens(
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
+                    return_token_type_ids=False
                 )
 
                 # The offset_mapping is a sorted list of (start, end) tuples. We locate
