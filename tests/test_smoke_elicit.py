@@ -25,7 +25,13 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
     # get the files in the tmp_path
     files: list[Path] = list(tmp_path.iterdir())
     created_file_names = {file.name for file in files}
-    expected_files = ["cfg.yaml", "metadata.yaml", "lr_models", "reporters", "eval.csv"]
+    expected_files = [
+        "cfg.yaml",
+        "fingerprints.yaml",
+        "lr_models",
+        "reporters",
+        "eval.csv",
+    ]
     for file in expected_files:
         assert file in created_file_names
 
@@ -49,6 +55,12 @@ def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
     # get the files in the tmp_path
     files: list[Path] = list(tmp_path.iterdir())
     created_file_names = {file.name for file in files}
-    expected_files = ["cfg.yaml", "metadata.yaml", "lr_models", "reporters", "eval.csv"]
+    expected_files = [
+        "cfg.yaml",
+        "fingerprints.yaml",
+        "lr_models",
+        "reporters",
+        "eval.csv",
+    ]
     for file in expected_files:
         assert file in created_file_names
