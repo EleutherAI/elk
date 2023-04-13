@@ -138,7 +138,7 @@ def extract_hiddens(
             num_variants,
             2,  # contrast pair
             device=device,
-            dtype=torch.float16,
+            dtype=torch.float32,
         )
         text_inputs = []
 
@@ -271,7 +271,7 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
 
     layer_cols = {
         f"hidden_{layer}": Array3D(
-            dtype="int16",
+            dtype="int32",
             shape=(num_variants, 2, model_cfg.hidden_size),
         )
         for layer in cfg.layers or range(model_cfg.num_hidden_layers)
@@ -294,7 +294,7 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     # Only add model_preds if the model is an autoregressive model
     if is_autoregressive(model_cfg):
         other_cols["model_preds"] = Sequence(
-            Value(dtype="float16"),
+            Value(dtype="float32"),
             length=num_variants,
         )
 
