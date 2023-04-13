@@ -40,6 +40,7 @@ class Run(ABC):
         # Extract the hidden states first if necessary
         self.dataset = extract(self.cfg.data, num_gpus=self.cfg.num_gpus)
 
+        # TODO support raw evaluation
         if self.out_dir is None:
             # Save in a memorably-named directory inside of
             # ELK_REPORTER_DIR/<model_name>/<dataset_name>

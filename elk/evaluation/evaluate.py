@@ -49,6 +49,10 @@ class Eval(Serializable):
 
         for dataset in datasets:
             run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
+
+            # TODO: if dataset is "raw", then we specify that the Extraction in Eval
+            # should be done on the raw dataset
+
             run.evaluate()
 
 

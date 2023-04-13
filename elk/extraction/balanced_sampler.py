@@ -25,7 +25,7 @@ class BalancedSampler(TorchIterableDataset):
             divided between the two binary label values (0 and 1). Defaults to 1000.
     """
 
-    def __init__(self, data: Iterable[dict], buffer_size: int = 1000):
+    def __init__(self, data: Iterable, buffer_size: int = 1000):
         self.data = data
 
         self.neg_buffer = deque(maxlen=buffer_size)

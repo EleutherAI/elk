@@ -9,6 +9,7 @@ import torch
 from datasets import (
     Array3D,
     ClassLabel,
+    Dataset,
     DatasetDict,
     Features,
     Sequence,
@@ -16,6 +17,7 @@ from datasets import (
     SplitInfo,
     Value,
     get_dataset_config_info,
+    load_from_disk,
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
@@ -116,14 +118,10 @@ def extract_hiddens(
         print("Model has language model head, will store predictions.")
 
     # Iterating over questions
-    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
+    layers = cfg.layers or tuple(range(model.config.num_hidden_layers))
 
     global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
-    # break `max_examples` among the processes roughly equally
-    max_examples = global_max_examples // world_size
-    # the last process gets the remainder (which is usually small)
-    if rank == world_size - 1:
-        max_examples += global_max_examples % world_size
+    max_examples = get_max_examples(global_max_examples, rank, world_size)
 
     for example in islice(BalancedSampler(prompt_ds), max_examples):
         num_variants = len(example["prompts"])
@@ -135,7 +133,7 @@ def extract_hiddens(
                 device=device,
                 dtype=torch.int16,
             )
-            for layer_idx in layer_indices
+            for layer_idx in layers
         }
         lm_preds = torch.empty(
             num_variants,
@@ -204,24 +202,11 @@ def extract_hiddens(
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 )
-                # First element of list is the input embeddings
-                hiddens = hiddens[1:]
 
-                # Throw out layers we don't care about
-                hiddens = [hiddens[i] for i in layer_indices]
+                hiddens = select_hiddens(hiddens, cfg.token_loc, layers)
 
-                # Current shape of each element: (batch_size, seq_len, hidden_size)
-                if cfg.token_loc == "first":
-                    hiddens = [h[..., 0, :] for h in hiddens]
-                elif cfg.token_loc == "last":
-                    hiddens = [h[..., -1, :] for h in hiddens]
-                elif cfg.token_loc == "mean":
-                    hiddens = [h.mean(dim=-2) for h in hiddens]
-                else:
-                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
-
-                for layer_idx, hidden in zip(layer_indices, hiddens):
-                    hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
+                for layer, hidden in zip(layers, hiddens):
+                    hidden_dict[f"hidden_{layer}"][i, j] = float32_to_int16(hidden)
 
             text_inputs.append(variant_inputs)
 
@@ -241,6 +226,131 @@ def extract_hiddens(
 # Dataset.from_generator wraps all the arguments in lists, so we unpack them here
 def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
+
+
+def select_hiddens(
+    hiddens: list[torch.Tensor], token_loc: str, layer_indices: tuple[int, ...]
+) -> list[torch.Tensor]:
+    # First element of list is the input embeddings
+    hiddens = hiddens[1:]
+
+    # Throw out layers we don't care about
+    hiddens = [hiddens[i] for i in layer_indices]
+
+    # Current shape of each element: (batch_size, seq_len, hidden_size)
+    if token_loc == "first":
+        hiddens = [h[..., 0, :] for h in hiddens]
+    elif token_loc == "last":
+        hiddens = [h[..., -1, :] for h in hiddens]
+    elif token_loc == "mean":
+        hiddens = [h.mean(dim=-2) for h in hiddens]
+    else:
+        raise ValueError(f"Invalid token_loc: {token_loc}")
+
+    return hiddens
+
+
+def get_max_examples(global_max_examples: int, rank: int, world_size: int) -> int:
+    """Get the maximum number of examples to extract for a given process."""
+    # break `max_examples` among the processes roughly equally
+    max_examples = global_max_examples // world_size
+    # the last process gets the remainder (which is usually small)
+    if rank == world_size - 1:
+        max_examples += global_max_examples % world_size
+
+    return max_examples
+
+
+def raw_extract_hiddens(
+    cfg: "Extract",
+    *,
+    device: str | torch.device = "cpu",
+    split_type: Literal["train", "val"] = "train",
+    rank: int = 0,
+    world_size: int = 1,
+) -> Iterable[dict]:
+    """Run inference on a model with a set of prompts, yielding the hidden states.
+
+    This is a lightweight, functional version of the `Extractor` API.
+    """
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    # Silence datasets logging messages from all but the first process
+    if rank != 0:
+        logging.disable(logging.CRITICAL)
+
+    model = instantiate_model(
+        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+    ).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(
+        cfg.model, truncation_side="left", verbose=False
+    )
+    has_lm_preds = is_autoregressive(model.config)
+    if has_lm_preds and rank == 0:
+        print("Model has language model head, will store predictions.")
+
+    # Load the dataset
+    ds = load_from_disk(assert_type(str, cfg.prompts.data_dir))
+    ds = (
+        assert_type(Dataset, ds)
+        .shard(num_shards=world_size, index=rank)
+        .shuffle(seed=cfg.prompts.seed)
+    )
+
+    # Iterating over questions
+    layers = cfg.layers or tuple(range(model.config.num_hidden_layers))
+
+    global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
+    max_examples = get_max_examples(global_max_examples, rank, world_size)
+
+    # TODO: fix balancing by merging changes from check-streamable
+    for example in islice(ds, max_examples):
+        text, label = example["text"], example["label"]
+        inputs = tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+        ).to(device)
+
+        # Run the forward pass
+        outputs = model(**inputs, output_hidden_states=True)
+
+        # Compute the log probability of the whole sequence
+        if has_lm_preds:
+            # TODO: I don't know how to do this in full generality
+            # compute the total log probability of the sequence
+            # by summing the log probabilities of each token except the last
+            # (which is predicting the next token)
+            logprobs = outputs.logits[:, :-1, :].log_softmax(dim=-1)
+            # TODO: what about the first token's unconditional log prob?
+            logprobs = logprobs.gather(
+                dim=-1, index=inputs.input_ids[:, 1:].unsqueeze(-1)
+            )
+            # sum the log probabilities of the correct tokens
+            total_logprob = logprobs.sum()
+        else:
+            total_logprob = None
+
+        # Extract the hidden states
+        hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+
+        hiddens = select_hiddens(hiddens, cfg.token_loc, layers)
+
+        record = {
+            f"hidden_{layer}": float32_to_int16(hid.squeeze())
+            for layer, hid in zip(layers, hiddens)
+        }
+        record["text_input"] = text
+        record["label"] = label
+        if total_logprob is not None:
+            record["total_logprob"] = total_logprob.float().item()
+
+        yield record
+
+
+# Dataset.from_generator wraps all the arguments in lists, so we unpack them here
+def _raw_extraction_worker(**kwargs):
+    yield from raw_extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
 def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
@@ -268,44 +378,78 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
     model_cfg = AutoConfig.from_pretrained(cfg.model)
     num_variants = cfg.prompts.num_variants
 
-    ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
-    info = get_dataset_config_info(ds_name, config_name or None)
+    is_raw = cfg.prompts.datasets == ["raw"]
 
-    layer_cols = {
-        f"hidden_{layer}": Array3D(
-            dtype="int16",
-            shape=(num_variants, 2, model_cfg.hidden_size),
+    if not is_raw:
+        ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
+        info = get_dataset_config_info(ds_name, config_name or None)
+        split_dict = get_splits()
+    else:
+        # TODO: this isn't super high effort since I think Nora will make a change
+        # overriding some issues here
+        split_dict = SplitDict(
+            {
+                "test": SplitInfo(
+                    name="test",
+                    num_examples=8,  # TODO: Is this important?
+                    dataset_name="raw",
+                ),
+            },
+            dataset_name="raw",
         )
-        for layer in cfg.layers or range(model_cfg.num_hidden_layers)
-    }
-    other_cols = {
-        "variant_ids": Sequence(
-            Value(dtype="string"),
-            length=num_variants,
-        ),
-        "label": ClassLabel(names=["neg", "pos"]),
-        "text_inputs": Sequence(
-            Sequence(
+
+    if is_raw:
+        layer_cols = {
+            f"hidden_{layer}": Sequence(
+                feature=Value(dtype="int16"),
+                length=model_cfg.hidden_size,
+            )
+            for layer in cfg.layers or range(model_cfg.num_hidden_layers)
+        }
+        other_cols = {
+            "label": ClassLabel(names=["False", "True"]),
+            "text_input": Value(dtype="string"),
+        }
+
+        # Only add model_preds if the model is an autoregressive model
+        if is_autoregressive(model_cfg):
+            other_cols["total_logprob"] = Value(dtype="float32")
+    else:
+        layer_cols = {
+            f"hidden_{layer}": Array3D(
+                dtype="int16",
+                shape=(num_variants, 2, model_cfg.hidden_size),
+            )
+            for layer in cfg.layers or range(model_cfg.num_hidden_layers)
+        }
+        other_cols = {
+            "variant_ids": Sequence(
                 Value(dtype="string"),
-                length=2,
+                length=num_variants,
             ),
-            length=num_variants,
-        ),
-    }
+            "label": ClassLabel(names=["neg", "pos"]),
+            "text_inputs": Sequence(
+                Sequence(
+                    Value(dtype="string"),
+                    length=2,
+                ),
+                length=num_variants,
+            ),
+        }
 
-    # Only add model_preds if the model is an autoregressive model
-    if is_autoregressive(model_cfg):
-        other_cols["model_preds"] = Sequence(
-            Value(dtype="float32"),
-            length=num_variants,
-        )
+        # Only add model_preds if the model is an autoregressive model
+        if is_autoregressive(model_cfg):
+            other_cols["model_preds"] = Sequence(
+                Value(dtype="float32"),
+                length=num_variants,
+            )
 
     devices = select_usable_devices(num_gpus, min_memory=cfg.min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,
             features=Features({**layer_cols, **other_cols}),
-            generator=_extraction_worker,
+            generator=_raw_extraction_worker if is_raw else _extraction_worker,
             split_name=split_name,
             split_info=split_info,
             gen_kwargs=dict(
@@ -316,7 +460,7 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
                 world_size=[len(devices)] * len(devices),
             ),
         )
-        for (split_name, split_info) in get_splits().items()
+        for (split_name, split_info) in split_dict.items()
     }
     import multiprocess as mp
 

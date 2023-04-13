@@ -54,6 +54,13 @@ class Elicit(Serializable):
     debug: bool = False
     out_dir: Optional[Path] = None
 
+    def __post_init__(self):
+        if self.data.prompts.datasets == ["raw"]:
+            raise ValueError(
+                "Cannot use `elicit` command with raw datasets. "
+                "Only `eval` is supported for raw datasets."
+            )
+
     def execute(self):
         train_run = Train(cfg=self, out_dir=self.out_dir)
         train_run.train()

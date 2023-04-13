@@ -26,8 +26,12 @@ from .balanced_sampler import FewShotSampler
 class PromptConfig(Serializable):
     """
     Args:
-        dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
-            `"super_glue boolq"` or `"imdb"`.
+        datasets: List of space-delimited names of the HuggingFace dataset to use, e.g.
+            `"super_glue boolq" "imdb"` or `"amazon_polarity"`.
+            If datasets is `raw`, then the --data_dir argument must be provided,
+            specifying the path to a directory containing a single split of a dataset
+            with a "text" column and a "label" column. The text column is the exact
+            string input to the model, and the label is a binary label (0 or 1).
         balance: Whether to force class balance in the dataset using undersampling.
         data_dir: The directory to use for caching the dataset. Defaults to
             `~/.cache/huggingface/datasets`.
@@ -68,6 +72,25 @@ class PromptConfig(Serializable):
         # Broadcast the limit to all splits
         if len(self.max_examples) == 1:
             self.max_examples *= 2
+
+        if self.datasets == ["raw"]:
+            if self.data_dir is None:
+                raise ValueError(
+                    "If datasets is `raw`, then a --data_dir must be provided."
+                )
+            if self.stream:
+                raise ValueError("Streaming is not supported for raw datasets.")
+            if self.label_column is not None:
+                raise ValueError(
+                    "Custom label column names are not supported for raw datasets. "
+                    "The label column must be named `label`."
+                )
+            if self.num_shots > 0:
+                raise ValueError("Few-shot prompts are not supported for raw datasets.")
+            if self.num_variants > 1:
+                raise ValueError(
+                    "Multiple prompt variants are not supported for raw datasets."
+                )
 
 
 def load_prompts(
