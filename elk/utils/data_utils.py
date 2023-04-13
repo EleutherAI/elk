@@ -2,7 +2,7 @@ import copy
 from bisect import bisect_left, bisect_right
 from operator import itemgetter
 from random import Random
-from typing import Any, Iterable, List
+from typing import Any, Iterable
 
 from datasets import (
     ClassLabel,
@@ -42,6 +42,23 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
         raise ValueError("All splits must have the same columns")
 
     return pivot
+
+
+def get_dataset_name(dataset: DatasetDict) -> str:
+    """Get the name of a `DatasetDict`."""
+    builder_name, *rest = [ds.builder_name for ds in dataset.values()]
+    if not all(name == builder_name for name in rest):
+        raise ValueError(
+            f"All splits must have the same name; got {[builder_name, *rest]}"
+        )
+
+    config_name, *rest = [ds.config_name for ds in dataset.values()]
+    if not all(name == config_name for name in rest):
+        raise ValueError(
+            f"All splits must have the same config name; got {[config_name, *rest]}"
+        )
+
+    return builder_name + " " + config_name if config_name else builder_name
 
 
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
@@ -101,7 +118,7 @@ def infer_num_classes(label_feature: Any) -> int:
         )
 
 
-def get_layers(ds: DatasetDict) -> List[int]:
+def get_layers(ds: DatasetDict) -> list[int]:
     """Get a list of indices of hidden layers given a `DatasetDict`."""
     layers = [
         int(feat[len("hidden_") :])

@@ -4,7 +4,7 @@ import os
 from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Iterable, Literal
 
 import torch
 from datasets import (
@@ -48,7 +48,6 @@ class Extract(Serializable):
         layer_stride: Shortcut for setting `layers` to `range(0, num_layers, stride)`.
         token_loc: The location of the token to extract hidden states from. Can be
             either "first", "last", or "mean". Defaults to "last".
-        min_gpu_mem: Minimum amount of free memory (in bytes) required to select a GPU.
     """
 
     prompts: PromptConfig
@@ -57,8 +56,6 @@ class Extract(Serializable):
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
-    min_gpu_mem: Optional[int] = None
-    num_gpus: int = -1
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -74,8 +71,16 @@ class Extract(Serializable):
             )
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
-    def execute(self):
-        extract(cfg=self, num_gpus=self.num_gpus)
+    def explode(self) -> list["Extract"]:
+        """Explode this config into a list of configs, one for each layer."""
+        copies = []
+
+        for prompt_cfg in self.prompts.explode():
+            cfg = copy(self)
+            cfg.prompts = prompt_cfg
+            copies.append(cfg)
+
+        return copies
 
 
 @torch.no_grad()
@@ -94,8 +99,11 @@ def extract_hiddens(
     if rank != 0:
         logging.disable(logging.CRITICAL)
 
+    ds_names = cfg.prompts.datasets
+    assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
+
     prompt_ds = load_prompts(
-        *cfg.prompts.datasets,
+        ds_names[0],
         split_type=split_type,
         stream=cfg.prompts.stream,
         rank=rank,
@@ -240,14 +248,18 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
+def extract(
+    cfg: "Extract", num_gpus: int = -1, min_gpu_mem: int | None = None
+) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
         train_name, val_name = select_train_val_splits(available_splits)
-        print(f"Using '{train_name}' for training and '{val_name}' for validation")
-
+        print(
+            f"{info.builder_name}: using '{train_name}' for training and '{val_name}'"
+            f" for validation"
+        )
         limit_list = cfg.prompts.max_examples
 
         return SplitDict(
@@ -297,22 +309,18 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             length=num_variants,
         )
 
-    devices = select_usable_devices(num_gpus, min_memory=cfg.min_gpu_mem)
-
-    # Prevent the GPU-related config options from invalidating the cache
-    _cfg = copy(cfg)
-    _cfg.min_gpu_mem = None
-    _cfg.num_gpus = -1
-
+    devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
+            builder_name=info.builder_name,
+            config_name=info.config_name,
             cache_dir=None,
             features=Features({**layer_cols, **other_cols}),
             generator=_extraction_worker,
             split_name=split_name,
             split_info=split_info,
             gen_kwargs=dict(
-                cfg=[_cfg] * len(devices),
+                cfg=[cfg] * len(devices),
                 device=devices,
                 rank=list(range(len(devices))),
                 split_type=[split_name] * len(devices),

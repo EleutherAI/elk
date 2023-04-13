@@ -66,26 +66,7 @@ class Reporter(nn.Module, ABC):
     """
 
     n: Tensor
-    neg_mean: Tensor
-    pos_mean: Tensor
-
-    def __init__(
-        self,
-        in_features: int,
-        cfg: ReporterConfig,
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
-    ):
-        super().__init__()
-
-        self.config = cfg
-        self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
-        self.register_buffer(
-            "neg_mean", torch.zeros(in_features, device=device, dtype=dtype)
-        )
-        self.register_buffer(
-            "pos_mean", torch.zeros(in_features, device=device, dtype=dtype)
-        )
+    config: ReporterConfig
 
     @classmethod
     def check_separability(
@@ -137,17 +118,6 @@ class Reporter(nn.Module, ABC):
 
     def reset_parameters(self):
         """Reset the parameters of the probe."""
-
-    @torch.no_grad()
-    def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
-        """Update the running mean of the positive and negative examples."""
-
-        x_pos, x_neg = x_pos.flatten(0, -2), x_neg.flatten(0, -2)
-        self.n += x_pos.shape[0]
-
-        # Update the running means
-        self.neg_mean += (x_neg.sum(dim=0) - self.neg_mean) / self.n
-        self.pos_mean += (x_pos.sum(dim=0) - self.pos_mean) / self.n
 
     # TODO: These methods will do something fancier in the future
     @classmethod

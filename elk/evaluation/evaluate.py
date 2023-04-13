@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Literal, Optional
+from typing import Callable
 
 import pandas as pd
 import torch
@@ -11,7 +11,7 @@ from ..extraction.extraction import Extract
 from ..files import elk_reporter_dir
 from ..run import Run
 from ..training import Reporter
-from ..training.baseline import evaluate_baseline, load_baseline
+from ..training.baseline import evaluate_baseline
 from ..utils import select_usable_devices
 
 
@@ -34,11 +34,11 @@ class Eval(Serializable):
 
     data: Extract
     source: str = field(positional=True)
-    normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
 
     debug: bool = False
-    out_dir: Optional[Path] = None
+    out_dir: Path | None = None
     num_gpus: int = -1
+    min_gpu_mem: int | None = None
     skip_baseline: bool = False
     concatenated_layer_offset: int = 0
 
@@ -58,11 +58,11 @@ class Evaluate(Run):
 
     def evaluate_reporter(
         self, layer: int, devices: list[str], world_size: int = 1
-    ) -> pd.Series:
+    ) -> pd.DataFrame:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
-        _, _, test_x0, test_x1, _, test_labels, _ = self.prepare_data(
+        _, _, _, val_output = self.prepare_data(
             device,
             layer,
         )
@@ -73,40 +73,42 @@ class Evaluate(Run):
         reporter: Reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
-        test_result = reporter.score(
-            test_labels,
-            test_x0,
-            test_x1,
-        )
-
-        stats_row = pd.Series(
-            {
-                "layer": layer,
-                **test_result._asdict(),
-            }
-        )
-
-        lr_dir = experiment_dir / "lr_models"
-        if not self.cfg.skip_baseline and lr_dir.exists():
-            lr_model = load_baseline(lr_dir, layer)
-            lr_model.eval()
-            lr_auroc, lr_acc = evaluate_baseline(
-                lr_model.cuda(), test_x0.cuda(), test_x1.cuda(), test_labels
+        row_buf = []
+        for ds_name, (val_x0, val_x1, val_gt, _) in val_output.items():
+            val_result = reporter.score(
+                val_gt,
+                val_x0,
+                val_x1,
             )
 
-            stats_row["lr_auroc"] = lr_auroc
-            stats_row["lr_acc"] = lr_acc
+            stats_row = pd.Series(
+                {
+                    "dataset": ds_name,
+                    "layer": layer,
+                    **val_result._asdict(),
+                }
+            )
 
-        return stats_row
+            lr_dir = experiment_dir / "lr_models"
+            if not self.cfg.skip_baseline and lr_dir.exists():
+                with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
+                    lr_model = torch.load(f, map_location=device).eval()
+
+                lr_auroc, lr_acc = evaluate_baseline(lr_model, val_x0, val_x1, val_gt)
+
+                stats_row["lr_auroc"] = lr_auroc
+                stats_row["lr_acc"] = lr_acc
+
+        return pd.DataFrame(row_buf)
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
         devices = select_usable_devices(
-            self.cfg.num_gpus, min_memory=self.cfg.data.min_gpu_mem
+            self.cfg.num_gpus, min_memory=self.cfg.min_gpu_mem
         )
 
         num_devices = len(devices)
-        func: Callable[[int], pd.Series] = partial(
+        func: Callable[[int], pd.DataFrame] = partial(
             self.evaluate_reporter, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)

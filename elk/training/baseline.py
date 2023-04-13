@@ -1,5 +1,3 @@
-import pickle
-from pathlib import Path
 from typing import Tuple
 
 import torch
@@ -8,8 +6,6 @@ from torch import Tensor
 
 from ..utils.typing import assert_type
 from .classifier import Classifier
-
-# TODO: Create class for baseline?
 
 
 def evaluate_baseline(
@@ -50,13 +46,3 @@ def train_baseline(
     lr_model.fit_cv(X.view(-1, d), train_labels_aug)
 
     return lr_model
-
-
-def save_baseline(lr_dir: Path, layer: int, lr_model: Classifier):
-    with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
-        pickle.dump(lr_model, file)
-
-
-def load_baseline(lr_dir: Path, layer: int) -> Classifier:
-    with open(lr_dir / f"layer_{layer}.pt", "rb") as file:
-        return pickle.load(file)

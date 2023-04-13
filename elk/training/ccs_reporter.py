@@ -13,6 +13,7 @@ from torch.nn.functional import binary_cross_entropy as bce
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
 from .losses import LOSSES
+from .normalizer import Normalizer
 from .reporter import Reporter, ReporterConfig
 
 
@@ -85,12 +86,16 @@ class CcsReporter(Reporter):
         self,
         in_features: int,
         cfg: CcsReporterConfig,
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: str | torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
-        super().__init__(in_features, cfg, device=device, dtype=dtype)
+        super().__init__()
+        self.config = cfg
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
+
+        self.neg_norm = Normalizer((in_features,), device=device, dtype=dtype)
+        self.pos_norm = Normalizer((in_features,), device=device, dtype=dtype)
 
         self.probe = nn.Sequential(
             nn.Linear(
@@ -165,6 +170,8 @@ class CcsReporter(Reporter):
         return self.probe(x).squeeze(-1)
 
     def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
+        x_pos = self.pos_norm(x_pos)
+        x_neg = self.neg_norm(x_neg)
         return 0.5 * (self(x_pos).sigmoid() + (1 - self(x_neg).sigmoid()))
 
     def loss(
@@ -231,8 +238,9 @@ class CcsReporter(Reporter):
             ValueError: If `optimizer` is not "adam" or "lbfgs".
             RuntimeError: If the best loss is not finite.
         """
-        # TODO: Implement normalization here to fix issue #96
-        # self.update(x_pos, x_neg)
+        # Fit normalizers
+        self.pos_norm.fit(x_pos)
+        self.neg_norm.fit(x_neg)
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf

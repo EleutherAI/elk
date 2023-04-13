@@ -4,7 +4,7 @@ import warnings
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Literal, Optional
+from typing import Callable, Optional
 
 import pandas as pd
 import torch
@@ -14,7 +14,7 @@ from torch import Tensor
 
 from ..extraction.extraction import Extract
 from ..run import Run
-from ..training.baseline import evaluate_baseline, save_baseline, train_baseline
+from ..training.baseline import evaluate_baseline, train_baseline
 from ..utils import select_usable_devices
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
@@ -47,7 +47,7 @@ class Elicit(Serializable):
     optim: OptimConfig = field(default_factory=OptimConfig)
 
     num_gpus: int = -1
-    normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
+    min_gpu_mem: int | None = None
     skip_baseline: bool = False
     concatenated_layer_offset: int = 0
     # if nonzero, appends the hidden states of layer concatenated_layer_offset before
@@ -78,16 +78,14 @@ class Train(Run):
         layer: int,
         devices: list[str],
         world_size: int = 1,
-    ) -> pd.Series:
+    ) -> pd.DataFrame:
         """Train a single reporter on a single layer."""
         self.make_reproducible(seed=self.cfg.net.seed + layer)
-
         device = self.get_device(devices, world_size)
 
-        x0, x1, val_x0, val_x1, train_gt, val_gt, val_lm_preds = self.prepare_data(
-            device, layer
-        )
-        pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
+        x0, x1, train_gt, val_output = self.prepare_data(device, layer)
+        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
+        # pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
 
         if isinstance(self.cfg.net, CcsReporterConfig):
             reporter = CcsReporter(x0.shape[-1], self.cfg.net, device=device)
@@ -96,46 +94,55 @@ class Train(Run):
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
+        # Fit reporter
         train_loss = reporter.fit(x0, x1, train_gt)
-        val_result = reporter.score(
-            val_gt,
-            val_x0,
-            val_x1,
-        )
+        with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
+            torch.save(reporter, file)
 
-        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        if val_lm_preds is not None:
-            val_gt_cpu = val_gt.repeat_interleave(val_lm_preds.shape[1]).float().cpu()
-            val_lm_auroc = float(roc_auc_score(val_gt_cpu, val_lm_preds.flatten()))
-            val_lm_acc = float(accuracy_score(val_gt_cpu, val_lm_preds.flatten() > 0.5))
-        else:
-            val_lm_auroc = None
-            val_lm_acc = None
+        # Fit baseline logistic regression model
+        lr_model = train_baseline(x0, x1, train_gt, device=device)
+        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
+            torch.save(lr_model, file)
 
-        row = pd.Series(
-            {
-                "layer": layer,
-                "pseudo_auroc": pseudo_auroc,
-                "train_loss": train_loss,
-                **val_result._asdict(),
-                "lm_auroc": val_lm_auroc,
-                "lm_acc": val_lm_acc,
-            }
-        )
+        row_buf = []
+        for ds_name, (val_x0, val_x1, val_gt, val_lm_preds) in val_output.items():
+            val_result = reporter.score(
+                val_gt,
+                val_x0,
+                val_x1,
+            )
 
-        if not self.cfg.skip_baseline:
-            lr_model = train_baseline(x0, x1, train_gt, device=device)
+            if val_lm_preds is not None:
+                val_gt_cpu = (
+                    val_gt.repeat_interleave(val_lm_preds.shape[1]).float().cpu()
+                )
+                val_lm_auroc = float(roc_auc_score(val_gt_cpu, val_lm_preds.flatten()))
+                val_lm_acc = float(
+                    accuracy_score(val_gt_cpu, val_lm_preds.flatten() > 0.5)
+                )
+            else:
+                val_lm_auroc = None
+                val_lm_acc = None
+
+            row = pd.Series(
+                {
+                    "dataset": ds_name,
+                    "layer": layer,
+                    # "pseudo_auroc": pseudo_auroc,
+                    "train_loss": train_loss,
+                    **val_result._asdict(),
+                    "lm_auroc": val_lm_auroc,
+                    "lm_acc": val_lm_acc,
+                }
+            )
 
             lr_auroc, lr_acc = evaluate_baseline(lr_model, val_x0, val_x1, val_gt)
 
             row["lr_auroc"] = lr_auroc
             row["lr_acc"] = lr_acc
-            save_baseline(lr_dir, layer, lr_model)
+            row_buf.append(row)
 
-        with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
-            torch.save(reporter, file)
-
-        return row
+        return pd.DataFrame(row_buf)
 
     def get_pseudo_auroc(
         self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor
@@ -159,7 +166,7 @@ class Train(Run):
         """Train a reporter on each layer of the network."""
         devices = select_usable_devices(self.cfg.num_gpus)
         num_devices = len(devices)
-        func: Callable[[int], pd.Series] = partial(
+        func: Callable[[int], pd.DataFrame] = partial(
             self.train_reporter, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)
