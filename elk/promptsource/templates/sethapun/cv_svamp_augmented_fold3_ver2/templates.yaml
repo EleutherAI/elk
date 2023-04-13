@@ -1,0 +1,69 @@
+dataset: sethapun/cv_svamp_augmented_fold3_ver2
+templates:
+  c9b7d70d-f0b3-3bcc-a821-f280d3e3001: !Template
+    answer_choices: No ||| Yes
+    id:  c9b7d70d-f0b3-3bcc-a821-f280d3e3001
+    jinja: '{{question}} {{answer}}, {{true or false}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: svamp3_1
+    reference: ''
+  c9b7d70d-f0b3-3bcc-a821-f280d3e3002: !Template
+    answer_choices: False ||| True
+    id: c9b7d70d-f0b3-3bcc-a821-f280d3e3002
+    jinja: '{{question}} The correct answer is {{answer}}. ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: svamp3_2
+    reference: ''
+  c9b7d70d-f0b3-3bcc-a821-f280d3e3003: !Template
+    answer_choices: False ||| True
+    id: c9b7d70d-f0b3-3bcc-a821-f280d3e3003
+    jinja: 'The answer to the following question is {{answer}}, {{true or false}}? {{question}} ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: svamp3_3
+    reference: ''
+  c9b7d70d-f0b3-3bcc-a821-f280d3e3004: !Template
+    answer_choices: False ||| True
+    id: c9b7d70d-f0b3-3bcc-a821-f280d3e3004
+    jinja: '{{answer}} is the correct answer to the following question, {{true or false}}? {{question}} ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: svamp3_4
+    reference: ''
+  c9b7d70d-f0b3-3bcc-a821-f280d3e3005: !Template
+    answer_choices: False ||| True
+    id: c9b7d70d-f0b3-3bcc-a821-f280d3e3005
+    jinja: '{{question}} An incorrect anwer is {{answer}}. ||| {{answer_choices[label]}} '
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: svamp3_5
+    reference: ''
+
+
