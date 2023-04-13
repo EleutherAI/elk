@@ -2,15 +2,14 @@
 
 from dataclasses import dataclass
 from typing import Optional
-from warnings import warn
 
 import torch
 from einops import rearrange, repeat
 from torch import Tensor, nn, optim
 
-from ..math_util import cov_mean_fused
 from ..metrics import to_one_hot
-from ..truncated_eigh import ConvergenceError, truncated_eigh
+from ..truncated_eigh import truncated_eigh
+from ..utils.math_util import cov_mean_fused
 from .reporter import Reporter, ReporterConfig
 
 
@@ -65,6 +64,7 @@ class EigenReporter(Reporter):
     intracluster_cov: Tensor  # invariance
     contrastive_xcov_M2: Tensor  # negative covariance
     n: Tensor
+    class_means: Tensor
     weight: Tensor
 
     def __init__(
@@ -75,11 +75,19 @@ class EigenReporter(Reporter):
         device: Optional[str] = None,
         dtype: Optional[torch.dtype] = None,
     ):
-        super().__init__(cfg, in_features, num_classes, device=device, dtype=dtype)
+        super().__init__()
+        self.config = cfg
 
         # Learnable Platt scaling parameters
         self.bias = nn.Parameter(torch.zeros(cfg.num_heads, device=device, dtype=dtype))
         self.scale = nn.Parameter(torch.ones(cfg.num_heads, device=device, dtype=dtype))
+
+        # Running statistics
+        self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
+        self.register_buffer(
+            "class_means",
+            torch.zeros(num_classes, in_features, device=device, dtype=dtype),
+        )
 
         self.register_buffer(
             "contrastive_xcov_M2",
@@ -93,6 +101,8 @@ class EigenReporter(Reporter):
             "intracluster_cov",
             torch.zeros(in_features, in_features, device=device, dtype=dtype),
         )
+
+        # Reporter weights
         self.register_buffer(
             "weight",
             torch.zeros(cfg.num_heads, in_features, device=device, dtype=dtype),
@@ -181,7 +191,7 @@ class EigenReporter(Reporter):
                 scale = 1 / (k * (k - 1))
                 self.contrastive_xcov_M2.addmm_(d.mT, d_, alpha=scale)
 
-    def fit_streaming(self) -> float:
+    def fit_streaming(self, truncated: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
         inv_weight = 1 - self.config.neg_cov_weight
         A = (
@@ -189,14 +199,10 @@ class EigenReporter(Reporter):
             - inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
         )
-        try:
-            L, Q = truncated_eigh(A, k=self.config.num_heads)
-        except (ConvergenceError, RuntimeError):
-            warn(
-                "Truncated eigendecomposition failed to converge. Falling back on "
-                "PyTorch's dense eigensolver."
-            )
 
+        if truncated:
+            L, Q = truncated_eigh(A, k=self.config.num_heads)
+        else:
             L, Q = torch.linalg.eigh(A)
             L, Q = L[-self.config.num_heads :], Q[:, -self.config.num_heads :]
 

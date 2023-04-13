@@ -7,8 +7,8 @@ from typing import Iterable, Iterator, Optional
 from datasets import Features, IterableDataset
 from torch.utils.data import IterableDataset as TorchIterableDataset
 
-from ..math_util import stochastic_round_constrained
 from ..utils import infer_label_column
+from ..utils.math_util import stochastic_round_constrained
 from ..utils.typing import assert_type
 
 

@@ -60,32 +60,7 @@ class OptimConfig(Serializable):
 
 
 class Reporter(nn.Module, ABC):
-    """An ELK reporter network.
-
-    Args:
-        in_features: The number of input features.
-        cfg: The reporter configuration.
-    """
-
-    n: Tensor
-    class_means: Tensor
-
-    def __init__(
-        self,
-        cfg: ReporterConfig,
-        in_features: int,
-        num_classes: int = 2,
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
-    ):
-        super().__init__()
-
-        self.config = cfg
-        self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
-        self.register_buffer(
-            "class_means",
-            torch.zeros(num_classes, in_features, device=device, dtype=dtype),
-        )
+    """An ELK reporter network."""
 
     @classmethod
     def check_separability(
@@ -138,20 +113,6 @@ class Reporter(nn.Module, ABC):
 
     def reset_parameters(self):
         """Reset the parameters of the probe."""
-
-    @torch.no_grad()
-    def update(self, *hiddens: Tensor) -> None:
-        """Update the running mean of the positive and negative examples."""
-
-        assert len(hiddens) > 1, "Must provide at least two hidden representations"
-
-        # Flatten the hidden representations
-        hiddens = tuple(h.flatten(0, -2) for h in hiddens)
-        self.n += hiddens[0].shape[0]
-
-        # Update the running means
-        for i, h in enumerate(hiddens):
-            self.class_means[i] += (h.sum(dim=0) - self.class_means[i]) / self.n
 
     # TODO: These methods will do something fancier in the future
     @classmethod

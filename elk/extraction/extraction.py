@@ -1,9 +1,10 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
+from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Iterable, Literal
 
 import torch
 from datasets import (
@@ -22,6 +23,7 @@ from torch import Tensor
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
     convert_span,
@@ -48,7 +50,6 @@ class Extract(Serializable):
         layer_stride: Shortcut for setting `layers` to `range(0, num_layers, stride)`.
         token_loc: The location of the token to extract hidden states from. Can be
             either "first", "last", or "mean". Defaults to "last".
-        min_gpu_mem: Minimum amount of free memory (in bytes) required to select a GPU.
     """
 
     prompts: PromptConfig
@@ -57,8 +58,6 @@ class Extract(Serializable):
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
-    min_gpu_mem: Optional[int] = None
-    num_gpus: int = -1
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -74,8 +73,16 @@ class Extract(Serializable):
             )
             self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
 
-    def execute(self):
-        extract(cfg=self, num_gpus=self.num_gpus)
+    def explode(self) -> list["Extract"]:
+        """Explode this config into a list of configs, one for each layer."""
+        copies = []
+
+        for prompt_cfg in self.prompts.explode():
+            cfg = copy(self)
+            cfg.prompts = prompt_cfg
+            copies.append(cfg)
+
+        return copies
 
 
 @torch.no_grad()
@@ -87,19 +94,19 @@ def extract_hiddens(
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterable[dict]:
-    """Run inference on a model with a set of prompts, yielding the hidden states.
-
-    This is a lightweight, functional version of the `Extractor` API.
-    """
+    """Run inference on a model with a set of prompts, yielding the hidden states."""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     # Silence datasets logging messages from all but the first process
     if rank != 0:
         logging.disable(logging.CRITICAL)
 
+    ds_names = cfg.prompts.datasets
+    assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
+
     prompt_ds = load_prompts(
-        *cfg.prompts.datasets,
-        label_column=cfg.prompts.label_column,
+        ds_names[0],
+        label_column=cfg.prompts.label_columns[0],
         num_classes=cfg.prompts.num_classes,
         split_type=split_type,
         stream=cfg.prompts.stream,
@@ -246,14 +253,19 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
+def extract(
+    cfg: "Extract", num_gpus: int = -1, min_gpu_mem: int | None = None
+) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
         train_name, val_name = select_train_val_splits(available_splits)
-        print(f"Using '{train_name}' for training and '{val_name}' for validation")
-
+        print(
+            # Cyan color for dataset name
+            f"\033[36m{info.builder_name}\033[0m: using '{train_name}' for training and"
+            f" '{val_name}' for validation"
+        )
         limit_list = cfg.prompts.max_examples
 
         return SplitDict(
@@ -269,14 +281,17 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
         )
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
-    num_variants = cfg.prompts.num_variants
 
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
 
     ds_features = assert_type(Features, info.features)
-    label_col = cfg.prompts.label_column or infer_label_column(ds_features)
+    label_col = cfg.prompts.label_columns[0] or infer_label_column(ds_features)
     num_classes = cfg.prompts.num_classes or infer_num_classes(ds_features[label_col])
+    num_variants = cfg.prompts.num_variants
+    if num_variants < 0:
+        prompter = DatasetTemplates(ds_name, config_name)
+        num_variants = len(prompter.templates)
 
     layer_cols = {
         f"hidden_{layer}": Array3D(
@@ -306,9 +321,11 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             dtype="float32",
         )
 
-    devices = select_usable_devices(num_gpus, min_memory=cfg.min_gpu_mem)
+    devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
+            builder_name=info.builder_name,
+            config_name=info.config_name,
             cache_dir=None,
             features=Features({**layer_cols, **other_cols}),
             generator=_extraction_worker,

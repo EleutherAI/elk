@@ -1,11 +1,13 @@
 from collections import Counter
+from copy import deepcopy
 from dataclasses import dataclass
-from itertools import cycle
+from itertools import zip_longest
 from random import Random
 from typing import Any, Iterator, Literal, Optional
 
 from datasets import (
     Dataset,
+    Features,
     load_dataset,
 )
 from datasets.distributed import split_dataset_by_node
@@ -18,16 +20,15 @@ from ..utils import (
     infer_num_classes,
     select_train_val_splits,
 )
-from .balanced_sampler import BalancedSampler
+from .balanced_sampler import FewShotSampler
 
 
 @dataclass
 class PromptConfig(Serializable):
     """
     Args:
-        dataset: Space-delimited name of the HuggingFace dataset to use, e.g.
+        dataset: List of space-delimited names of the HuggingFace dataset to use, e.g.
             `"super_glue boolq"` or `"imdb"`.
-        balance: Whether to force class balance in the dataset using undersampling.
         data_dir: The directory to use for caching the dataset. Defaults to
             `~/.cache/huggingface/datasets`.
         label_column: The column containing the labels. By default, we infer this from
@@ -46,9 +47,8 @@ class PromptConfig(Serializable):
     """
 
     datasets: list[str] = field(positional=True)
-    balance: bool = False
-    data_dir: Optional[str] = None
-    label_column: Optional[str] = None
+    data_dirs: list[str] = field(default_factory=list)
+    label_columns: list[str] = field(default_factory=list)
     max_examples: list[int] = field(default_factory=lambda: [750, 250])
     num_classes: int = 0
     num_shots: int = 0
@@ -69,9 +69,30 @@ class PromptConfig(Serializable):
         if len(self.max_examples) == 1:
             self.max_examples *= 2
 
+    def explode(self) -> list["PromptConfig"]:
+        """Explode the config into a list of configs, one for each dataset."""
+        copies = []
+
+        # Broadcast the dataset name to all data_dirs and label_columns
+        if len(self.data_dirs) == 1:
+            self.data_dirs *= len(self.datasets)
+        if len(self.label_columns) == 1:
+            self.label_columns *= len(self.datasets)
+
+        for ds, data_dir, col in zip_longest(
+            self.datasets, self.data_dirs, self.label_columns
+        ):
+            copy = deepcopy(self)
+            copy.datasets = [ds]
+            copy.data_dirs = [data_dir] if data_dir else []
+            copy.label_columns = [col] if col else []
+            copies.append(copy)
+
+        return copies
+
 
 def load_prompts(
-    *dataset_strings: str,
+    ds_string: str,
     label_column: Optional[str] = None,
     num_classes: int = 0,
     num_shots: int = 0,
@@ -85,7 +106,7 @@ def load_prompts(
     """Load a dataset full of prompts generated from the specified datasets.
 
     Args:
-        dataset_strings: Space-delimited names of the HuggingFace datasets to use,
+        ds_string: Space-delimited name of the HuggingFace datasets to use,
             e.g. `"super_glue boolq"` or `"imdb"`.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot.
@@ -98,92 +119,67 @@ def load_prompts(
     Returns:
         An iterable dataset of prompts.
     """
-    class_counts = []
-    prompters = []
-    datasets = []
-    label_cols = []
-    train_datasets = []
-    rng = Random(seed)
-    assert num_shots == 0
+    ds_name, _, config_name = ds_string.partition(" ")
+    prompter = DatasetTemplates(ds_name, config_name)
 
-    # First load the datasets and prompters. We need to know the minimum number of
-    # templates for any dataset in order to make sure we don't run out of prompts.
-    for ds_string in dataset_strings:
-        ds_name, _, config_name = ds_string.partition(" ")
-        prompters.append(DatasetTemplates(ds_name, config_name))
+    ds_dict = assert_type(
+        dict, load_dataset(ds_name, config_name or None, streaming=stream)
+    )
+    train_name, val_name = select_train_val_splits(ds_dict)
+    split_name = val_name if split_type == "val" else train_name
 
-        ds_dict = assert_type(
-            dict, load_dataset(ds_name, config_name or None, streaming=stream)
-        )
-        train_name, val_name = select_train_val_splits(ds_dict)
-        split_name = val_name if split_type == "val" else train_name
+    ds = ds_dict[split_name].shuffle(seed=seed)
+    train_ds = ds_dict[train_name].shuffle(seed=seed)
+    if not stream:
+        ds = assert_type(Dataset, ds)
+        if world_size > 1:
+            ds = ds.shard(world_size, rank)
 
-        ds = ds_dict[split_name].shuffle(seed=seed)
-        train_ds = ds_dict[train_name].shuffle(seed=seed)
+        ds = ds.to_iterable_dataset().cast(ds.features)
 
-        if not stream:
-            ds = assert_type(Dataset, ds)
-            if world_size > 1:
-                ds = ds.shard(world_size, rank)
+    elif world_size > 1:
+        # This prints to stdout which is slightly annoying
+        ds = split_dataset_by_node(dataset=ds, rank=rank, world_size=world_size)
 
-            ds = ds.to_iterable_dataset().cast(ds.features)
-
-        elif world_size > 1:
-            # This prints to stdout which is slightly annoying
-            ds = split_dataset_by_node(dataset=ds, rank=rank, world_size=world_size)
-
-        ds_label_col = label_column or infer_label_column(ds.features)
-        num_classes = num_classes or infer_num_classes(ds.features[ds_label_col])
-        class_counts.append(num_classes)
-        datasets.append(ds)
-        label_cols.append(ds_label_col)
-        train_datasets.append(train_ds)
-
-    # Number of classes should be the same for all datasets
-    num_classes, *rest = class_counts
-    if not all(num_classes == x for x in rest):
-        raise ValueError(
-            f"# classes should be the same for all datasets, but got {class_counts}"
-        )
-
-    min_num_templates = min(len(prompter.templates) for prompter in prompters)
+    num_templates = len(prompter.templates)
     num_variants = (
-        min_num_templates
-        if num_variants == -1
-        else min(num_variants, min_num_templates)
+        num_templates if num_variants == -1 else min(num_variants, num_templates)
     )
     assert num_variants > 0
     if rank == 0:
         print(f"Using {num_variants} variants of each prompt")
 
-    ds_iters = [
-        iter(BalancedSampler(ds, num_classes, label_col=label_col))
-        for ds, label_col in zip(datasets, label_cols)
-    ]
-    for ds_iter, ds, label_col, prompter in cycle(
-        zip(ds_iters, datasets, label_cols, prompters)
-    ):
-        try:
-            example = next(ds_iter)
-        except StopIteration:
-            return
+    label_column = infer_label_column(ds.features)
+    num_classes = infer_num_classes(ds.features[label_column])
+    rng = Random(seed)
 
-        example = _convert_to_prompts(
+    if num_shots > 0:
+        fewshot = FewShotSampler(
+            train_ds,  # TODO: not iterator
+            num_shots=num_shots,
+            rng=rng,
+        )
+        fewshot_iter = iter(fewshot)
+    else:
+        fewshot_iter = None
+
+    # Remove everything except the label column
+    extra_cols = list(assert_type(Features, ds.features))
+    extra_cols.remove(label_column)
+
+    if label_column != "label":
+        ds = ds.rename_column(label_column, "label")
+
+    for example in ds:
+        yield _convert_to_prompts(
             example,
-            label_column=label_col,
+            label_column=label_column,
             num_classes=num_classes,
             num_variants=num_variants,
             prompter=prompter,
             rng=rng,
-            fewshot_iter=None,
+            fewshot_iter=fewshot_iter,
         )
-
-        # Add the builder and config name to the records directly to make
-        # sure we don't forget what dataset they came from.
-        example["builder_name"] = ds.info.builder_name
-        example["config_name"] = ds.info.config_name
-
-        yield example
 
 
 def _convert_to_prompts(

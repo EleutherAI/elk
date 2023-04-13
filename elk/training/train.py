@@ -1,27 +1,26 @@
 """Main training loop."""
 
-import warnings
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Literal, Optional
+from typing import Callable, Optional
 
 import pandas as pd
 import torch
 from einops import rearrange, repeat
 from simple_parsing import Serializable, field, subgroups
 from sklearn.metrics import roc_auc_score
-from torch import Tensor
 
 from ..extraction.extraction import Extract
 from ..metrics import accuracy, to_one_hot
 from ..run import Run
-from ..training.baseline import evaluate_baseline, save_baseline, train_baseline
+from ..training.supervised import evaluate_supervised, train_supervised
 from ..utils import select_usable_devices
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
+from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
-from .reporter import OptimConfig, Reporter, ReporterConfig
+from .reporter import OptimConfig, ReporterConfig
 
 
 @dataclass
@@ -36,7 +35,7 @@ class Elicit(Serializable):
             "use all available GPUs".
         normalization: The normalization method to use. Defaults to "meanonly". See
             `elk.training.preprocessing.normalize()` for details.
-        skip_baseline: Whether to skip training the baseline classifier. Defaults to
+        skip_baseline: Whether to skip training the supervised classifier. Defaults to
             False.
         debug: When in debug mode, a useful log file is saved to the memorably-named
             output directory. Defaults to False.
@@ -49,7 +48,7 @@ class Elicit(Serializable):
     optim: OptimConfig = field(default_factory=OptimConfig)
 
     num_gpus: int = -1
-    normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
+    min_gpu_mem: int | None = None
     skip_baseline: bool = False
     concatenated_layer_offset: int = 0
     # if nonzero, appends the hidden states of layer concatenated_layer_offset before
@@ -57,8 +56,7 @@ class Elicit(Serializable):
     out_dir: Optional[Path] = None
 
     def execute(self):
-        train_run = Train(cfg=self, out_dir=self.out_dir)
-        train_run.train()
+        Train(cfg=self, out_dir=self.out_dir).train()
 
 
 @dataclass
@@ -80,84 +78,125 @@ class Train(Run):
         layer: int,
         devices: list[str],
         world_size: int = 1,
-    ) -> pd.Series:
+    ) -> pd.DataFrame:
         """Train a single reporter on a single layer."""
         self.make_reproducible(seed=self.cfg.net.seed + layer)
-
         device = self.get_device(devices, world_size)
 
-        train_h, val_h, train_gt, val_gt, val_lm_preds = self.prepare_data(
-            device, layer
-        )
-        (_, v, c, d) = train_h.shape
-        pseudo_auroc = self.get_pseudo_auroc(layer, train_h, val_h)
+        train_dict = self.prepare_data(device, layer, "train")
+        val_dict = self.prepare_data(device, layer, "val")
+
+        # Can't figure out a way to make this line less ugly
+        hidden_size = next(iter(train_dict.values()))[0].shape[-1]
+        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
+        pseudo_clf = self.get_pseudo_classifier(train_dict, device)
 
         if isinstance(self.cfg.net, CcsReporterConfig):
-            reporter = CcsReporter(self.cfg.net, d, device=device)
+            assert len(train_dict) == 1, "CCS only supports single-task training"
+
+            reporter = CcsReporter(self.cfg.net, hidden_size, device=device)
+            (train_h, labels, _) = next(iter(train_dict.values()))
+            train_loss = reporter.fit(train_h, labels)
+
         elif isinstance(self.cfg.net, EigenReporterConfig):
-            reporter = EigenReporter(self.cfg.net, d, c, device=device)
+            # To enable training on multiple tasks with different numbers of variants,
+            # we update the statistics in a streaming fashion and then fit
+            reporter = EigenReporter(self.cfg.net, hidden_size, device=device)
+            for ds_name, (val_h, labels, _) in train_dict.items():
+                reporter.update(val_h)
+
+            train_loss = reporter.fit_streaming()
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
-        train_loss = reporter.fit(train_h, labels=train_gt)
-        val_result = reporter.score(val_gt.to(device), val_h)
-
-        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        if val_lm_preds is not None:
-            val_gt_cpu = repeat(val_gt, "n -> (n v)", v=v).cpu()
-            val_lm_preds = rearrange(val_lm_preds, "n v ... -> (n v) ...")
-            val_lm_auroc = roc_auc_score(
-                to_one_hot(val_gt_cpu, c).long().flatten(), val_lm_preds.cpu().flatten()
-            )
-
-            val_lm_acc = accuracy(val_gt_cpu, val_lm_preds)
-        else:
-            val_lm_auroc = None
-            val_lm_acc = None
-
-        row = pd.Series(
-            {
-                "layer": layer,
-                "pseudo_auroc": pseudo_auroc,
-                "train_loss": train_loss,
-                **val_result._asdict(),
-                "lm_auroc": val_lm_auroc,
-                "lm_acc": val_lm_acc,
-            }
-        )
-
-        if not self.cfg.skip_baseline:
-            lr_model = train_baseline(train_h, train_gt)
-            lr_auroc, lr_acc = evaluate_baseline(lr_model, val_h, val_gt)
-
-            row["lr_auroc"] = lr_auroc
-            row["lr_acc"] = lr_acc
-            save_baseline(lr_dir, layer, lr_model)
-
+        # Save reporter checkpoint to disk
         with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
             torch.save(reporter, file)
 
-        return row
+        # Fit supervised logistic regression model
+        lr_model = train_supervised(train_dict, device=device)
+        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
+            torch.save(lr_model, file)
 
-    def get_pseudo_auroc(self, layer: int, train_h: Tensor, val_h: Tensor):
-        """Check the separability of the pseudo-labels at a given layer."""
+        row_buf = []
+        for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
+            val_result = reporter.score(val_gt, val_h)
+            with torch.no_grad():
+                (n, v, k, d) = val_h.shape
 
-        with torch.no_grad():
-            pseudo_auroc = Reporter.check_separability(train_h, val_h)
-            if pseudo_auroc > 0.6:
-                warnings.warn(
-                    f"The pseudo-labels at layer {layer} are linearly separable with "
-                    f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
-                    f"algorithm will not converge to a good solution."
+                pseudo_preds = pseudo_clf(
+                    # n v k d -> (n v k) d
+                    rearrange(val_h, "n v k d -> (n v k) d")
+                )
+                pseudo_labels = torch.cat(
+                    [
+                        val_h.new_zeros(n),
+                        val_h.new_ones(n),
+                    ]
+                )
+                pseudo_labels = repeat(pseudo_labels, "n -> (n v)", v=v)
+                pseudo_auroc = float(
+                    roc_auc_score(pseudo_labels.cpu(), pseudo_preds.cpu())
                 )
 
-        return pseudo_auroc
+            if val_lm_preds is not None:
+                val_gt_cpu = repeat(val_gt, "n -> (n v)", v=v).cpu()
+                val_lm_preds = rearrange(val_lm_preds, "n v ... -> (n v) ...")
+                val_lm_auroc = roc_auc_score(
+                    to_one_hot(val_gt_cpu, k).long().flatten(), val_lm_preds.flatten()
+                )
+
+                val_lm_acc = accuracy(val_gt_cpu, torch.from_numpy(val_lm_preds))
+            else:
+                val_lm_auroc = None
+                val_lm_acc = None
+
+            row = pd.Series(
+                {
+                    "dataset": ds_name,
+                    "layer": layer,
+                    "pseudo_auroc": pseudo_auroc,
+                    "train_loss": train_loss,
+                    **val_result._asdict(),
+                    "lm_auroc": val_lm_auroc,
+                    "lm_acc": val_lm_acc,
+                }
+            )
+
+            lr_auroc, lr_acc = evaluate_supervised(lr_model, val_h, val_gt)
+
+            row["lr_auroc"] = lr_auroc
+            row["lr_acc"] = lr_acc
+            row_buf.append(row)
+
+        return pd.DataFrame(row_buf)
+
+    def get_pseudo_classifier(self, data: dict[str, tuple], device: str) -> Classifier:
+        """Check the separability of the pseudo-labels at a given layer."""
+
+        x0s, x1s = [], []
+        for x0, x1, _, _ in data.values():
+            x0s.append(rearrange(x0, "n v d -> (n v) d"))
+            x1s.append(rearrange(x1, "n v d -> (n v) d"))
+
+        # Simple de-meaning normalization
+        X0 = torch.cat(x0s)
+        X1 = torch.cat(x1s)
+        X0 -= X0.mean(dim=0)
+        X1 -= X1.mean(dim=0)
+
+        X = torch.cat([X0, X1])
+        Y = torch.cat([X0.new_zeros(X0.shape[0]), X0.new_ones(X1.shape[0])])
+
+        pseudo_clf = Classifier(X.shape[-1], device=device)
+        pseudo_clf.fit(X, Y)
+        return pseudo_clf
 
     def train(self):
         """Train a reporter on each layer of the network."""
         devices = select_usable_devices(self.cfg.num_gpus)
         num_devices = len(devices)
-        func: Callable[[int], pd.Series] = partial(
+        func: Callable[[int], pd.DataFrame] = partial(
             self.train_reporter, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)
