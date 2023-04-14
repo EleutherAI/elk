@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 import pandas as pd
 import torch
@@ -32,8 +32,9 @@ class Elicit(Serializable):
             "use all available GPUs".
         normalization: The normalization method to use. Defaults to "meanonly". See
             `elk.training.preprocessing.normalize()` for details.
-        skip_supervised: Whether to skip training the supervised classifier. Defaults to
-            False.
+        supervised: Whether to train a supervised classifier, and if so, whether to
+            use cross-validation. Defaults to "single", which means to train a single
+            classifier on the training data. "cv" means to use cross-validation.
         debug: When in debug mode, a useful log file is saved to the memorably-named
             output directory. Defaults to False.
     """
@@ -49,7 +50,7 @@ class Elicit(Serializable):
     min_gpu_mem: int | None = None
     num_gpus: int = -1
     out_dir: Path | None = None
-    skip_supervised: bool = False
+    supervised: Literal["none", "single", "cv"] = "single"
 
     def execute(self):
         train_run = Train(cfg=self, out_dir=self.out_dir)
@@ -116,8 +117,10 @@ class Train(Run):
             torch.save(reporter, file)
 
         # Fit supervised logistic regression model
-        if not self.cfg.skip_supervised:
-            lr_model = train_supervised(train_dict, device=device)
+        if self.cfg.supervised != "none":
+            lr_model = train_supervised(
+                train_dict, device=device, cv=self.cfg.supervised == "cv"
+            )
             with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
                 torch.save(lr_model, file)
         else:

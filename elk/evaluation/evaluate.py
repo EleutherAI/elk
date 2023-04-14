@@ -28,8 +28,7 @@ class Eval(Serializable):
             `elk.training.preprocessing.normalize()` for details.
         num_gpus: The number of GPUs to use. Defaults to -1, which means
             "use all available GPUs".
-        skip_supervised: Whether to skip training the supervised classifier. Defaults to
-            False.
+        skip_supervised: Whether to skip evaluation of the supervised classifier.
         debug: When in debug mode, a useful log file is saved to the memorably-named
             output directory. Defaults to False.
     """
