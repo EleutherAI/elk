@@ -28,6 +28,8 @@ class Eval(Serializable):
             `elk.training.preprocessing.normalize()` for details.
         num_gpus: The number of GPUs to use. Defaults to -1, which means
             "use all available GPUs".
+        skip_supervised: Whether to skip training the supervised classifier. Defaults to
+            False.
         debug: When in debug mode, a useful log file is saved to the memorably-named
             output directory. Defaults to False.
     """
@@ -35,12 +37,12 @@ class Eval(Serializable):
     data: Extract
     source: str = field(positional=True)
 
-    debug: bool = False
-    out_dir: Path | None = None
-    num_gpus: int = -1
-    min_gpu_mem: int | None = None
-    skip_baseline: bool = False
     concatenated_layer_offset: int = 0
+    debug: bool = False
+    min_gpu_mem: int | None = None
+    num_gpus: int = -1
+    out_dir: Path | None = None
+    skip_supervised: bool = False
 
     def execute(self):
         datasets = self.data.prompts.datasets
@@ -86,7 +88,7 @@ class Evaluate(Run):
             )
 
             lr_dir = experiment_dir / "lr_models"
-            if not self.cfg.skip_baseline and lr_dir.exists():
+            if not self.cfg.skip_supervised and lr_dir.exists():
                 with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
                     lr_model = torch.load(f, map_location=device).eval()
 
