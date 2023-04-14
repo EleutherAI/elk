@@ -91,6 +91,8 @@ class Train(Run):
         if not all(other_h.shape[2] == k for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same number of classes")
 
+        # Can't figure out a way to make this line less ugly
+        next(iter(train_dict.values()))[0].shape[-1]
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         if isinstance(self.cfg.net, CcsReporterConfig):
             assert len(train_dict) == 1, "CCS only supports single-task training"

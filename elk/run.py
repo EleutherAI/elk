@@ -14,9 +14,9 @@ from datasets import DatasetDict
 from torch import Tensor
 from tqdm import tqdm
 
+from .debug_logging import save_debug_log
 from .extraction import extract
 from .files import elk_reporter_dir, memorably_named_dir
-from .logging import save_debug_log
 from .utils import (
     assert_type,
     get_dataset_name,
@@ -142,8 +142,8 @@ class Run(ABC):
             df_buf = []
 
             try:
-                for row in tqdm(mapper(func, layers), total=len(layers)):
-                    df_buf.append(row)
+                for df in tqdm(mapper(func, layers), total=len(layers)):
+                    df_buf.append(df)
             finally:
                 # Make sure the CSV is written even if we crash or get interrupted
                 if df_buf:
