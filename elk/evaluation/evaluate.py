@@ -44,11 +44,9 @@ class Eval(Serializable):
     skip_supervised: bool = False
 
     def execute(self):
-        datasets = self.data.prompts.datasets
-
         transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
 
-        for dataset in datasets:
+        for dataset in self.data.prompts.datasets:
             run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
             run.evaluate()
 
@@ -95,6 +93,8 @@ class Evaluate(Run):
 
                 stats_row["lr_auroc"] = lr_auroc
                 stats_row["lr_acc"] = lr_acc
+
+            row_buf.append(stats_row)
 
         return pd.DataFrame(row_buf)
 

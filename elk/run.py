@@ -143,8 +143,8 @@ class Run(ABC):
             df_buf = []
 
             try:
-                for row in tqdm(mapper(func, layers), total=len(layers)):
-                    df_buf.append(row)
+                for df in tqdm(mapper(func, layers), total=len(layers)):
+                    df_buf.append(df)
             finally:
                 # Make sure the CSV is written even if we crash or get interrupted
                 if df_buf:

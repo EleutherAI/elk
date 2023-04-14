@@ -69,10 +69,6 @@ class PromptConfig(Serializable):
         if len(self.max_examples) == 1:
             self.max_examples *= 2
 
-    def explode(self) -> list["PromptConfig"]:
-        """Explode the config into a list of configs, one for each dataset."""
-        copies = []
-
         # Broadcast the dataset name to all data_dirs and label_columns
         if len(self.data_dirs) == 1:
             self.data_dirs *= len(self.datasets)
@@ -89,6 +85,10 @@ class PromptConfig(Serializable):
                 "label_columns should be a list of length 0, 1, or len(datasets),"
                 f" but got {len(self.label_columns)}"
             )
+
+    def explode(self) -> list["PromptConfig"]:
+        """Explode the config into a list of configs, one for each dataset."""
+        copies = []
 
         for ds, data_dir, col in zip_longest(
             self.datasets, self.data_dirs, self.label_columns
