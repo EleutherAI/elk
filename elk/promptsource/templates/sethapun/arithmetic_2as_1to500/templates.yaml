@@ -11,7 +11,7 @@ templates:
       metrics:
       - Accuracy
       original_task: true
-    name: pg2_1
+    name: aras500_1
     reference: ''
   a0000500-f0b3-3bcc-a821-f280d3e0002: !Template
     answer_choices: No ||| Yes
@@ -24,7 +24,7 @@ templates:
       metrics:
       - Accuracy
       original_task: true
-    name: pg2_2
+    name: aras500_2
     reference: ''
   a0000500-f0b3-3bcc-a821-f280d3e0003: !Template
     answer_choices: False ||| True
@@ -37,7 +37,7 @@ templates:
       metrics:
       - Accuracy
       original_task: true
-    name: pg2_3
+    name: aras500_3
     reference: ''
   a0000500-f0b3-3bcc-a821-f280d3e0004: !Template
     answer_choices: False ||| True
@@ -50,7 +50,7 @@ templates:
       metrics:
       - Accuracy
       original_task: true
-    name: pg2_4
+    name: aras500_4
     reference: ''
   a0000500-f0b3-3bcc-a821-f280d3e0005: !Template
     answer_choices: False ||| True
@@ -63,7 +63,7 @@ templates:
       metrics:
       - Accuracy
       original_task: true
-    name: pg2_5
+    name: aras500_5
     reference: ''
 
 
