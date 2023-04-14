@@ -40,6 +40,7 @@ class Eval(Serializable):
     num_gpus: int = -1
     min_gpu_mem: int | None = None
     skip_baseline: bool = False
+    concatenated_layer_offset: int = 0
 
     def execute(self):
         datasets = self.data.prompts.datasets

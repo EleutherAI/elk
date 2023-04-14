@@ -86,26 +86,37 @@ class Train(Run):
         train_dict = self.prepare_data(device, layer, "train")
         val_dict = self.prepare_data(device, layer, "val")
 
-        # Can't figure out a way to make this line less ugly
-        hidden_size = next(iter(train_dict.values()))[0].shape[-1]
-        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        pseudo_clf = self.get_pseudo_classifier(train_dict, device)
+        (train_h, train_labels, _), *rest = train_dict.values()
+        (n, v, k, d) = train_h.shape
 
+        if not all(other_h.shape[2] == k for other_h, _, _ in rest):
+            raise ValueError("All datasets must have the same number of classes")
+
+        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         if isinstance(self.cfg.net, CcsReporterConfig):
             assert len(train_dict) == 1, "CCS only supports single-task training"
 
-            reporter = CcsReporter(self.cfg.net, hidden_size, device=device)
-            (train_h, labels, _) = next(iter(train_dict.values()))
-            train_loss = reporter.fit(train_h, labels)
+            reporter = CcsReporter(self.cfg.net, d, device=device)
+            train_loss = reporter.fit(train_h, train_labels)
 
         elif isinstance(self.cfg.net, EigenReporterConfig):
             # To enable training on multiple tasks with different numbers of variants,
             # we update the statistics in a streaming fashion and then fit
-            reporter = EigenReporter(self.cfg.net, hidden_size, device=device)
-            for ds_name, (val_h, labels, _) in train_dict.items():
-                reporter.update(val_h)
+            reporter = EigenReporter(self.cfg.net, d, k, device=device)
+
+            hidden_list, label_list = [], []
+            for ds_name, (train_h, train_labels, _) in train_dict.items():
+                hidden_list.append(train_h)
+                label_list.append(train_labels)
+                reporter.update(train_h)
 
             train_loss = reporter.fit_streaming()
+            reporter.platt_scale(
+                to_one_hot(
+                    repeat(torch.cat(label_list), "n -> (n v)", v=v), k
+                ).flatten(),
+                rearrange(torch.cat(hidden_list), "n v k d -> (n v k) d"),
+            )
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
@@ -122,22 +133,25 @@ class Train(Run):
         for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
             val_result = reporter.score(val_gt, val_h)
             with torch.no_grad():
-                (n, v, k, d) = val_h.shape
-
-                pseudo_preds = pseudo_clf(
-                    # n v k d -> (n v k) d
-                    rearrange(val_h, "n v k d -> (n v k) d")
-                )
-                pseudo_labels = torch.cat(
-                    [
-                        val_h.new_zeros(n),
-                        val_h.new_ones(n),
-                    ]
-                )
-                pseudo_labels = repeat(pseudo_labels, "n -> (n v)", v=v)
-                pseudo_auroc = float(
-                    roc_auc_score(pseudo_labels.cpu(), pseudo_preds.cpu())
-                )
+                if k == 2:
+                    pseudo_clf = self.get_pseudo_classifier(train_dict, device)
+                    pseudo_preds = pseudo_clf(
+                        # n v k d -> (n v k) d
+                        rearrange(val_h, "n v k d -> (n v k) d")
+                    )
+                    pseudo_labels = torch.cat(
+                        [
+                            val_h.new_zeros(n),
+                            val_h.new_ones(n),
+                        ]
+                    )
+                    pseudo_labels = repeat(pseudo_labels, "n -> (n v)", v=v)
+                    pseudo_auroc = float(
+                        roc_auc_score(pseudo_labels.cpu(), pseudo_preds.cpu())
+                    )
+                else:
+                    # We don't bother with computing the pseudo-AUROC for multi-class
+                    pseudo_auroc = None
 
             if val_lm_preds is not None:
                 val_gt_cpu = repeat(val_gt, "n -> (n v)", v=v).cpu()
@@ -174,21 +188,18 @@ class Train(Run):
     def get_pseudo_classifier(self, data: dict[str, tuple], device: str) -> Classifier:
         """Check the separability of the pseudo-labels at a given layer."""
 
-        x0s, x1s = [], []
-        for x0, x1, _, _ in data.values():
-            x0s.append(rearrange(x0, "n v d -> (n v) d"))
-            x1s.append(rearrange(x1, "n v d -> (n v) d"))
+        X = torch.cat(
+            [rearrange(h, "n v k d -> (n v) k d") for h, _, _ in data.values()]
+        )
+        (N, k, d) = X.shape
+        assert k == 2, "Pseudo-labels should be binary"
 
         # Simple de-meaning normalization
-        X0 = torch.cat(x0s)
-        X1 = torch.cat(x1s)
-        X0 -= X0.mean(dim=0)
-        X1 -= X1.mean(dim=0)
+        X -= X.mean(dim=0)
+        X = rearrange(X, "N k d -> (N k) d")
+        Y = torch.cat([X.new_zeros(N), X.new_ones(N)])
 
-        X = torch.cat([X0, X1])
-        Y = torch.cat([X0.new_zeros(X0.shape[0]), X0.new_ones(X1.shape[0])])
-
-        pseudo_clf = Classifier(X.shape[-1], device=device)
+        pseudo_clf = Classifier(d, device=device)
         pseudo_clf.fit(X, Y)
         return pseudo_clf
 

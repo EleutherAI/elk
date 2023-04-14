@@ -227,13 +227,22 @@ class EigenReporter(Reporter):
         loss = self.fit_streaming()
 
         if labels is not None:
+            (_, v, k, _) = hiddens.shape
+            hiddens = rearrange(hiddens, "n v k d -> (n v k) d")
+            labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k).flatten()
+
             self.platt_scale(labels, hiddens)
 
         return loss
 
     def platt_scale(self, labels: Tensor, hiddens: Tensor, max_iter: int = 100):
-        """Fit the scale and bias terms to data with LBFGS."""
+        """Fit the scale and bias terms to data with LBFGS.
 
+        Args:
+            labels: Binary labels of shape [batch].
+            hiddens: Hidden states of shape [batch, dim].
+            max_iter: Maximum number of iterations for LBFGS.
+        """
         opt = optim.LBFGS(
             [self.bias, self.scale],
             line_search_fn="strong_wolfe",
@@ -241,14 +250,11 @@ class EigenReporter(Reporter):
             tolerance_change=torch.finfo(hiddens.dtype).eps,
             tolerance_grad=torch.finfo(hiddens.dtype).eps,
         )
-        (_, v, k, _) = hiddens.shape
-        labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k)
 
         def closure():
             opt.zero_grad()
-            logits = rearrange(self(hiddens), "n v k -> (n v) k")
             loss = nn.functional.binary_cross_entropy_with_logits(
-                logits, labels.float()
+                self(hiddens), labels.float()
             )
 
             loss.backward()

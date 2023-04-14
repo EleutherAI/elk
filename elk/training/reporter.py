@@ -13,7 +13,7 @@ from sklearn.metrics import roc_auc_score
 from torch import Tensor
 
 from ..calibration import CalibrationError
-from ..metrics import to_one_hot
+from ..metrics import accuracy, to_one_hot
 from .classifier import Classifier
 
 
@@ -165,13 +165,13 @@ class Reporter(nn.Module, ABC):
             cal_err = 0.0
 
         raw_preds = to_one_hot(logits.argmax(dim=-1), c).long()
-        auroc = roc_auc_score(
-            to_one_hot(Y, c).long().flatten().cpu(), logits.cpu().flatten()
-        )
-        raw_acc = raw_preds.flatten().eq(Y).float().mean()
+        Y = to_one_hot(Y, c).long().flatten()
+
+        auroc = roc_auc_score(Y.cpu(), logits.cpu().flatten())
+        raw_acc = accuracy(Y, raw_preds.flatten())
 
         return EvalResult(
-            acc=raw_acc.item(),
+            acc=float(raw_acc),
             cal_acc=cal_acc,
             auroc=float(auroc),
             ece=cal_err,

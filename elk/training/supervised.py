@@ -1,8 +1,9 @@
 import torch
 from einops import rearrange, repeat
-from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.metrics import roc_auc_score
 from torch import Tensor
 
+from ..metrics import accuracy, to_one_hot
 from ..utils import assert_type
 from .classifier import Classifier
 
@@ -11,16 +12,16 @@ def evaluate_supervised(
     lr_model: Classifier, val_h: Tensor, val_labels: Tensor
 ) -> tuple[float, float]:
     (n, v, k, d) = val_h.shape
-    X_val = val_h.view(-1, d)
+
     with torch.no_grad():
-        lr_preds = lr_model(X_val).sigmoid().cpu()
+        logits = rearrange(lr_model(val_h).cpu().squeeze(), "n v k -> (n v) k")
+        raw_preds = to_one_hot(logits.argmax(dim=-1), k).long()
 
-    val_labels_aug = (
-        torch.cat([val_labels, 1 - val_labels]).repeat_interleave(v)
-    ).cpu()
+    labels = repeat(val_labels, "n -> (n v)", v=v)
+    labels = to_one_hot(labels, k).flatten()
 
-    lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
-    lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
+    lr_acc = accuracy(labels, raw_preds.flatten())
+    lr_auroc = roc_auc_score(labels.cpu(), logits.cpu().flatten())
 
     return assert_type(float, lr_auroc), assert_type(float, lr_acc)
 
@@ -28,15 +29,14 @@ def evaluate_supervised(
 def train_supervised(data: dict[str, tuple], device: str) -> Classifier:
     Xs, train_labels = [], []
 
-    for x0, x1, labels, _ in data.values():
-        (_, v, _) = x0.shape
-        x0 = rearrange(x0, "n v d -> (n v) d")
-        x1 = rearrange(x1, "n v d -> (n v) d")
+    for train_h, labels, _ in data.values():
+        (_, v, k, _) = train_h.shape
+        train_h = rearrange(train_h, "n v k d -> (n v k) d")
 
         labels = repeat(labels, "n -> (n v)", v=v)
-        labels = torch.cat([labels, 1 - labels])
+        labels = to_one_hot(labels, k).flatten()
 
-        Xs.append(torch.cat([x0, x1]).squeeze())
+        Xs.append(train_h)
         train_labels.append(labels)
 
     X, train_labels = torch.cat(Xs), torch.cat(train_labels)
