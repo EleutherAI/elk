@@ -79,7 +79,7 @@ class PromptConfig(Serializable):
         elif self.data_dirs and len(self.data_dirs) != len(self.datasets):
             raise ValueError(
                 "data_dirs should be a list of length 0, 1, or len(datasets),"
-                f"but got {len(self.data_dirs)}"
+                f" but got {len(self.data_dirs)}"
             )
 
         if len(self.label_columns) == 1:
@@ -87,7 +87,7 @@ class PromptConfig(Serializable):
         elif self.label_columns and len(self.label_columns) != len(self.datasets):
             raise ValueError(
                 "label_columns should be a list of length 0, 1, or len(datasets),"
-                f"but got {len(self.label_columns)}"
+                f" but got {len(self.label_columns)}"
             )
 
         for ds, data_dir, col in zip_longest(
