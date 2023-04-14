@@ -7,11 +7,13 @@ from typing import Literal, Optional, cast
 
 import torch
 import torch.nn as nn
+from sklearn.metrics import roc_auc_score
 from torch import Tensor
 from torch.nn.functional import binary_cross_entropy as bce
 
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
+from .classifier import Classifier
 from .losses import LOSSES
 from .normalizer import Normalizer
 from .reporter import Reporter, ReporterConfig
@@ -55,7 +57,6 @@ class CcsReporterConfig(ReporterConfig):
     init: Literal["default", "pca", "spherical", "zero"] = "default"
     loss: list[str] = field(default_factory=lambda: ["ccs"])
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
-    normalization: Literal["none", "meanonly", "full"] = "full"
     num_layers: int = 1
     pre_ln: bool = False
     seed: int = 42
@@ -96,12 +97,8 @@ class CcsReporter(Reporter):
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
-        self.neg_norm = Normalizer(
-            (in_features,), device=device, dtype=dtype, mode=cfg.normalization
-        )
-        self.pos_norm = Normalizer(
-            (in_features,), device=device, dtype=dtype, mode=cfg.normalization
-        )
+        self.neg_norm = Normalizer((in_features,), device=device, dtype=dtype)
+        self.pos_norm = Normalizer((in_features,), device=device, dtype=dtype)
 
         self.probe = nn.Sequential(
             nn.Linear(
@@ -130,6 +127,56 @@ class CcsReporter(Reporter):
                     device=device,
                 )
             )
+
+    def check_separability(
+        self,
+        train_pair: tuple[Tensor, Tensor],
+        val_pair: tuple[Tensor, Tensor],
+    ) -> float:
+        """Measure how linearly separable the pseudo-labels are for a contrast pair.
+
+        Args:
+            train_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+                contrastive representations. Used for training the classifier.
+            val_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+                contrastive representations. Used for evaluating the classifier.
+
+        Returns:
+            The AUROC of a linear classifier fit on the pseudo-labels.
+        """
+        _x0, _x1 = train_pair
+        _val_x0, _val_x1 = val_pair
+
+        x0, x1 = self.neg_norm(_x0), self.pos_norm(_x1)
+        val_x0, val_x1 = self.neg_norm(_val_x0), self.pos_norm(_val_x1)
+
+        pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
+        pseudo_train_labels = torch.cat(
+            [
+                x0.new_zeros(x0.shape[0]),
+                x0.new_ones(x0.shape[0]),
+            ]
+        ).repeat_interleave(
+            x0.shape[1]
+        )  # make num_variants copies of each pseudo-label
+        pseudo_val_labels = torch.cat(
+            [
+                val_x0.new_zeros(val_x0.shape[0]),
+                val_x0.new_ones(val_x0.shape[0]),
+            ]
+        ).repeat_interleave(val_x0.shape[1])
+
+        pseudo_clf.fit(
+            # b v d -> (b v) d
+            torch.cat([x0, x1]).flatten(0, 1),
+            pseudo_train_labels,
+        )
+        with torch.no_grad():
+            pseudo_preds = pseudo_clf(
+                # b v d -> (b v) d
+                torch.cat([val_x0, val_x1]).flatten(0, 1)
+            )
+            return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
 
     def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         loss = sum(
@@ -224,10 +271,10 @@ class CcsReporter(Reporter):
         hiddens: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
-        """Fit the probe to the contrast pair (x0, x1).
+        """Fit the probe to the contrast pair (neg, pos).
 
         Args:
-            contrast_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
+            contrast_pair: A tuple of tensors, (neg, pos), where x0 and x1 are the
                 contrastive representations.
             labels: The labels of the contrast pair. Defaults to None.
 
@@ -275,8 +322,8 @@ class CcsReporter(Reporter):
 
     def train_loop_adam(
         self,
-        x_pos: Tensor,
         x_neg: Tensor,
+        x_pos: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
@@ -297,8 +344,8 @@ class CcsReporter(Reporter):
 
     def train_loop_lbfgs(
         self,
-        x_pos: Tensor,
         x_neg: Tensor,
+        x_pos: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         """LBFGS train loop, returning the final loss. Modifies params in-place."""

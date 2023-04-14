@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Literal
 
 import pandas as pd
 import torch
@@ -18,7 +18,6 @@ from ..training.supervised import evaluate_supervised, train_supervised
 from ..utils import select_usable_devices
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
-from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, ReporterConfig
 
@@ -35,8 +34,9 @@ class Elicit(Serializable):
             "use all available GPUs".
         normalization: The normalization method to use. Defaults to "meanonly". See
             `elk.training.preprocessing.normalize()` for details.
-        skip_baseline: Whether to skip training the supervised classifier. Defaults to
-            False.
+        supervised: Whether to train a supervised classifier, and if so, whether to
+            use cross-validation. Defaults to "single", which means to train a single
+            classifier on the training data. "cv" means to use cross-validation.
         debug: When in debug mode, a useful log file is saved to the memorably-named
             output directory. Defaults to False.
     """
@@ -47,13 +47,12 @@ class Elicit(Serializable):
     )
     optim: OptimConfig = field(default_factory=OptimConfig)
 
-    num_gpus: int = -1
-    min_gpu_mem: int | None = None
-    skip_baseline: bool = False
     concatenated_layer_offset: int = 0
-    # if nonzero, appends the hidden states of layer concatenated_layer_offset before
     debug: bool = False
-    out_dir: Optional[Path] = None
+    min_gpu_mem: int | None = None
+    num_gpus: int = -1
+    out_dir: Path | None = None
+    supervised: Literal["none", "single", "cv"] = "single"
 
     def execute(self):
         Train(cfg=self, out_dir=self.out_dir).train()
@@ -99,6 +98,13 @@ class Train(Run):
             reporter = CcsReporter(self.cfg.net, d, device=device)
             train_loss = reporter.fit(train_h, train_labels)
 
+            (val_h, val_gt, _) = next(iter(val_dict.values()))
+            x0, x1 = train_h.unbind(2)
+            val_x0, val_x1 = val_h.unbind(2)
+            pseudo_auroc = reporter.check_separability(
+                train_pair=(x0, x1), val_pair=(val_x0, val_x1)
+            )
+
         elif isinstance(self.cfg.net, EigenReporterConfig):
             # To enable training on multiple tasks with different numbers of variants,
             # we update the statistics in a streaming fashion and then fit
@@ -110,6 +116,7 @@ class Train(Run):
                 label_list.append(train_labels)
                 reporter.update(train_h)
 
+            pseudo_auroc = None
             train_loss = reporter.fit_streaming()
             reporter.platt_scale(
                 to_one_hot(
@@ -125,33 +132,18 @@ class Train(Run):
             torch.save(reporter, file)
 
         # Fit supervised logistic regression model
-        lr_model = train_supervised(train_dict, device=device)
-        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
-            torch.save(lr_model, file)
+        if self.cfg.supervised != "none":
+            lr_model = train_supervised(
+                train_dict, device=device, cv=self.cfg.supervised == "cv"
+            )
+            with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
+                torch.save(lr_model, file)
+        else:
+            lr_model = None
 
         row_buf = []
         for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
             val_result = reporter.score(val_gt, val_h)
-            with torch.no_grad():
-                if k == 2:
-                    pseudo_clf = self.get_pseudo_classifier(train_dict, device)
-                    pseudo_preds = pseudo_clf(
-                        # n v k d -> (n v k) d
-                        rearrange(val_h, "n v k d -> (n v k) d")
-                    )
-                    pseudo_labels = torch.cat(
-                        [
-                            val_h.new_zeros(n),
-                            val_h.new_ones(n),
-                        ]
-                    )
-                    pseudo_labels = repeat(pseudo_labels, "n -> (n v)", v=v)
-                    pseudo_auroc = float(
-                        roc_auc_score(pseudo_labels.cpu(), pseudo_preds.cpu())
-                    )
-                else:
-                    # We don't bother with computing the pseudo-AUROC for multi-class
-                    pseudo_auroc = None
 
             if val_lm_preds is not None:
                 val_gt_cpu = repeat(val_gt, "n -> (n v)", v=v).cpu()
@@ -177,31 +169,14 @@ class Train(Run):
                 }
             )
 
-            lr_auroc, lr_acc = evaluate_supervised(lr_model, val_h, val_gt)
+            if lr_model is not None:
+                row["lr_auroc"], row["lr_acc"] = evaluate_supervised(
+                    lr_model, val_h, val_gt
+                )
 
-            row["lr_auroc"] = lr_auroc
-            row["lr_acc"] = lr_acc
             row_buf.append(row)
 
         return pd.DataFrame(row_buf)
-
-    def get_pseudo_classifier(self, data: dict[str, tuple], device: str) -> Classifier:
-        """Check the separability of the pseudo-labels at a given layer."""
-
-        X = torch.cat(
-            [rearrange(h, "n v k d -> (n v) k d") for h, _, _ in data.values()]
-        )
-        (N, k, d) = X.shape
-        assert k == 2, "Pseudo-labels should be binary"
-
-        # Simple de-meaning normalization
-        X -= X.mean(dim=0)
-        X = rearrange(X, "N k d -> (N k) d")
-        Y = torch.cat([X.new_zeros(N), X.new_ones(N)])
-
-        pseudo_clf = Classifier(d, device=device)
-        pseudo_clf.fit(X, Y)
-        return pseudo_clf
 
     def train(self):
         """Train a reporter on each layer of the network."""

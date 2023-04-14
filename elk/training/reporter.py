@@ -14,7 +14,6 @@ from torch import Tensor
 
 from ..calibration import CalibrationError
 from ..metrics import accuracy, to_one_hot
-from .classifier import Classifier
 
 
 class EvalResult(NamedTuple):
@@ -61,55 +60,6 @@ class OptimConfig(Serializable):
 
 class Reporter(nn.Module, ABC):
     """An ELK reporter network."""
-
-    @classmethod
-    def check_separability(
-        cls,
-        train_hiddens: Tensor,
-        val_hiddens: Tensor,
-    ) -> float:
-        """Measure how linearly separable the pseudo-labels are for a contrast pair.
-
-        Args:
-            train_hiddens: Contrast set of shape [n, v, k, d]. Used for training the
-                classifier.
-            val_hiddens: Contrast set of shape [n, v, k, d]. Used for evaluating the
-                classifier.
-
-        Returns:
-            The AUROC of a linear classifier fit on the pseudo-labels.
-        """
-        (n_train, v, k, d) = train_hiddens.shape
-        (n_val, _, k_val, d_val) = val_hiddens.shape
-        assert d == d_val, "Must have the same number of features in each split"
-        assert k == k_val == 2, "Must be a binary contrast set"
-
-        pseudo_clf = Classifier(d, device=train_hiddens.device)
-        pseudo_train_labels = torch.cat(
-            [
-                train_hiddens.new_zeros(n_train),
-                train_hiddens.new_ones(n_train),
-            ]
-        ).repeat_interleave(
-            v
-        )  # make num_variants copies of each pseudo-label
-
-        pseudo_val_labels = torch.cat(
-            [
-                val_hiddens.new_zeros(n_val),
-                val_hiddens.new_ones(n_val),
-            ]
-        ).repeat_interleave(v)
-
-        pseudo_clf.fit(
-            rearrange(train_hiddens, "n v k d -> (k n v) d"),
-            pseudo_train_labels,
-        )
-        with torch.no_grad():
-            pseudo_preds = pseudo_clf(
-                rearrange(val_hiddens, "n v k d -> (k n v) d"),
-            )
-            return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
 
     def reset_parameters(self):
         """Reset the parameters of the probe."""
