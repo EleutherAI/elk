@@ -26,7 +26,7 @@ def evaluate_supervised(
     return assert_type(float, lr_auroc), assert_type(float, lr_acc)
 
 
-def train_supervised(data: dict[str, tuple], device: str) -> Classifier:
+def train_supervised(data: dict[str, tuple], device: str, cv: bool) -> Classifier:
     Xs, train_labels = [], []
 
     for x0, x1, labels, _ in data.values():
@@ -42,6 +42,9 @@ def train_supervised(data: dict[str, tuple], device: str) -> Classifier:
 
     X, train_labels = torch.cat(Xs), torch.cat(train_labels)
     lr_model = Classifier(X.shape[-1], device=device)
-    lr_model.fit_cv(X, train_labels)
+    if cv:
+        lr_model.fit_cv(X, train_labels)
+    else:
+        lr_model.fit(X, train_labels)
 
     return lr_model

@@ -3,11 +3,10 @@
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Literal
 
 import pandas as pd
 import torch
-from einops import rearrange, repeat
 from simple_parsing import Serializable, field, subgroups
 from sklearn.metrics import accuracy_score, roc_auc_score
 
@@ -17,7 +16,6 @@ from ..training.supervised import evaluate_supervised, train_supervised
 from ..utils import select_usable_devices
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
-from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
 from .reporter import OptimConfig, ReporterConfig
 
@@ -34,8 +32,9 @@ class Elicit(Serializable):
             "use all available GPUs".
         normalization: The normalization method to use. Defaults to "meanonly". See
             `elk.training.preprocessing.normalize()` for details.
-        skip_baseline: Whether to skip training the supervised classifier. Defaults to
-            False.
+        supervised: Whether to train a supervised classifier, and if so, whether to
+            use cross-validation. Defaults to "single", which means to train a single
+            classifier on the training data. "cv" means to use cross-validation.
         debug: When in debug mode, a useful log file is saved to the memorably-named
             output directory. Defaults to False.
     """
@@ -46,13 +45,12 @@ class Elicit(Serializable):
     )
     optim: OptimConfig = field(default_factory=OptimConfig)
 
-    num_gpus: int = -1
-    min_gpu_mem: int | None = None
-    skip_baseline: bool = False
     concatenated_layer_offset: int = 0
-    # if nonzero, appends the hidden states of layer concatenated_layer_offset before
     debug: bool = False
-    out_dir: Optional[Path] = None
+    min_gpu_mem: int | None = None
+    num_gpus: int = -1
+    out_dir: Path | None = None
+    supervised: Literal["none", "single", "cv"] = "single"
 
     def execute(self):
         train_run = Train(cfg=self, out_dir=self.out_dir)
@@ -89,7 +87,6 @@ class Train(Run):
         # Can't figure out a way to make this line less ugly
         hidden_size = next(iter(train_dict.values()))[0].shape[-1]
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        pseudo_clf = self.get_pseudo_classifier(train_dict, device)
 
         if isinstance(self.cfg.net, CcsReporterConfig):
             assert len(train_dict) == 1, "CCS only supports single-task training"
@@ -98,6 +95,11 @@ class Train(Run):
             (x0, x1, labels, _) = next(iter(train_dict.values()))
             train_loss = reporter.fit(x0, x1, labels)
 
+            (val_x0, val_x1, val_gt, _) = next(iter(val_dict.values()))
+            pseudo_auroc = reporter.check_separability(
+                train_pair=(x0, x1), val_pair=(val_x0, val_x1)
+            )
+
         elif isinstance(self.cfg.net, EigenReporterConfig):
             # To enable training on multiple tasks with different numbers of variants,
             # we update the statistics in a streaming fashion and then fit
@@ -105,6 +107,7 @@ class Train(Run):
             for ds_name, (x0, x1, labels, _) in train_dict.items():
                 reporter.update(x0, x1)
 
+            pseudo_auroc = None
             train_loss = reporter.fit_streaming()
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
@@ -114,9 +117,14 @@ class Train(Run):
             torch.save(reporter, file)
 
         # Fit supervised logistic regression model
-        lr_model = train_supervised(train_dict, device=device)
-        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
-            torch.save(lr_model, file)
+        if self.cfg.supervised != "none":
+            lr_model = train_supervised(
+                train_dict, device=device, cv=self.cfg.supervised == "cv"
+            )
+            with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
+                torch.save(lr_model, file)
+        else:
+            lr_model = None
 
         row_buf = []
         for ds_name, (val_x0, val_x1, val_gt, val_lm_preds) in val_dict.items():
@@ -125,23 +133,6 @@ class Train(Run):
                 val_x0,
                 val_x1,
             )
-            with torch.no_grad():
-                (n, v, d) = val_x0.shape
-
-                pseudo_preds = pseudo_clf(
-                    # b v d -> (b v) d
-                    torch.cat([val_x0, val_x1]).flatten(0, 1)
-                )
-                pseudo_labels = torch.cat(
-                    [
-                        val_x0.new_zeros(n),
-                        val_x0.new_ones(n),
-                    ]
-                )
-                pseudo_labels = repeat(pseudo_labels, "n -> (n v)", v=v)
-                pseudo_auroc = float(
-                    roc_auc_score(pseudo_labels.cpu(), pseudo_preds.cpu())
-                )
 
             if val_lm_preds is not None:
                 val_gt_cpu = (
@@ -167,34 +158,14 @@ class Train(Run):
                 }
             )
 
-            lr_auroc, lr_acc = evaluate_supervised(lr_model, val_x0, val_x1, val_gt)
+            if lr_model is not None:
+                row["lr_auroc"], row["lr_acc"] = evaluate_supervised(
+                    lr_model, val_x0, val_x1, val_gt
+                )
 
-            row["lr_auroc"] = lr_auroc
-            row["lr_acc"] = lr_acc
             row_buf.append(row)
 
         return pd.DataFrame(row_buf)
-
-    def get_pseudo_classifier(self, data: dict[str, tuple], device: str) -> Classifier:
-        """Check the separability of the pseudo-labels at a given layer."""
-
-        x0s, x1s = [], []
-        for x0, x1, _, _ in data.values():
-            x0s.append(rearrange(x0, "n v d -> (n v) d"))
-            x1s.append(rearrange(x1, "n v d -> (n v) d"))
-
-        # Simple de-meaning normalization
-        X0 = torch.cat(x0s)
-        X1 = torch.cat(x1s)
-        X0 -= X0.mean(dim=0)
-        X1 -= X1.mean(dim=0)
-
-        X = torch.cat([X0, X1])
-        Y = torch.cat([X0.new_zeros(X0.shape[0]), X0.new_ones(X1.shape[0])])
-
-        pseudo_clf = Classifier(X.shape[-1], device=device)
-        pseudo_clf.fit(X, Y)
-        return pseudo_clf
 
     def train(self):
         """Train a reporter on each layer of the network."""
