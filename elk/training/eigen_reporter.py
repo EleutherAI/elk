@@ -144,9 +144,6 @@ class EigenReporter(Reporter):
     def update(self, hiddens: Tensor) -> None:
         (n, _, k, d) = hiddens.shape
 
-        # Zero out shared info
-        hiddens = hiddens - hiddens.mean(dim=2, keepdim=True)
-
         # Sanity checks
         assert k > 1, "Must provide at least two hidden states"
         assert hiddens.ndim == 4, "Must be of shape [batch, variants, choices, dim]"

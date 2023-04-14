@@ -9,19 +9,18 @@ def test_eigen_reporter():
     hidden_size = 10
     num_clusters = 100
 
-    x_pos = torch.randn(num_clusters, cluster_size, hidden_size, dtype=torch.float64)
-    x_neg = torch.randn(num_clusters, cluster_size, hidden_size, dtype=torch.float64)
-    x_pos1, x_pos2 = x_pos.chunk(2, dim=0)
-    x_neg1, x_neg2 = x_neg.chunk(2, dim=0)
+    x = torch.randn(num_clusters, cluster_size, 2, hidden_size, dtype=torch.float64)
+    x1, x2 = x.chunk(2, dim=0)
 
     reporter = EigenReporter(EigenReporterConfig(), hidden_size, dtype=torch.float64)
-    reporter.update(x_pos1, x_neg1)
-    reporter.update(x_pos2, x_neg2)
+    reporter.update(x1)
+    reporter.update(x2)
 
     # Check that the streaming mean is correct
+    x_neg, x_pos = x.unbind(2)
     pos_mu, neg_mu = x_pos.mean(dim=(0, 1)), x_neg.mean(dim=(0, 1))
-    torch.testing.assert_close(reporter.class_means[0], pos_mu)
-    torch.testing.assert_close(reporter.class_means[1], neg_mu)
+    torch.testing.assert_close(reporter.class_means[0], neg_mu)
+    torch.testing.assert_close(reporter.class_means[1], pos_mu)
 
     # Check that the streaming covariance is correct
     pos_centroids, neg_centroids = x_pos.mean(dim=1), x_neg.mean(dim=1)
