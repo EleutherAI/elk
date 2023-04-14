@@ -1,4 +1,4 @@
-dataset: sethapun/sethapun/arithmetic_2as_1to50
+dataset: sethapun/arithmetic_2as_1to50
 templates:
   a0000050-f0b3-3bcc-a821-f280d3e0001: !Template
     answer_choices: No ||| Yes
