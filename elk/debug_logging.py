@@ -1,9 +1,12 @@
 import logging
+from pathlib import Path
+
+from datasets import DatasetDict
 
 from .utils import get_dataset_name, select_train_val_splits
 
 
-def save_debug_log(datasets, out_dir):
+def save_debug_log(datasets: list[DatasetDict], out_dir: Path) -> None:
     """
     Save a debug log to the output directory. This is useful for debugging
     training issues.

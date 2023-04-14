@@ -14,9 +14,9 @@ from datasets import DatasetDict
 from torch import Tensor
 from tqdm import tqdm
 
+from .debug_logging import save_debug_log
 from .extraction import extract
 from .files import elk_reporter_dir, memorably_named_dir
-from .logging import save_debug_log
 from .utils import (
     assert_type,
     get_dataset_name,
