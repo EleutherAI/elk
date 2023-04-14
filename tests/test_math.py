@@ -6,7 +6,7 @@ import torch
 from hypothesis import given
 from hypothesis import strategies as st
 
-from elk.math_util import batch_cov, cov_mean_fused, stochastic_round_constrained
+from elk.utils import batch_cov, cov_mean_fused, stochastic_round_constrained
 
 
 def test_cov_mean_fused():
