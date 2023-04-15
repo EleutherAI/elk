@@ -22,7 +22,7 @@ from torch import Tensor
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
-from ..rnn.elmo import ElmoConfig, ElmoTokenizer
+from ..rnn.elmo import ElmoConfig, ElmoTokenizer, TfElmoTokenizer
 
 # import torch.nn.functional as F
 from ..utils import (
@@ -111,7 +111,7 @@ def extract_hiddens(
         cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
     ).to(device)
     tokenizer = (
-        ElmoTokenizer.from_pretrained("")
+        TfElmoTokenizer.from_pretrained("")
         if cfg.model == "elmo"
         else AutoTokenizer.from_pretrained(
             cfg.model, truncation_side="left", verbose=False
