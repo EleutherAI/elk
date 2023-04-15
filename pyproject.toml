@@ -12,6 +12,7 @@ license = {text = "MIT License"}
 dependencies = [
     # Added distributed.split_dataset_by_node for IterableDatasets
     "datasets>=2.9.0",
+    "einops",
     # Introduced numpy.typing module
     "numpy>=1.20.0",
     # This version is old, but it's needed for certain HF tokenizers to work.

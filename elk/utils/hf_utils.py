@@ -1,8 +1,6 @@
 import transformers
 from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
 
-from .typing import assert_type
-
 # Ordered by preference
 _AUTOREGRESSIVE_SUFFIXES = [
     # Encoder-decoder models
@@ -16,7 +14,9 @@ _AUTOREGRESSIVE_SUFFIXES = [
 def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class."""
     model_cfg = AutoConfig.from_pretrained(model_str)
-    archs = assert_type(list, model_cfg.architectures)
+    archs = model_cfg.architectures
+    if not isinstance(archs, list):
+        return AutoModel.from_pretrained(model_str, **kwargs)
 
     for suffix in _AUTOREGRESSIVE_SUFFIXES:
         # Check if any of the architectures in the config end with the suffix.
@@ -31,7 +31,10 @@ def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
 
 def is_autoregressive(model_cfg: PretrainedConfig) -> bool:
     """Check if a model config is autoregressive."""
-    archs = assert_type(list, model_cfg.architectures)
+    archs = model_cfg.architectures
+    if not isinstance(archs, list):
+        return False
+
     return any(
         arch_str.endswith(suffix)
         for arch_str in archs

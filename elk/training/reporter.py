@@ -12,7 +12,6 @@ from sklearn.metrics import roc_auc_score
 from torch import Tensor
 
 from ..calibration import CalibrationError
-from .classifier import Classifier
 
 
 class EvalResult(NamedTuple):
@@ -66,88 +65,10 @@ class Reporter(nn.Module, ABC):
     """
 
     n: Tensor
-    neg_mean: Tensor
-    pos_mean: Tensor
-
-    def __init__(
-        self,
-        in_features: int,
-        cfg: ReporterConfig,
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
-    ):
-        super().__init__()
-
-        self.config = cfg
-        self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
-        self.register_buffer(
-            "neg_mean", torch.zeros(in_features, device=device, dtype=dtype)
-        )
-        self.register_buffer(
-            "pos_mean", torch.zeros(in_features, device=device, dtype=dtype)
-        )
-
-    @classmethod
-    def check_separability(
-        cls,
-        train_pair: tuple[Tensor, Tensor],
-        val_pair: tuple[Tensor, Tensor],
-    ) -> float:
-        """Measure how linearly separable the pseudo-labels are for a contrast pair.
-
-        Args:
-            train_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
-                contrastive representations. Used for training the classifier.
-            val_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
-                contrastive representations. Used for evaluating the classifier.
-
-        Returns:
-            The AUROC of a linear classifier fit on the pseudo-labels.
-        """
-        x0, x1 = train_pair
-        val_x0, val_x1 = val_pair
-
-        pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
-        pseudo_train_labels = torch.cat(
-            [
-                x0.new_zeros(x0.shape[0]),
-                x0.new_ones(x0.shape[0]),
-            ]
-        ).repeat_interleave(
-            x0.shape[1]
-        )  # make num_variants copies of each pseudo-label
-        pseudo_val_labels = torch.cat(
-            [
-                val_x0.new_zeros(val_x0.shape[0]),
-                val_x0.new_ones(val_x0.shape[0]),
-            ]
-        ).repeat_interleave(val_x0.shape[1])
-
-        pseudo_clf.fit(
-            # b v d -> (b v) d
-            torch.cat([x0, x1]).flatten(0, 1),
-            pseudo_train_labels,
-        )
-        with torch.no_grad():
-            pseudo_preds = pseudo_clf(
-                # b v d -> (b v) d
-                torch.cat([val_x0, val_x1]).flatten(0, 1)
-            )
-            return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
+    config: ReporterConfig
 
     def reset_parameters(self):
         """Reset the parameters of the probe."""
-
-    @torch.no_grad()
-    def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
-        """Update the running mean of the positive and negative examples."""
-
-        x_pos, x_neg = x_pos.flatten(0, -2), x_neg.flatten(0, -2)
-        self.n += x_pos.shape[0]
-
-        # Update the running means
-        self.neg_mean += (x_neg.sum(dim=0) - self.neg_mean) / self.n
-        self.pos_mean += (x_pos.sum(dim=0) - self.pos_mean) / self.n
 
     # TODO: These methods will do something fancier in the future
     @classmethod
