@@ -7,10 +7,10 @@ from typing import Literal, Optional, cast
 
 import torch
 import torch.nn as nn
-from sklearn.metrics import roc_auc_score
 from torch import Tensor
 from torch.nn.functional import binary_cross_entropy as bce
 
+from ..metrics import roc_auc
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
 from .classifier import Classifier
@@ -176,7 +176,7 @@ class CcsReporter(Reporter):
                 # b v d -> (b v) d
                 torch.cat([val_x0, val_x1]).flatten(0, 1)
             )
-            return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
+            return roc_auc(pseudo_val_labels, pseudo_preds).item()
 
     def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         loss = sum(
