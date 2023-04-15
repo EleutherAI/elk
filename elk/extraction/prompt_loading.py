@@ -103,7 +103,6 @@ class PromptConfig(Serializable):
 
 
 def load_prompts(
-    breakpoint()
     *dataset_strings: str,
     num_shots: int = 0,
     num_variants: int = -1,
