@@ -175,7 +175,7 @@ class CcsReporter(Reporter):
             pseudo_preds = pseudo_clf(
                 # b v d -> (b v) d
                 torch.cat([val_x0, val_x1]).flatten(0, 1)
-            )
+            ).squeeze(-1)
             return roc_auc(pseudo_val_labels, pseudo_preds).item()
 
     def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
