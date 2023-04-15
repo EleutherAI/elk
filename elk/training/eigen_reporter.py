@@ -40,20 +40,27 @@ class EigenReporter(Reporter):
     """A linear reporter whose weights are computed via eigendecomposition.
 
     Args:
-        in_features: The number of input features.
         cfg: The reporter configuration.
+        in_features: The number of input features.
+        num_classes: The number of classes for tracking the running means. If `None`,
+            we don't track the running means at all, and the semantics of `update()`
+            are a bit different. In particular, each call to `update()` is treated as a
+            new dataset, with a potentially different number of classes. The covariance
+            matrices are simply averaged over each batch of data passed to `update()`,
+            instead of being updated with Welford's algorithm. This is useful for
+            training a single reporter on multiple datasets, where the number of
+            classes may vary.
 
     Attributes:
         config: The reporter configuration.
-        intercluster_cov_M2: The running sum of the covariance matrices of the
-            centroids of the positive and negative clusters.
+        intercluster_cov_M2: The unnormalized covariance matrix averaged over all
+            classes.
         intracluster_cov: The running mean of the covariance matrices within each
             cluster. This doesn't need to be a running sum because it's doesn't use
             Welford's algorithm.
-        contrastive_xcov_M2: The running sum of the cross-covariance between the
-            centroids of the positive and negative clusters.
-        n: The running sum of the number of samples in the positive and negative
-            clusters.
+        contrastive_xcov_M2: Average of the unnormalized cross-covariance matrices
+            across all pairs of classes (k, k').
+        n: The running sum of the number of clusters processed by `update()`.
         weight: The reporter weight matrix. Guaranteed to always be orthogonal, and
             the columns are sorted in descending order of eigenvalue magnitude.
     """
@@ -64,16 +71,17 @@ class EigenReporter(Reporter):
     intracluster_cov: Tensor  # invariance
     contrastive_xcov_M2: Tensor  # negative covariance
     n: Tensor
-    class_means: Tensor
+    class_means: Tensor | None
     weight: Tensor
 
     def __init__(
         self,
         cfg: EigenReporterConfig,
         in_features: int,
-        num_classes: int = 2,
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
+        num_classes: int | None = 2,
+        *,
+        device: str | torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.config = cfg
@@ -86,7 +94,11 @@ class EigenReporter(Reporter):
         self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
         self.register_buffer(
             "class_means",
-            torch.zeros(num_classes, in_features, device=device, dtype=dtype),
+            (
+                torch.zeros(num_classes, in_features, device=device, dtype=dtype)
+                if num_classes is not None
+                else None
+            ),
         )
 
         self.register_buffer(
@@ -148,10 +160,6 @@ class EigenReporter(Reporter):
         assert k > 1, "Must provide at least two hidden states"
         assert hiddens.ndim == 4, "Must be of shape [batch, variants, choices, dim]"
 
-        # We don't actually call super because we need access to the earlier estimate
-        # of the population mean in order to update (cross-)covariances properly
-        # super().update(hiddens)
-
         self.n += n
 
         # *** Invariance (intra-cluster) ***
@@ -164,21 +172,28 @@ class EigenReporter(Reporter):
         centroids = hiddens.mean(1)
         deltas, deltas2 = [], []
 
+        # Iterating over classes
         for i, h in enumerate(centroids.unbind(1)):
-            # Update the running means; super().update() does this usually
-            delta = h - self.class_means[i]
-            self.class_means[i] += delta.sum(dim=0) / self.n
+            # Update the running means if needed
+            if self.class_means is not None:
+                delta = h - self.class_means[i]
+                self.class_means[i] += delta.sum(dim=0) / self.n
+
+                # Post-mean update deltas are used to update the (co)variance
+                delta2 = h - self.class_means[i]  # [n, d]
+            else:
+                delta = h - h.mean(dim=0)
+                delta2 = delta
 
             # *** Variance (inter-cluster) ***
             # See code at https://bit.ly/3YC9BhH and "Welford's online algorithm"
             # in https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance.
-            # Post-mean update deltas are used to update the (co)variance
-            delta2 = h - self.class_means[i]  # [n, d]
             self.intercluster_cov_M2.addmm_(delta.mT, delta2, alpha=1 / k)
             deltas.append(delta)
             deltas2.append(delta2)
 
         # *** Negative covariance (contrastive) ***
+        # Iterating over pairs of classes (k, k') where k != k'
         for i, d in enumerate(deltas):
             for j, d_ in enumerate(deltas2):
                 # Compare to the other classes only

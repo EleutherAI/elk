@@ -85,46 +85,48 @@ class Train(Run):
         train_dict = self.prepare_data(device, layer, "train")
         val_dict = self.prepare_data(device, layer, "val")
 
-        (train_h, train_labels, _), *rest = train_dict.values()
-        (n, v, k, d) = train_h.shape
+        (first_train_h, train_labels, _), *rest = train_dict.values()
+        d = first_train_h.shape[-1]
+        if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
+            raise ValueError("All datasets must have the same hidden state size")
 
-        if not all(other_h.shape[2] == k for other_h, _, _ in rest):
-            raise ValueError("All datasets must have the same number of classes")
-
-        # Can't figure out a way to make this line less ugly
-        next(iter(train_dict.values()))[0].shape[-1]
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         if isinstance(self.cfg.net, CcsReporterConfig):
             assert len(train_dict) == 1, "CCS only supports single-task training"
 
             reporter = CcsReporter(self.cfg.net, d, device=device)
-            train_loss = reporter.fit(train_h, train_labels)
+            train_loss = reporter.fit(first_train_h, train_labels)
 
             (val_h, val_gt, _) = next(iter(val_dict.values()))
-            x0, x1 = train_h.unbind(2)
+            x0, x1 = first_train_h.unbind(2)
             val_x0, val_x1 = val_h.unbind(2)
             pseudo_auroc = reporter.check_separability(
                 train_pair=(x0, x1), val_pair=(val_x0, val_x1)
             )
 
         elif isinstance(self.cfg.net, EigenReporterConfig):
-            # To enable training on multiple tasks with different numbers of variants,
-            # we update the statistics in a streaming fashion and then fit
-            reporter = EigenReporter(self.cfg.net, d, k, device=device)
+            # We set num_classes to None to enable training on datasets with different
+            # numbers of classes. Under the hood, this causes the covariance statistics
+            # to be simply averaged across all batches passed to update().
+            reporter = EigenReporter(self.cfg.net, d, num_classes=None, device=device)
 
             hidden_list, label_list = [], []
             for ds_name, (train_h, train_labels, _) in train_dict.items():
-                hidden_list.append(train_h)
-                label_list.append(train_labels)
+                (_, v, k, _) = train_h.shape
+
+                # Datasets can have different numbers of variants and different numbers
+                # of classes, so we need to flatten them here before concatenating
+                hidden_list.append(rearrange(train_h, "n v k d -> (n v k) d"))
+                label_list.append(
+                    to_one_hot(repeat(train_labels, "n -> (n v)", v=v), k).flatten()
+                )
                 reporter.update(train_h)
 
             pseudo_auroc = None
             train_loss = reporter.fit_streaming()
             reporter.platt_scale(
-                to_one_hot(
-                    repeat(torch.cat(label_list), "n -> (n v)", v=v), k
-                ).flatten(),
-                rearrange(torch.cat(hidden_list), "n v k d -> (n v k) d"),
+                torch.cat(label_list),
+                torch.cat(hidden_list),
             )
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
@@ -148,6 +150,8 @@ class Train(Run):
             val_result = reporter.score(val_gt, val_h)
 
             if val_lm_preds is not None:
+                (_, v, k, _) = val_h.shape
+
                 val_gt_cpu = repeat(val_gt, "n -> (n v)", v=v).cpu()
                 val_lm_preds = rearrange(val_lm_preds, "n v ... -> (n v) ...")
                 val_lm_auroc = roc_auc_score(
