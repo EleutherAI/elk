@@ -123,11 +123,10 @@ class Reporter(nn.Module, ABC):
             cal_err = 0.0
 
         Y_one_hot = to_one_hot(Y, c).long().flatten()
-        roc_auc_ci(Y_one_hot.cpu(), logits.cpu().flatten())
+        auroc_result = roc_auc_ci(Y_one_hot, logits.flatten())
 
         raw_preds = logits.argmax(dim=-1).long()
         raw_acc = accuracy(Y, raw_preds.flatten())
-        auroc_result = roc_auc_ci(Y, logits.flatten())
         return EvalResult(
             auroc=auroc_result.estimate,
             auroc_lower=auroc_result.lower,
