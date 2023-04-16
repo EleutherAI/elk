@@ -113,7 +113,7 @@ def extract_hiddens(
         stream=p_cfg.stream,
         rank=rank,
         world_size=world_size,
-    )  # this dataset is already sharded, buqt hasn't been truncated to max_examples
+    )  # this dataset is already sharded, but hasn't been truncated to max_examples
 
     model = instantiate_model(
         cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
