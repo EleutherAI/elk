@@ -154,7 +154,7 @@ class Train(Run):
 
         row_buf = []
         for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
-            val_result = reporter.score(val_gt, val_h)
+            val_result = reporter.score_contrast_set(val_gt, val_h)
 
             if val_lm_preds is not None:
                 (_, v, k, _) = val_h.shape

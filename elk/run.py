@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 import torch.multiprocessing as mp
 import yaml
-from datasets import DatasetDict
+from datasets import Dataset, DatasetDict
 from torch import Tensor
 from tqdm import tqdm
 
@@ -37,6 +37,7 @@ class Run(ABC):
     datasets: list[DatasetDict] = field(init=False)
 
     def __post_init__(self):
+        is_raw = self.cfg.data.prompts.datasets == ["raw"]
         self.datasets = [
             extract(cfg, num_gpus=self.cfg.num_gpus, min_gpu_mem=self.cfg.min_gpu_mem)
             for cfg in self.cfg.data.explode()
@@ -63,7 +64,7 @@ class Run(ABC):
         with open(path, "w") as meta_f:
             yaml.dump(
                 {
-                    get_dataset_name(ds): {
+                    ("raw" if is_raw else get_dataset_name(ds)): {
                         split: ds[split]._fingerprint for split in ds.keys()
                     }
                     for ds in self.datasets
@@ -89,24 +90,34 @@ class Run(ABC):
         self, device: str, layer: int, split_type: Literal["train", "val"]
     ) -> dict[str, tuple[Tensor, Tensor, np.ndarray | None]]:
         """Prepare data for the specified layer and split type."""
+        assert self.cfg.data.prompts.datasets != [
+            "raw"
+        ], "Cannot call prepare_data on raw data, use prepare_dataset instead"
+
         out = {}
-
         for ds in self.datasets:
-            train_name, val_name = select_train_val_splits(ds)
-            key = train_name if split_type == "train" else val_name
-
-            split = ds[key].with_format("torch", device=device, dtype=torch.int16)
-            labels = assert_type(Tensor, split["label"])
-            val_h = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
-
-            with split.formatted_as("numpy"):
-                has_preds = "model_preds" in split.features
-                lm_preds = split["model_preds"] if has_preds else None
+            key = select_train_val_splits(ds)[0 if split_type == "train" else 1]
+            split = ds[key]
 
             ds_name = get_dataset_name(ds)
-            out[ds_name] = (val_h, labels, lm_preds)
+            out[ds_name] = self.prepare_individual(split, device, layer)
 
         return out
+
+    @staticmethod
+    def prepare_individual(
+        ds: Dataset, device: str, layer: int
+    ) -> tuple[Tensor, Tensor, np.ndarray | None]:
+        ds = ds.with_format("torch", device=device, dtype=torch.int16)
+
+        labels = assert_type(Tensor, ds["label"])
+        hid = int16_to_float32(assert_type(Tensor, ds[f"hidden_{layer}"]))
+
+        with ds.formatted_as("numpy"):
+            has_preds = "model_preds" in ds.features
+            lm_preds = ds["model_preds"] if has_preds else None
+
+        return hid, labels, lm_preds  # type: ignore
 
     def concatenate(self, layers):
         """Concatenate hidden states from a previous layer."""
@@ -151,4 +162,8 @@ class Run(ABC):
                     df = pd.concat(df_buf).sort_values(by="layer")
                     df.to_csv(f, index=False)
                 if self.cfg.debug:
-                    save_debug_log(self.datasets, self.out_dir)
+                    save_debug_log(
+                        self.datasets,
+                        self.out_dir,
+                        is_raw=self.cfg.data.prompts.datasets == ["raw"],
+                    )

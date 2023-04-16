@@ -129,10 +129,10 @@ def infer_num_classes(label_feature: Any) -> int:
 
 def get_layers(ds: DatasetDict) -> list[int]:
     """Get a list of indices of hidden layers given a `DatasetDict`."""
-    train, _ = select_train_val_splits(ds.keys())
+    arbitrary_split = next(iter(ds.values()))
     layers = [
         int(feat[len("hidden_") :])
-        for feat in ds[train].features
+        for feat in arbitrary_split.features
         if feat.startswith("hidden_")
     ]
     return layers

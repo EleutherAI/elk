@@ -33,7 +33,6 @@ class PromptConfig(Serializable):
             specifying the path to a directory containing a single split of a dataset
             with a "text" column and a "label" column. The text column is the exact
             string input to the model, and the label is a binary label (0 or 1).
-        balance: Whether to force class balance in the dataset using undersampling.
         data_dirs: The directory to use for caching the dataset. Defaults to
             `~/.cache/huggingface/datasets`.
         label_columns: The column containing the labels. By default, we infer this from
@@ -52,7 +51,6 @@ class PromptConfig(Serializable):
     """
 
     datasets: list[str] = field(positional=True)
-    balance: bool = False
     data_dirs: list[str] = field(default_factory=list)
     label_columns: list[str] = field(default_factory=list)
     max_examples: list[int] = field(default_factory=lambda: [750, 250])
@@ -185,8 +183,9 @@ def load_prompts(
     if rank == 0:
         print(f"Using {num_variants} variants of each prompt")
 
-    label_column = infer_label_column(ds.features)
-    num_classes = infer_num_classes(ds.features[label_column])
+    feats = assert_type(Features, ds.features)
+    label_column = infer_label_column(feats)
+    num_classes = infer_num_classes(feats[label_column])
     rng = Random(seed)
 
     if num_shots > 0:

@@ -36,6 +36,7 @@ class Eval(Serializable):
     data: Extract
     source: str = field(positional=True)
 
+    # TODO: allow for non-balanced eval
     concatenated_layer_offset: int = 0
     debug: bool = False
     min_gpu_mem: int | None = None
@@ -63,8 +64,15 @@ class Evaluate(Run):
         self, layer: int, devices: list[str], world_size: int = 1
     ) -> pd.DataFrame:
         """Evaluate a single reporter on a single layer."""
+        is_raw = self.cfg.data.prompts.datasets == ["raw"]
         device = self.get_device(devices, world_size)
-        val_output = self.prepare_data(device, layer, "val")
+
+        if is_raw:
+            assert len(self.datasets) == 1
+            ds = self.datasets[0]["val"]
+            val_output = {"raw": self.prepare_individual(ds, device, layer)}
+        else:
+            val_output = self.prepare_data(device, layer, "val")
 
         experiment_dir = elk_reporter_dir() / self.cfg.source
 
@@ -74,7 +82,11 @@ class Evaluate(Run):
 
         row_buf = []
         for ds_name, (val_h, val_gt, _) in val_output.items():
-            val_result = reporter.score(val_gt, val_h)
+            val_result = (
+                reporter.score(val_gt, val_h)
+                if is_raw
+                else reporter.score_contrast_set(val_gt, val_h)
+            )
 
             stats_row = pd.Series(
                 {

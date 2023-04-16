@@ -19,8 +19,9 @@ from ..metrics import accuracy, to_one_hot
 class EvalResult(NamedTuple):
     """The result of evaluating a reporter on a dataset.
 
-    The `.score()` function of a reporter returns an instance of this class,
-    which contains the loss, accuracy, calibrated accuracy, and AUROC.
+    The `.score()` and `.score_contrast_set` functions of a reporter
+    returns an instance of this class, which contains the loss,
+    accuracy, calibrated accuracy, and AUROC.
     """
 
     acc: float
@@ -83,18 +84,19 @@ class Reporter(nn.Module, ABC):
         ...
 
     @torch.no_grad()
-    def score(self, labels: Tensor, hiddens: Tensor) -> EvalResult:
-        """Score the probe on the contrast set `hiddens`.
+    def score_contrast_set(self, labels: Tensor, contrast_set: Tensor) -> EvalResult:
+        """Score the probe on a contrast set `contrast_set`.
 
         Args:
         labels: The labels of the contrast pair.
-        hiddens: Contrast set of shape [n, v, k, d].
+        contrast_set: Contrast set of shape [n, v, c, d]
+            if c = 2, then 0 is the negative choice and 1 is positive.
 
         Returns:
             an instance of EvalResult containing the loss, accuracy, calibrated
-                accuracy, and AUROC of the probe on `hiddens`.
+                accuracy, and AUROC of the probe on `contrast_set`.
         """
-        logits = self(hiddens)
+        logits = self(contrast_set)
         (_, v, c) = logits.shape
 
         # makes `num_variants` copies of each label
@@ -118,10 +120,48 @@ class Reporter(nn.Module, ABC):
         Y = to_one_hot(Y, c).long().flatten()
 
         auroc = roc_auc_score(Y.cpu(), logits.cpu().flatten())
+        # TODO: doesn't this acc measure inflate the accuracy because
+        # we enforce mutual exclusivity?
         raw_acc = accuracy(Y, raw_preds.flatten())
 
         return EvalResult(
             acc=float(raw_acc),
+            cal_acc=cal_acc,
+            auroc=float(auroc),
+            ece=cal_err,
+        )
+
+    @torch.no_grad()
+    def score(self, labels: Tensor, hiddens: Tensor) -> EvalResult:
+        """Score the probe on `hiddens`.
+
+        Args:
+            labels: The labels of the contrast pair.
+            hiddens: Hiddens of shape [n, d].
+
+        Returns:
+            an instance of EvalResult containing the loss, accuracy, calibrated
+                accuracy, and AUROC of the probe on `hiddens`.
+        """
+        assert hiddens.shape[0] == labels.shape[0]
+        assert len(hiddens.shape) == 2
+        logits = self(hiddens)
+
+        probs = logits.flatten().sigmoid()
+        cal_err = CalibrationError().update(labels.cpu(), probs.cpu()).compute().ece
+
+        # Calibrated accuracy
+        cal_thresh = probs.float().quantile(labels.float().mean())
+        cal_preds = probs.gt(cal_thresh).to(torch.int)
+        cal_acc = cal_preds.flatten().eq(labels).float().mean().item()
+
+        preds = probs.gt(0.5).to(torch.int)
+        acc = preds.flatten().eq(labels).float().mean().item()
+
+        auroc = roc_auc_score(labels.cpu(), logits.cpu().flatten())
+
+        return EvalResult(
+            acc=float(acc),
             cal_acc=cal_acc,
             auroc=float(auroc),
             ece=cal_err,

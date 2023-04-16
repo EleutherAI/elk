@@ -409,14 +409,12 @@ def extract(
     is_raw = cfg.prompts.datasets == ["raw"]
 
     if is_raw:
-        # this might be a hacky way to identify raw datasets
-        base_fingerprint = get_raw_fingerprint()
-        builder_name, config_name = "raw", "raw" + base_fingerprint
+        builder_name, config_name = "raw", "raw"
 
         split_dict = SplitDict(
             {
-                "test": SplitInfo(
-                    name="test",
+                "val": SplitInfo(
+                    name="val",
                     num_examples=-1,  # TODO: Is this important?
                     dataset_name="raw",
                 ),
@@ -506,7 +504,7 @@ def extract(
                 split_type=[split_name] * len(devices),
                 world_size=[len(devices)] * len(devices),
             ),
-            name=base_fingerprint if is_raw else None,  # for caching
+            name=get_raw_fingerprint() if is_raw else None,  # for caching
         )
         for (split_name, split_info) in split_dict.items()
     }
