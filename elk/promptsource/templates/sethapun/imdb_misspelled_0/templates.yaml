@@ -35,12 +35,12 @@ templates:
   02000000-795a-47b6-8ddf-c4fd1579e76a: !Template
     answer_choices: negative ||| positive
     id: 02000000-795a-47b6-8ddf-c4fd1579e76a
-    jinja: "{{text}} Is this review {{"positive or negative"}}? ||| {{answer_choices[label]}}"
+    jinja: '{{text}} Is this review {{"positive or negative"}}? ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en
-      metrics:
+      metrics: 
       - Accuracy
       original_task: true
     name: 'Sentiment with choices '
