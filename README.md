@@ -32,10 +32,10 @@ The following command will evaluate the probe from the run naughty-northcutt on 
 elk eval naughty-northcutt microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
-The following runs `elicit` on the Cartesian product of the listed models (gpt2-tiny gpt2-medium gpt2-large ) and datasets (imdb amazon_polarity), storing it in a special folder ELK_DIR/sweeps/<memorable_name>. Moreover, `--add_pooled` adds an additional dataset that pools all of the datasets together.
+The following runs `elicit` on the Cartesian product of the listed models and datasets, storing it in a special folder ELK_DIR/sweeps/<memorable_name>. Moreover, `--add_pooled` adds an additional dataset that pools all of the datasets together.
 
 ```bash
-elk sweep --models gpt2-{tiny,medium,large,xl} --datasets imdb amazon_polarity --add_pooled
+elk sweep --models gpt2-{medium,large,xl} --datasets imdb amazon_polarity --add_pooled
 ```
 
 ## Caching
