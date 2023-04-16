@@ -1,9 +1,11 @@
 """Functions for extracting the hidden states of a model."""
+import json
 import logging
 import os
 from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
+from pathlib import Path
 from typing import Any, Iterable, Literal
 
 import torch
@@ -394,12 +396,22 @@ def extract(
             dataset_name=available_splits.dataset_name,
         )
 
+    def get_raw_fingerprint() -> str:
+        assert cfg.prompts.datasets == ["raw"]
+        # grab the "_fingerprint" stored in "state.json"
+        # of cfg.prompts.data_dirs[0]
+        state_path = Path(cfg.prompts.data_dirs[0]) / "state.json"
+        with open(state_path, "r") as f:
+            return json.load(f)["_fingerprint"]
+
     model_cfg = AutoConfig.from_pretrained(cfg.model)
 
     is_raw = cfg.prompts.datasets == ["raw"]
 
     if is_raw:
-        builder_name, config_name = "raw", "raw"
+        # this might be a hacky way to identify raw datasets
+        base_fingerprint = get_raw_fingerprint()
+        builder_name, config_name = "raw", "raw" + base_fingerprint
 
         split_dict = SplitDict(
             {
@@ -477,8 +489,6 @@ def extract(
                 dtype="float32",
             )
 
-    # TODO: fix caching for raw datasets so that when the dataset is changed we
-    # don't use the cached version
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
@@ -496,6 +506,7 @@ def extract(
                 split_type=[split_name] * len(devices),
                 world_size=[len(devices)] * len(devices),
             ),
+            name=base_fingerprint if is_raw else None,  # for caching
         )
         for (split_name, split_info) in split_dict.items()
     }
