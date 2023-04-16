@@ -9,11 +9,10 @@ import torch
 import torch.nn as nn
 from einops import rearrange, repeat
 from simple_parsing.helpers import Serializable
-from sklearn.metrics import roc_auc_score
 from torch import Tensor
 
 from ..calibration import CalibrationError
-from ..metrics import accuracy, to_one_hot
+from ..metrics import accuracy, roc_auc_ci, to_one_hot
 
 
 class EvalResult(NamedTuple):
@@ -23,9 +22,12 @@ class EvalResult(NamedTuple):
     which contains the loss, accuracy, calibrated accuracy, and AUROC.
     """
 
+    auroc: float
+    auroc_lower: float
+    auroc_upper: float
+
     acc: float
     cal_acc: float
-    auroc: float
     ece: float
 
 
@@ -117,12 +119,13 @@ class Reporter(nn.Module, ABC):
         raw_preds = to_one_hot(logits.argmax(dim=-1), c).long()
         Y = to_one_hot(Y, c).long().flatten()
 
-        auroc = roc_auc_score(Y.cpu(), logits.cpu().flatten())
         raw_acc = accuracy(Y, raw_preds.flatten())
-
+        auroc_result = roc_auc_ci(Y, logits.flatten())
         return EvalResult(
+            auroc=auroc_result.estimate,
+            auroc_lower=auroc_result.lower,
+            auroc_upper=auroc_result.upper,
             acc=float(raw_acc),
             cal_acc=cal_acc,
-            auroc=float(auroc),
             ece=cal_err,
         )

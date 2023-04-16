@@ -85,9 +85,10 @@ class Evaluate(Run):
                 with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
                     lr_model = torch.load(f, map_location=device).eval()
 
-                lr_auroc, lr_acc = evaluate_supervised(lr_model, val_h, val_gt)
-
-                stats_row["lr_auroc"] = lr_auroc
+                lr_auroc_res, lr_acc = evaluate_supervised(lr_model, val_h, val_gt)
+                stats_row["lr_auroc"] = lr_auroc_res.estimate
+                stats_row["lr_auroc_lower"] = lr_auroc_res.lower
+                stats_row["lr_auroc_upper"] = lr_auroc_res.upper
                 stats_row["lr_acc"] = lr_acc
 
             row_buf.append(stats_row)
