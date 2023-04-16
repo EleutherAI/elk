@@ -5,6 +5,12 @@ elk/trained/*
 nohup.out
 .idea
 *.pkl
+.vscode/launch.json
+elk/experiment_results.ipynb
+elk/training/loss_api.py
+prototyping.ipynb
+run.sh
+dummy/
 
 # scripts for experiments in progress
 my_*.sh
