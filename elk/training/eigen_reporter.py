@@ -214,7 +214,7 @@ class EigenReporter(Reporter):
         """
         assert x_pos.shape == x_neg.shape
         self.update(x_pos, x_neg)
-        loss = self.fit_streaming()
+        loss = se.fitlf_streaming()
         if labels is not None and platt_scale:
             self.platt_scale(labels, x_pos, x_neg)
 

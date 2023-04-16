@@ -1,7 +1,7 @@
 import transformers
 from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
 
-from ..rnn.elmo import ElmoModel, TfElmoModel
+from ..rnn.elmo import TfElmoModel
 from .typing import assert_type
 
 # Ordered by preference

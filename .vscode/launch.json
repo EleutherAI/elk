@@ -9,7 +9,10 @@
             "type": "python",
             "request": "launch",
             "module": "elk",
-            "args": ["elicit", "elmo", "imdb", "--token_loc=mean"],
+            "args": ["elicit", "elmo", "imdb", "--token_loc=mean", "--max_examples=9"],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "7"
+            },
             "justMyCode": true
         }
     ]
