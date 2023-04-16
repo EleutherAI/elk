@@ -305,7 +305,12 @@ def raw_extract_hiddens(
 
     # TODO: fix balancing by merging changes from check-streamable
     for example in islice(ds, max_examples):
-        text, label = example["text"], example["label"]
+        text, label = example["text"], example["label"]  # type: ignore
+
+        # prepend start token so that the model can predict the first token
+        start_text = tokenizer.bos_token  # TODO: will this work for all models?
+        text = start_text + text
+
         inputs = tokenizer(
             text,
             return_tensors="pt",
@@ -317,16 +322,13 @@ def raw_extract_hiddens(
 
         # Compute the log probability of the whole sequence
         if has_lm_preds:
-            # TODO: I don't know how to do this in full generality
             # compute the total log probability of the sequence
             # by summing the log probabilities of each token except the last
-            # (which is predicting the next token)
+            # (which is predicting a new token)
             logprobs = outputs.logits[:, :-1, :].log_softmax(dim=-1)
-            # TODO: what about the first token's unconditional log prob?
             logprobs = logprobs.gather(
                 dim=-1, index=inputs.input_ids[:, 1:].unsqueeze(-1)
             )
-            # sum the log probabilities of the correct tokens
             total_logprob = logprobs.sum()
         else:
             total_logprob = None
@@ -391,7 +393,7 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
             {
                 "test": SplitInfo(
                     name="test",
-                    num_examples=8,  # TODO: Is this important?
+                    num_examples=-1,  # TODO: Is this important?
                     dataset_name="raw",
                 ),
             },
@@ -444,6 +446,8 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
                 length=num_variants,
             )
 
+    # TODO: fix caching for raw datasets so that when the dataset is changed we
+    # don't use the cached version
     devices = select_usable_devices(num_gpus, min_memory=cfg.min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
