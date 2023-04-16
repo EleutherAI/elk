@@ -257,7 +257,7 @@ def _convert_to_prompts(
     ((maybe_dup, dup_count),) = prompt_counter.most_common(1)
     if dup_count > 1:
         raise ValueError(f'Prompt duplicated {dup_count} times! "{maybe_dup}"')
-
+    
     return dict(
         label=new_label,
         prompts=prompts,

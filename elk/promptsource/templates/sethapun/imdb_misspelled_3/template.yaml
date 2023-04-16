@@ -1,8 +1,8 @@
-dataset: imdb_misspelled_30
+dataset: imdb_misspelled_3
 templates:
-  02000030-0f45-4d97-941e-6fa4c0afbc2d: !Template
+  02000003-0f45-4d97-941e-6fa4c0afbc2d: !Template
     answer_choices: negative ||| positive
-    id: 02000030-0f45-4d97-941e-6fa4c0afbc2d
+    id: 02000003-0f45-4d97-941e-6fa4c0afbc2d
     jinja: 'The following movie review expresses what sentiment between {{"negative or positive"}}? {{text}} 
       ||| {{ answer_choices
       [label] }}'
@@ -15,9 +15,9 @@ templates:
       original_task: true
     name: Movie Expressed Sentiment 2
     reference: ''
-  02000030-e630-4d19-8b41-e199266e38f7: !Template
+  02000003-e630-4d19-8b41-e199266e38f7: !Template
     answer_choices: bad ||| good
-    id: 02000030-e630-4d19-8b41-e199266e38f7
+    id: 02000003-e630-4d19-8b41-e199266e38f7
     jinja: '{{text}}
 
 
@@ -32,9 +32,9 @@ templates:
       original_task: true
     name: Reviewer Opinion bad good choices
     reference: ''
-  02000030-795a-47b6-8ddf-c4fd1579e76a: !Template
+  02000003-795a-47b6-8ddf-c4fd1579e76a: !Template
     answer_choices: negative ||| positive
-    id: 02000030-795a-47b6-8ddf-c4fd1579e76a
+    id: 02000003-795a-47b6-8ddf-c4fd1579e76a
     jinja: "{{text}} Is this review {{"positive or negative"}}? ||| {{answer_choices[label]}}"
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -45,9 +45,9 @@ templates:
       original_task: true
     name: 'Sentiment with choices '
     reference: ''
-  02000030-1498-46b7-bfee-ac0c5160707f: !Template
+  02000003-1498-46b7-bfee-ac0c5160707f: !Template
     answer_choices: negative ||| positive
-    id: 02000030-1498-46b7-bfee-ac0c5160707f
+    id: 02000003-1498-46b7-bfee-ac0c5160707f
     jinja: '{{text}}
 
 
@@ -64,10 +64,10 @@ templates:
       original_task: true
     name: Reviewer Sentiment Feeling
     reference: ''
-  02000030-f2c1-430e-8fc6-936a16966d9c: !Template
+  02000003-f2c1-430e-8fc6-936a16966d9c: !Template
     answer_choices: negative ||| positive
-    id: 02000030-f2c1-430e-8fc6-936a16966d9c
-    jinja: '{{text}} What sentiment does the writer express for the movie, {{negative or positive}}? ||| {{
+    id: 02000003-f2c1-430e-8fc6-936a16966d9c
+    jinja: '{{text}} What sentiment does the writer express for the movie, {{"negative or positive"}}? ||| {{
       answer_choices [label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -78,13 +78,13 @@ templates:
       original_task: true
     name: Writer Expressed Sentiment
     reference: ''
-  02000030-fe95-40b4-9610-318b46ab820f: !Template
+  02000003-fe95-40b4-9610-318b46ab820f: !Template
     answer_choices: negative ||| positive
-    id: 02000030-fe95-40b4-9610-318b46ab820f
+    id: 02000003-fe95-40b4-9610-318b46ab820f
     jinja: '{{text}}
 
 
-      What is the sentiment expressed in this text, {{negative or positive}}?
+      What is the sentiment expressed in this text, {{"negative or positive"}}?
 
 
       ||| {{ answer_choices
@@ -98,9 +98,9 @@ templates:
       original_task: true
     name: Text Expressed Sentiment
     reference: ''
-  02000030-01d4-4fa1-bf8d-07e392c00cd9: !Template
+  02000003-01d4-4fa1-bf8d-07e392c00cd9: !Template
     answer_choices: no ||| yes
-    id: 02000030-01d4-4fa1-bf8d-07e392c00cd9
+    id: 02000003-01d4-4fa1-bf8d-07e392c00cd9
     jinja: '{{text}}
 
       Did the reviewer enjoy the movie, yes or no? ||| {{ answer_choices [label]}}'
@@ -113,12 +113,12 @@ templates:
       original_task: true
     name: Reviewer Enjoyment Yes No
     reference: ''
-  02000030-2421-49a2-9553-91b8bac4cfbe: !Template
+  02000003-2421-49a2-9553-91b8bac4cfbe: !Template
     answer_choices: negative ||| positive
-    id: 02000030-2421-49a2-9553-91b8bac4cfbe
+    id: 02000003-2421-49a2-9553-91b8bac4cfbe
     jinja: '{{text}}
 
-      What is the sentiment expressed by the reviewer for the movie, {{negative or positive}}?
+      What is the sentiment expressed by the reviewer for the movie, {{"negative or positive"}}?
 
       ||| {{ answer_choices [label] }}'
     metadata: !TemplateMetadata
