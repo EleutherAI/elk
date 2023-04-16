@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -35,14 +34,14 @@ class Classifier(torch.nn.Module):
     def __init__(
         self,
         input_dim: int,
-        num_classes: int = 1,
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
+        num_classes: int = 2,
+        device: str | torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
 
         self.linear = torch.nn.Linear(
-            input_dim, num_classes, device=device, dtype=dtype
+            input_dim, num_classes if num_classes > 2 else 1, device=device, dtype=dtype
         )
         self.linear.bias.data.zero_()
         self.linear.weight.data.zero_()
@@ -85,7 +84,9 @@ class Classifier(torch.nn.Module):
         num_classes = self.linear.out_features
         loss_fn = bce_with_logits if num_classes == 1 else cross_entropy
         loss = torch.inf
-        y = y.float()
+        y = y.to(
+            torch.get_default_dtype() if num_classes == 1 else torch.long,
+        )
 
         def closure():
             nonlocal loss
@@ -148,11 +149,13 @@ class Classifier(torch.nn.Module):
         indices = torch.randperm(num_samples, device=x.device, generator=rng)
 
         l2_penalties = torch.logspace(-4, 4, num_penalties).tolist()
-        y = y.float()
 
         num_classes = self.linear.out_features
         loss_fn = bce_with_logits if num_classes == 1 else cross_entropy
         losses = x.new_zeros((k, num_penalties))
+        y = y.to(
+            torch.get_default_dtype() if num_classes == 1 else torch.long,
+        )
 
         for i in range(k):
             start, end = i * fold_size, (i + 1) * fold_size
