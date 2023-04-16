@@ -69,12 +69,8 @@ class Evaluate(Run):
         reporter.eval()
 
         row_buf = []
-        for ds_name, (val_x0, val_x1, val_gt, _) in val_output.items():
-            val_result = reporter.score(
-                val_gt,
-                val_x0,
-                val_x1,
-            )
+        for ds_name, (val_h, val_gt, _) in val_output.items():
+            val_result = reporter.score(val_gt, val_h)
 
             stats_row = pd.Series(
                 {
@@ -89,7 +85,7 @@ class Evaluate(Run):
                 with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
                     lr_model = torch.load(f, map_location=device).eval()
 
-                lr_auroc, lr_acc = evaluate_supervised(lr_model, val_x0, val_x1, val_gt)
+                lr_auroc, lr_acc = evaluate_supervised(lr_model, val_h, val_gt)
 
                 stats_row["lr_auroc"] = lr_auroc
                 stats_row["lr_acc"] = lr_acc

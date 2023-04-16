@@ -87,8 +87,8 @@ class CcsReporter(Reporter):
 
     def __init__(
         self,
-        in_features: int,
         cfg: CcsReporterConfig,
+        in_features: int,
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
     ):
@@ -222,11 +222,6 @@ class CcsReporter(Reporter):
         """Return the raw score output of the probe on `x`."""
         return self.probe(x).squeeze(-1)
 
-    def predict(self, x_neg: Tensor, x_pos: Tensor) -> Tensor:
-        x_neg = self.neg_norm(x_neg)
-        x_pos = self.pos_norm(x_pos)
-        return 0.5 * (self(x_pos).sigmoid() + (1 - self(x_neg).sigmoid()))
-
     def loss(
         self,
         logit0: Tensor,
@@ -273,8 +268,7 @@ class CcsReporter(Reporter):
 
     def fit(
         self,
-        x_neg: Tensor,
-        x_pos: Tensor,
+        hiddens: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         """Fit the probe to the contrast pair (neg, pos).
@@ -291,6 +285,7 @@ class CcsReporter(Reporter):
             ValueError: If `optimizer` is not "adam" or "lbfgs".
             RuntimeError: If the best loss is not finite.
         """
+        x_pos, x_neg = hiddens.unbind(2)
         # Fit normalizers
         self.pos_norm.fit(x_pos)
         self.neg_norm.fit(x_neg)

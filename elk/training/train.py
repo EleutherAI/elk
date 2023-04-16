@@ -7,10 +7,12 @@ from typing import Callable, Literal
 
 import pandas as pd
 import torch
+from einops import rearrange, repeat
 from simple_parsing import Serializable, field, subgroups
-from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.metrics import roc_auc_score
 
 from ..extraction.extraction import Extract
+from ..metrics import accuracy, to_one_hot
 from ..run import Run
 from ..training.supervised import evaluate_supervised, train_supervised
 from ..utils import select_usable_devices
@@ -53,8 +55,7 @@ class Elicit(Serializable):
     supervised: Literal["none", "single", "cv"] = "single"
 
     def execute(self):
-        train_run = Train(cfg=self, out_dir=self.out_dir)
-        train_run.train()
+        Train(cfg=self, out_dir=self.out_dir).train()
 
 
 @dataclass
@@ -84,31 +85,49 @@ class Train(Run):
         train_dict = self.prepare_data(device, layer, "train")
         val_dict = self.prepare_data(device, layer, "val")
 
-        # Can't figure out a way to make this line less ugly
-        hidden_size = next(iter(train_dict.values()))[0].shape[-1]
-        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
+        (first_train_h, train_labels, _), *rest = train_dict.values()
+        d = first_train_h.shape[-1]
+        if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
+            raise ValueError("All datasets must have the same hidden state size")
 
+        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         if isinstance(self.cfg.net, CcsReporterConfig):
             assert len(train_dict) == 1, "CCS only supports single-task training"
 
-            reporter = CcsReporter(hidden_size, self.cfg.net, device=device)
-            (x0, x1, labels, _) = next(iter(train_dict.values()))
-            train_loss = reporter.fit(x0, x1, labels)
+            reporter = CcsReporter(self.cfg.net, d, device=device)
+            train_loss = reporter.fit(first_train_h, train_labels)
 
-            (val_x0, val_x1, val_gt, _) = next(iter(val_dict.values()))
+            (val_h, val_gt, _) = next(iter(val_dict.values()))
+            x0, x1 = first_train_h.unbind(2)
+            val_x0, val_x1 = val_h.unbind(2)
             pseudo_auroc = reporter.check_separability(
                 train_pair=(x0, x1), val_pair=(val_x0, val_x1)
             )
 
         elif isinstance(self.cfg.net, EigenReporterConfig):
-            # To enable training on multiple tasks with different numbers of variants,
-            # we update the statistics in a streaming fashion and then fit
-            reporter = EigenReporter(hidden_size, self.cfg.net, device=device)
-            for ds_name, (x0, x1, labels, _) in train_dict.items():
-                reporter.update(x0, x1)
+            # We set num_classes to None to enable training on datasets with different
+            # numbers of classes. Under the hood, this causes the covariance statistics
+            # to be simply averaged across all batches passed to update().
+            reporter = EigenReporter(self.cfg.net, d, num_classes=None, device=device)
+
+            hidden_list, label_list = [], []
+            for ds_name, (train_h, train_labels, _) in train_dict.items():
+                (_, v, k, _) = train_h.shape
+
+                # Datasets can have different numbers of variants and different numbers
+                # of classes, so we need to flatten them here before concatenating
+                hidden_list.append(rearrange(train_h, "n v k d -> (n v k) d"))
+                label_list.append(
+                    to_one_hot(repeat(train_labels, "n -> (n v)", v=v), k).flatten()
+                )
+                reporter.update(train_h)
 
             pseudo_auroc = None
             train_loss = reporter.fit_streaming()
+            reporter.platt_scale(
+                torch.cat(label_list),
+                torch.cat(hidden_list),
+            )
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
@@ -127,21 +146,19 @@ class Train(Run):
             lr_model = None
 
         row_buf = []
-        for ds_name, (val_x0, val_x1, val_gt, val_lm_preds) in val_dict.items():
-            val_result = reporter.score(
-                val_gt,
-                val_x0,
-                val_x1,
-            )
+        for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
+            val_result = reporter.score(val_gt, val_h)
 
             if val_lm_preds is not None:
-                val_gt_cpu = (
-                    val_gt.repeat_interleave(val_lm_preds.shape[1]).float().cpu()
+                (_, v, k, _) = val_h.shape
+
+                val_gt_cpu = repeat(val_gt, "n -> (n v)", v=v).cpu()
+                val_lm_preds = rearrange(val_lm_preds, "n v ... -> (n v) ...")
+                val_lm_auroc = roc_auc_score(
+                    to_one_hot(val_gt_cpu, k).long().flatten(), val_lm_preds.flatten()
                 )
-                val_lm_auroc = float(roc_auc_score(val_gt_cpu, val_lm_preds.flatten()))
-                val_lm_acc = float(
-                    accuracy_score(val_gt_cpu, val_lm_preds.flatten() > 0.5)
-                )
+
+                val_lm_acc = accuracy(val_gt_cpu, torch.from_numpy(val_lm_preds))
             else:
                 val_lm_auroc = None
                 val_lm_acc = None
@@ -160,7 +177,7 @@ class Train(Run):
 
             if lr_model is not None:
                 row["lr_auroc"], row["lr_acc"] = evaluate_supervised(
-                    lr_model, val_x0, val_x1, val_gt
+                    lr_model, val_h, val_gt
                 )
 
             row_buf.append(row)

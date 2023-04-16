@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
+from einops import rearrange, repeat
 from torch import Tensor, nn, optim
 
+from ..metrics import to_one_hot
 from ..truncated_eigh import truncated_eigh
 from ..utils.math_util import cov_mean_fused
 from .reporter import Reporter, ReporterConfig
@@ -17,37 +19,48 @@ class EigenReporterConfig(ReporterConfig):
 
     Args:
         var_weight: The weight of the variance term in the loss.
-        inv_weight: The weight of the invariance term in the loss.
         neg_cov_weight: The weight of the negative covariance term in the loss.
         num_heads: The number of reporter heads to fit. In other words, the number
             of eigenvectors to compute from the VINC matrix.
     """
 
-    var_weight: float = 1.0
-    inv_weight: float = 5.0
-    neg_cov_weight: float = 5.0
+    var_weight: float = 0.1
+    neg_cov_weight: float = 0.5
 
     num_heads: int = 1
+
+    def __post_init__(self):
+        if not (0 <= self.neg_cov_weight <= 1):
+            raise ValueError("neg_cov_weight must be in [0, 1]")
+        if self.num_heads <= 0:
+            raise ValueError("num_heads must be positive")
 
 
 class EigenReporter(Reporter):
     """A linear reporter whose weights are computed via eigendecomposition.
 
     Args:
-        in_features: The number of input features.
         cfg: The reporter configuration.
+        in_features: The number of input features.
+        num_classes: The number of classes for tracking the running means. If `None`,
+            we don't track the running means at all, and the semantics of `update()`
+            are a bit different. In particular, each call to `update()` is treated as a
+            new dataset, with a potentially different number of classes. The covariance
+            matrices are simply averaged over each batch of data passed to `update()`,
+            instead of being updated with Welford's algorithm. This is useful for
+            training a single reporter on multiple datasets, where the number of
+            classes may vary.
 
     Attributes:
         config: The reporter configuration.
-        intercluster_cov_M2: The running sum of the covariance matrices of the
-            centroids of the positive and negative clusters.
+        intercluster_cov_M2: The unnormalized covariance matrix averaged over all
+            classes.
         intracluster_cov: The running mean of the covariance matrices within each
             cluster. This doesn't need to be a running sum because it's doesn't use
             Welford's algorithm.
-        contrastive_xcov_M2: The running sum of the cross-covariance between the
-            centroids of the positive and negative clusters.
-        n: The running sum of the number of samples in the positive and negative
-            clusters.
+        contrastive_xcov_M2: Average of the unnormalized cross-covariance matrices
+            across all pairs of classes (k, k').
+        n: The running sum of the number of clusters processed by `update()`.
         weight: The reporter weight matrix. Guaranteed to always be orthogonal, and
             the columns are sorted in descending order of eigenvalue magnitude.
     """
@@ -58,16 +71,17 @@ class EigenReporter(Reporter):
     intracluster_cov: Tensor  # invariance
     contrastive_xcov_M2: Tensor  # negative covariance
     n: Tensor
-    neg_mean: Tensor
-    pos_mean: Tensor
+    class_means: Tensor | None
     weight: Tensor
 
     def __init__(
         self,
-        in_features: int,
         cfg: EigenReporterConfig,
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
+        in_features: int,
+        num_classes: int | None = 2,
+        *,
+        device: str | torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.config = cfg
@@ -79,10 +93,12 @@ class EigenReporter(Reporter):
         # Running statistics
         self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
         self.register_buffer(
-            "neg_mean", torch.zeros(in_features, device=device, dtype=dtype)
-        )
-        self.register_buffer(
-            "pos_mean", torch.zeros(in_features, device=device, dtype=dtype)
+            "class_means",
+            (
+                torch.zeros(num_classes, in_features, device=device, dtype=dtype)
+                if num_classes is not None
+                else None
+            ),
         )
 
         self.register_buffer(
@@ -104,14 +120,10 @@ class EigenReporter(Reporter):
             torch.zeros(cfg.num_heads, in_features, device=device, dtype=dtype),
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, hiddens: Tensor) -> Tensor:
         """Return the predicted log odds on input `x`."""
-        raw_scores = x @ self.weight.mT
+        raw_scores = hiddens @ self.weight.mT
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
-
-    def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
-        """Return the predicted log odds on the contrast pair `(x_pos, x_neg)`."""
-        return 0.5 * (self(x_pos) - self(x_neg))
 
     @property
     def contrastive_xcov(self) -> Tensor:
@@ -123,15 +135,15 @@ class EigenReporter(Reporter):
 
     @property
     def confidence(self) -> Tensor:
-        return self.weight.mT @ self.intercluster_cov @ self.weight
+        return self.weight @ self.intercluster_cov @ self.weight.mT
 
     @property
     def invariance(self) -> Tensor:
-        return -self.weight.mT @ self.intracluster_cov @ self.weight
+        return -self.weight @ self.intracluster_cov @ self.weight.mT
 
     @property
     def consistency(self) -> Tensor:
-        return -self.weight.mT @ self.contrastive_xcov @ self.weight
+        return -self.weight @ self.contrastive_xcov @ self.weight.mT
 
     def clear(self) -> None:
         """Clear the running statistics of the reporter."""
@@ -141,53 +153,62 @@ class EigenReporter(Reporter):
         self.n.zero_()
 
     @torch.no_grad()
-    def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
+    def update(self, hiddens: Tensor) -> None:
+        (n, _, k, d) = hiddens.shape
+
         # Sanity checks
-        assert x_pos.ndim == 3, "x_pos must be of shape [batch, num_variants, d]"
-        assert x_pos.shape == x_neg.shape, "x_pos and x_neg must have the same shape"
+        assert k > 1, "Must provide at least two hidden states"
+        assert hiddens.ndim == 4, "Must be of shape [batch, variants, choices, dim]"
 
-        # Average across variants inside each cluster, computing the centroids.
-        pos_centroids, neg_centroids = x_pos.mean(1), x_neg.mean(1)
-
-        # We don't actually call super because we need access to the earlier estimate
-        # of the population mean in order to update (cross-)covariances properly
-        # super().update(x_pos, x_neg)
-
-        sample_n = pos_centroids.shape[0]
-        self.n += sample_n
-
-        # Update the running means; super().update() does this usually
-        neg_delta = neg_centroids - self.neg_mean
-        pos_delta = pos_centroids - self.pos_mean
-        self.neg_mean += neg_delta.sum(dim=0) / self.n
-        self.pos_mean += pos_delta.sum(dim=0) / self.n
-
-        # *** Variance (inter-cluster) ***
-        # See code at https://bit.ly/3YC9BhH, as well as "Welford's online algorithm"
-        # in https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance.
-        # Post-mean update deltas are used to update the (co)variance
-        neg_delta2 = neg_centroids - self.neg_mean  # [n, d]
-        pos_delta2 = pos_centroids - self.pos_mean  # [n, d]
-        self.intercluster_cov_M2.addmm_(neg_delta.mT, neg_delta2)
-        self.intercluster_cov_M2.addmm_(pos_delta.mT, pos_delta2)
+        self.n += n
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
         # mean of covariance matrices, not the covariance matrix of means.
-        sample_invar = cov_mean_fused(x_pos) + cov_mean_fused(x_neg)
-        self.intracluster_cov += (sample_n / self.n) * (
-            sample_invar - self.intracluster_cov
-        )
+        intra_cov = cov_mean_fused(rearrange(hiddens, "n v k d -> (n k) v d"))
+        self.intracluster_cov += (n / self.n) * (intra_cov - self.intracluster_cov)
 
-        # *** Negative covariance ***
-        self.contrastive_xcov_M2.addmm_(neg_delta.mT, pos_delta2)
-        self.contrastive_xcov_M2.addmm_(pos_delta.mT, neg_delta2)
+        # [n, v, k, d] -> [n, k, d]
+        centroids = hiddens.mean(1)
+        deltas, deltas2 = [], []
+
+        # Iterating over classes
+        for i, h in enumerate(centroids.unbind(1)):
+            # Update the running means if needed
+            if self.class_means is not None:
+                delta = h - self.class_means[i]
+                self.class_means[i] += delta.sum(dim=0) / self.n
+
+                # Post-mean update deltas are used to update the (co)variance
+                delta2 = h - self.class_means[i]  # [n, d]
+            else:
+                delta = h - h.mean(dim=0)
+                delta2 = delta
+
+            # *** Variance (inter-cluster) ***
+            # See code at https://bit.ly/3YC9BhH and "Welford's online algorithm"
+            # in https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance.
+            self.intercluster_cov_M2.addmm_(delta.mT, delta2, alpha=1 / k)
+            deltas.append(delta)
+            deltas2.append(delta2)
+
+        # *** Negative covariance (contrastive) ***
+        # Iterating over pairs of classes (k, k') where k != k'
+        for i, d in enumerate(deltas):
+            for j, d_ in enumerate(deltas2):
+                # Compare to the other classes only
+                if i == j:
+                    continue
+
+                scale = 1 / (k * (k - 1))
+                self.contrastive_xcov_M2.addmm_(d.mT, d_, alpha=scale)
 
     def fit_streaming(self, truncated: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
+        inv_weight = 1 - self.config.neg_cov_weight
         A = (
             self.config.var_weight * self.intercluster_cov
-            - self.config.inv_weight * self.intracluster_cov
+            - inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
         )
 
@@ -202,50 +223,51 @@ class EigenReporter(Reporter):
 
     def fit(
         self,
-        x_pos: Tensor,
-        x_neg: Tensor,
+        hiddens: Tensor,
         labels: Optional[Tensor] = None,
-        *,
-        platt_scale: bool = True,
     ) -> float:
-        """Fit the probe to the contrast pair (x_pos, x_neg).
+        """Fit the probe to the contrast set `hiddens`.
 
         Args:
-            x_pos: The positive examples.
-            x_neg: The negative examples.
+            hiddens: The contrast set of shape [batch, variants, choices, dim].
             labels: The ground truth labels if available.
-            platt_scale: Whether to fit the scale and bias terms to data with LBFGS.
-                This is only used if labels are available.
 
         Returns:
             loss: Negative eigenvalue associated with the VINC direction.
         """
-        assert x_pos.shape == x_neg.shape
-        self.update(x_pos, x_neg)
+        self.update(hiddens)
         loss = self.fit_streaming()
-        if labels is not None and platt_scale:
-            self.platt_scale(labels, x_pos, x_neg)
+
+        if labels is not None:
+            (_, v, k, _) = hiddens.shape
+            hiddens = rearrange(hiddens, "n v k d -> (n v k) d")
+            labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k).flatten()
+
+            self.platt_scale(labels, hiddens)
 
         return loss
 
-    def platt_scale(
-        self, labels: Tensor, x_pos: Tensor, x_neg: Tensor, max_iter: int = 100
-    ):
-        """Fit the scale and bias terms to data with LBFGS."""
+    def platt_scale(self, labels: Tensor, hiddens: Tensor, max_iter: int = 100):
+        """Fit the scale and bias terms to data with LBFGS.
 
+        Args:
+            labels: Binary labels of shape [batch].
+            hiddens: Hidden states of shape [batch, dim].
+            max_iter: Maximum number of iterations for LBFGS.
+        """
         opt = optim.LBFGS(
             [self.bias, self.scale],
             line_search_fn="strong_wolfe",
             max_iter=max_iter,
-            tolerance_change=torch.finfo(x_pos.dtype).eps,
-            tolerance_grad=torch.finfo(x_pos.dtype).eps,
+            tolerance_change=torch.finfo(hiddens.dtype).eps,
+            tolerance_grad=torch.finfo(hiddens.dtype).eps,
         )
-        labels = labels.repeat_interleave(x_pos.shape[1]).float()
 
         def closure():
             opt.zero_grad()
-            logits = self.predict(x_pos, x_neg).flatten()
-            loss = nn.functional.binary_cross_entropy_with_logits(logits, labels)
+            loss = nn.functional.binary_cross_entropy_with_logits(
+                self(hiddens), labels.float()
+            )
 
             loss.backward()
             return float(loss)

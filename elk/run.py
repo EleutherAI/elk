@@ -86,7 +86,7 @@ class Run(ABC):
 
     def prepare_data(
         self, device: str, layer: int, split_type: Literal["train", "val"]
-    ) -> dict[str, tuple[Tensor, Tensor, Tensor, np.ndarray | None]]:
+    ) -> dict[str, tuple[Tensor, Tensor, np.ndarray | None]]:
         """Prepare data for the specified layer and split type."""
         out = {}
 
@@ -97,14 +97,13 @@ class Run(ABC):
             split = ds[key].with_format("torch", device=device, dtype=torch.int16)
             labels = assert_type(Tensor, split["label"])
             val_h = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
-            x0, x1 = val_h.unbind(dim=-2)
 
             with split.formatted_as("numpy"):
                 has_preds = "model_preds" in split.features
                 lm_preds = split["model_preds"] if has_preds else None
 
             ds_name = get_dataset_name(ds)
-            out[ds_name] = (x0, x1, labels, lm_preds)
+            out[ds_name] = (val_h, labels, lm_preds)
 
         return out
 

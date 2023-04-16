@@ -8,8 +8,8 @@ from typing import Any, Iterable, Literal
 
 import torch
 from datasets import (
+    Array2D,
     Array3D,
-    ClassLabel,
     DatasetDict,
     Features,
     Sequence,
@@ -28,12 +28,13 @@ from ..utils import (
     assert_type,
     convert_span,
     float32_to_int16,
+    infer_label_column,
+    infer_num_classes,
     instantiate_model,
     is_autoregressive,
     select_train_val_splits,
     select_usable_devices,
 )
-from .balanced_sampler import BalancedSampler
 from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
 
@@ -100,13 +101,16 @@ def extract_hiddens(
     if rank != 0:
         logging.disable(logging.CRITICAL)
 
-    ds_names = cfg.prompts.datasets
+    p_cfg = cfg.prompts
+    ds_names = p_cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
     prompt_ds = load_prompts(
         ds_names[0],
+        label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
+        num_classes=p_cfg.num_classes,
         split_type=split_type,
-        stream=cfg.prompts.stream,
+        stream=p_cfg.stream,
         rank=rank,
         world_size=world_size,
     )  # this dataset is already sharded, but hasn't been truncated to max_examples
@@ -124,19 +128,21 @@ def extract_hiddens(
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
 
-    global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
+    global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
     # break `max_examples` among the processes roughly equally
     max_examples = global_max_examples // world_size
     # the last process gets the remainder (which is usually small)
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
 
-    for example in islice(BalancedSampler(prompt_ds), max_examples):
+    for example in islice(prompt_ds, max_examples):
         num_variants = len(example["prompts"])
+        num_choices = len(example["prompts"][0])
+
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
                 num_variants,
-                2,  # contrast pair
+                num_choices,
                 model.config.hidden_size,
                 device=device,
                 dtype=torch.int16,
@@ -145,7 +151,7 @@ def extract_hiddens(
         }
         lm_preds = torch.empty(
             num_variants,
-            2,  # contrast pair
+            num_choices,
             device=device,
             dtype=torch.float32,
         )
@@ -238,8 +244,7 @@ def extract_hiddens(
             **hidden_dict,
         )
         if has_lm_preds:
-            # We only need the probability of the positive example since this is binary
-            out_record["model_preds"] = lm_preds.softmax(dim=-1)[..., 1]
+            out_record["model_preds"] = lm_preds.softmax(dim=-1)
 
         yield out_record
 
@@ -281,6 +286,13 @@ def extract(
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
 
+    ds_features = assert_type(Features, info.features)
+    label_col = (
+        cfg.prompts.label_columns[0]
+        if cfg.prompts.label_columns
+        else infer_label_column(ds_features)
+    )
+    num_classes = cfg.prompts.num_classes or infer_num_classes(ds_features[label_col])
     num_variants = cfg.prompts.num_variants
     if num_variants < 0:
         prompter = DatasetTemplates(ds_name, config_name)
@@ -289,7 +301,7 @@ def extract(
     layer_cols = {
         f"hidden_{layer}": Array3D(
             dtype="int16",
-            shape=(num_variants, 2, model_cfg.hidden_size),
+            shape=(num_variants, num_classes, model_cfg.hidden_size),
         )
         for layer in cfg.layers or range(model_cfg.num_hidden_layers)
     }
@@ -298,11 +310,10 @@ def extract(
             Value(dtype="string"),
             length=num_variants,
         ),
-        "label": ClassLabel(names=["neg", "pos"]),
+        "label": Value(dtype="int64"),
         "text_inputs": Sequence(
             Sequence(
                 Value(dtype="string"),
-                length=2,
             ),
             length=num_variants,
         ),
@@ -310,9 +321,9 @@ def extract(
 
     # Only add model_preds if the model is an autoregressive model
     if is_autoregressive(model_cfg):
-        other_cols["model_preds"] = Sequence(
-            Value(dtype="float32"),
-            length=num_variants,
+        other_cols["model_preds"] = Array2D(
+            shape=(num_variants, num_classes),
+            dtype="float32",
         )
 
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
