@@ -43,6 +43,15 @@ class Run(ABC):
             for cfg in self.cfg.data.explode()
         ]
 
+        # Save the hidden states to disk if requested
+        if self.cfg.data.hiddens_out_dir is not None:
+            print("Saving hidden states to disk at", self.cfg.data.hiddens_out_dir)
+            for ds_name, ds in zip(self.cfg.data.prompts.datasets, self.datasets):
+                for split in ds.keys():
+                    path = self.cfg.data.hiddens_out_dir / ds_name / split
+                    path.mkdir(parents=True, exist_ok=True)
+                    ds[split].save_to_disk(path)
+
         # TODO support raw evaluation
         if self.out_dir is None:
             # Save in a memorably-named directory inside of

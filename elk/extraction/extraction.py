@@ -61,6 +61,7 @@ class Extract(Serializable):
     prompts: PromptConfig
     model: str = field(positional=True)
 
+    hiddens_out_dir: Path | None = None
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
@@ -514,7 +515,7 @@ def extract(
                 split_type=[split_name] * len(devices),
                 world_size=[len(devices)] * len(devices),
             ),
-            name=get_raw_fingerprint() if is_raw else None,  # for caching
+            base_fingerprint=get_raw_fingerprint() if is_raw else None,
         )
         for (split_name, split_info) in split_dict.items()
     }

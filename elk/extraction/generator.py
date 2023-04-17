@@ -17,6 +17,7 @@ class _GeneratorConfig(BuilderConfig):
     generator: Callable | None = None
     gen_kwargs: dict[str, Any] = field(default_factory=dict)
     features: Features | None = None
+    base_fingerprint: str | None = None
 
     def create_config_id(
         self, config_kwargs: dict, custom_features: Features | None

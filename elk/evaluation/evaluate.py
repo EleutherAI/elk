@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from functools import partial
-from pathlib import Path
 from typing import Callable
 
 import pandas as pd
@@ -40,7 +39,6 @@ class Eval(Serializable):
     debug: bool = False
     min_gpu_mem: int | None = None
     num_gpus: int = -1
-    out_dir: Path | None = None
     skip_supervised: bool = False
 
     def execute(self):
