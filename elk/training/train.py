@@ -53,6 +53,7 @@ class Elicit(Serializable):
     num_gpus: int = -1
     out_dir: Path | None = None
     supervised: Literal["none", "single", "cv"] = "single"
+    preds_out_dir: Path | None = None
 
     def __post_init__(self):
         if self.data.prompts.datasets == ["raw"]:
@@ -84,7 +85,7 @@ class Train(Run):
         layer: int,
         devices: list[str],
         world_size: int = 1,
-    ) -> pd.DataFrame:
+    ) -> tuple[pd.DataFrame, dict]:
         """Train a single reporter on a single layer."""
         self.make_reproducible(seed=self.cfg.net.seed + layer)
         device = self.get_device(devices, world_size)
@@ -153,7 +154,10 @@ class Train(Run):
             lr_model = None
 
         row_buf = []
+        probs_buf = dict()
         for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
+            with torch.no_grad():
+                ds_probs = {f"reporter_{layer}": reporter(val_h).cpu().numpy()}
             val_result = reporter.score_contrast_set(val_gt, val_h)
 
             if val_lm_preds is not None:
@@ -186,16 +190,19 @@ class Train(Run):
                 row["lr_auroc"], row["lr_acc"] = evaluate_supervised(
                     lr_model, val_h, val_gt
                 )
+                with torch.no_grad():
+                    ds_probs[f"lr_{layer}"] = lr_model(val_h).cpu().numpy().squeeze(-1)
 
             row_buf.append(row)
+            probs_buf[ds_name] = ds_probs
 
-        return pd.DataFrame(row_buf)
+        return pd.DataFrame(row_buf), probs_buf
 
     def train(self):
         """Train a reporter on each layer of the network."""
         devices = select_usable_devices(self.cfg.num_gpus)
         num_devices = len(devices)
-        func: Callable[[int], pd.DataFrame] = partial(
+        func: Callable[[int], tuple[pd.DataFrame, dict]] = partial(
             self.train_reporter, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)

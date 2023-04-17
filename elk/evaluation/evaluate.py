@@ -1,10 +1,15 @@
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 from typing import Callable
 
 import pandas as pd
 import torch
+from einops import rearrange, repeat
 from simple_parsing.helpers import Serializable, field
+from sklearn.metrics import roc_auc_score
+
+from elk.metrics import accuracy, to_one_hot
 
 from ..extraction.extraction import Extract
 from ..files import elk_reporter_dir
@@ -35,6 +40,7 @@ class Eval(Serializable):
     data: Extract
     source: str = field(positional=True)
 
+    preds_out_dir: Path | None = None
     concatenated_layer_offset: int = 0
     debug: bool = False
     min_gpu_mem: int | None = None
@@ -56,7 +62,7 @@ class Evaluate(Run):
 
     def evaluate_reporter(
         self, layer: int, devices: list[str], world_size: int = 1
-    ) -> pd.DataFrame:
+    ) -> tuple[pd.DataFrame, dict]:
         """Evaluate a single reporter on a single layer."""
         is_raw = self.cfg.data.prompts.datasets == ["raw"]
         device = self.get_device(devices, world_size)
@@ -75,18 +81,37 @@ class Evaluate(Run):
         reporter.eval()
 
         row_buf = []
-        for ds_name, (val_h, val_gt, _) in val_output.items():
+        preds_buf = dict()
+        for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
+            with torch.no_grad():
+                ds_preds = {f"reporter_{layer}": reporter(val_h).cpu().numpy()}
             val_result = (
                 reporter.score(val_gt, val_h)
                 if is_raw
                 else reporter.score_contrast_set(val_gt, val_h)
             )
 
+            if val_lm_preds is not None:
+                (_, v, k, _) = val_h.shape
+
+                val_gt_cpu = repeat(val_gt, "n -> (n v)", v=v).cpu()
+                val_lm_preds = rearrange(val_lm_preds, "n v ... -> (n v) ...")
+                val_lm_auroc = roc_auc_score(
+                    to_one_hot(val_gt_cpu, k).long().flatten(), val_lm_preds.flatten()
+                )
+
+                val_lm_acc = accuracy(val_gt_cpu, torch.from_numpy(val_lm_preds))
+            else:
+                val_lm_auroc = None
+                val_lm_acc = None
+
             stats_row = pd.Series(
                 {
                     "dataset": ds_name,
                     "layer": layer,
                     **val_result._asdict(),
+                    "lm_auroc": val_lm_auroc,
+                    "lm_acc": val_lm_acc,
                 }
             )
 
@@ -97,12 +122,16 @@ class Evaluate(Run):
 
                 lr_auroc, lr_acc = evaluate_supervised(lr_model, val_h, val_gt)
 
+                with torch.no_grad():
+                    ds_preds[f"lr_{layer}"] = lr_model(val_h).cpu().numpy().squeeze(-1)
+
                 stats_row["lr_auroc"] = lr_auroc
                 stats_row["lr_acc"] = lr_acc
 
             row_buf.append(stats_row)
+            preds_buf[ds_name] = ds_preds
 
-        return pd.DataFrame(row_buf)
+        return pd.DataFrame(row_buf), preds_buf
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
@@ -111,7 +140,7 @@ class Evaluate(Run):
         )
 
         num_devices = len(devices)
-        func: Callable[[int], pd.DataFrame] = partial(
+        func: Callable[[int], tuple[pd.DataFrame, dict]] = partial(
             self.evaluate_reporter, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)

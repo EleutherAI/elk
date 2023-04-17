@@ -43,16 +43,6 @@ class Run(ABC):
             for cfg in self.cfg.data.explode()
         ]
 
-        # Save the hidden states to disk if requested
-        if self.cfg.data.hiddens_out_dir is not None:
-            print("Saving hidden states to disk at", self.cfg.data.hiddens_out_dir)
-            for ds_name, ds in zip(self.cfg.data.prompts.datasets, self.datasets):
-                for split in ds.keys():
-                    path = self.cfg.data.hiddens_out_dir / ds_name / split
-                    path.mkdir(parents=True, exist_ok=True)
-                    ds[split].save_to_disk(path)
-
-        # TODO support raw evaluation
         if self.out_dir is None:
             # Save in a memorably-named directory inside of
             # ELK_REPORTER_DIR/<model_name>/<dataset_name>
@@ -137,7 +127,7 @@ class Run(ABC):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], pd.DataFrame],
+        func: Callable[[int], tuple[pd.DataFrame, dict]],
         num_devices: int,
     ):
         """Apply a function to each layer of the datasets in parallel
@@ -161,10 +151,14 @@ class Run(ABC):
         with ctx.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
             mapper = pool.imap_unordered if num_devices > 1 else map
             df_buf = []
+            preds_buf = {ds_name: dict() for ds_name in self.cfg.data.prompts.datasets}
 
             try:
-                for df in tqdm(mapper(func, layers), total=len(layers)):
+                # TODO: also save reporter outputs and LR outputs for each layer
+                for df, preds in tqdm(mapper(func, layers), total=len(layers)):
                     df_buf.append(df)
+                    for ds_name, ds_preds in preds.items():
+                        preds_buf[ds_name].update(ds_preds)
             finally:
                 # Make sure the CSV is written even if we crash or get interrupted
                 if df_buf:
@@ -176,3 +170,22 @@ class Run(ABC):
                         self.out_dir,
                         is_raw=self.cfg.data.prompts.datasets == ["raw"],
                     )
+
+        is_raw = self.cfg.data.prompts.datasets == ["raw"]
+
+        # Save the hidden states to disk if requested
+        if self.cfg.preds_out_dir is not None:
+            print("Saving hidden states to disk at", self.cfg.preds_out_dir)
+
+            for ds_name, ds in zip(self.cfg.data.prompts.datasets, self.datasets):
+                val_name = "val" if is_raw else select_train_val_splits(ds)[1]
+                val_ds = ds[val_name]
+
+                # Add the predictions to the dataset
+                ds_preds = assert_type(dict, preds_buf[ds_name])
+                for key, preds in ds_preds.items():
+                    val_ds = val_ds.add_column(key, preds.tolist())  # type: ignore
+
+                path = self.cfg.preds_out_dir / ds_name
+                path.mkdir(parents=True, exist_ok=True)
+                val_ds.save_to_disk(path.as_posix())

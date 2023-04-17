@@ -61,7 +61,6 @@ class Extract(Serializable):
     prompts: PromptConfig
     model: str = field(positional=True)
 
-    hiddens_out_dir: Path | None = None
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
@@ -281,6 +280,7 @@ def get_max_examples(global_max_examples: int, rank: int, world_size: int) -> in
     return max_examples
 
 
+@torch.no_grad()
 def raw_extract_hiddens(
     cfg: "Extract",
     *,
