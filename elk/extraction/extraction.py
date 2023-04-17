@@ -122,7 +122,7 @@ def extract_hiddens(
         cfg.model, truncation_side="left", verbose=False
     )
     has_lm_preds = is_autoregressive(model.config)
-    if has_lm_preds and rank == 0:
+    if has_lm_preds and rank == 0 and tokenizer.is_fast:
         print("Model has language model head, will store predictions.")
 
     # Iterating over questions
