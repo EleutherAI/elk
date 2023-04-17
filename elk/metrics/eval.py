@@ -54,11 +54,14 @@ def evaluate_preds(y_true: Tensor, y_pred: Tensor) -> EvalResult:
     (n, v, c) = y_pred.shape
     assert y_true.shape == (n,)
 
+    # Clustered bootstrap confidence intervals for AUROC
+    y_true = repeat(y_true, "n -> n v", v=v)
+    auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(1), y_pred.flatten(1))
+
     y_pred = rearrange(y_pred, "n v c -> (n v) c")
-    y_true = repeat(y_true, "n -> (n v)", v=v)
+    y_true = y_true.flatten()
 
     acc = accuracy_ci(y_true, y_pred.argmax(dim=-1))
-    auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(), y_pred.flatten())
     cal_acc = None
     cal_err = None
 
@@ -85,5 +88,5 @@ def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
     Returns:
         Tensor: A one-hot representation tensor of shape (N, n_classes).
     """
-    one_hot_labels = labels.new_zeros(labels.size(0), n_classes)
-    return one_hot_labels.scatter_(1, labels.unsqueeze(1).long(), 1)
+    one_hot_labels = labels.new_zeros(*labels.shape, n_classes)
+    return one_hot_labels.scatter_(-1, labels.unsqueeze(-1).long(), 1)

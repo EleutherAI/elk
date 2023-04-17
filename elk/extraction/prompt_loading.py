@@ -49,7 +49,7 @@ class PromptConfig(Serializable):
     datasets: list[str] = field(positional=True)
     data_dirs: list[str] = field(default_factory=list)
     label_columns: list[str] = field(default_factory=list)
-    max_examples: list[int] = field(default_factory=lambda: [750, 250])
+    max_examples: list[int] = field(default_factory=lambda: [1000, 1000])
     num_classes: int = 0
     num_shots: int = 0
     num_variants: int = -1
