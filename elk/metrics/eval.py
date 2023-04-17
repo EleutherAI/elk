@@ -1,7 +1,7 @@
 from dataclasses import asdict, dataclass
 
 import torch
-from einops import rearrange, repeat
+from einops import repeat
 from torch import Tensor
 
 from .accuracy import AccuracyResult, accuracy_ci
@@ -57,22 +57,21 @@ def evaluate_preds(y_true: Tensor, y_pred: Tensor) -> EvalResult:
     # Clustered bootstrap confidence intervals for AUROC
     y_true = repeat(y_true, "n -> n v", v=v)
     auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(1), y_pred.flatten(1))
-
-    y_pred = rearrange(y_pred, "n v c -> (n v) c")
-    y_true = y_true.flatten()
-
     acc = accuracy_ci(y_true, y_pred.argmax(dim=-1))
+
     cal_acc = None
     cal_err = None
 
     if c == 2:
-        pos_probs = y_pred[..., 1].flatten().sigmoid()
-        cal_err = CalibrationError().update(y_true, pos_probs).compute()
+        pos_probs = y_pred[..., 1].sigmoid()
 
         # Calibrated accuracy
         cal_thresh = pos_probs.float().quantile(y_true.float().mean())
         cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
         cal_acc = accuracy_ci(y_true, cal_preds)
+
+        cal = CalibrationError().update(y_true.flatten(), pos_probs.flatten())
+        cal_err = cal.compute()
 
     return EvalResult(acc, cal_acc, cal_err, auroc)
 

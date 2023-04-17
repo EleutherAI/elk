@@ -123,7 +123,7 @@ def roc_auc_ci(
     # nanquantile instead of quantile because some bootstrap samples may have
     # NaN values due to the fact that they have only one class.
     alpha = (1 - level) / 2
-    q = y_pred.new_tensor([alpha, 1 - alpha])
+    q = bootstrap_aucs.new_tensor([alpha, 1 - alpha])
     lower, upper = bootstrap_aucs.nanquantile(q).tolist()
 
     # Compute the point estimate. Call flatten to ensure that we get a single number

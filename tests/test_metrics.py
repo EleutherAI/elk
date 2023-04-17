@@ -1,13 +1,16 @@
+import math
+
 import numpy as np
 import torch
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
+from torch.distributions.normal import Normal
 
-from elk.metrics import roc_auc
+from elk.metrics import accuracy_ci, roc_auc
 
 
-def test_roc_auc_score():
+def test_auroc_and_acc():
     # Generate 1D binary classification dataset
     X_1d, y_true_1d = make_classification(n_samples=1000, random_state=42)
 
@@ -51,3 +54,24 @@ def test_roc_auc_score():
     # Assert that the results from the two implementations are almost equal
     np.testing.assert_almost_equal(roc_auc_1d_torch, roc_auc_1d_sklearn)
     np.testing.assert_almost_equal(roc_auc_2d_torch, roc_auc_2d_sklearn)
+
+    ### Test accuracy_ci function ###
+    # Compute accuracy confidence interval
+    level = 0.95
+    hard_preds = y_scores_1d_torch > 0.5
+    acc_ci = accuracy_ci(y_true_1d_torch, hard_preds, level=level)
+
+    # Point estimate of the accuracy
+    acc = hard_preds.eq(y_true_1d_torch).float().mean()
+
+    # Compute the CI quantiles
+    alpha = (1 - level) / 2
+    q = acc.new_tensor([alpha, 1 - alpha])
+
+    # Normal approximation to the binomial distribution
+    stderr = (acc * (1 - acc) / len(y_true_1d_torch)) ** 0.5
+    lower, upper = Normal(acc, stderr).icdf(q).tolist()
+
+    # Assert that the results from the two implementations are close
+    assert math.isclose(acc_ci.lower, lower, rel_tol=2e-3)
+    assert math.isclose(acc_ci.upper, upper, rel_tol=2e-3)
