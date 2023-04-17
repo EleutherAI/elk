@@ -9,9 +9,9 @@ from simple_parsing.helpers import Serializable, field
 
 from ..extraction.extraction import Extract
 from ..files import elk_reporter_dir
+from ..metrics import evaluate_preds
 from ..run import Run
 from ..training import Reporter
-from ..training.supervised import evaluate_supervised
 from ..utils import select_usable_devices
 
 
@@ -70,30 +70,25 @@ class Evaluate(Run):
 
         row_buf = []
         for ds_name, (val_h, val_gt, _) in val_output.items():
-            val_result = reporter.score(val_gt, val_h)
+            val_result = evaluate_preds(val_gt, reporter(val_h))
 
-            stats_row = pd.Series(
-                {
-                    "dataset": ds_name,
-                    "layer": layer,
-                    **val_result._asdict(),
-                }
-            )
+            stats_row = {
+                "dataset": ds_name,
+                "layer": layer,
+                **val_result.to_dict(),
+            }
 
             lr_dir = experiment_dir / "lr_models"
             if not self.cfg.skip_supervised and lr_dir.exists():
                 with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
                     lr_model = torch.load(f, map_location=device).eval()
 
-                lr_auroc_res, lr_acc = evaluate_supervised(lr_model, val_h, val_gt)
-                stats_row["lr_auroc"] = lr_auroc_res.estimate
-                stats_row["lr_auroc_lower"] = lr_auroc_res.lower
-                stats_row["lr_auroc_upper"] = lr_auroc_res.upper
-                stats_row["lr_acc"] = lr_acc
+                lr_result = evaluate_preds(val_gt, lr_model(val_h))
+                stats_row.update(lr_result.to_dict(prefix="lr_"))
 
             row_buf.append(stats_row)
 
-        return pd.DataFrame(row_buf)
+        return pd.DataFrame.from_records(row_buf)
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""

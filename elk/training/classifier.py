@@ -47,7 +47,7 @@ class Classifier(torch.nn.Module):
         self.linear.weight.data.zero_()
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.linear(x)
+        return self.linear(x).squeeze(-1)
 
     @torch.enable_grad()
     def fit(
