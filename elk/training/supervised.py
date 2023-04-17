@@ -18,7 +18,7 @@ def evaluate_supervised(
 
     labels = repeat(val_labels, "n -> (n v)", v=v)
     lr_acc = accuracy(labels, raw_preds.flatten())
-    
+
     one_hot_labels = to_one_hot(labels, k).flatten()
     lr_auroc = roc_auc_ci(one_hot_labels, logits.flatten())
 
