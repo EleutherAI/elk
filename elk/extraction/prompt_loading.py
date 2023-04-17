@@ -17,6 +17,7 @@ from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
     infer_label_column,
+    infer_num_classes,
     select_train_val_splits,
 )
 from .balanced_sampler import FewShotSampler
@@ -128,7 +129,6 @@ class PromptConfig(Serializable):
 
 def load_prompts(
     ds_string: str,
-    num_classes: int,
     label_column: Optional[str] = None,
     num_shots: int = 0,
     num_variants: int = -1,
@@ -186,6 +186,7 @@ def load_prompts(
 
     feats = assert_type(Features, ds.features)
     label_column = infer_label_column(feats)
+    num_classes = infer_num_classes(feats[label_column])
     rng = Random(seed)
 
     if num_shots > 0:

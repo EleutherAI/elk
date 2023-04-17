@@ -113,7 +113,6 @@ def extract_hiddens(
 
     prompt_ds = load_prompts(
         ds_names[0],
-        num_classes=p_cfg.num_classes,
         label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
         split_type=split_type,
         stream=p_cfg.stream,
