@@ -14,13 +14,13 @@ def evaluate_supervised(
 
     with torch.no_grad():
         logits = rearrange(lr_model(val_h).squeeze(), "n v k -> (n v) k")
-        raw_preds = to_one_hot(logits.argmax(dim=-1), k).long()
+        raw_preds = logits.argmax(dim=-1).long()
 
     labels = repeat(val_labels, "n -> (n v)", v=v)
-    labels = to_one_hot(labels, k).flatten()
-
     lr_acc = accuracy(labels, raw_preds.flatten())
-    lr_auroc = roc_auc_ci(labels, logits.flatten())
+    
+    one_hot_labels = to_one_hot(labels, k).flatten()
+    lr_auroc = roc_auc_ci(one_hot_labels, logits.flatten())
 
     return lr_auroc, assert_type(float, lr_acc)
 
