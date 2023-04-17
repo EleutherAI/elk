@@ -28,6 +28,7 @@ from torch import Tensor
 from transformers import AutoConfig, AutoTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from ..extraction.balanced_sampler import BalancedSampler
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
@@ -112,8 +113,8 @@ def extract_hiddens(
 
     prompt_ds = load_prompts(
         ds_names[0],
-        label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
         num_classes=p_cfg.num_classes,
+        label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
         split_type=split_type,
         stream=p_cfg.stream,
         rank=rank,
@@ -136,7 +137,12 @@ def extract_hiddens(
     global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
     max_examples = get_max_examples(global_max_examples, rank, world_size)
 
-    for example in islice(prompt_ds, max_examples):
+    sampler = (
+        prompt_ds
+        if cfg.prompts.skip_balance
+        else BalancedSampler(prompt_ds, p_cfg.num_classes)
+    )
+    for example in islice(sampler, max_examples):
         num_variants = len(example["prompts"])
         num_choices = len(example["prompts"][0])
 
@@ -317,8 +323,12 @@ def raw_extract_hiddens(
     global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
     max_examples = get_max_examples(global_max_examples, rank, world_size)
 
-    # TODO: fix balancing by merging changes from check-streamable
-    for example in islice(ds, max_examples):
+    sampler = (
+        ds
+        if cfg.prompts.skip_balance
+        else BalancedSampler(assert_type(Iterable[dict], ds), 2)
+    )
+    for example in islice(sampler, max_examples):
         text, label = example["text"], example["label"]  # type: ignore
 
         # prepend start token so that the model can predict the first token
@@ -451,6 +461,7 @@ def extract(
         num_classes = cfg.prompts.num_classes or infer_num_classes(
             ds_features[label_col]
         )
+        cfg.prompts.num_classes = num_classes  # TODO: put this in the post_init
         num_variants = cfg.prompts.num_variants
         if num_variants < 0:
             prompter = DatasetTemplates(ds_name, config_name)

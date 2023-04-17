@@ -17,7 +17,6 @@ from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
     infer_label_column,
-    infer_num_classes,
     select_train_val_splits,
 )
 from .balanced_sampler import FewShotSampler
@@ -48,6 +47,7 @@ class PromptConfig(Serializable):
             call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
         seed: The seed to use for prompt randomization. Defaults to 42.
         stream: Whether to stream the dataset from the Internet. Defaults to False.
+        skip_balance: Whether to skip balancing the dataset. Defaults to False.
     """
 
     datasets: list[str] = field(positional=True)
@@ -59,6 +59,7 @@ class PromptConfig(Serializable):
     num_variants: int = -1
     seed: int = 42
     stream: bool = False
+    skip_balance: bool = False
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
@@ -127,8 +128,8 @@ class PromptConfig(Serializable):
 
 def load_prompts(
     ds_string: str,
+    num_classes: int,
     label_column: Optional[str] = None,
-    num_classes: int = 0,
     num_shots: int = 0,
     num_variants: int = -1,
     seed: int = 42,
@@ -185,7 +186,6 @@ def load_prompts(
 
     feats = assert_type(Features, ds.features)
     label_column = infer_label_column(feats)
-    num_classes = infer_num_classes(feats[label_column])
     rng = Random(seed)
 
     if num_shots > 0:

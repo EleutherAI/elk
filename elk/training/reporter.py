@@ -95,6 +95,12 @@ class Reporter(nn.Module, ABC):
         Returns:
             an instance of EvalResult containing the loss, accuracy, calibrated
                 accuracy, and AUROC of the probe on `contrast_set`.
+                Accuracy: top-1 accuracy averaged over questions and variants.
+                Calibrated accuracy: top-1 accuracy averaged over questions and
+                    variants, calibrated so that x% of the predictions are `True`,
+                    where x is the proprtion of examples with ground truth label `True`.
+                AUROC: averaged over the n * v * c binary questions
+                ECE: Expected Calibration Error
         """
         logits = self(contrast_set)
         (_, v, c) = logits.shape
@@ -116,12 +122,10 @@ class Reporter(nn.Module, ABC):
             cal_acc = 0.0
             cal_err = 0.0
 
-        raw_preds = to_one_hot(logits.argmax(dim=-1), c).long()
-        Y = to_one_hot(Y, c).long().flatten()
+        Y_one_hot = to_one_hot(Y, c).long().flatten()
+        auroc = roc_auc_score(Y_one_hot.cpu(), logits.cpu().flatten())
 
-        auroc = roc_auc_score(Y.cpu(), logits.cpu().flatten())
-        # TODO: doesn't this acc measure inflate the accuracy because
-        # we enforce mutual exclusivity?
+        raw_preds = logits.argmax(dim=-1).long()
         raw_acc = accuracy(Y, raw_preds.flatten())
 
         return EvalResult(

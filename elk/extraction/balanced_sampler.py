@@ -36,6 +36,7 @@ class BalancedSampler(TorchIterableDataset):
         self.buffers = {
             label: deque(maxlen=self.buffer_size) for label in range(self.num_classes)
         }
+        self.num_yielded = 0
 
     def __iter__(self):
         for sample in self.data:
@@ -49,11 +50,23 @@ class BalancedSampler(TorchIterableDataset):
             # Add the sample to the buffer for its class label
             self.buffers[label].append(sample)
 
+            # If any buffer is full before we've returned any samples,
+            # then raise an error that the dataset is too unbalanced
+            if self.num_yielded == 0 and any(
+                len(buffer) == self.buffer_size for buffer in self.buffers.values()
+            ):
+                raise ValueError(
+                    "The dataset is too unbalanced to balance with a buffer size of "
+                    f"{self.buffer_size}. Consider increasing the buffer size or "
+                    "turning off streaming."
+                )
+
             # Check if all buffers have at least one sample
             while all(len(buffer) > 0 for buffer in self.buffers.values()):
                 # Yield one sample from each buffer in a round-robin fashion
                 for buf in self.buffers.values():
                     yield buf.popleft()
+                    self.num_yielded += 1
 
 
 class FewShotSampler:

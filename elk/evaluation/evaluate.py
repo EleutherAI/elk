@@ -36,7 +36,6 @@ class Eval(Serializable):
     data: Extract
     source: str = field(positional=True)
 
-    # TODO: allow for non-balanced eval
     concatenated_layer_offset: int = 0
     debug: bool = False
     min_gpu_mem: int | None = None
@@ -49,9 +48,6 @@ class Eval(Serializable):
 
         for dataset in self.data.prompts.datasets:
             run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
-
-            # TODO: if dataset is "raw", then we specify that the Extraction in Eval
-            # should be done on the raw dataset
 
             run.evaluate()
 
