@@ -182,7 +182,9 @@ def extract_hiddens(
                 variant_inputs.append(text)
                 inputs = tokenizer(
                     text,
-                    return_offsets_mapping=True,
+                    # This flag isn't supported for non-fast tokenizers.
+                    # TODO: Support non-fast tokenizers like LLaMA
+                    return_offsets_mapping=tokenizer.is_fast,
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
@@ -190,14 +192,18 @@ def extract_hiddens(
 
                 # The offset_mapping is a sorted list of (start, end) tuples. We locate
                 # the start of the answer in the tokenized sequence with binary search.
-                offsets = inputs.pop("offset_mapping").squeeze().tolist()
+                offsets = (
+                    inputs.pop("offset_mapping").squeeze().tolist()
+                    if tokenizer.is_fast
+                    else None
+                )
                 inputs = inputs.to(device)
 
                 # Run the forward pass
                 outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
-                if has_lm_preds:
+                if has_lm_preds and offsets is not None:
                     start, end = convert_span(
                         offsets, (answer_start, answer_start + len(choice["answer"]))
                     )
