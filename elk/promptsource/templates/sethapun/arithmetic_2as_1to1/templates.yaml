@@ -1,7 +1,7 @@
 dataset: sethapun/arithmetic_2as_1to1
 templates:
   a0000001-f0b3-3bcc-a821-f280d3e0001: !Template
-    answer_choices: no ||| yes
+    answer_choices: No ||| Yes
     id: a0000001-f0b3-3bcc-a821-f280d3e0001
     jinja: 'Is {{expression}} = {{answer}}, {{"yes or no"}}?||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
@@ -14,7 +14,7 @@ templates:
     name: aras1_1
     reference: ''
   a0000001-f0b3-3bcc-a821-f280d3e0002: !Template
-    answer_choices: no ||| yes
+    answer_choices: No ||| Yes
     id: a0000001-f0b3-3bcc-a821-f280d3e0002
     jinja: 'Is {{answer}} the result of {{expression}}, {{"yes or no"}}?||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
@@ -27,7 +27,7 @@ templates:
     name: aras1_2
     reference: ''
   a0000001-f0b3-3bcc-a821-f280d3e0003: !Template
-    answer_choices: false ||| true
+    answer_choices: No ||| Yes
     id: a0000001-f0b3-3bcc-a821-f280d3e0003
     jinja: The answer to {{expression}} is {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}
     metadata: !TemplateMetadata
@@ -40,7 +40,7 @@ templates:
     name: aras1_3
     reference: ''
   a0000001-f0b3-3bcc-a821-f280d3e0004: !Template
-    answer_choices: false ||| true
+    answer_choices: False ||| True
     id: a0000001-f0b3-3bcc-a821-f280d3e0004
     jinja: '{{expression}} = {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
@@ -53,7 +53,7 @@ templates:
     name: aras1_4
     reference: ''
   a0000001-f0b3-3bcc-a821-f280d3e0005: !Template
-    answer_choices: false ||| true
+    answer_choices: False ||| True
     id: a0000001-f0b3-3bcc-a821-f280d3e0005
     jinja: '{{answer}} is the result of {{expression}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
@@ -65,5 +65,55 @@ templates:
       original_task: true
     name: aras1_5
     reference: ''
-
-
+  a0000001-f0b3-3bcc-a821-f280d3e0006: !Template
+    answer_choices: False ||| True
+    id: a0000001-f0b3-3bcc-a821-f280d3e0006
+    jinja: 'Is {{answer}} = {{expression}}, {{"yes or no"}}?||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras1_6
+    reference: ''
+  a0000001-f0b3-3bcc-a821-f280d3e0007: !Template
+    answer_choices: False ||| True
+    id: a0000001-f0b3-3bcc-a821-f280d3e0007
+    jinja: '{{answer}} = {{expression}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras1_7
+    reference: ''
+  a0000001-f0b3-3bcc-a821-f280d3e0008: !Template
+    answer_choices: False ||| True
+    id: a0000001-f0b3-3bcc-a821-f280d3e0008
+    jinja: '{{expression}} evaluates to {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras1_8
+    reference: ''
+  a0000001-f0b3-3bcc-a821-f280d3e0009: !Template
+    answer_choices: No ||| Yes
+    id: a0000001-f0b3-3bcc-a821-f280d3e0009
+    jinja: 'The result of {{expression}} is {{answer}}, {{"true or false"}}?||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras1_9
+    reference: ''

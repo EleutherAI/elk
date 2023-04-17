@@ -3,7 +3,7 @@ templates:
   a0000500-f0b3-3bcc-a821-f280d3e0001: !Template
     answer_choices: No ||| Yes
     id: a0000500-f0b3-3bcc-a821-f280d3e0001
-    jinja: 'Is {{expression}} = {{answer}}, {{yes or no}}?||| {{answer_choices[label]}}'
+    jinja: 'Is {{expression}} = {{answer}}, {{"yes or no"}}?||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -16,7 +16,7 @@ templates:
   a0000500-f0b3-3bcc-a821-f280d3e0002: !Template
     answer_choices: No ||| Yes
     id: a0000500-f0b3-3bcc-a821-f280d3e0002
-    jinja: 'Is {{answer}} the result of {{expression}}, {{yes or no}}?||| {{answer_choices[label]}}'
+    jinja: 'Is {{answer}} the result of {{expression}}, {{"yes or no"}}?||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -29,7 +29,7 @@ templates:
   a0000500-f0b3-3bcc-a821-f280d3e0003: !Template
     answer_choices: False ||| True
     id: a0000500-f0b3-3bcc-a821-f280d3e0003
-    jinja: 'The answer to {{expression}} is {{answer}}, {{true or false}}? ||| {{answer_choices[label]}}'
+    jinja: 'The answer to {{expression}} is {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -42,7 +42,7 @@ templates:
   a0000500-f0b3-3bcc-a821-f280d3e0004: !Template
     answer_choices: False ||| True
     id: a0000500-f0b3-3bcc-a821-f280d3e0004
-    jinja: '{{expression}} = {{answer}}, {{true or false}}? ||| {{answer_choices[label]}}'
+    jinja: '{{expression}} = {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -55,7 +55,7 @@ templates:
   a0000500-f0b3-3bcc-a821-f280d3e0005: !Template
     answer_choices: False ||| True
     id: a0000500-f0b3-3bcc-a821-f280d3e0005
-    jinja: '{{answer}} is the result of {{expression}}, {{true or false}}? ||| {{answer_choices[label]}}'
+    jinja: '{{answer}} is the result of {{expression}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
