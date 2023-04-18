@@ -178,9 +178,6 @@ def load_prompts(
     extra_cols = list(assert_type(Features, ds.features))
     extra_cols.remove(label_column)
 
-    if label_column != "label":
-        ds = ds.rename_column(label_column, "label")
-
     for example in ds:
         yield _convert_to_prompts(
             example,
