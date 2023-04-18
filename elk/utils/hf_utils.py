@@ -1,5 +1,6 @@
 import transformers
 from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
+from ..rwkv_lm.rwkv_hf import RWKVModel
 
 # Ordered by preference
 _AUTOREGRESSIVE_SUFFIXES = [
@@ -13,6 +14,9 @@ _AUTOREGRESSIVE_SUFFIXES = [
 
 def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class."""
+    if model_str.startswith("RWKV"):
+        return RWKVModel()
+
     model_cfg = AutoConfig.from_pretrained(model_str)
     archs = model_cfg.architectures
     if not isinstance(archs, list):

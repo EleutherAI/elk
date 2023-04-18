@@ -20,7 +20,7 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoConfig, AutoTokenizer, GPT2TokenizerFast
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
@@ -36,6 +36,7 @@ from ..utils import (
 from .balanced_sampler import BalancedSampler
 from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
+from ..rwkv_lm.rwkv_hf import RWKVConfig
 
 
 @dataclass
@@ -114,9 +115,15 @@ def extract_hiddens(
     model = instantiate_model(
         cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
     ).to(device)
-    tokenizer = AutoTokenizer.from_pretrained(
-        cfg.model, truncation_side="left", verbose=False
-    )
+    tokenizer = None
+
+    if cfg.model.startswith("RWKV"):
+        tokenizer = GPT2TokenizerFast(tokenizer_file='/home/kyle/repos/elk/elk/rwkv_lm/20B_tokenizer.json')
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(
+            cfg.model, truncation_side="left", verbose=False
+        )
+
     has_lm_preds = is_autoregressive(model.config)
     if has_lm_preds and rank == 0:
         print("Model has language model head, will store predictions.")
@@ -174,21 +181,30 @@ def extract_hiddens(
 
                 # Record the EXACT string we fed to the model
                 variant_inputs.append(text)
-                inputs = tokenizer(
-                    text,
-                    return_offsets_mapping=True,
-                    return_tensors="pt",
-                    text_target=target,  # type: ignore[arg-type]
-                    truncation=True,
-                )
+                inputs = None
+                if cfg.model.startswith("RWKV"):
+                    inputs = tokenizer(
+                        text,
+                        return_offsets_mapping=True,
+                        text_target=target,  # type: ignore[arg-type]
+                        truncation=True,
+                    )
+                else:
+                    inputs = tokenizer(
+                        text,
+                        return_offsets_mapping=True,
+                        return_tensors="pt",
+                        text_target=target,  # type: ignore[arg-type]
+                        truncation=True,
+                    )
 
                 # The offset_mapping is a sorted list of (start, end) tuples. We locate
                 # the start of the answer in the tokenized sequence with binary search.
-                offsets = inputs.pop("offset_mapping").squeeze().tolist()
-                inputs = inputs.to(device)
+                offsets = inputs.pop("offset_mapping") if cfg.model.startswith("RWKV") else inputs.pop("offset_mapping").squeeze().tolist()
+                inputs = inputs if cfg.model.startswith("RWKV") else  inputs.to(device)
 
                 # Run the forward pass
-                outputs = model(**inputs, output_hidden_states=True)
+                outputs = model(**inputs) if cfg.model.startswith("RWKV") else model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
@@ -207,24 +223,27 @@ def extract_hiddens(
                     length = inputs.labels.shape[-1]
                     lm_preds[i, j] = -assert_type(Tensor, outputs.loss) * length
 
-                hiddens = (
+                hiddens = outputs if cfg.model.startswith("RWKV") else (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 )
                 # First element of list is the input embeddings
-                hiddens = hiddens[1:]
+                hiddens = hiddens if cfg.model.startswith("RWKV") else hiddens[1:]
 
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
 
                 # Current shape of each element: (batch_size, seq_len, hidden_size)
-                if cfg.token_loc == "first":
-                    hiddens = [h[..., 0, :] for h in hiddens]
-                elif cfg.token_loc == "last":
-                    hiddens = [h[..., -1, :] for h in hiddens]
-                elif cfg.token_loc == "mean":
-                    hiddens = [h.mean(dim=-2) for h in hiddens]
-                else:
-                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+                # if cfg.model.startswith("RWKV"):
+                #     hiddens = [h for h in hiddens]
+                if not cfg.model.startswith("RWKV"):
+                    if cfg.token_loc == "first":
+                        hiddens = [h[..., 0, :] for h in hiddens]
+                    elif cfg.token_loc == "last":
+                        hiddens = [h[..., -1, :] for h in hiddens]
+                    elif cfg.token_loc == "mean":
+                        hiddens = [h.mean(dim=-2) for h in hiddens]
+                    else:
+                        raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
@@ -276,7 +295,11 @@ def extract(
             dataset_name=available_splits.dataset_name,
         )
 
-    model_cfg = AutoConfig.from_pretrained(cfg.model)
+    model_cfg = None
+    if cfg.model.startswith("RWKV"):
+        model_cfg = RWKVConfig()
+    else:
+        model_cfg = AutoConfig.from_pretrained(cfg.model)
 
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
