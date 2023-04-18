@@ -130,6 +130,7 @@ class PromptConfig(Serializable):
 def load_prompts(
     ds_string: str,
     label_column: Optional[str] = None,
+    num_classes: int = 0,
     num_shots: int = 0,
     num_variants: int = -1,
     seed: int = 42,
@@ -184,9 +185,8 @@ def load_prompts(
     if rank == 0:
         print(f"Using {num_variants} variants of each prompt")
 
-    feats = assert_type(Features, ds.features)
-    label_column = infer_label_column(feats)
-    num_classes = infer_num_classes(feats[label_column])
+    label_column = label_column or infer_label_column(ds.features)
+    num_classes = num_classes or infer_num_classes(ds.features[label_column])
     rng = Random(seed)
 
     if num_shots > 0:
@@ -202,9 +202,6 @@ def load_prompts(
     # Remove everything except the label column
     extra_cols = list(assert_type(Features, ds.features))
     extra_cols.remove(label_column)
-
-    if label_column != "label":
-        ds = ds.rename_column(label_column, "label")
 
     for example in ds:
         yield _convert_to_prompts(

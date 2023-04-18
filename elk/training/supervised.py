@@ -1,22 +1,21 @@
 import torch
 from einops import rearrange, repeat
-from sklearn.metrics import roc_auc_score
 from torch import Tensor
 
-from ..metrics import accuracy, to_one_hot
+from ..metrics import RocAucResult, accuracy, roc_auc_ci, to_one_hot
 from ..utils import assert_type
 from .classifier import Classifier
 
 
 def evaluate_supervised(
     lr_model: Classifier, val_h: Tensor, val_labels: Tensor
-) -> tuple[float, float]:
+) -> tuple[RocAucResult, float]:
     if len(val_h.shape) == 4:
         # hiddens in a contrast set
-        (n, v, c, d) = val_h.shape
+        (_, v, c, _) = val_h.shape
 
         with torch.no_grad():
-            logits = rearrange(lr_model(val_h).cpu().squeeze(), "n v c -> (n v) c")
+            logits = rearrange(lr_model(val_h).squeeze(), "n v c -> (n v) c")
             raw_preds = to_one_hot(logits.argmax(dim=-1), c).long()
 
         labels = repeat(val_labels, "n -> (n v)", v=v)
@@ -35,12 +34,9 @@ def evaluate_supervised(
         raise ValueError(f"Invalid val_h shape: {val_h.shape}")
 
     lr_acc = accuracy(labels, raw_preds.flatten())
-    if len(labels.unique()) == 1:
-        lr_auroc = -1.0
-    else:
-        lr_auroc = roc_auc_score(labels.cpu(), logits.cpu().flatten())
+    lr_auroc = RocAucResult(-1., -1., -1.) if len(labels.unique()) == 1 else roc_auc_ci(labels, logits.flatten())
 
-    return assert_type(float, lr_auroc), assert_type(float, lr_acc)
+    return lr_auroc, assert_type(float, lr_acc)
 
 
 def train_supervised(data: dict[str, tuple], device: str, cv: bool) -> Classifier:

@@ -9,11 +9,10 @@ import torch
 import torch.nn as nn
 from einops import rearrange, repeat
 from simple_parsing.helpers import Serializable
-from sklearn.metrics import roc_auc_score
 from torch import Tensor
 
 from ..calibration import CalibrationError
-from ..metrics import accuracy, to_one_hot
+from ..metrics import RocAucResult, accuracy, roc_auc_ci, to_one_hot
 
 
 class EvalResult(NamedTuple):
@@ -24,9 +23,12 @@ class EvalResult(NamedTuple):
     accuracy, calibrated accuracy, and AUROC.
     """
 
+    auroc: float
+    auroc_lower: float
+    auroc_upper: float
+
     acc: float
     cal_acc: float
-    auroc: float
     ece: float
 
 
@@ -101,6 +103,13 @@ class Reporter(nn.Module, ABC):
                     where x is the proprtion of examples with ground truth label `True`.
                 AUROC: averaged over the n * v * c binary questions
                 ECE: Expected Calibration Error
+                accuracy, and AUROC of the probe on `contrast_set`.
+                Accuracy: top-1 accuracy averaged over questions and variants.
+                Calibrated accuracy: top-1 accuracy averaged over questions and
+                    variants, calibrated so that x% of the predictions are `True`,
+                    where x is the proprtion of examples with ground truth label `True`.
+                AUROC: averaged over the n * v * c binary questions
+                ECE: Expected Calibration Error
         """
         logits = self(contrast_set)
         (_, v, c) = logits.shape
@@ -123,18 +132,16 @@ class Reporter(nn.Module, ABC):
             cal_err = 0.0
 
         Y_one_hot = to_one_hot(Y, c).long().flatten()
-        if len(labels.unique()) == 1:
-            auroc = -1.0
-        else:
-            auroc = roc_auc_score(Y_one_hot.cpu(), logits.cpu().flatten())
+        auroc_result = RocAucResult(-1., -1., -1.) if len(labels.unique()) == 1 else roc_auc_ci(Y_one_hot.cpu(), logits.cpu().flatten())
 
         raw_preds = logits.argmax(dim=-1).long()
         raw_acc = accuracy(Y, raw_preds.flatten())
-
         return EvalResult(
+            auroc=auroc_result.estimate,
+            auroc_lower=auroc_result.lower,
+            auroc_upper=auroc_result.upper,
             acc=float(raw_acc),
             cal_acc=cal_acc,
-            auroc=float(auroc),
             ece=cal_err,
         )
 
@@ -165,14 +172,13 @@ class Reporter(nn.Module, ABC):
         preds = probs.gt(0.5).to(torch.int)
         acc = preds.flatten().eq(labels).float().mean().item()
 
-        if len(labels.unique()) == 1:
-            auroc = -1.0
-        else:
-            auroc = roc_auc_score(labels.cpu(), logits.cpu().flatten())
+        auroc_result = RocAucResult(-1., -1., -1.) if len(labels.unique()) == 1 else roc_auc_ci(labels.cpu(), logits.cpu().flatten())
 
         return EvalResult(
+            auroc=auroc_result.estimate,
+            auroc_lower=auroc_result.lower,
+            auroc_upper=auroc_result.upper,
             acc=float(acc),
             cal_acc=cal_acc,
-            auroc=float(auroc),
             ece=cal_err,
         )

@@ -9,10 +9,9 @@ import pandas as pd
 import torch
 from einops import rearrange, repeat
 from simple_parsing import Serializable, field, subgroups
-from sklearn.metrics import roc_auc_score
 
 from ..extraction.extraction import Extract
-from ..metrics import accuracy, to_one_hot
+from ..metrics import accuracy, roc_auc_ci, to_one_hot
 from ..run import Run
 from ..training.supervised import evaluate_supervised, train_supervised
 from ..utils import select_usable_devices
@@ -160,20 +159,6 @@ class Train(Run):
                 ds_probs = {f"reporter_{layer}": reporter(val_h).cpu().numpy()}
             val_result = reporter.score_contrast_set(val_gt, val_h)
 
-            if val_lm_preds is not None:
-                (_, v, k, _) = val_h.shape
-
-                val_gt_cpu = repeat(val_gt, "n -> (n v)", v=v).cpu()
-                val_lm_preds = rearrange(val_lm_preds, "n v ... -> (n v) ...")
-                val_lm_auroc = roc_auc_score(
-                    to_one_hot(val_gt_cpu, k).long().flatten(), val_lm_preds.flatten()
-                )
-
-                val_lm_acc = accuracy(val_gt_cpu, torch.from_numpy(val_lm_preds))
-            else:
-                val_lm_auroc = None
-                val_lm_acc = None
-
             row = pd.Series(
                 {
                     "dataset": ds_name,
@@ -181,17 +166,32 @@ class Train(Run):
                     "pseudo_auroc": pseudo_auroc,
                     "train_loss": train_loss,
                     **val_result._asdict(),
-                    "lm_auroc": val_lm_auroc,
-                    "lm_acc": val_lm_acc,
                 }
             )
 
+            if val_lm_preds is not None:
+                (_, v, k, _) = val_h.shape
+
+                val_gt_rep = repeat(val_gt, "n -> (n v)", v=v)
+                val_lm_preds = rearrange(val_lm_preds, "n v ... -> (n v) ...")
+                val_lm_auroc_res = roc_auc_ci(
+                    to_one_hot(val_gt_rep, k).long().flatten(), val_lm_preds.flatten()
+                )
+                row["lm_auroc"] = val_lm_auroc_res.estimate
+                row["lm_auroc_lower"] = val_lm_auroc_res.lower
+                row["lm_auroc_upper"] = val_lm_auroc_res.upper
+                row["lm_acc"] = accuracy(val_gt_rep, val_lm_preds)
+
             if lr_model is not None:
-                row["lr_auroc"], row["lr_acc"] = evaluate_supervised(
+                lr_auroc_res, row["lr_acc"] = evaluate_supervised(
                     lr_model, val_h, val_gt
                 )
                 with torch.no_grad():
                     ds_probs[f"lr_{layer}"] = lr_model(val_h).cpu().numpy().squeeze(-1)
+
+                row["lr_auroc"] = lr_auroc_res.estimate
+                row["lr_auroc_lower"] = lr_auroc_res.lower
+                row["lr_auroc_upper"] = lr_auroc_res.upper
 
             row_buf.append(row)
             probs_buf[ds_name] = ds_probs

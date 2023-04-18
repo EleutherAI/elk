@@ -87,7 +87,7 @@ class Run(ABC):
 
     def prepare_data(
         self, device: str, layer: int, split_type: Literal["train", "val"]
-    ) -> dict[str, tuple[Tensor, Tensor, np.ndarray | None]]:
+    ) -> dict[str, tuple[Tensor, Tensor, Tensor | None]]:
         """Prepare data for the specified layer and split type."""
         assert self.cfg.data.prompts.datasets != [
             "raw"
@@ -112,7 +112,7 @@ class Run(ABC):
         labels = assert_type(Tensor, ds["label"])
         hid = int16_to_float32(assert_type(Tensor, ds[f"hidden_{layer}"]))
 
-        with ds.formatted_as("numpy"):
+        with ds.formatted_as("torch", device=device):
             has_preds = "model_preds" in ds.features
             lm_preds = ds["model_preds"] if has_preds else None
 
