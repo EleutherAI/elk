@@ -132,7 +132,11 @@ class Reporter(nn.Module, ABC):
             cal_err = 0.0
 
         Y_one_hot = to_one_hot(Y, c).long().flatten()
-        auroc_result = RocAucResult(-1., -1., -1.) if len(labels.unique()) == 1 else roc_auc_ci(Y_one_hot.cpu(), logits.cpu().flatten())
+        auroc_result = (
+            RocAucResult(-1.0, -1.0, -1.0)
+            if len(labels.unique()) == 1
+            else roc_auc_ci(Y_one_hot.cpu(), logits.cpu().flatten())
+        )
 
         raw_preds = logits.argmax(dim=-1).long()
         raw_acc = accuracy(Y, raw_preds.flatten())
@@ -172,7 +176,11 @@ class Reporter(nn.Module, ABC):
         preds = probs.gt(0.5).to(torch.int)
         acc = preds.flatten().eq(labels).float().mean().item()
 
-        auroc_result = RocAucResult(-1., -1., -1.) if len(labels.unique()) == 1 else roc_auc_ci(labels.cpu(), logits.cpu().flatten())
+        auroc_result = (
+            RocAucResult(-1.0, -1.0, -1.0)
+            if len(labels.unique()) == 1
+            else roc_auc_ci(labels.cpu(), logits.cpu().flatten())
+        )
 
         return EvalResult(
             auroc=auroc_result.estimate,
