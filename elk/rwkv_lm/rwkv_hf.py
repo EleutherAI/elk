@@ -10,7 +10,7 @@ class RWKVConfig(PretrainedConfig):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.hidden_size = 2048
-        self.num_hidden_layers = 1
+        self.num_hidden_layers = 120
         self.is_encoder_decoder = False
         self.architectures = ["RWKV-LM"]
 
