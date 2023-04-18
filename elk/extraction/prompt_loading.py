@@ -178,7 +178,7 @@ def load_prompts(
     extra_cols = list(assert_type(Features, ds.features))
     extra_cols.remove(label_column)
 
-    for example in BalancedSampler(ds, num_classes):
+    for example in BalancedSampler(ds, num_classes, label_col=label_column):
         yield _convert_to_prompts(
             example,
             label_column=label_column,
