@@ -7,12 +7,12 @@ from typing import Literal, NamedTuple, Optional
 
 import torch
 import torch.nn as nn
+from einops import rearrange, repeat
 from simple_parsing.helpers import Serializable
-from sklearn.metrics import roc_auc_score
 from torch import Tensor
 
 from ..calibration import CalibrationError
-from .classifier import Classifier
+from ..metrics import accuracy, roc_auc_ci, to_one_hot
 
 
 class EvalResult(NamedTuple):
@@ -22,9 +22,12 @@ class EvalResult(NamedTuple):
     which contains the loss, accuracy, calibrated accuracy, and AUROC.
     """
 
+    auroc: float
+    auroc_lower: float
+    auroc_upper: float
+
     acc: float
     cal_acc: float
-    auroc: float
     ece: float
 
 
@@ -58,96 +61,10 @@ class OptimConfig(Serializable):
 
 
 class Reporter(nn.Module, ABC):
-    """An ELK reporter network.
-
-    Args:
-        in_features: The number of input features.
-        cfg: The reporter configuration.
-    """
-
-    n: Tensor
-    neg_mean: Tensor
-    pos_mean: Tensor
-
-    def __init__(
-        self,
-        in_features: int,
-        cfg: ReporterConfig,
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
-    ):
-        super().__init__()
-
-        self.config = cfg
-        self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
-        self.register_buffer(
-            "neg_mean", torch.zeros(in_features, device=device, dtype=dtype)
-        )
-        self.register_buffer(
-            "pos_mean", torch.zeros(in_features, device=device, dtype=dtype)
-        )
-
-    @classmethod
-    def check_separability(
-        cls,
-        train_pair: tuple[Tensor, Tensor],
-        val_pair: tuple[Tensor, Tensor],
-    ) -> float:
-        """Measure how linearly separable the pseudo-labels are for a contrast pair.
-
-        Args:
-            train_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
-                contrastive representations. Used for training the classifier.
-            val_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
-                contrastive representations. Used for evaluating the classifier.
-
-        Returns:
-            The AUROC of a linear classifier fit on the pseudo-labels.
-        """
-        x0, x1 = train_pair
-        val_x0, val_x1 = val_pair
-
-        pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
-        pseudo_train_labels = torch.cat(
-            [
-                x0.new_zeros(x0.shape[0]),
-                x0.new_ones(x0.shape[0]),
-            ]
-        ).repeat_interleave(
-            x0.shape[1]
-        )  # make num_variants copies of each pseudo-label
-        pseudo_val_labels = torch.cat(
-            [
-                val_x0.new_zeros(val_x0.shape[0]),
-                val_x0.new_ones(val_x0.shape[0]),
-            ]
-        ).repeat_interleave(val_x0.shape[1])
-
-        pseudo_clf.fit(
-            # b v d -> (b v) d
-            torch.cat([x0, x1]).flatten(0, 1),
-            pseudo_train_labels,
-        )
-        with torch.no_grad():
-            pseudo_preds = pseudo_clf(
-                # b v d -> (b v) d
-                torch.cat([val_x0, val_x1]).flatten(0, 1)
-            )
-            return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
+    """An ELK reporter network."""
 
     def reset_parameters(self):
         """Reset the parameters of the probe."""
-
-    @torch.no_grad()
-    def update(self, x_pos: Tensor, x_neg: Tensor) -> None:
-        """Update the running mean of the positive and negative examples."""
-
-        x_pos, x_neg = x_pos.flatten(0, -2), x_neg.flatten(0, -2)
-        self.n += x_pos.shape[0]
-
-        # Update the running means
-        self.neg_mean += (x_neg.sum(dim=0) - self.neg_mean) / self.n
-        self.pos_mean += (x_pos.sum(dim=0) - self.pos_mean) / self.n
 
     # TODO: These methods will do something fancier in the future
     @classmethod
@@ -162,55 +79,59 @@ class Reporter(nn.Module, ABC):
     @abstractmethod
     def fit(
         self,
-        x_pos: Tensor,
-        x_neg: Tensor,
+        hiddens: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         ...
 
-    @abstractmethod
-    def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
-        """Pool the probe output on the contrast pair (x_pos, x_neg)."""
-
     @torch.no_grad()
-    def score(self, labels: Tensor, x_pos: Tensor, x_neg: Tensor) -> EvalResult:
-        """Score the probe on the contrast pair (x_pos, x1).
+    def score(self, labels: Tensor, hiddens: Tensor) -> EvalResult:
+        """Score the probe on the contrast set `hiddens`.
 
         Args:
-            x_pos: The positive examples.
-            x_neg: The negative examples.
-            labels: The labels of the contrast pair.
+        labels: The labels of the contrast pair.
+        hiddens: Contrast set of shape [n, v, k, d].
 
         Returns:
             an instance of EvalResult containing the loss, accuracy, calibrated
-                accuracy, and AUROC of the probe on the contrast pair (x0, x1).
+                accuracy, and AUROC of the probe on `contrast_set`.
+                Accuracy: top-1 accuracy averaged over questions and variants.
+                Calibrated accuracy: top-1 accuracy averaged over questions and
+                    variants, calibrated so that x% of the predictions are `True`,
+                    where x is the proprtion of examples with ground truth label `True`.
+                AUROC: averaged over the n * v * c binary questions
+                ECE: Expected Calibration Error
         """
+        logits = self(hiddens)
+        (_, v, c) = logits.shape
 
-        pred_probs = self.predict(x_pos, x_neg)
+        # makes `num_variants` copies of each label
+        logits = rearrange(logits, "n v c -> (n v) c")
+        Y = repeat(labels, "n -> (n v)", v=v).float()
 
-        # makes `num_variants` copies of each label, all within a single
-        # dimension of size `num_variants * n`, such that the labels align
-        # with pred_probs.flatten()
-        broadcast_labels = labels.repeat_interleave(pred_probs.shape[1]).float()
-        cal_err = (
-            CalibrationError()
-            .update(broadcast_labels.cpu(), pred_probs.cpu())
-            .compute()
-        )
+        if c == 2:
+            pos_probs = logits[..., 1].flatten().sigmoid()
+            cal_err = CalibrationError().update(Y.cpu(), pos_probs.cpu()).compute().ece
 
-        # Calibrated accuracy
-        cal_thresh = pred_probs.float().quantile(labels.float().mean())
-        cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
-        raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
+            # Calibrated accuracy
+            cal_thresh = pos_probs.float().quantile(labels.float().mean())
+            cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
+            cal_acc = cal_preds.flatten().eq(Y).float().mean().item()
+        else:
+            # TODO: Implement calibration error for k > 2?
+            cal_acc = 0.0
+            cal_err = 0.0
 
-        # roc_auc_score only takes flattened input
-        auroc = float(roc_auc_score(broadcast_labels.cpu(), pred_probs.cpu().flatten()))
-        cal_acc = cal_preds.flatten().eq(broadcast_labels).float().mean()
-        raw_acc = raw_preds.flatten().eq(broadcast_labels).float().mean()
+        Y_one_hot = to_one_hot(Y, c).long().flatten()
+        auroc_result = roc_auc_ci(Y_one_hot, logits.flatten())
 
+        raw_preds = logits.argmax(dim=-1).long()
+        raw_acc = accuracy(Y, raw_preds.flatten())
         return EvalResult(
-            acc=torch.max(raw_acc, 1 - raw_acc).item(),
-            cal_acc=torch.max(cal_acc, 1 - cal_acc).item(),
-            auroc=max(auroc, 1 - auroc),
-            ece=cal_err.ece,
+            auroc=auroc_result.estimate,
+            auroc_lower=auroc_result.lower,
+            auroc_upper=auroc_result.upper,
+            acc=float(raw_acc),
+            cal_acc=cal_acc,
+            ece=cal_err,
         )

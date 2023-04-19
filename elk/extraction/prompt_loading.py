@@ -1,5 +1,8 @@
+from os.path import exists
 from collections import Counter
+from copy import deepcopy
 from dataclasses import dataclass
+from itertools import zip_longest
 from random import Random
 from typing import Any, Iterator, Literal, Optional
 
@@ -15,12 +18,11 @@ from simple_parsing.helpers import Serializable, field
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
-    binarize,
     infer_label_column,
     infer_num_classes,
     select_train_val_splits,
 )
-from .balanced_sampler import FewShotSampler
+from .balanced_sampler import BalancedSampler, FewShotSampler
 
 
 @dataclass
@@ -46,21 +48,21 @@ class PromptConfig(Serializable):
             -1.
         seed: The seed to use for prompt randomization. Defaults to 42.
         stream: Whether to stream the dataset from the Internet. Defaults to False.
-        combined_template_path: Path to save a combined template file to, when testing
-            prompt invariance across multiple datasets, and will be interpreted as a
+        combined_template_output_path: Path to save a combined template file to, when 
+            applying prompt invariance across multiple datasets. Interpreted as a
             subpath of `combined_paths` in the templates dir. Defaults to empty string.
     """
 
     datasets: list[str] = field(positional=True)
-    balance: bool = False
-    data_dir: Optional[str] = None
-    label_column: Optional[str] = None
+    data_dirs: list[str] = field(default_factory=list)
+    label_columns: list[str] = field(default_factory=list)
     max_examples: list[int] = field(default_factory=lambda: [750, 250])
+    num_classes: int = 0
     num_shots: int = 0
     num_variants: int = -1
     seed: int = 42
     stream: bool = False
-    combined_template_path: str = ""
+    combined_template_output_path: str = ""
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
@@ -71,67 +73,105 @@ class PromptConfig(Serializable):
         if not self.max_examples:
             self.max_examples = [int(1e100)]
 
+        self.combine_templates()
+
         # Broadcast the limit to all splits
         if len(self.max_examples) == 1:
             self.max_examples *= 2
 
-        # Combining prompts
-        combined_prompter = None
-        if self.combined_template_path:
+        # Broadcast the dataset name to all data_dirs and label_columns
+        if len(self.data_dirs) == 1:
+            self.data_dirs *= len(self.datasets)
+        elif self.data_dirs and len(self.data_dirs) != len(self.datasets):
+            raise ValueError(
+                "data_dirs should be a list of length 0, 1, or len(datasets),"
+                f" but got {len(self.data_dirs)}"
+            )
+
+        if len(self.label_columns) == 1:
+            self.label_columns *= len(self.datasets)
+        elif self.label_columns and len(self.label_columns) != len(self.datasets):
+            raise ValueError(
+                "label_columns should be a list of length 0, 1, or len(datasets),"
+                f" but got {len(self.label_columns)}"
+            )
+
+    def combine_templates(self):
+        if not self.combined_template_output_path:
+            return
+
+        print(
+            "Copying templates across datasets to combined_templates/ "
+            + f"{self.combined_template_output_path}/templates.yaml"
+        )
+        combined_prompter = DatasetTemplates(
+            "combined_templates", self.combined_template_output_path
+        )
+        combined_prompter.templates = {}
+        ref_ds_builder = None
+        for i, ds_string in enumerate(self.datasets):
+            ds_name, _, config_name = ds_string.partition(" ")
+            ds_builder = load_dataset_builder(ds_name, config_name or None)
+            if i == 0:
+                # Set first dataset as reference
+                ref_ds_builder = ds_builder
+            elif not self.verify_cols(ds_builder, ref_ds_builder):
+                return
+
+            # Once verified, merge templates.
+            prompter = DatasetTemplates(ds_name, config_name)
+            combined_prompter.merge_templates_from(prompter)
+        print("Total number of templates: ", len(combined_prompter.templates))
+        combined_prompter.write_to_file()
+        print(
+            "Saved to promptsource/templates/combined_templates/"
+            + f"{self.combined_template_output_path}.yaml"
+        )
+    
+    def verify_cols(self, ds_builder, ref_ds_builder) -> bool:
+        '''Verify that number of features and number of classes for ClassLabel
+            match the expected values.
+        '''
+        expected_features = len(ref_ds_builder.info.features)
+        expected_classes = ref_ds_builder.info.features["label"].num_classes
+        num_features = len(ds_builder.info.features)
+        num_classes = ds_builder.info.features["label"].num_classes
+        if expected_features > 0 and num_features != expected_features:
             print(
-                "Copying templates across datasets to combined_templates/ "
-                + f"{self.combined_template_path}/templates.yaml"
+                "WARNING: Datasets do not have the same number of features;",
+                f"{ds_name} has {num_features} features while first dataset has",
+                f"{expected_features}. Prompting datasets separately.",
             )
-            combined_prompter = DatasetTemplates(
-                "combined_templates", self.combined_template_path
-            )
-            combined_prompter.templates = {}
-            prev_num_features = 0
-            prev_num_label_classes = 0
-            for ds_string in self.datasets:
-                ds_name, _, config_name = ds_string.partition(" ")
-                prompter = DatasetTemplates(ds_name, config_name)
-
-                # Verify that number of features and number of classes for ClassLabel
-                # are the same across datasets.
-                ds_builder = load_dataset_builder(ds_name, config_name or None)
-                num_features = len(ds_builder.info.features)
-                if prev_num_features > 0 and num_features != prev_num_features:
-                    print(
-                        "WARNING: Datasets do not have the same number of features;",
-                        f"{ds_name} has {num_features} features while prev has",
-                        f"{prev_num_features}. Prompting datasets separately.",
-                    )
-                    self.combined_template_path = ""
-                    break
-                prev_num_features = num_features
-                num_classes = ds_builder.info.features["label"].num_classes
-                if prev_num_label_classes > 0 and num_classes != prev_num_label_classes:
-                    print(
-                        "WARNING: Datasets do not have the same number of ClassLabel",
-                        f"classes; {ds_name} has {num_classes} classes while prev has",
-                        f"{prev_num_label_classes}. Prompting datasets separately.",
-                    )
-                    self.combined_template_path = ""
-                    break
-                prev_num_label_classes = num_classes
-
-                # Once verified, merge templates.
-                combined_prompter.merge_templates_from(prompter)
-
-        # Write to file if successfully merged all prompts.
-        if self.combined_template_path:
-            prompter = assert_type(DatasetTemplates, combined_prompter)
-            print("Total number of templates: ", len(prompter.templates))
-            prompter.write_to_file()
+            return False
+        if expected_classes > 0 and num_classes != expected_classes:
             print(
-                "Saved to promptsource/templates/combined_templates/"
-                + f"{self.combined_template_path}.yaml"
+                "WARNING: Datasets do not have the same number of ClassLabel classes",
+                f"{ds_name} has {num_classes} classes while first dataset has",
+                f"{expected_classes}. Prompting datasets separately.",
             )
+            return False
+        return True
+
+    def explode(self) -> list["PromptConfig"]:
+        """Explode the config into a list of configs, one for each dataset."""
+        copies = []
+
+        for ds, data_dir, col in zip_longest(
+            self.datasets, self.data_dirs, self.label_columns
+        ):
+            copy = deepcopy(self)
+            copy.datasets = [ds]
+            copy.data_dirs = [data_dir] if data_dir else []
+            copy.label_columns = [col] if col else []
+            copies.append(copy)
+
+        return copies
 
 
 def load_prompts(
-    *dataset_strings: str,
+    ds_string: str,
+    label_column: Optional[str] = None,
+    num_classes: int = 0,
     num_shots: int = 0,
     num_variants: int = -1,
     seed: int = 42,
@@ -139,12 +179,12 @@ def load_prompts(
     stream: bool = False,
     rank: int = 0,
     world_size: int = 1,
-    combined_template_path: str = "",
+    combined_template_output_path: str = "",
 ) -> Iterator[dict]:
-    """Load a dataset full of prompts generated from the specified datasets.
+    """Load a dataset full of prompts generated from the specified dataset.
 
     Args:
-        dataset_strings: Space-delimited names of the HuggingFace datasets to use,
+        ds_string: Space-delimited name of the HuggingFace dataset to use,
             e.g. `"super_glue boolq"` or `"imdb"`.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot.
@@ -155,113 +195,73 @@ def load_prompts(
         world_size: The number of processes. Defaults to 1.
 
     Returns:
-        An iterable dataset of prompts.
+        An iterable of prompt dictionaries.
     """
-    prompters = []
-    raw_datasets = []
-    train_datasets = []
-    rng = Random(seed)
-
-    # First load the datasets and prompters. We need to know the minimum number of
-    # templates for any dataset in order to make sure we don't run out of prompts.
-    for ds_string in dataset_strings:
-        ds_name, _, config_name = ds_string.partition(" ")
-
-        if combined_template_path == "":
-            prompter = DatasetTemplates(ds_name, config_name)
-            prompters.append(DatasetTemplates(ds_name, config_name))
-
-        ds_dict = assert_type(
-            dict, load_dataset(ds_name, config_name or None, streaming=stream)
+    ds_name, _, config_name = ds_string.partition(" ")
+    
+    prompter = None
+    if combined_template_output_path and exists(combined_template_output_path):
+        prompter = DatasetTemplates(
+            "combined_templates", combined_template_output_path
         )
-        train_name, val_name = select_train_val_splits(ds_dict)
-        split_name = val_name if split_type == "val" else train_name
+    else:
+        prompter = DatasetTemplates(ds_name, config_name)
+    
+    ds_dict = assert_type(
+        dict, load_dataset(ds_name, config_name or None, streaming=stream)
+    )
+    train_name, val_name = select_train_val_splits(ds_dict)
+    split_name = val_name if split_type == "val" else train_name
 
-        # Note that when streaming we can only approximately shuffle the dataset
-        # using a buffer. Streaming shuffling is NOT an adequate shuffle for
-        # datasets like IMDB, which are sorted by label.
-        bad_streaming_datasets = ["imdb"]
-        assert not (
-            stream and ds_name in bad_streaming_datasets
-        ), f"Streaming is not supported for {ds_name}."
-        split = ds_dict[split_name].shuffle(seed=seed)
-        train_ds = ds_dict[train_name].shuffle(seed=seed)
-        if not stream:
-            split = assert_type(Dataset, split)
-            split = split.to_iterable_dataset().cast(split.features)
-
-        # only keep the datapoints relevant to the current process
+    ds = ds_dict[split_name].shuffle(seed=seed)
+    train_ds = ds_dict[train_name].shuffle(seed=seed)
+    if not stream:
+        ds = assert_type(Dataset, ds)
         if world_size > 1:
-            # This prints to stdout which is slightly annoying
-            split = split_dataset_by_node(
-                dataset=split, rank=rank, world_size=world_size
-            )
+            ds = ds.shard(world_size, rank)
 
-        raw_datasets.append(split)
-        train_datasets.append(train_ds)
+        ds = ds.to_iterable_dataset().cast(ds.features)
 
-    if combined_template_path:
-        combined_prompter = DatasetTemplates(
-            "combined_templates", combined_template_path
-        )
-        prompters = [combined_prompter] * len(dataset_strings)
+    elif world_size > 1:
+        # This prints to stdout which is slightly annoying
+        ds = split_dataset_by_node(dataset=ds, rank=rank, world_size=world_size)
 
-    min_num_templates = min(len(prompter.templates) for prompter in prompters)
-
+    num_templates = len(prompter.templates)
     num_variants = (
-        min_num_templates
-        if num_variants == -1
-        else min(num_variants, min_num_templates)
+        num_templates if num_variants == -1 else min(num_variants, num_templates)
     )
     assert num_variants > 0
     if rank == 0:
         print(f"Using {num_variants} variants of each prompt")
 
-    ds_iterators = [iter(ds) for ds in raw_datasets]
-    while True:  # terminates when the first dataset runs out of examples
-        for ds_iterator, ds, train_ds, prompter in zip(
-            ds_iterators, raw_datasets, train_datasets, prompters
-        ):
-            label_column = infer_label_column(ds.features)
-            num_classes = infer_num_classes(ds.features[label_column])
+    label_column = label_column or infer_label_column(ds.features)
+    num_classes = num_classes or infer_num_classes(ds.features[label_column])
+    rng = Random(seed)
 
-            # Remove everything except the label column
-            extra_cols = list(assert_type(Features, ds.features))
-            extra_cols.remove(label_column)
+    if num_shots > 0:
+        fewshot = FewShotSampler(
+            train_ds,  # TODO: not iterator
+            num_shots=num_shots,
+            rng=rng,
+        )
+        fewshot_iter = iter(fewshot)
+    else:
+        fewshot_iter = None
 
-            if label_column != "label":
-                ds = ds.rename_column(label_column, "label")
-            if num_shots > 0:
-                fewshot = FewShotSampler(
-                    train_ds,  # TODO: not iterator
-                    num_shots=num_shots,
-                    rng=rng,
-                )
-                fewshot_iter = iter(fewshot)
-            else:
-                fewshot_iter = None
+    # Remove everything except the label column
+    extra_cols = list(assert_type(Features, ds.features))
+    extra_cols.remove(label_column)
 
-            try:
-                example = next(ds_iterator)
-            except StopIteration:
-                return
-
-            example = _convert_to_prompts(
-                example,
-                label_column=label_column,
-                num_classes=num_classes,
-                num_variants=num_variants,
-                prompter=prompter,
-                rng=rng,
-                fewshot_iter=fewshot_iter,
-            )
-
-            # Add the builder and config name to the records directly to make
-            # sure we don't forget what dataset they came from.
-            example["builder_name"] = ds.info.builder_name
-            example["config_name"] = ds.info.config_name
-
-            yield example
+    for example in BalancedSampler(ds, num_classes, label_col=label_column):
+        yield _convert_to_prompts(
+            example,
+            label_column=label_column,
+            num_classes=num_classes,
+            num_variants=num_variants,
+            prompter=prompter,
+            rng=rng,
+            fewshot_iter=fewshot_iter,
+        )
 
 
 def _convert_to_prompts(
@@ -274,7 +274,7 @@ def _convert_to_prompts(
     fewshot_iter: Optional[Iterator[list[dict]]] = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
-    assert_type(int, example[label_column])
+    labels_are_strings = isinstance(example[label_column], str)
     prompts = []
     templates = list(prompter.templates.values())
     if num_variants < len(templates):
@@ -287,22 +287,24 @@ def _convert_to_prompts(
 
     # For sanity checking that prompts are unique
     prompt_counter = Counter()
-    new_label = rng.choice([0, 1]) if num_classes > 2 else example[label_column]
+    label_indices = set()
 
     for template in templates:
         choices = []
+        string_choices = template.get_answer_choices_list(example)
 
-        if num_classes > 2:
-            template = binarize(
-                template, example[label_column], assert_type(int, new_label), rng
-            )
+        label = example[label_column]
+        label_indices.add(string_choices.index(label) if labels_are_strings else label)
 
-        for answer_idx in range(2):
+        for answer_idx in range(num_classes):
             fake_example = example.copy()
-            fake_example[label_column] = answer_idx
+            if labels_are_strings:
+                fake_example[label_column] = string_choices[answer_idx]
+            else:
+                fake_example[label_column] = answer_idx
 
             q, a = template.apply(fake_example)
-            text = qa_cat(q, a)
+            text = qa_cat(q, a or string_choices[answer_idx])
             prompt_counter[text] += 1
 
             if fewshot_iter is not None:
@@ -329,8 +331,14 @@ def _convert_to_prompts(
     if dup_count > 1:
         raise ValueError(f'Prompt duplicated {dup_count} times! "{maybe_dup}"')
 
+    # Sanity check: label should be the same across all variants
+    if len(label_indices) > 1:
+        raise ValueError(
+            f"Label index should be the same all variants, but got {label_indices}"
+        )
+
     return dict(
-        label=new_label,
+        label=label_indices.pop(),
         prompts=prompts,
-        template_names=prompter.all_template_names,
+        template_names=[template.name for template in templates],
     )

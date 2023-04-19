@@ -5,9 +5,6 @@ import os
 import random
 from pathlib import Path
 
-import yaml
-from simple_parsing import Serializable
-
 
 def elk_reporter_dir() -> Path:
     """Return the directory where reporter checkpoints and logs are stored."""
@@ -41,28 +38,3 @@ def memorably_named_dir(parent: Path):
     out_dir = parent / sub_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir
-
-
-def save_config(cfg: Serializable, out_dir: Path):
-    """Save the config to a file"""
-
-    path = out_dir / "cfg.yaml"
-    with open(path, "w") as f:
-        cfg.dump_yaml(f)
-
-    return path
-
-
-def save_meta(dataset, out_dir: Path):
-    """Save the meta data to a file"""
-
-    meta = {
-        "dataset_fingerprints": {
-            split: dataset[split]._fingerprint for split in dataset.keys()
-        }
-    }
-    path = out_dir / "metadata.yaml"
-    with open(path, "w") as meta_f:
-        yaml.dump(meta, meta_f)
-
-    return path

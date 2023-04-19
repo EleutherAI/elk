@@ -34,8 +34,8 @@ class CalibrationError:
         assert labels.shape == probs.shape
         assert torch.is_floating_point(probs)
 
-        self.labels.append(probs)
-        self.pred_probs.append(labels)
+        self.labels.append(labels)
+        self.pred_probs.append(probs)
         return self
 
     def compute(self, p: int = 2) -> CalibrationEstimate:

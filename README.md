@@ -37,6 +37,12 @@ For prompt invariance across multiple datasets, use the `--combined_template_pat
 elk elicit bigscience/bloomz-560m christykoh/ag_news_pt ag_news --combined_template_path=spar_w/ag_news
 ```
 
+The following runs `elicit` on the Cartesian product of the listed models and datasets, storing it in a special folder ELK_DIR/sweeps/<memorable_name>. Moreover, `--add_pooled` adds an additional dataset that pools all of the datasets together.
+
+```bash
+elk sweep --models gpt2-{medium,large,xl} --datasets imdb amazon_polarity --add_pooled
+```
+
 ## Caching
 
 The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the same place as all other HuggingFace datasets, which is usually `~/.cache/huggingface/datasets`.
