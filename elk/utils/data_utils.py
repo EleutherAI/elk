@@ -1,7 +1,5 @@
 import copy
-from bisect import bisect_left, bisect_right
 from functools import cache
-from operator import itemgetter
 from random import Random
 from typing import Any, Iterable
 
@@ -16,24 +14,6 @@ from datasets import (
 
 from ..promptsource.templates import Template
 from .typing import assert_type
-
-
-def convert_span(
-    offsets: list[tuple[int, int]], span: tuple[int, int]
-) -> tuple[int, int]:
-    """Convert `span` from string coordinates to token coordinates.
-
-    Args:
-        offsets: The offset mapping of the target tokenization.
-        span: The span to convert.
-
-    Returns:
-        (start, end): The converted span.
-    """
-    start, end = span
-    start = bisect_right(offsets, start, key=itemgetter(1))
-    end = bisect_left(offsets, end, lo=start, key=itemgetter(0))
-    return start, end
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:

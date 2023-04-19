@@ -5,6 +5,7 @@ from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
 from typing import Any, Iterable, Literal
+from warnings import filterwarnings
 
 import torch
 from datasets import (
@@ -20,17 +21,17 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoConfig
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
-    convert_span,
     float32_to_int16,
     infer_label_column,
     infer_num_classes,
     instantiate_model,
+    instantiate_tokenizer,
     is_autoregressive,
     select_train_val_splits,
     select_usable_devices,
@@ -99,12 +100,24 @@ def extract_hiddens(
 
     # Silence datasets logging messages from all but the first process
     if rank != 0:
+        filterwarnings("ignore")
         logging.disable(logging.CRITICAL)
 
     p_cfg = cfg.prompts
     ds_names = p_cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
+    model = instantiate_model(
+        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+    ).to(device)
+    tokenizer = instantiate_tokenizer(
+        cfg.model, truncation_side="left", verbose=rank == 0
+    )
+    has_lm_preds = is_autoregressive(model.config)
+    if has_lm_preds and rank == 0:
+        print("Model has language model head, will store predictions.")
+
+    is_enc_dec = model.config.is_encoder_decoder
     prompt_ds = load_prompts(
         ds_names[0],
         label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
@@ -113,17 +126,7 @@ def extract_hiddens(
         stream=p_cfg.stream,
         rank=rank,
         world_size=world_size,
-    )  # this dataset is already sharded, but hasn't been truncated to max_examples
-
-    model = instantiate_model(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
-    ).to(device)
-    tokenizer = AutoTokenizer.from_pretrained(
-        cfg.model, truncation_side="left", verbose=False
     )
-    has_lm_preds = is_autoregressive(model.config)
-    if has_lm_preds and rank == 0:
-        print("Model has language model head, will store predictions.")
 
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
@@ -163,54 +166,53 @@ def extract_hiddens(
 
             # Iterate over answers
             for j, choice in enumerate(record):
-                text = choice["text"]
-
-                # TODO: Do something smarter than "rindex" here. Really we want to
-                # get the span of the answer directly from Jinja, but that doesn't
-                # seem possible. This approach may fail for complex templates.
-                answer_start = text.rindex(choice["answer"])
+                text = choice["question"]
 
                 # Only feed question, not the answer, to the encoder for enc-dec models
-                if model.config.is_encoder_decoder:
-                    # TODO: Maybe make this more generic for complex templates?
-                    text = text[:answer_start].rstrip()
-                    target = choice["answer"]
-                else:
-                    target = None
+                target = choice["answer"] if is_enc_dec else None
 
                 # Record the EXACT string we fed to the model
                 variant_inputs.append(text)
-                inputs = tokenizer(
+                encoding = tokenizer(
                     text,
-                    return_offsets_mapping=True,
+                    add_special_tokens=False,
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
-                )
+                ).to(device)
+                inputs = assert_type(Tensor, encoding.input_ids)
 
-                # The offset_mapping is a sorted list of (start, end) tuples. We locate
-                # the start of the answer in the tokenized sequence with binary search.
-                offsets = inputs.pop("offset_mapping").squeeze().tolist()
-                inputs = inputs.to(device)
+                if is_enc_dec:
+                    answer = assert_type(Tensor, encoding.labels)
+                else:
+                    encoding2 = tokenizer(
+                        choice["answer"],
+                        add_special_tokens=False,
+                        return_tensors="pt",
+                    )
+                    answer = assert_type(Tensor, encoding2.input_ids)
+
+                    inputs = torch.cat([inputs, answer], dim=-1)
+                    if max_len := tokenizer.model_max_length:
+                        inputs = inputs[..., -max_len:]
 
                 # Run the forward pass
-                outputs = model(**inputs, output_hidden_states=True)
+                outputs = model(
+                    inputs, labels=encoding.get("labels"), output_hidden_states=True
+                )
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
-                    start, end = convert_span(
-                        offsets, (answer_start, answer_start + len(choice["answer"]))
-                    )
-                    log_p = outputs.logits[..., start - 1 : end - 1, :].log_softmax(
-                        dim=-1
-                    )
-                    tokens = inputs.input_ids[..., start:end, None]
+                    answer_len = answer.shape[-1]
+
+                    log_p = outputs.logits[..., -answer_len:, :].log_softmax(dim=-1)
+                    tokens = answer[..., None]
                     lm_logits[i, j] = log_p.gather(-1, tokens).sum()
 
                 elif isinstance(outputs, Seq2SeqLMOutput):
                     # The cross entropy loss is averaged over tokens, so we need to
                     # multiply by the length to get the total log probability.
-                    length = inputs.labels.shape[-1]
+                    length = encoding.labels.shape[-1]
                     lm_logits[i, j] = -assert_type(Tensor, outputs.loss) * length
 
                 hiddens = (

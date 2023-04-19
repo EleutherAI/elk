@@ -104,6 +104,7 @@ class PromptConfig(Serializable):
 
 def load_prompts(
     ds_string: str,
+    *,
     label_column: Optional[str] = None,
     num_classes: int = 0,
     num_shots: int = 0,
@@ -119,6 +120,10 @@ def load_prompts(
     Args:
         ds_string: Space-delimited name of the HuggingFace dataset to use,
             e.g. `"super_glue boolq"` or `"imdb"`.
+        label_column: The column containing the labels. By default, we infer this from
+            the datatypes of the columns in the dataset.
+        num_classes: The number of classes in the dataset. If zero, we infer this from
+            the datatypes of the columns in the dataset.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot.
         seed: The seed to use for prompt randomization.
@@ -230,8 +235,7 @@ def _convert_to_prompts(
                 fake_example[label_column] = answer_idx
 
             q, a = template.apply(fake_example)
-            text = qa_cat(q, a or string_choices[answer_idx])
-            prompt_counter[text] += 1
+            prompt_counter[(q, a)] += 1
 
             if fewshot_iter is not None:
                 # Infinite iterator so we don't need to worry about StopIteration
@@ -239,14 +243,14 @@ def _convert_to_prompts(
                 fewshot_texts = [
                     qa_cat(q, a) for q, a in map(template.apply, fewshot_examples)
                 ]
-                text = "\n\n".join(fewshot_texts) + "\n\n" + text
+                q = "\n\n".join(fewshot_texts) + "\n\n" + q
 
             choices.append(
                 dict(
                     # Strip whitespace from the answer to make it easier to
                     # compare with the model's output
                     answer=a.strip(),
-                    text=text,
+                    question=q,
                 )
             )
 
