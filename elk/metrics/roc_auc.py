@@ -1,46 +1,12 @@
-from typing import NamedTuple
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
 
 
-def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
-    """
-    Convert a tensor of class labels to a one-hot representation.
-
-    Args:
-        labels (Tensor): A tensor of class labels of shape (N,).
-        n_classes (int): The total number of unique classes.
-
-    Returns:
-        Tensor: A one-hot representation tensor of shape (N, n_classes).
-    """
-    one_hot_labels = labels.new_zeros(labels.size(0), n_classes)
-    return one_hot_labels.scatter_(1, labels.unsqueeze(1).long(), 1)
-
-
-def accuracy(y_true: Tensor, y_pred: Tensor) -> float:
-    """
-    Compute the accuracy of a classification model.
-
-    Args:
-        y_true: Ground truth tensor of shape (N,).
-        y_pred: Predicted class tensor of shape (N,) or (N, n_classes).
-
-    Returns:
-        float: Accuracy of the model.
-    """
-    # Check if binary or multi-class classification
-    if len(y_pred.shape) == 1:
-        hard_preds = y_pred > 0.5
-    else:
-        hard_preds = y_pred.argmax(-1)
-
-    return hard_preds.cpu().eq(y_true.cpu()).float().mean().item()
-
-
-class RocAucResult(NamedTuple):
-    """Named tuple for storing ROC AUC results."""
+@dataclass(frozen=True)
+class RocAucResult:
+    """Dataclass for storing ROC AUC results."""
 
     estimate: float
     """Point estimate of the ROC AUC computed on this sample."""
@@ -111,11 +77,15 @@ def roc_auc_ci(
     level: float = 0.95,
     seed: int = 42,
 ) -> RocAucResult:
-    """Bootstrap confidence interval for the ROC AUC.
+    """Bootstrap confidence interval for the ROC AUC, with optional clustering.
+
+    When the input arguments are 2D, this function performs the cluster bootstrap,
+    resampling clusters with replacement instead of individual samples. The first
+    axis is assumed to be the cluster axis.
 
     Args:
-        y_true: Ground truth tensor of shape `(N,)`.
-        y_pred: Predicted class tensor of shape `(N,)`.
+        y_true: Ground truth tensor of shape `(N,)` or `(N, cluster_size)`.
+        y_pred: Predicted class tensor of shape `(N,)` or `(N, cluster_size)`.
         num_samples (int): Number of bootstrap samples to use.
         level (float): Confidence level of the confidence interval.
         seed (int): Random seed for reproducibility.
@@ -129,11 +99,12 @@ def roc_auc_ci(
             f"y_true and y_pred should have the same shape; "
             f"got {y_true.shape} and {y_pred.shape}"
         )
-    if y_true.dim() != 1:
-        raise ValueError("y_true and y_pred should be 1D tensors")
+    if y_true.dim() not in (1, 2):
+        raise ValueError("y_true and y_pred should be 1D or 2D tensors")
 
-    device = y_true.device
+    # Either the number of samples (1D) or the number of clusters (2D)
     N = y_true.shape[0]
+    device = y_true.device
 
     # Generate random indices for bootstrap samples (shape: [num_bootstraps, N])
     rng = torch.Generator(device=device).manual_seed(seed)
@@ -143,16 +114,19 @@ def roc_auc_ci(
     y_true_bootstraps = y_true[indices]
     y_pred_bootstraps = y_pred[indices]
 
-    # Compute ROC AUC scores for bootstrap samples
-    bootstrap_aucs = roc_auc(y_true_bootstraps, y_pred_bootstraps)
+    # Compute ROC AUC scores for bootstrap samples. If the inputs were 2D, the
+    # bootstrapped tensors are now 3D [num_bootstraps, N, cluster_size], so we
+    # call flatten(1) to get a 2D tensor [num_bootstraps, N * cluster_size].
+    bootstrap_aucs = roc_auc(y_true_bootstraps.flatten(1), y_pred_bootstraps.flatten(1))
 
     # Calculate the lower and upper bounds of the confidence interval. We use
     # nanquantile instead of quantile because some bootstrap samples may have
     # NaN values due to the fact that they have only one class.
     alpha = (1 - level) / 2
-    q = y_pred.new_tensor([alpha, 1 - alpha])
+    q = bootstrap_aucs.new_tensor([alpha, 1 - alpha])
     lower, upper = bootstrap_aucs.nanquantile(q).tolist()
 
-    # Compute the point estimate
-    estimate = roc_auc(y_true, y_pred).item()
+    # Compute the point estimate. Call flatten to ensure that we get a single number
+    # computed across cluster boundaries even if the inputs were clustered.
+    estimate = roc_auc(y_true.flatten(), y_pred.flatten()).item()
     return RocAucResult(estimate, lower, upper)

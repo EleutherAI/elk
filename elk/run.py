@@ -99,11 +99,11 @@ class Run(ABC):
             val_h = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
 
             with split.formatted_as("torch", device=device):
-                has_preds = "model_preds" in split.features
-                lm_preds = split["model_preds"] if has_preds else None
+                has_preds = "model_logits" in split.features
+                lm_preds = split["model_logits"] if has_preds else None
 
             ds_name = get_dataset_name(ds)
-            out[ds_name] = (val_h, labels, lm_preds)
+            out[ds_name] = (val_h, labels.to(val_h.device), lm_preds)
 
         return out
 
@@ -148,6 +148,6 @@ class Run(ABC):
                 # Make sure the CSV is written even if we crash or get interrupted
                 if df_buf:
                     df = pd.concat(df_buf).sort_values(by="layer")
-                    df.to_csv(f, index=False)
+                    df.round(4).to_csv(f, index=False)
                 if self.cfg.debug:
                     save_debug_log(self.datasets, self.out_dir)

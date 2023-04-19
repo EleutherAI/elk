@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import InitVar, dataclass
 
 from ..extraction import Extract, PromptConfig
@@ -17,6 +18,14 @@ class Sweep:
     """Whether to add a dataset that pools all of the other datasets together."""
 
     name: str | None = None
+
+    # A bit of a hack to add all the command line arguments from Elicit
+    run_template: Elicit = Elicit(
+        data=Extract(
+            model="<placeholder>",
+            prompts=PromptConfig(datasets=["<placeholder>"]),
+        )
+    )
 
     def __post_init__(self, add_pooled: bool):
         if not self.datasets:
@@ -49,12 +58,9 @@ class Sweep:
                 # plus signs. This means we can pool datasets together inside of a
                 # single sweep.
                 datasets = [ds.strip() for ds in dataset_str.split("+")]
-                Elicit(
-                    data=Extract(
-                        model=model_str,
-                        prompts=PromptConfig(
-                            datasets=datasets,
-                        ),
-                    ),
-                    out_dir=out_dir,
-                ).execute()
+
+                run = deepcopy(self.run_template)
+                run.data.model = model_str
+                run.data.prompts.datasets = datasets
+                run.out_dir = out_dir
+                run.execute()

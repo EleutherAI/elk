@@ -11,9 +11,9 @@ from einops import rearrange, repeat
 from simple_parsing import Serializable, field, subgroups
 
 from ..extraction.extraction import Extract
-from ..metrics import accuracy, roc_auc_ci, to_one_hot
+from ..metrics import evaluate_preds, to_one_hot
 from ..run import Run
-from ..training.supervised import evaluate_supervised, train_supervised
+from ..training.supervised import train_supervised
 from ..utils import select_usable_devices
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
@@ -146,41 +146,26 @@ class Train(Run):
 
         row_buf = []
         for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
-            val_result = reporter.score(val_gt, val_h)
-            row = pd.Series(
-                {
-                    "dataset": ds_name,
-                    "layer": layer,
-                    "pseudo_auroc": pseudo_auroc,
-                    "train_loss": train_loss,
-                    **val_result._asdict(),
-                }
-            )
+            val_result = evaluate_preds(val_gt, reporter(val_h))
+            row = {
+                "dataset": ds_name,
+                "layer": layer,
+                "pseudo_auroc": pseudo_auroc,
+                "train_loss": train_loss,
+                **val_result.to_dict(),
+            }
 
             if val_lm_preds is not None:
-                (_, v, k, _) = val_h.shape
-
-                val_gt_rep = repeat(val_gt, "n -> (n v)", v=v)
-                val_lm_preds = rearrange(val_lm_preds, "n v ... -> (n v) ...")
-                val_lm_auroc_res = roc_auc_ci(
-                    to_one_hot(val_gt_rep, k).long().flatten(), val_lm_preds.flatten()
-                )
-                row["lm_auroc"] = val_lm_auroc_res.estimate
-                row["lm_auroc_lower"] = val_lm_auroc_res.lower
-                row["lm_auroc_upper"] = val_lm_auroc_res.upper
-                row["lm_acc"] = accuracy(val_gt_rep, val_lm_preds)
+                lm_result = evaluate_preds(val_gt, val_lm_preds)
+                row.update(lm_result.to_dict(prefix="lm_"))
 
             if lr_model is not None:
-                lr_auroc_res, row["lr_acc"] = evaluate_supervised(
-                    lr_model, val_h, val_gt
-                )
-                row["lr_auroc"] = lr_auroc_res.estimate
-                row["lr_auroc_lower"] = lr_auroc_res.lower
-                row["lr_auroc_upper"] = lr_auroc_res.upper
+                lr_result = evaluate_preds(val_gt, lr_model(val_h))
+                row.update(lr_result.to_dict(prefix="lr_"))
 
             row_buf.append(row)
 
-        return pd.DataFrame(row_buf)
+        return pd.DataFrame.from_records(row_buf)
 
     def train(self):
         """Train a reporter on each layer of the network."""

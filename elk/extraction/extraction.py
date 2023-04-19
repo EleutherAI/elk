@@ -149,7 +149,7 @@ def extract_hiddens(
             )
             for layer_idx in layer_indices
         }
-        lm_preds = torch.empty(
+        lm_logits = torch.empty(
             num_variants,
             num_choices,
             device=device,
@@ -205,13 +205,13 @@ def extract_hiddens(
                         dim=-1
                     )
                     tokens = inputs.input_ids[..., start:end, None]
-                    lm_preds[i, j] = log_p.gather(-1, tokens).sum()
+                    lm_logits[i, j] = log_p.gather(-1, tokens).sum()
 
                 elif isinstance(outputs, Seq2SeqLMOutput):
                     # The cross entropy loss is averaged over tokens, so we need to
                     # multiply by the length to get the total log probability.
                     length = inputs.labels.shape[-1]
-                    lm_preds[i, j] = -assert_type(Tensor, outputs.loss) * length
+                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss) * length
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
@@ -244,7 +244,7 @@ def extract_hiddens(
             **hidden_dict,
         )
         if has_lm_preds:
-            out_record["model_preds"] = lm_preds.softmax(dim=-1)
+            out_record["model_logits"] = lm_logits
 
         yield out_record
 
@@ -319,9 +319,9 @@ def extract(
         ),
     }
 
-    # Only add model_preds if the model is an autoregressive model
+    # Only add model_logits if the model is an autoregressive model
     if is_autoregressive(model_cfg):
-        other_cols["model_preds"] = Array2D(
+        other_cols["model_logits"] = Array2D(
             shape=(num_variants, num_classes),
             dtype="float32",
         )
