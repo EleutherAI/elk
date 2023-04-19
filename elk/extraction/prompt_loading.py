@@ -136,6 +136,7 @@ class PromptConfig(Serializable):
         expected_classes = ref_ds_builder.info.features["label"].num_classes
         num_features = len(ds_builder.info.features)
         num_classes = ds_builder.info.features["label"].num_classes
+        ds_name = ds_builder.builder_name
         if expected_features > 0 and num_features != expected_features:
             print(
                 "WARNING: Datasets do not have the same number of features;",
