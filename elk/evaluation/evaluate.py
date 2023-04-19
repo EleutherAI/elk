@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Literal, Optional
+from typing import Callable
 
 import pandas as pd
 import torch
@@ -11,7 +11,7 @@ from ..extraction.extraction import Extract
 from ..files import elk_reporter_dir
 from ..run import Run
 from ..training import Reporter
-from ..training.baseline import evaluate_baseline, load_baseline
+from ..training.supervised import evaluate_supervised
 from ..utils import select_usable_devices
 
 
@@ -28,26 +28,25 @@ class Eval(Serializable):
             `elk.training.preprocessing.normalize()` for details.
         num_gpus: The number of GPUs to use. Defaults to -1, which means
             "use all available GPUs".
+        skip_supervised: Whether to skip evaluation of the supervised classifier.
         debug: When in debug mode, a useful log file is saved to the memorably-named
             output directory. Defaults to False.
     """
 
     data: Extract
     source: str = field(positional=True)
-    normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
 
-    debug: bool = False
-    out_dir_suffix: Optional[Path] = None # custom name for subdir in transfer_eval folder
-    num_gpus: int = -1
-    skip_baseline: bool = False
     concatenated_layer_offset: int = 0
+    debug: bool = False
+    min_gpu_mem: int | None = None
+    num_gpus: int = -1
+    out_dir: Path | None = None
+    skip_supervised: bool = False
 
     def execute(self):
-        datasets = self.data.prompts.datasets
-
         transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
 
-        for dataset in datasets:
+        for dataset in self.data.prompts.datasets:
             run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
             run.evaluate()
 
@@ -58,14 +57,10 @@ class Evaluate(Run):
 
     def evaluate_reporter(
         self, layer: int, devices: list[str], world_size: int = 1
-    ) -> pd.Series:
+    ) -> pd.DataFrame:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
-
-        _, _, test_x0, test_x1, _, test_labels, _ = self.prepare_data(
-            device,
-            layer,
-        )
+        val_output = self.prepare_data(device, layer, "val")
 
         experiment_dir = elk_reporter_dir() / self.cfg.source
 
@@ -73,40 +68,41 @@ class Evaluate(Run):
         reporter: Reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
-        test_result = reporter.score(
-            test_labels,
-            test_x0,
-            test_x1,
-        )
+        row_buf = []
+        for ds_name, (val_h, val_gt, _) in val_output.items():
+            val_result = reporter.score(val_gt, val_h)
 
-        stats_row = pd.Series(
-            {
-                "layer": layer,
-                **test_result._asdict(),
-            }
-        )
-
-        lr_dir = experiment_dir / "lr_models"
-        if not self.cfg.skip_baseline and lr_dir.exists():
-            lr_model = load_baseline(lr_dir, layer)
-            lr_model.eval()
-            lr_auroc, lr_acc = evaluate_baseline(
-                lr_model.cuda(), test_x0.cuda(), test_x1.cuda(), test_labels
+            stats_row = pd.Series(
+                {
+                    "dataset": ds_name,
+                    "layer": layer,
+                    **val_result._asdict(),
+                }
             )
 
-            stats_row["lr_auroc"] = lr_auroc
-            stats_row["lr_acc"] = lr_acc
+            lr_dir = experiment_dir / "lr_models"
+            if not self.cfg.skip_supervised and lr_dir.exists():
+                with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
+                    lr_model = torch.load(f, map_location=device).eval()
 
-        return stats_row
+                lr_auroc_res, lr_acc = evaluate_supervised(lr_model, val_h, val_gt)
+                stats_row["lr_auroc"] = lr_auroc_res.estimate
+                stats_row["lr_auroc_lower"] = lr_auroc_res.lower
+                stats_row["lr_auroc_upper"] = lr_auroc_res.upper
+                stats_row["lr_acc"] = lr_acc
+
+            row_buf.append(stats_row)
+
+        return pd.DataFrame(row_buf)
 
     def evaluate(self):
         """Evaluate the reporter on all layers."""
         devices = select_usable_devices(
-            self.cfg.num_gpus, min_memory=self.cfg.data.min_gpu_mem
+            self.cfg.num_gpus, min_memory=self.cfg.min_gpu_mem
         )
 
         num_devices = len(devices)
-        func: Callable[[int], pd.Series] = partial(
+        func: Callable[[int], pd.DataFrame] = partial(
             self.evaluate_reporter, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)

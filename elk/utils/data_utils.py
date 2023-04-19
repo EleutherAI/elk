@@ -1,8 +1,9 @@
 import copy
 from bisect import bisect_left, bisect_right
+from functools import cache
 from operator import itemgetter
 from random import Random
-from typing import Any, Iterable, List
+from typing import Any, Iterable
 
 from datasets import (
     ClassLabel,
@@ -10,6 +11,7 @@ from datasets import (
     Features,
     Split,
     Value,
+    get_dataset_config_names,
 )
 
 from ..promptsource.templates import Template
@@ -42,6 +44,30 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
         raise ValueError("All splits must have the same columns")
 
     return pivot
+
+
+def get_dataset_name(dataset: DatasetDict) -> str:
+    """Get the name of a `DatasetDict`."""
+    builder_name, *rest = [ds.builder_name for ds in dataset.values()]
+    if not all(name == builder_name for name in rest):
+        raise ValueError(
+            f"All splits must have the same name; got {[builder_name, *rest]}"
+        )
+
+    config_name, *rest = [ds.config_name for ds in dataset.values()]
+    if not all(name == config_name for name in rest):
+        raise ValueError(
+            f"All splits must have the same config name; got {[config_name, *rest]}"
+        )
+
+    include_config = config_name and has_multiple_configs(builder_name)
+    return builder_name + " " + config_name if include_config else builder_name
+
+
+@cache
+def has_multiple_configs(ds_name: str) -> bool:
+    """Return whether a dataset has multiple configs."""
+    return len(get_dataset_config_names(ds_name)) > 1
 
 
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
@@ -101,11 +127,12 @@ def infer_num_classes(label_feature: Any) -> int:
         )
 
 
-def get_layers(ds: DatasetDict) -> List[int]:
+def get_layers(ds: DatasetDict) -> list[int]:
     """Get a list of indices of hidden layers given a `DatasetDict`."""
+    train, _ = select_train_val_splits(ds.keys())
     layers = [
         int(feat[len("hidden_") :])
-        for feat in ds["train"].features
+        for feat in ds[train].features
         if feat.startswith("hidden_")
     ]
     return layers
