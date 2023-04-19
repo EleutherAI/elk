@@ -32,6 +32,12 @@ The following command will evaluate the probe from the run naughty-northcutt on 
 elk eval naughty-northcutt microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
+The following runs `elicit` on the Cartesian product of the listed models and datasets, storing it in a special folder ELK_DIR/sweeps/<memorable_name>. Moreover, `--add_pooled` adds an additional dataset that pools all of the datasets together.
+
+```bash
+elk sweep --models gpt2-{medium,large,xl} --datasets imdb amazon_polarity --add_pooled
+```
+
 ## Caching
 
 The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the same place as all other HuggingFace datasets, which is usually `~/.cache/huggingface/datasets`.

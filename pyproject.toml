@@ -12,6 +12,7 @@ license = {text = "MIT License"}
 dependencies = [
     # Added distributed.split_dataset_by_node for IterableDatasets
     "datasets>=2.9.0",
+    "einops",
     # Introduced numpy.typing module
     "numpy>=1.20.0",
     # This version is old, but it's needed for certain HF tokenizers to work.
@@ -20,8 +21,6 @@ dependencies = [
     "pandas",
     # Basically any version should work as long as it supports the user's CUDA version
     "pynvml",
-    # Doesn't really matter but before 1.0.0 there might be weird breaking changes
-    "scikit-learn>=1.0.0",
     # Needed for certain HF tokenizers
     "sentencepiece==0.1.97",
     # We upstreamed bugfixes for Literal types in 0.1.1
@@ -42,7 +41,8 @@ dev = [
     "hypothesis",
     "pre-commit",
     "pytest",
-    "pyright"
+    "pyright",
+    "scikit-learn",
 ]
 
 [project.scripts]
