@@ -12,6 +12,7 @@ from datasets import (
     Array2D,
     Array3D,
     DatasetDict,
+    DownloadMode,
     Features,
     Sequence,
     SplitDict,
@@ -21,7 +22,7 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig
+from transformers import AutoConfig, PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
@@ -59,6 +60,7 @@ class Extract(Serializable):
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
+    use_encoder_states: bool = False
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -108,16 +110,22 @@ def extract_hiddens(
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
     model = instantiate_model(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+        cfg.model, torch_dtype=torch.float16 if device != "cpu" else torch.float32
     ).to(device)
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=rank == 0
     )
-    has_lm_preds = is_autoregressive(model.config)
+
+    is_enc_dec = model.config.is_encoder_decoder
+    if is_enc_dec and cfg.use_encoder_states:
+        assert hasattr(model, "get_encoder") and callable(model.get_encoder)
+        model = assert_type(PreTrainedModel, model.get_encoder())
+        is_enc_dec = False
+
+    has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
     if has_lm_preds and rank == 0:
         print("Model has language model head, will store predictions.")
 
-    is_enc_dec = model.config.is_encoder_decoder
     prompt_ds = load_prompts(
         ds_names[0],
         label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
@@ -180,7 +188,7 @@ def extract_hiddens(
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
                 ).to(device)
-                inputs = assert_type(Tensor, encoding.input_ids)
+                input_ids = assert_type(Tensor, encoding.input_ids)
 
                 if is_enc_dec:
                     answer = assert_type(Tensor, encoding.labels)
@@ -189,17 +197,19 @@ def extract_hiddens(
                         choice["answer"],
                         add_special_tokens=False,
                         return_tensors="pt",
-                    )
+                    ).to(device)
                     answer = assert_type(Tensor, encoding2.input_ids)
 
-                    inputs = torch.cat([inputs, answer], dim=-1)
+                    input_ids = torch.cat([input_ids, answer], dim=-1)
                     if max_len := tokenizer.model_max_length:
-                        inputs = inputs[..., -max_len:]
+                        input_ids = input_ids[..., -max_len:]
 
-                # Run the forward pass
-                outputs = model(
-                    inputs, labels=encoding.get("labels"), output_hidden_states=True
-                )
+                # Make sure we only pass the arguments that the model expects
+                inputs = dict(input_ids=input_ids)
+                if is_enc_dec:
+                    inputs["labels"] = answer
+
+                outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
@@ -257,7 +267,11 @@ def _extraction_worker(**kwargs):
 
 
 def extract(
-    cfg: "Extract", num_gpus: int = -1, min_gpu_mem: int | None = None
+    cfg: "Extract",
+    *,
+    disable_cache: bool = False,
+    num_gpus: int = -1,
+    min_gpu_mem: int | None = None,
 ) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
@@ -322,7 +336,7 @@ def extract(
     }
 
     # Only add model_logits if the model is an autoregressive model
-    if is_autoregressive(model_cfg):
+    if is_autoregressive(model_cfg, not cfg.use_encoder_states):
         other_cols["model_logits"] = Array2D(
             shape=(num_variants, num_classes),
             dtype="float32",
@@ -354,7 +368,10 @@ def extract(
 
     ds = dict()
     for split, builder in builders.items():
-        builder.download_and_prepare(num_proc=len(devices))
+        builder.download_and_prepare(
+            download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
+            num_proc=len(devices),
+        )
         ds[split] = builder.as_dataset(split=split)
 
     return DatasetDict(ds)

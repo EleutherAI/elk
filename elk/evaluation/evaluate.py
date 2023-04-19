@@ -43,6 +43,8 @@ class Eval(Serializable):
     out_dir: Path | None = None
     skip_supervised: bool = False
 
+    disable_cache: bool = field(default=False, to_dict=False)
+
     def execute(self):
         transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
 

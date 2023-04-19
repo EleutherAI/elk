@@ -53,6 +53,8 @@ class Elicit(Serializable):
     out_dir: Path | None = None
     supervised: Literal["none", "single", "cv"] = "single"
 
+    disable_cache: bool = field(default=False, to_dict=False)
+
     def execute(self):
         Train(cfg=self, out_dir=self.out_dir).train()
 
