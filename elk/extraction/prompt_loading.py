@@ -135,7 +135,7 @@ class PromptConfig(Serializable):
             if feature not in ds_builder.info.features:
                 print(
                     f"WARNING: Dataset {ds_name} is missing {feature} from reference",
-                    f"dataset. Proceeding, but prompting datasets separately.",
+                    "dataset. Proceeding, but prompting datasets separately.",
                 )
                 return
         # Match label classes
