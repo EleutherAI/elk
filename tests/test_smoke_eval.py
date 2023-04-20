@@ -28,7 +28,7 @@ def setup_elicit(
     model_path="sshleifer/tiny-gpt2",
     min_mem=10 * 1024**2,
     is_ccs: bool = True,
-):
+) -> Elicit:
     """Setup elicit config for testing, execute elicit, and save output to tmp_path.
     Returns the elicit run configuration.
     """
@@ -58,6 +58,8 @@ def check_contains_files(dir: Path, expected_files: list[str]):
 
 def eval_run(elicit: Elicit, tfr_datasets: list[str] = None):
     """A single eval run."""
+    tmp_path = elicit.out_dir
+    extract = elicit.data
 
     # record elicit modification time as reference.
     starttime = (tmp_path / "eval.csv").stat().st_mtime
@@ -66,12 +68,13 @@ def eval_run(elicit: Elicit, tfr_datasets: list[str] = None):
 
     if tfr_datasets:
         # update datasets to a different dataset
-        elicit.data.prompts.datasets = tfr_datasets
+        extract.prompts.datasets = tfr_datasets
 
-    eval = Eval(data=elicit, source=tmp_path)
+    eval = Eval(data=extract, source=tmp_path)
     eval.execute()
 
     if eval_only:
+        # assert eval.csv has been modified
         assert (tmp_path / "eval.csv").stat().st_mtime > starttime
     else:
         # check transfer eval dir contents
@@ -84,7 +87,6 @@ def eval_run(elicit: Elicit, tfr_datasets: list[str] = None):
 
 def test_smoke_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     elicit = setup_elicit(tmp_path, is_ccs=True)
-    Eval(data=elicit, source=tmp_path)
     eval_run(elicit)
 
 
@@ -98,7 +100,7 @@ def test_smoke_tfr_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     eval_run(elicit, tfr_datasets=["christykoh/imdb_pt"])
 
 
-def test_smoke_multi_eval_run_tiny_gpt2_ccs():
+def test_smoke_multi_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     elicit = setup_elicit(
         tmp_path,
         model_path="sshleifer/tiny-gpt2",
