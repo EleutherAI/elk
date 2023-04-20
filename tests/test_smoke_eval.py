@@ -7,26 +7,30 @@ from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
 
 ELICIT_EXPECTED_FILES = [
-        "cfg.yaml",
-        "fingerprints.yaml",
-        "lr_models",
-        "reporters",
-        "eval.csv",
-    ]
+    "cfg.yaml",
+    "fingerprints.yaml",
+    "lr_models",
+    "reporters",
+    "eval.csv",
+]
 
 EVAL_EXPECTED_FILES = [
-        "cfg.yaml",
-        "metadata.yaml",
-        "eval.csv",
-    ]
+    "cfg.yaml",
+    "metadata.yaml",
+    "eval.csv",
+]
+
 
 # TODO make into a pytest.fixture?
 def setup_elicit(
-    tmp_path: Path, dataset_name="imdb", model_path="sshleifer/tiny-gpt2",
-    min_mem=10 * 1024**2, is_ccs: bool = True
-    ):
+    tmp_path: Path,
+    dataset_name="imdb",
+    model_path="sshleifer/tiny-gpt2",
+    min_mem=10 * 1024**2,
+    is_ccs: bool = True,
+):
     """Setup elicit config for testing, execute elicit, and save output to tmp_path.
-        Returns the elicit run configuration.
+    Returns the elicit run configuration.
     """
     elicit = Elicit(
         data=Extract(
@@ -43,30 +47,28 @@ def setup_elicit(
     check_contains_files(tmp_path, ELICIT_EXPECTED_FILES)
     return elicit
 
+
 def check_contains_files(dir: Path, expected_files: list[str]):
-    """Iterate through dir to assert all expected files exist.
-    """
+    """Iterate through dir to assert all expected files exist."""
     files: list[Path] = list(dir.iterdir())
     created_file_names = {file.name for file in files}
     for file in expected_files:
         assert file in created_file_names
 
+
 def eval_run(elicit: Elicit, tfr_datasets: list[str] = None):
-    """ A single eval run. """
+    """A single eval run."""
 
     # record elicit modification time as reference.
     starttime = (tmp_path / "eval.csv").stat().st_mtime
 
-    eval_only = (tfr_datasets != None)
-    
+    eval_only = tfr_datasets is not None
+
     if tfr_datasets:
         # update datasets to a different dataset
         elicit.data.prompts.datasets = tfr_datasets
-    
-    eval = Eval(
-        data=elicit,
-        source=tmp_path
-    )
+
+    eval = Eval(data=elicit, source=tmp_path)
     eval.execute()
 
     if eval_only:
@@ -79,34 +81,31 @@ def eval_run(elicit: Elicit, tfr_datasets: list[str] = None):
         assert eval_dir.exists()
         check_contains_files(eval_dir, EVAL_EXPECTED_FILES)
 
+
 def test_smoke_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     elicit = setup_elicit(tmp_path, is_ccs=True)
-    eval = Eval(
-        data=elicit,
-        source=tmp_path
-    )
+    Eval(data=elicit, source=tmp_path)
     eval_run(elicit)
+
 
 def test_smoke_tfr_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     elicit = setup_elicit(
         tmp_path,
         model_path="sshleifer/tiny-gpt2",
         min_mem=10 * 1024**2,
-        dataset_name="imdb"
+        dataset_name="imdb",
     )
-    eval_run(elicit, tfr_datasets=["christykoh/imdb_pt"]
-    )
+    eval_run(elicit, tfr_datasets=["christykoh/imdb_pt"])
+
 
 def test_smoke_multi_eval_run_tiny_gpt2_ccs():
     elicit = setup_elicit(
         tmp_path,
         model_path="sshleifer/tiny-gpt2",
         min_mem=10 * 1024**2,
-        dataset_name="imdb"
+        dataset_name="imdb",
     )
-    eval_run(
-        elicit, tfr_datasets=["super_glue boolq", "ag_news"]
-    )
+    eval_run(elicit, tfr_datasets=["super_glue boolq", "ag_news"])
 
 
 def test_smoke_eval_run_tiny_gpt2_eigen(tmp_path: Path):
@@ -115,6 +114,6 @@ def test_smoke_eval_run_tiny_gpt2_eigen(tmp_path: Path):
         model_path="sshleifer/tiny-gpt2",
         min_mem=10 * 1024**2,
         dataset_name="imdb",
-        is_ccs=False
+        is_ccs=False,
     )
     eval_run(elicit)
