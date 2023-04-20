@@ -42,21 +42,13 @@ class Eval(Serializable):
     num_gpus: int = -1
     out_dir: Path | None = None
     skip_supervised: bool = False
-    combine_evals: bool = False
 
     def execute(self):
-        datasets = self.data.prompts.datasets
-
         transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
 
-        if self.combine_evals:
-            run = Evaluate(cfg=self, out_dir=transfer_dir / ", ".join(datasets))
-        else:
-            # eval on each dataset separately
-            for dataset in datasets:
-                self.data.prompts.datasets = [dataset]
-                run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
-                run.evaluate()
+        for dataset in self.data.prompts.datasets:
+            run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
+            run.evaluate()
 
 
 @dataclass
