@@ -166,11 +166,11 @@ def extract_hiddens(
             device=device,
             dtype=torch.float32,
         )
-        text_inputs = []
+        text_questions = []
 
         # Iterate over variants
         for i, record in enumerate(example["prompts"]):
-            variant_inputs = []
+            variant_questions = []
 
             # Iterate over answers
             for j, choice in enumerate(record):
@@ -179,8 +179,8 @@ def extract_hiddens(
                 # Only feed question, not the answer, to the encoder for enc-dec models
                 target = choice["answer"] if is_enc_dec else None
 
-                # Record the EXACT string we fed to the model
-                variant_inputs.append(text)
+                # Record the EXACT question we fed to the model
+                variant_questions.append(text)
                 encoding = tokenizer(
                     text,
                     add_special_tokens=False,
@@ -248,12 +248,12 @@ def extract_hiddens(
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
 
-            text_inputs.append(variant_inputs)
+            text_questions.append(variant_questions)
 
         out_record: dict[str, Any] = dict(
             label=example["label"],
             variant_ids=example["template_names"],
-            text_inputs=text_inputs,
+            text_questions=text_questions,
             **hidden_dict,
         )
         if has_lm_preds:
@@ -328,7 +328,7 @@ def extract(
             length=num_variants,
         ),
         "label": Value(dtype="int64"),
-        "text_inputs": Sequence(
+        "text_questions": Sequence(
             Sequence(
                 Value(dtype="string"),
             ),
