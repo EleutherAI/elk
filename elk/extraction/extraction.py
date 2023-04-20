@@ -113,6 +113,7 @@ def extract_hiddens(
         stream=p_cfg.stream,
         rank=rank,
         world_size=world_size,
+        combined_template_output_path=cfg.prompts.combined_template_output_path,
     )  # this dataset is already sharded, but hasn't been truncated to max_examples
 
     model = instantiate_model(
@@ -283,6 +284,7 @@ def extract(
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
 
+    # Retrieve info, used to get splits
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
 

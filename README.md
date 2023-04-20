@@ -32,6 +32,11 @@ The following command will evaluate the probe from the run naughty-northcutt on 
 elk eval naughty-northcutt microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
+For prompt invariance across multiple datasets, use the `--combined_template_output_path` command line argument, which will create a new `templates.yaml` file with templates from all the datasets.
+```bash
+elk elicit bigscience/bloomz-560m christykoh/ag_news_pt ag_news --combined_template_output_path=spar_w/ag_news
+```
+
 The following runs `elicit` on the Cartesian product of the listed models and datasets, storing it in a special folder ELK_DIR/sweeps/<memorable_name>. Moreover, `--add_pooled` adds an additional dataset that pools all of the datasets together.
 
 ```bash
