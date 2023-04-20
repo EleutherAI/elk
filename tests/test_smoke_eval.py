@@ -66,7 +66,6 @@ def eval_run(elicit: Elicit, tfr_datasets: list[str] = None) -> int:
     # record elicit modification time as reference.
     start_time_sec = (tmp_path / "eval.csv").stat().st_mtime
 
-
     if tfr_datasets:
         # update datasets to a different dataset
         extract.prompts.datasets = tfr_datasets
