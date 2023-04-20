@@ -137,7 +137,7 @@ class PromptConfig(Serializable):
                     f"WARNING: Dataset {ds_name} is missing {feature} from reference",
                     "dataset. Proceeding, but prompting datasets separately.",
                 )
-                return
+                return False
         # Match label classes
         expected_classes = ref_ds_builder.info.features["label"].num_classes
         num_classes = ds_builder.info.features["label"].num_classes
