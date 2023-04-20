@@ -109,11 +109,5 @@ def test_smoke_multi_eval_run_tiny_gpt2_ccs():
 
 
 def test_smoke_eval_run_tiny_gpt2_eigen(tmp_path: Path):
-    elicit = setup_elicit(
-        tmp_path,
-        model_path="sshleifer/tiny-gpt2",
-        min_mem=10 * 1024**2,
-        dataset_name="imdb",
-        is_ccs=False,
-    )
+    elicit = setup_elicit(tmp_path, is_ccs=False)
     eval_run(elicit)
