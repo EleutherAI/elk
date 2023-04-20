@@ -1,28 +1,8 @@
 import torch
 from einops import rearrange, repeat
-from torch import Tensor
 
-from ..metrics import RocAucResult, accuracy, roc_auc_ci, to_one_hot
-from ..utils import assert_type
+from ..metrics import to_one_hot
 from .classifier import Classifier
-
-
-def evaluate_supervised(
-    lr_model: Classifier, val_h: Tensor, val_labels: Tensor
-) -> tuple[RocAucResult, float]:
-    (_, v, k, _) = val_h.shape
-
-    with torch.no_grad():
-        logits = rearrange(lr_model(val_h).squeeze(), "n v k -> (n v) k")
-        raw_preds = to_one_hot(logits.argmax(dim=-1), k).long()
-
-    labels = repeat(val_labels, "n -> (n v)", v=v)
-    labels = to_one_hot(labels, k).flatten()
-
-    lr_acc = accuracy(labels, raw_preds.flatten())
-    lr_auroc = roc_auc_ci(labels, logits.flatten())
-
-    return lr_auroc, assert_type(float, lr_acc)
 
 
 def train_supervised(data: dict[str, tuple], device: str, cv: bool) -> Classifier:

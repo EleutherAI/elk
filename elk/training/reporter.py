@@ -3,32 +3,12 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, NamedTuple, Optional
+from typing import Literal, Optional
 
 import torch
 import torch.nn as nn
-from einops import rearrange, repeat
 from simple_parsing.helpers import Serializable
 from torch import Tensor
-
-from ..calibration import CalibrationError
-from ..metrics import accuracy, roc_auc_ci, to_one_hot
-
-
-class EvalResult(NamedTuple):
-    """The result of evaluating a reporter on a dataset.
-
-    The `.score()` function of a reporter returns an instance of this class,
-    which contains the loss, accuracy, calibrated accuracy, and AUROC.
-    """
-
-    auroc: float
-    auroc_lower: float
-    auroc_upper: float
-
-    acc: float
-    cal_acc: float
-    ece: float
 
 
 @dataclass
@@ -83,55 +63,3 @@ class Reporter(nn.Module, ABC):
         labels: Optional[Tensor] = None,
     ) -> float:
         ...
-
-    @torch.no_grad()
-    def score(self, labels: Tensor, hiddens: Tensor) -> EvalResult:
-        """Score the probe on the contrast set `hiddens`.
-
-        Args:
-        labels: The labels of the contrast pair.
-        hiddens: Contrast set of shape [n, v, k, d].
-
-        Returns:
-            an instance of EvalResult containing the loss, accuracy, calibrated
-                accuracy, and AUROC of the probe on `contrast_set`.
-                Accuracy: top-1 accuracy averaged over questions and variants.
-                Calibrated accuracy: top-1 accuracy averaged over questions and
-                    variants, calibrated so that x% of the predictions are `True`,
-                    where x is the proprtion of examples with ground truth label `True`.
-                AUROC: averaged over the n * v * c binary questions
-                ECE: Expected Calibration Error
-        """
-        logits = self(hiddens)
-        (_, v, c) = logits.shape
-
-        # makes `num_variants` copies of each label
-        logits = rearrange(logits, "n v c -> (n v) c")
-        Y = repeat(labels, "n -> (n v)", v=v).float()
-
-        if c == 2:
-            pos_probs = logits[..., 1].flatten().sigmoid()
-            cal_err = CalibrationError().update(Y.cpu(), pos_probs.cpu()).compute().ece
-
-            # Calibrated accuracy
-            cal_thresh = pos_probs.float().quantile(labels.float().mean())
-            cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
-            cal_acc = cal_preds.flatten().eq(Y).float().mean().item()
-        else:
-            # TODO: Implement calibration error for k > 2?
-            cal_acc = 0.0
-            cal_err = 0.0
-
-        Y_one_hot = to_one_hot(Y, c).long().flatten()
-        auroc_result = roc_auc_ci(Y_one_hot, logits.flatten())
-
-        raw_preds = logits.argmax(dim=-1).long()
-        raw_acc = accuracy(Y, raw_preds.flatten())
-        return EvalResult(
-            auroc=auroc_result.estimate,
-            auroc_lower=auroc_result.lower,
-            auroc_upper=auroc_result.upper,
-            acc=float(raw_acc),
-            cal_acc=cal_acc,
-            ece=cal_err,
-        )
