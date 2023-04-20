@@ -88,7 +88,7 @@ class Extract(Serializable):
         return copies
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def extract_hiddens(
     cfg: "Extract",
     *,
@@ -110,7 +110,7 @@ def extract_hiddens(
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
     model = instantiate_model(
-        cfg.model, torch_dtype=torch.float16 if device != "cpu" else torch.float32
+        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
     ).to(device)
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=rank == 0
@@ -209,7 +209,8 @@ def extract_hiddens(
                 if is_enc_dec:
                     inputs["labels"] = answer
 
-                outputs = model(**inputs, output_hidden_states=True)
+                with torch.autocast("cuda", enabled=torch.cuda.is_available()):
+                    outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
