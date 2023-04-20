@@ -6,8 +6,6 @@ from elk.extraction import PromptConfig
 from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
 
-from tests.utils import *
-
 ELICIT_EXPECTED_FILES = [
         "cfg.yaml",
         "fingerprints.yaml",
