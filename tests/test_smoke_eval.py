@@ -20,7 +20,6 @@ EVAL_EXPECTED_FILES = [
     "eval.csv",
 ]
 
-
 # TODO make into a pytest.fixture?
 def setup_elicit(
     tmp_path: Path,
@@ -56,13 +55,15 @@ def check_contains_files(dir: Path, expected_files: list[str]):
         assert file in created_file_names
 
 
-def eval_run(elicit: Elicit, tfr_datasets: list[str] = None):
-    """A single eval run."""
+def eval_run(elicit: Elicit, tfr_datasets: list[str] = None) -> int :
+    """A single eval run; act and assert that expected files were created.
+    Returns a reference time (in seconds) for file modification checking. 
+    """
     tmp_path = elicit.out_dir
     extract = elicit.data
 
     # record elicit modification time as reference.
-    starttime = (tmp_path / "eval.csv").stat().st_mtime
+    start_time_sec = (tmp_path / "eval.csv").stat().st_mtime
 
     eval_only = tfr_datasets is not None
 
@@ -72,10 +73,14 @@ def eval_run(elicit: Elicit, tfr_datasets: list[str] = None):
 
     eval = Eval(data=extract, source=tmp_path)
     eval.execute()
+    return start_time_sec
 
-    if eval_only:
-        # assert eval.csv has been modified
-        assert (tmp_path / "eval.csv").stat().st_mtime > starttime
+
+def eval_assert_files_created(elicit: Elicit, start_time_sec = 0):
+    tmp_path = elicit.out_dir
+    if not tfr_datasets:
+        # self-eval only, assert eval.csv has been modified (?)
+        assert (tmp_path / "eval.csv").stat().st_mtime > start_time_sec
     else:
         # check transfer eval dir contents
         transfer_dir = tmp_path / "transfer_evals"
@@ -85,31 +90,27 @@ def eval_run(elicit: Elicit, tfr_datasets: list[str] = None):
         check_contains_files(eval_dir, EVAL_EXPECTED_FILES)
 
 
+# TESTS #
+
 def test_smoke_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     elicit = setup_elicit(tmp_path, is_ccs=True)
-    eval_run(elicit)
+    eval_start_time = eval_run(elicit)
+    eval_assert_files_created(elicit, eval_start_time)
 
 
 def test_smoke_tfr_eval_run_tiny_gpt2_ccs(tmp_path: Path):
-    elicit = setup_elicit(
-        tmp_path,
-        model_path="sshleifer/tiny-gpt2",
-        min_mem=10 * 1024**2,
-        dataset_name="imdb",
-    )
-    eval_run(elicit, tfr_datasets=["christykoh/imdb_pt"])
+    elicit = setup_elicit(tmp_path)
+    eval_start_time = eval_run(elicit, tfr_datasets=["christykoh/imdb_pt"])
+    eval_assert_files_created(elicit, eval_start_time)
 
 
 def test_smoke_multi_eval_run_tiny_gpt2_ccs(tmp_path: Path):
-    elicit = setup_elicit(
-        tmp_path,
-        model_path="sshleifer/tiny-gpt2",
-        min_mem=10 * 1024**2,
-        dataset_name="imdb",
-    )
-    eval_run(elicit, tfr_datasets=["super_glue boolq", "ag_news"])
+    elicit = setup_elicit(tmp_path)
+    eval_start_time = eval_run(elicit, tfr_datasets=["super_glue boolq", "ag_news"])
+    eval_assert_files_created(elicit, eval_start_time)
 
 
 def test_smoke_eval_run_tiny_gpt2_eigen(tmp_path: Path):
     elicit = setup_elicit(tmp_path, is_ccs=False)
-    eval_run(elicit)
+    eval_start_time = eval_run(elicit)
+    eval_assert_files_created(elicit, eval_start_time)
