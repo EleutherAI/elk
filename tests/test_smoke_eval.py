@@ -20,6 +20,7 @@ EVAL_EXPECTED_FILES = [
     "eval.csv",
 ]
 
+
 # TODO make into a pytest.fixture?
 def setup_elicit(
     tmp_path: Path,
@@ -55,9 +56,9 @@ def check_contains_files(dir: Path, expected_files: list[str]):
         assert file in created_file_names
 
 
-def eval_run(elicit: Elicit, tfr_datasets: list[str] = None) -> int :
+def eval_run(elicit: Elicit, tfr_datasets: list[str] = None) -> int:
     """A single eval run; act and assert that expected files were created.
-    Returns a reference time (in seconds) for file modification checking. 
+    Returns a reference time (in seconds) for file modification checking.
     """
     tmp_path = elicit.out_dir
     extract = elicit.data
@@ -65,7 +66,6 @@ def eval_run(elicit: Elicit, tfr_datasets: list[str] = None) -> int :
     # record elicit modification time as reference.
     start_time_sec = (tmp_path / "eval.csv").stat().st_mtime
 
-    eval_only = tfr_datasets is not None
 
     if tfr_datasets:
         # update datasets to a different dataset
@@ -76,7 +76,7 @@ def eval_run(elicit: Elicit, tfr_datasets: list[str] = None) -> int :
     return start_time_sec
 
 
-def eval_assert_files_created(elicit: Elicit, start_time_sec = 0):
+def eval_assert_files_created(elicit: Elicit, start_time_sec=0):
     tmp_path = elicit.out_dir
     if not tfr_datasets:
         # self-eval only, assert eval.csv has been modified (?)
@@ -91,6 +91,7 @@ def eval_assert_files_created(elicit: Elicit, start_time_sec = 0):
 
 
 # TESTS #
+
 
 def test_smoke_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     elicit = setup_elicit(tmp_path, is_ccs=True)
