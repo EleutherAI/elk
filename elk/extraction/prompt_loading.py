@@ -129,20 +129,18 @@ class PromptConfig(Serializable):
         )
 
     def verify_cols(self, ref_ds_builder, ds_builder, ds_name) -> bool:
-        """Verify that number of features and number of classes for ClassLabel
-        match the expected values.
-        """
-        expected_features = len(ref_ds_builder.info.features)
+        """Verify that column parameters match the reference dataset."""
+        # Match feature names
+        for feature in ref_ds_builder.info.features.keys():
+            if feature not in ds_builder.info.features:
+                print(
+                    f"WARNING: Dataset {ds_name} is missing {feature} from reference",
+                    "dataset. Proceeding, but prompting datasets separately.",
+                )
+                return False
+        # Match label classes
         expected_classes = ref_ds_builder.info.features["label"].num_classes
-        num_features = len(ds_builder.info.features)
         num_classes = ds_builder.info.features["label"].num_classes
-        if expected_features > 0 and num_features != expected_features:
-            print(
-                "WARNING: Datasets do not have the same number of features;",
-                f"{ds_name} has {num_features} features while first dataset has",
-                f"{expected_features}. Prompting datasets separately.",
-            )
-            return False
         if expected_classes > 0 and num_classes != expected_classes:
             print(
                 "WARNING: Datasets do not have the same number of ClassLabel classes",
