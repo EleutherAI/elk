@@ -99,8 +99,8 @@ class Run(ABC):
             val_h = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
 
             with split.formatted_as("torch", device=device):
-                has_preds = "model_preds" in split.features
-                lm_preds = split["model_preds"] if has_preds else None
+                has_preds = "model_logits" in split.features
+                lm_preds = split["model_logits"] if has_preds else None
 
             ds_name = get_dataset_name(ds)
             out[ds_name] = (val_h, labels.to(val_h.device), lm_preds)

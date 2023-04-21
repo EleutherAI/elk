@@ -40,7 +40,7 @@ class EvalResult:
         return {**acc_dict, **cal_acc_dict, **cal_dict, **auroc_dict}
 
 
-def evaluate_preds(y_true: Tensor, y_pred: Tensor) -> EvalResult:
+def evaluate_preds(y_true: Tensor, y_logits: Tensor) -> EvalResult:
     """
     Evaluate the performance of a classification model.
 
@@ -51,19 +51,19 @@ def evaluate_preds(y_true: Tensor, y_pred: Tensor) -> EvalResult:
     Returns:
         dict: A dictionary containing the accuracy, AUROC, and ECE.
     """
-    (n, v, c) = y_pred.shape
+    (n, v, c) = y_logits.shape
     assert y_true.shape == (n,)
 
     # Clustered bootstrap confidence intervals for AUROC
     y_true = repeat(y_true, "n -> n v", v=v)
-    auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(1), y_pred.flatten(1))
-    acc = accuracy_ci(y_true, y_pred.argmax(dim=-1))
+    auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(1), y_logits.flatten(1))
+    acc = accuracy_ci(y_true, y_logits.argmax(dim=-1))
 
     cal_acc = None
     cal_err = None
 
     if c == 2:
-        pos_probs = y_pred[..., 1].sigmoid()
+        pos_probs = y_logits.softmax(-1)[..., 1]
 
         # Calibrated accuracy
         cal_thresh = pos_probs.float().quantile(y_true.float().mean())
