@@ -53,6 +53,8 @@ class Elicit(Serializable):
     out_dir: Path | None = None
     supervised: Literal["none", "single", "cv"] = "single"
 
+    disable_cache: bool = field(default=False, to_dict=False)
+
     def execute(self):
         Train(cfg=self, out_dir=self.out_dir).train()
 
@@ -100,7 +102,8 @@ class Train(Run):
             x0, x1 = first_train_h.unbind(2)
             val_x0, val_x1 = val_h.unbind(2)
             pseudo_auroc = reporter.check_separability(
-                train_pair=(x0, x1), val_pair=(val_x0, val_x1)
+                train_pair=(reporter.neg_norm(x0), reporter.pos_norm(x1)),
+                val_pair=(reporter.neg_norm(val_x0), reporter.pos_norm(val_x1)),
             )
 
         elif isinstance(self.cfg.net, EigenReporterConfig):

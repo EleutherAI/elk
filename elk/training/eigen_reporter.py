@@ -215,7 +215,19 @@ class EigenReporter(Reporter):
         if truncated:
             L, Q = truncated_eigh(A, k=self.config.num_heads)
         else:
-            L, Q = torch.linalg.eigh(A)
+            try:
+                L, Q = torch.linalg.eigh(A)
+            except torch.linalg.LinAlgError as e:
+                # Check if the matrix has non-finite values
+                if not A.isfinite().all():
+                    raise ValueError(
+                        "Fitting the reporter failed because the VINC matrix has "
+                        "non-finite entries. Usually this means the hidden states "
+                        "themselves had non-finite values."
+                    ) from e
+                else:
+                    raise e
+
             L, Q = L[-self.config.num_heads :], Q[:, -self.config.num_heads :]
 
         self.weight.data = Q.T

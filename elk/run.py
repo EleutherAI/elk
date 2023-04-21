@@ -38,7 +38,12 @@ class Run(ABC):
 
     def __post_init__(self):
         self.datasets = [
-            extract(cfg, num_gpus=self.cfg.num_gpus, min_gpu_mem=self.cfg.min_gpu_mem)
+            extract(
+                cfg,
+                disable_cache=self.cfg.disable_cache,
+                num_gpus=self.cfg.num_gpus,
+                min_gpu_mem=self.cfg.min_gpu_mem,
+            )
             for cfg in self.cfg.data.explode()
         ]
 
