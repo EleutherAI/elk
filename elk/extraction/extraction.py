@@ -230,10 +230,10 @@ def extract_hiddens(
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 )
                 # First element of list is the input embeddings
-                hiddens = hiddens if cfg.model == "elmo" else hiddens[1:]
+                hiddens = hiddens[1:]
 
                 # Throw out layers we don't care about
-                hiddens = hiddens[1:]
+                hiddens = [hiddens[i] for i in layer_indices]
 
                 # Current shape of each element: (batch_size, seq_len, hidden_size)
                 if cfg.token_loc == "first":
