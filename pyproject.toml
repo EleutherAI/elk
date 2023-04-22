@@ -25,8 +25,8 @@ dependencies = [
     "sentencepiece==0.1.97",
     # We upstreamed bugfixes for Literal types in 0.1.1
     "simple-parsing>=0.1.1",
-    # Version 1.11 introduced Fully Sharded Data Parallel, which we plan to use soon
-    "torch>=1.11.0",
+    # Version 1.11 introduced Fully Sharded Data Parallel, which we plan to use soon. 1.13 supprots A40 cards.
+    "torch>=1.13.0",
     # Doesn't really matter but versions < 4.0 are very very old (pre-2016)
     "tqdm>=4.0.0",
     # 4.0 introduced the breaking change of using return_dict=True by default
@@ -43,6 +43,8 @@ dev = [
     "pytest",
     "pyright",
     "scikit-learn",
+    "tensorflow",
+    "tensorflow_hub"
 ]
 
 [project.scripts]

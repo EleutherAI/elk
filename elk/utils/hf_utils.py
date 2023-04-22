@@ -8,7 +8,7 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
-from ..rnn.elmo import ElmoConfig, TfElmoModel, ElmoTokenizer
+from ..rnn.elmo import ElmoConfig, ElmoTokenizer, TfElmoModel
 
 # Ordered by preference
 _DECODER_ONLY_SUFFIXES = [
