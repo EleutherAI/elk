@@ -181,22 +181,22 @@ def extract_hiddens(
 
                 # Record the EXACT string we fed to the model
                 variant_inputs.append(text)
-                inputs = None
-                if cfg.model.startswith("RWKV"):
-                    inputs = tokenizer(
-                        text,
-                        return_offsets_mapping=True,
-                        text_target=target,  # type: ignore[arg-type]
-                        truncation=True,
-                    )
-                else:
-                    inputs = tokenizer(
-                        text,
-                        return_offsets_mapping=True,
-                        return_tensors="pt",
-                        text_target=target,  # type: ignore[arg-type]
-                        truncation=True,
-                    )
+                # inputs = None
+                # if cfg.model.startswith("RWKV"):
+                #     inputs = tokenizer(
+                #         text,
+                #         return_offsets_mapping=True,
+                #         text_target=target,  # type: ignore[arg-type]
+                #         truncation=True,
+                #     )
+                # else:
+                inputs = tokenizer(
+                    text,
+                    return_offsets_mapping=True,
+                    return_tensors="pt",
+                    text_target=target,  # type: ignore[arg-type]
+                    truncation=True,
+                )
 
                 # The offset_mapping is a sorted list of (start, end) tuples. We locate
                 # the start of the answer in the tokenized sequence with binary search.
@@ -233,17 +233,14 @@ def extract_hiddens(
                 hiddens = [hiddens[i] for i in layer_indices]
 
                 # Current shape of each element: (batch_size, seq_len, hidden_size)
-                # if cfg.model.startswith("RWKV"):
-                #     hiddens = [h for h in hiddens]
-                if not cfg.model.startswith("RWKV"):
-                    if cfg.token_loc == "first":
-                        hiddens = [h[..., 0, :] for h in hiddens]
-                    elif cfg.token_loc == "last":
-                        hiddens = [h[..., -1, :] for h in hiddens]
-                    elif cfg.token_loc == "mean":
-                        hiddens = [h.mean(dim=-2) for h in hiddens]
-                    else:
-                        raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+                if cfg.token_loc == "first":
+                    hiddens = [h[..., 0, :] for h in hiddens]
+                elif cfg.token_loc == "last":
+                    hiddens = [h[..., -1, :] for h in hiddens]
+                elif cfg.token_loc == "mean":
+                    hiddens = [h.mean(dim=-2) for h in hiddens]
+                else:
+                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)

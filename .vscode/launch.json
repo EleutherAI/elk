@@ -9,7 +9,7 @@
             "type": "python",
             "request": "launch",
             "module": "elk",
-            "args": ["elicit", "RWKV", "imdb", "--token_loc=mean", "--max_examples=45"],
+            "args": ["elicit", "RWKV", "imdb", "--max_examples=5"],
             "env": {
                 "CUDA_VISIBLE_DEVICES": "5",
             },
