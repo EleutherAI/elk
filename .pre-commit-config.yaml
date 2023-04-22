@@ -24,4 +24,4 @@ repos:
     hooks:
     -   id: codespell
         # The promptsource templates spuriously get flagged without this
-        args: ["--skip=*.yaml"]
+        args: ["-L fpr", "--skip=*.yaml"]

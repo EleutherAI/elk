@@ -1,12 +1,11 @@
-import warnings
 from dataclasses import dataclass, field
-from typing import NamedTuple
 
 import torch
 from torch import Tensor
 
 
-class CalibrationEstimate(NamedTuple):
+@dataclass(frozen=True)
+class CalibrationEstimate:
     ece: float
     num_bins: int
 
@@ -34,8 +33,8 @@ class CalibrationError:
         assert labels.shape == probs.shape
         assert torch.is_floating_point(probs)
 
-        self.labels.append(probs)
-        self.pred_probs.append(labels)
+        self.labels.append(labels)
+        self.pred_probs.append(probs)
         return self
 
     def compute(self, p: int = 2) -> CalibrationEstimate:
@@ -68,10 +67,6 @@ class CalibrationError:
                 break
 
             elif not torch.all(freqs * (1 - freqs)):
-                warnings.warn(
-                    "Calibration error estimate may be unreliable due to insufficient"
-                    " data in some bins."
-                )
                 break
 
             # Save the current binning, it's monotonic and may be the best one
@@ -82,7 +77,7 @@ class CalibrationError:
         # Split into (nearly) equal mass bins. They won't be exactly equal, so we
         # still weight the bins by their size.
         conf_bins = pred_probs.tensor_split(b_star)
-        w = torch.tensor([len(c) / n for c in conf_bins])
+        w = pred_probs.new_tensor([len(c) / n for c in conf_bins])
 
         # See the definition of ECE_sweep in Equation 8 of Roelofs et al. (2020)
         mean_confs = torch.stack([c.mean() for c in conf_bins])
