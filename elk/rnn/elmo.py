@@ -45,6 +45,7 @@ class TfElmoModel(PreTrainedModel):
         embeddings = self.elmo_model(tf.constant(input_ids))
         return {
             "hidden_states": [
+                torch.tensor(embeddings["word_emb"].numpy()),
                 torch.tensor(embeddings["lstm_outputs1"].numpy()),
                 torch.tensor(embeddings["lstm_outputs2"].numpy()),
                 torch.tensor(embeddings["elmo"].numpy()),

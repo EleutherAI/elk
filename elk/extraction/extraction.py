@@ -215,13 +215,7 @@ def extract_hiddens(
                     length = inputs.labels.shape[-1]
                     lm_preds[i, j] = -assert_type(Tensor, outputs.loss) * length
 
-                hiddens = (
-                    outputs
-                    if cfg.model == "elmo"
-                    else (
-                        outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-                    )
-                )
+                hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 # First element of list is the input embeddings
                 hiddens = hiddens if cfg.model == "elmo" else hiddens[1:]
 
