@@ -1,6 +1,6 @@
-import torch
-import tensorflow_hub as hub
 import tensorflow as tf
+import tensorflow_hub as hub
+import torch
 from transformers import (
     PretrainedConfig,
     PreTrainedModel,
@@ -31,7 +31,9 @@ class TfElmoTokenizer(PreTrainedTokenizer):
 class TfElmoModel(PreTrainedModel):
     def __init__(self):
         super().__init__(config=ElmoConfig())
-        self.elmo_model = hub.load("https://tfhub.dev/google/elmo/3").signatures["default"]
+        self.elmo_model = hub.load("https://tfhub.dev/google/elmo/3").signatures[
+            "default"
+        ]
 
     def forward(
         self,
