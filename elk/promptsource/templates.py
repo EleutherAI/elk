@@ -386,7 +386,7 @@ class DatasetTemplates:
     TEMPLATE_FILENAME = "templates.yaml"
 
     label_column: str | None
-    label_choices: list[str] | None
+    label_choices: list[str]
 
     def __init__(self, dataset_name: str, subset_name: str | None = None):
         self.dataset_name = dataset_name
@@ -400,7 +400,7 @@ class DatasetTemplates:
 
             # Optional fields; may be None
             self.label_column = yaml_dict.get(self.LABEL_COLUMN_KEY)
-            self.label_choices = yaml_dict.get(self.LABEL_CHOICES_KEY)
+            self.label_choices = yaml_dict.get(self.LABEL_CHOICES_KEY, [])
 
         # Mapping from template name to template id
         self.name_to_id_mapping = {}

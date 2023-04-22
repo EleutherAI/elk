@@ -1,5 +1,6 @@
 dataset: glue
 subset: mnli
+label_choices: [0, 2]
 templates:
   02b4c44e-52cb-417b-b069-5d334b1f1a91: !Template
     answer_choices: Always ||| Sometimes ||| Never

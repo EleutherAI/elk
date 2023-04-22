@@ -30,6 +30,7 @@ from ..utils import (
     assert_type,
     float32_to_int16,
     infer_label_column,
+    infer_num_classes,
     instantiate_model,
     instantiate_tokenizer,
     is_autoregressive,
@@ -216,13 +217,13 @@ def extract_hiddens(
 
                     log_p = outputs.logits[..., -answer_len:, :].log_softmax(dim=-1)
                     tokens = answer[..., None]
-                    lm_logits[i, j] = log_p.gather(-1, tokens).sum()
+                    lm_logits[i, j] = log_p.gather(-1, tokens).mean()
 
                 elif isinstance(outputs, Seq2SeqLMOutput):
                     # The cross entropy loss is averaged over tokens, so we need to
                     # multiply by the length to get the total log probability.
-                    length = encoding.labels.shape[-1]
-                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss) * length
+                    # length = encoding.labels.shape[-1]
+                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss)  #  * length
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
@@ -300,8 +301,10 @@ def extract(
 
     prompter = DatasetTemplates(ds_name, config_name)
     ds_features = assert_type(Features, info.features)
-    prompter.label_column or infer_label_column(ds_features)
-    num_classes = 2  # prompter.num_classes or infer_num_classes(ds_features[label_col])
+    label_col = prompter.label_column or infer_label_column(ds_features)
+    num_classes = len(prompter.label_choices) or infer_num_classes(
+        ds_features[label_col]
+    )
 
     num_variants = cfg.prompts.num_variants
     if num_variants < 0:
