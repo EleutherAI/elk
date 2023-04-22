@@ -25,7 +25,6 @@ from torch import Tensor
 from transformers import AutoConfig, PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
-from ..rnn.elmo import ElmoConfig, TfElmoTokenizer
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
@@ -227,7 +226,9 @@ def extract_hiddens(
                     length = encoding.labels.shape[-1]
                     lm_logits[i, j] = -assert_type(Tensor, outputs.loss) * length
 
-                hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                hiddens = (
+                    outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                )
                 # First element of list is the input embeddings
                 hiddens = hiddens if cfg.model == "elmo" else hiddens[1:]
 
