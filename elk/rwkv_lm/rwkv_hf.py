@@ -1,7 +1,9 @@
 import os
+import torch
 from rwkv.model import RWKV
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer, GPT2TokenizerFast, PreTrainedModel, PretrainedConfig
+from transformers.modeling_outputs import CausalLMOutput
 
 os.environ["RWKV_JIT_ON"] = '1'
 os.environ["RWKV_CUDA_ON"] = '0'
@@ -29,9 +31,14 @@ class RWKVModel(PreTrainedModel):
         position_ids=None,
         head_mask=None,
         labels=None,
+        output_hidden_states=None
     ):
-        _, state = self.model.forward(input_ids, None)
-        return state
+        inputs = input_ids.detach().cpu()
+        token, states = self.model.forward(inputs, None)
+        mock_embedding_state = states[0].clone()
+        output_states = [mock_embedding_state] + states
+        response = CausalLMOutput(logits=token, hidden_states=output_states)
+        return response
 
     # @staticmethod
     # def from_pretrained(pretrained_model_name_or_path):

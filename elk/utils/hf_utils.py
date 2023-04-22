@@ -6,8 +6,9 @@ from transformers import (
     PretrainedConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
+    GPT2TokenizerFast
 )
-from ..rwkv_lm.rwkv_hf import RWKVModel, RWKVConfig, RWKVTokenizer
+from ..rwkv_lm.rwkv_hf import RWKVModel, RWKVConfig
 
 # Ordered by preference
 _DECODER_ONLY_SUFFIXES = [
@@ -42,7 +43,7 @@ def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
 def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:
     """Instantiate a tokenizer, using the fast one iff it exists."""
     if model_str.startswith("rwkv"):
-        return RWKVTokenizer()
+        return GPT2TokenizerFast(tokenizer_file="elk/rwkv_lm/20B_tokenizer.json")
 
     try:
         return AutoTokenizer.from_pretrained(model_str, use_fast=True, **kwargs)
