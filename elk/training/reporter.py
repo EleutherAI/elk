@@ -3,28 +3,12 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, NamedTuple, Optional
+from typing import Literal, Optional
 
 import torch
 import torch.nn as nn
 from simple_parsing.helpers import Serializable
-from sklearn.metrics import roc_auc_score
 from torch import Tensor
-
-from ..calibration import CalibrationError
-
-
-class EvalResult(NamedTuple):
-    """The result of evaluating a reporter on a dataset.
-
-    The `.score()` function of a reporter returns an instance of this class,
-    which contains the loss, accuracy, calibrated accuracy, and AUROC.
-    """
-
-    acc: float
-    cal_acc: float
-    auroc: float
-    ece: float
 
 
 @dataclass
@@ -57,15 +41,7 @@ class OptimConfig(Serializable):
 
 
 class Reporter(nn.Module, ABC):
-    """An ELK reporter network.
-
-    Args:
-        in_features: The number of input features.
-        cfg: The reporter configuration.
-    """
-
-    n: Tensor
-    config: ReporterConfig
+    """An ELK reporter network."""
 
     def reset_parameters(self):
         """Reset the parameters of the probe."""
@@ -83,55 +59,7 @@ class Reporter(nn.Module, ABC):
     @abstractmethod
     def fit(
         self,
-        x_pos: Tensor,
-        x_neg: Tensor,
+        hiddens: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         ...
-
-    @abstractmethod
-    def predict(self, x_pos: Tensor, x_neg: Tensor) -> Tensor:
-        """Pool the probe output on the contrast pair (x_pos, x_neg)."""
-
-    @torch.no_grad()
-    def score(self, labels: Tensor, x_pos: Tensor, x_neg: Tensor) -> EvalResult:
-        """Score the probe on the contrast pair (x_pos, x1).
-
-        Args:
-            x_pos: The positive examples.
-            x_neg: The negative examples.
-            labels: The labels of the contrast pair.
-
-        Returns:
-            an instance of EvalResult containing the loss, accuracy, calibrated
-                accuracy, and AUROC of the probe on the contrast pair (x0, x1).
-        """
-
-        pred_probs = self.predict(x_pos, x_neg)
-
-        # makes `num_variants` copies of each label, all within a single
-        # dimension of size `num_variants * n`, such that the labels align
-        # with pred_probs.flatten()
-        broadcast_labels = labels.repeat_interleave(pred_probs.shape[1]).float()
-        cal_err = (
-            CalibrationError()
-            .update(broadcast_labels.cpu(), pred_probs.cpu())
-            .compute()
-        )
-
-        # Calibrated accuracy
-        cal_thresh = pred_probs.float().quantile(labels.float().mean())
-        cal_preds = pred_probs.gt(cal_thresh).squeeze(1).to(torch.int)
-        raw_preds = pred_probs.gt(0.5).squeeze(1).to(torch.int)
-
-        # roc_auc_score only takes flattened input
-        auroc = float(roc_auc_score(broadcast_labels.cpu(), pred_probs.cpu().flatten()))
-        cal_acc = cal_preds.flatten().eq(broadcast_labels).float().mean()
-        raw_acc = raw_preds.flatten().eq(broadcast_labels).float().mean()
-
-        return EvalResult(
-            acc=torch.max(raw_acc, 1 - raw_acc).item(),
-            cal_acc=torch.max(cal_acc, 1 - cal_acc).item(),
-            auroc=max(auroc, 1 - auroc),
-            ece=cal_err.ece,
-        )
