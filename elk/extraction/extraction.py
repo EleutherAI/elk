@@ -22,7 +22,7 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig, PreTrainedModel
+from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
@@ -190,7 +190,11 @@ def extract_hiddens(
                     truncation=True,
                 ).to(device)
 
-                input_ids = assert_type(Tensor, encoding.input_ids) if not isinstance(encoding, str) else None
+                input_ids = (
+                    assert_type(Tensor, encoding.input_ids)
+                    if not isinstance(encoding, str)
+                    else None
+                )
 
                 if is_enc_dec:
                     answer = assert_type(Tensor, encoding.labels)
