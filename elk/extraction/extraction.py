@@ -234,8 +234,7 @@ def extract_hiddens(
                 elif cfg.token_loc == "last":
                     hiddens = [h[..., -1, :] for h in hiddens]
                 elif cfg.token_loc == "mean":
-                    # hiddens = [h.mean(dim=-2) for h in hiddens]
-                    hiddens = hiddens[0].mean(dim=0)
+                    hiddens = [h.mean(dim=-2) for h in hiddens]
                 else:
                     raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
