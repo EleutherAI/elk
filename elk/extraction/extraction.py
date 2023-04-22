@@ -73,7 +73,9 @@ class Extract(Serializable):
             config = assert_type(
                 PretrainedConfig, AutoConfig.from_pretrained(self.model)
             )
-            self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
+            # Note that we always include 0 which is the embedding layer
+            layer_range = range(0, config.num_hidden_layers, layer_stride)
+            self.layers = (0,) + tuple(layer_range)
 
     def explode(self) -> list["Extract"]:
         """Explode this config into a list of configs, one for each layer."""
@@ -132,8 +134,8 @@ def extract_hiddens(
         world_size=world_size,
     )
 
-    # Iterating over questions
-    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
+    # Add one to the number of layers to account for the embedding layer
+    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
 
     global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
     # break `max_examples` among the processes roughly equally
@@ -225,9 +227,6 @@ def extract_hiddens(
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 )
-                # First element of list is the input embeddings
-                hiddens = hiddens[1:]
-
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
 
@@ -316,7 +315,8 @@ def extract(
             dtype="int16",
             shape=(num_variants, num_classes, model_cfg.hidden_size),
         )
-        for layer in cfg.layers or range(model_cfg.num_hidden_layers)
+        # Add 1 to include the embedding layer
+        for layer in cfg.layers or range(model_cfg.num_hidden_layers + 1)
     }
     other_cols = {
         "variant_ids": Sequence(
