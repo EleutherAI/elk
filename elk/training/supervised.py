@@ -5,7 +5,9 @@ from ..metrics import to_one_hot
 from .classifier import Classifier
 
 
-def train_supervised(data: dict[str, tuple], device: str, cv: bool) -> Classifier:
+def train_supervised(
+    data: dict[str, tuple], device: str, mode: str
+) -> list[Classifier]:
     Xs, train_labels = [], []
 
     for train_h, labels, _ in data.values():
@@ -19,10 +21,15 @@ def train_supervised(data: dict[str, tuple], device: str, cv: bool) -> Classifie
         train_labels.append(labels)
 
     X, train_labels = torch.cat(Xs), torch.cat(train_labels)
-    lr_model = Classifier(X.shape[-1], device=device)
-    if cv:
+    if mode == "cv":
+        lr_model = Classifier(X.shape[-1], device=device)
         lr_model.fit_cv(X, train_labels)
-    else:
+        return [lr_model]
+    elif mode == "inlp":
+        return Classifier.inlp(X, train_labels).classifiers
+    elif mode == "single":
+        lr_model = Classifier(X.shape[-1], device=device)
         lr_model.fit(X, train_labels)
-
-    return lr_model
+        return [lr_model]
+    else:
+        raise ValueError(f"Unknown mode: {mode}")

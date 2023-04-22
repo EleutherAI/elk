@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 
 import pandas as pd
@@ -25,7 +26,7 @@ class Eval(Run):
 
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> pd.DataFrame:
+    ) -> dict[str, pd.DataFrame]:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
@@ -36,24 +37,25 @@ class Eval(Run):
         reporter: Reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
-        row_buf = []
+        row_bufs = defaultdict(list)
         for ds_name, (val_h, val_gt, _) in val_output.items():
-            val_result = evaluate_preds(val_gt, reporter(val_h))
+            meta = {"dataset": ds_name, "layer": layer}
 
-            stats_row = {
-                "dataset": ds_name,
-                "layer": layer,
-                **val_result.to_dict(),
-            }
+            val_result = evaluate_preds(val_gt, reporter(val_h))
+            row_bufs["eval"].append({**meta, **val_result.to_dict()})
 
             lr_dir = experiment_dir / "lr_models"
             if not self.skip_supervised and lr_dir.exists():
                 with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
-                    lr_model = torch.load(f, map_location=device).eval()
+                    lr_models = torch.load(f, map_location=device)
+                    if not isinstance(lr_models, list):  # backward compatibility
+                        lr_models = [lr_models]
 
-                lr_result = evaluate_preds(val_gt, lr_model(val_h))
-                stats_row.update(lr_result.to_dict(prefix="lr_"))
+                for i, model in enumerate(lr_models):
+                    model.eval()
+                    lr_result = evaluate_preds(val_gt, model(val_h))
+                    row_bufs["lr_eval"].append(
+                        {"inlp_iter": i, **meta, **lr_result.to_dict()}
+                    )
 
-            row_buf.append(stats_row)
-
-        return pd.DataFrame.from_records(row_buf)
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
