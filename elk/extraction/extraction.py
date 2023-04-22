@@ -232,7 +232,7 @@ def extract_hiddens(
                 hiddens = hiddens if cfg.model == "elmo" else hiddens[1:]
 
                 # Throw out layers we don't care about
-                hiddens = [hiddens[i] for i in layer_indices]
+                hiddens = hiddens[1:]
 
                 # Current shape of each element: (batch_size, seq_len, hidden_size)
                 if cfg.token_loc == "first":

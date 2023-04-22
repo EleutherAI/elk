@@ -211,15 +211,6 @@ class EigenReporter(Reporter):
             - inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
         )
-<<<<<<< HEAD
-        try:
-            L, Q = truncated_eigh(A, k=self.config.num_heads)
-        except (ConvergenceError, RuntimeError):
-            warn(
-                "Truncated eigendecomposition failed to converge. Falling back on "
-                "PyTorch's dense eigensolver."
-            )
-=======
 
         if truncated:
             L, Q = truncated_eigh(A, k=self.config.num_heads)
@@ -236,7 +227,6 @@ class EigenReporter(Reporter):
                     ) from e
                 else:
                     raise e
->>>>>>> origin/main
 
             L, Q = L[-self.config.num_heads :], Q[:, -self.config.num_heads :]
 
