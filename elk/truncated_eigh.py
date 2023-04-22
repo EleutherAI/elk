@@ -16,14 +16,6 @@ class Eigendecomposition(NamedTuple):
     eigenvectors: Tensor
 
 
-# Do most of the computation in bfloat16 if available; this can be substantially faster
-# than fp32. We can't use fp16 because the dynamic range is too small for the Lanczos
-# iteration to converge in many cases.
-@torch.autocast(
-    "cuda",
-    dtype=torch.bfloat16,
-    enabled=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
-)
 def truncated_eigh(
     A: Tensor,
     k: int = 1,
