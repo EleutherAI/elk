@@ -7,10 +7,10 @@ from typing import Literal, Optional, cast
 
 import torch
 import torch.nn as nn
-from sklearn.metrics import roc_auc_score
 from torch import Tensor
 from torch.nn.functional import binary_cross_entropy as bce
 
+from ..metrics import roc_auc
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
 from .classifier import Classifier
@@ -87,8 +87,8 @@ class CcsReporter(Reporter):
 
     def __init__(
         self,
-        in_features: int,
         cfg: CcsReporterConfig,
+        in_features: int,
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
     ):
@@ -175,8 +175,8 @@ class CcsReporter(Reporter):
             pseudo_preds = pseudo_clf(
                 # b v d -> (b v) d
                 torch.cat([val_x0, val_x1]).flatten(0, 1)
-            )
-            return float(roc_auc_score(pseudo_val_labels.cpu(), pseudo_preds.cpu()))
+            ).squeeze(-1)
+            return roc_auc(pseudo_val_labels, pseudo_preds).item()
 
     def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         loss = sum(
@@ -221,11 +221,6 @@ class CcsReporter(Reporter):
     def forward(self, x: Tensor) -> Tensor:
         """Return the raw score output of the probe on `x`."""
         return self.probe(x).squeeze(-1)
-
-    def predict(self, x_neg: Tensor, x_pos: Tensor) -> Tensor:
-        x_neg = self.neg_norm(x_neg)
-        x_pos = self.pos_norm(x_pos)
-        return 0.5 * (self(x_pos).sigmoid() + (1 - self(x_neg).sigmoid()))
 
     def loss(
         self,
@@ -273,8 +268,7 @@ class CcsReporter(Reporter):
 
     def fit(
         self,
-        x_neg: Tensor,
-        x_pos: Tensor,
+        hiddens: Tensor,
         labels: Optional[Tensor] = None,
     ) -> float:
         """Fit the probe to the contrast pair (neg, pos).
@@ -291,6 +285,7 @@ class CcsReporter(Reporter):
             ValueError: If `optimizer` is not "adam" or "lbfgs".
             RuntimeError: If the best loss is not finite.
         """
+        x_pos, x_neg = hiddens.unbind(2)
         # Fit normalizers
         self.pos_norm.fit(x_pos)
         self.neg_norm.fit(x_neg)
