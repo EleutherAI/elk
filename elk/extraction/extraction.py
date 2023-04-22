@@ -190,7 +190,7 @@ def extract_hiddens(
                     truncation=True,
                 ).to(device)
 
-                input_ids = assert_type(Tensor, encoding.input_ids) if not isinstance(encoding, str) else None
+                input_ids = assert_type(Tensor, encoding.input_ids)
 
                 if is_enc_dec:
                     answer = assert_type(Tensor, encoding.labels)
