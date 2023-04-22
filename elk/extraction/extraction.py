@@ -229,15 +229,15 @@ def extract_hiddens(
                 hiddens = [hiddens[i] for i in layer_indices]
 
                 # Current shape of each element: (batch_size, seq_len, hidden_size)
-                # if cfg.token_loc == "first":
-                #     hiddens = [h[..., 0, :] for h in hiddens]
-                # elif cfg.token_loc == "last":
-                #     hiddens = [h[..., -1, :] for h in hiddens]
-                # elif cfg.token_loc == "mean":
-                #     # hiddens = [h.mean(dim=-2) for h in hiddens]
-                #     hiddens = hiddens[0].mean(dim=0)
-                # else:
-                #     raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+                if cfg.token_loc == "first":
+                    hiddens = [h[..., 0, :] for h in hiddens]
+                elif cfg.token_loc == "last":
+                    hiddens = [h[..., -1, :] for h in hiddens]
+                elif cfg.token_loc == "mean":
+                    # hiddens = [h.mean(dim=-2) for h in hiddens]
+                    hiddens = hiddens[0].mean(dim=0)
+                else:
+                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)

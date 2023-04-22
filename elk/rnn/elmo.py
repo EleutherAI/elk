@@ -97,7 +97,7 @@ class TfElmoModel(PreTrainedModel):
         labels=None,
     ):
         embeddings_tensor = self.elmo_model(tf.constant(input_ids))
-        elmo_embeddings = embeddings_tensor["default"]
+        elmo_embeddings = embeddings_tensor["lstm_outputs2"]
         return torch.tensor(elmo_embeddings.numpy())
 
 
