@@ -153,6 +153,9 @@ class Run(ABC):
                 # Make sure the CSV is written even if we crash or get interrupted
                 if df_buf:
                     df = pd.concat(df_buf).sort_values(by="layer")
+
+                    # Rename layer 0 to "input" to make it more clear
+                    df["layer"].replace(0, "input", inplace=True)
                     df.round(4).to_csv(f, index=False)
                 if self.cfg.debug:
                     save_debug_log(self.datasets, self.out_dir)

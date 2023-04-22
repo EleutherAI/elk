@@ -74,7 +74,7 @@ class Extract(Serializable):
                 PretrainedConfig, AutoConfig.from_pretrained(self.model)
             )
             # Note that we always include 0 which is the embedding layer
-            layer_range = range(0, config.num_hidden_layers, layer_stride)
+            layer_range = range(1, config.num_hidden_layers + 1, layer_stride)
             self.layers = (0,) + tuple(layer_range)
 
     def explode(self) -> list["Extract"]:
