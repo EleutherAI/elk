@@ -6,6 +6,7 @@ nohup.out
 .idea
 *.pkl
 *.ipynb
+.vscode/launch.json
 
 # scripts for experiments in progress
 my_*.sh
