@@ -8,7 +8,7 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
-from ..rnn.elmo import ElmoConfig, TfElmoModel, TfElmoTokenizer
+from ..rnn.elmo import ElmoConfig, TfElmoModel, ElmoTokenizer
 
 # Ordered by preference
 _DECODER_ONLY_SUFFIXES = [
@@ -43,7 +43,7 @@ def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
 def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:
     """Instantiate a tokenizer, using the fast one iff it exists."""
     if model_str == "elmo":
-        return TfElmoTokenizer.from_pretrained("")
+        return ElmoTokenizer.from_pretrained("")
 
     try:
         return AutoTokenizer.from_pretrained(model_str, use_fast=True, **kwargs)

@@ -5,6 +5,7 @@ from transformers import (
     PretrainedConfig,
     PreTrainedModel,
     PreTrainedTokenizer,
+    AutoTokenizer
 )
 
 
@@ -17,23 +18,42 @@ class ElmoConfig(PretrainedConfig):
         self.architectures = ["Elmo"]
 
 
-class TfElmoTokenizer(PreTrainedTokenizer):
+# class TfElmoTokenizer(PreTrainedTokenizer):
+#     def __call__(
+#         self, text=None, return_tensors=None, truncation=None, return_offsets_mapping=None, text_target=None
+#     ):
+#         return text
+
+#     @staticmethod
+#     def from_pretrained(path):
+#         return TfElmoTokenizer()
+
+
+class ElmoTokenizer(PreTrainedTokenizer):
+    def __init__(self):
+        self.internal_tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        self.model_max_length = self.internal_tokenizer.model_max_length
+
     def __call__(
-        self, text, return_tensors, truncation, return_offsets_mapping, text_target
+        self, text=None, return_tensors=None, truncation=None, return_offsets_mapping=None, text_target=None, add_special_tokens=None
     ):
-        return text
+        return self.internal_tokenizer(
+            text=text,
+            add_special_tokens=add_special_tokens,
+            return_tensors=return_tensors,
+            text_target=text_target,
+            truncation=truncation)
 
     @staticmethod
     def from_pretrained(path):
-        return TfElmoTokenizer()
+        return ElmoTokenizer()
 
 
 class TfElmoModel(PreTrainedModel):
     def __init__(self):
         super().__init__(config=ElmoConfig())
-        self.elmo_model = hub.load("https://tfhub.dev/google/elmo/3").signatures[
-            "default"
-        ]
+        self.internal_tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        self.elmo_model = hub.load("https://tfhub.dev/google/elmo/3").signatures["default"]
 
     def forward(
         self,
@@ -43,8 +63,10 @@ class TfElmoModel(PreTrainedModel):
         position_ids=None,
         head_mask=None,
         labels=None,
+        output_hidden_states=None
     ):
-        embeddings = self.elmo_model(tf.constant(input_ids))
+        nl_inputs = [self.internal_tokenizer.decode(sequence_tensor) for sequence_tensor in input_ids]
+        embeddings = self.elmo_model(tf.constant(nl_inputs))
         return {
             "hidden_states": [
                 torch.tensor(embeddings["word_emb"].numpy()),

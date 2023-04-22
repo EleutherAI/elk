@@ -188,9 +188,8 @@ def extract_hiddens(
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
-                )
+                ).to(device)
 
-                encoding = encoding.to(device) if not isinstance(encoding, str) else encoding
                 input_ids = assert_type(Tensor, encoding.input_ids) if not isinstance(encoding, str) else None
 
                 if is_enc_dec:
