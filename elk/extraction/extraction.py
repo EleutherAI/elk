@@ -30,7 +30,6 @@ from ..utils import (
     assert_type,
     float32_to_int16,
     infer_label_column,
-    infer_num_classes,
     instantiate_model,
     instantiate_tokenizer,
     is_autoregressive,
@@ -128,10 +127,7 @@ def extract_hiddens(
 
     prompt_ds = load_prompts(
         ds_names[0],
-        label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
-        num_classes=p_cfg.num_classes,
         split_type=split_type,
-        stream=p_cfg.stream,
         rank=rank,
         world_size=world_size,
     )
@@ -202,15 +198,15 @@ def extract_hiddens(
 
                     input_ids = torch.cat([input_ids, answer], dim=-1)
                     if max_len := tokenizer.model_max_length:
-                        input_ids = input_ids[..., -max_len:]
+                        cur_len = input_ids.shape[-1]
+                        input_ids = input_ids[..., -min(max_len, cur_len) :]
 
                 # Make sure we only pass the arguments that the model expects
                 inputs = dict(input_ids=input_ids)
                 if is_enc_dec:
                     inputs["labels"] = answer
 
-                with torch.autocast("cuda", enabled=torch.cuda.is_available()):
-                    outputs = model(**inputs, output_hidden_states=True)
+                outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
@@ -303,17 +299,17 @@ def extract(
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
 
+    prompter = DatasetTemplates(ds_name, config_name)
     ds_features = assert_type(Features, info.features)
-    label_col = (
-        cfg.prompts.label_columns[0]
-        if cfg.prompts.label_columns
-        else infer_label_column(ds_features)
-    )
-    num_classes = cfg.prompts.num_classes or infer_num_classes(ds_features[label_col])
+    prompter.label_column or infer_label_column(ds_features)
+    num_classes = 2  # prompter.num_classes or infer_num_classes(ds_features[label_col])
+
     num_variants = cfg.prompts.num_variants
     if num_variants < 0:
-        prompter = DatasetTemplates(ds_name, config_name)
+        num_dropped = prompter.drop_non_mc_templates()
         num_variants = len(prompter.templates)
+        if num_dropped:
+            print(f"Dropping {num_dropped} non-multiple choice templates")
 
     layer_cols = {
         f"hidden_{layer}": Array3D(

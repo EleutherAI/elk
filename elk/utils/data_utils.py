@@ -66,22 +66,41 @@ def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
 
 
 def infer_label_column(features: Features) -> str:
-    """Return the unique `ClassLabel` column in a `Dataset`.
+    """Return the unique `ClassLabel` column, or "label" if it's of a suitable dtype.
 
     Returns:
         The name of the unique label column.
     Raises:
-        ValueError: If there are no `ClassLabel` columns, or if there are multiple.
+        ValueError: If it's unclear what the label column is.
     """
     label_cols = [
         col for col, dtype in features.items() if isinstance(dtype, ClassLabel)
     ]
     if not label_cols:
-        raise ValueError("Dataset has no label column")
+        # One more heuristic: if there's a column just named "label" with a reasonable
+        # dtype, use that.
+        col = features.get("label")
+        if not col:
+            raise ValueError(
+                "None of the columns in the dataset are obviously the label column; "
+                "please specify label_column in the prompt template yaml file."
+            )
+
+        import pyarrow as pa
+
+        if pa.types.is_integer(col.pa_type) or col.dtype in ("bool", "string"):
+            return "label"
+        else:
+            # We don't support floats, timestamps, bytes, containers, etc.
+            raise ValueError(
+                f"Column 'label' has unsupported dtype {col.dtype}; please specify "
+                "a different label_column in the prompt template yaml file."
+            )
+
     elif len(label_cols) > 1:
         raise ValueError(
-            f"Dataset has multiple label columns {label_cols}; specify "
-            f"label_column to disambiguate"
+            f"Dataset has multiple label columns {label_cols}; specify label_column "
+            "in the prompt template yaml to disambiguate"
         )
     else:
         return assert_type(str, label_cols[0])
@@ -102,8 +121,8 @@ def infer_num_classes(label_feature: Any) -> int:
         return 2
     else:
         raise ValueError(
-            f"Can't infer number of classes from label column "
-            f"of type {label_feature}"
+            f"Can't infer number of classes from label column of type {label_feature}. "
+            f"Please update the num_classes field in the prompt template yaml file."
         )
 
 

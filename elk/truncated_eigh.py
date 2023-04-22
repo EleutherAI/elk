@@ -16,7 +16,14 @@ class Eigendecomposition(NamedTuple):
     eigenvectors: Tensor
 
 
-@torch.autocast("cuda", enabled=torch.cuda.is_available())
+# Do most of the computation in bfloat16 if available; this can be substantially faster
+# than fp32. We can't use fp16 because the dynamic range is too small for the Lanczos
+# iteration to converge in many cases.
+@torch.autocast(
+    "cuda",
+    dtype=torch.bfloat16,
+    enabled=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
+)
 def truncated_eigh(
     A: Tensor,
     k: int = 1,
@@ -42,8 +49,7 @@ def truncated_eigh(
         max_iter (int, optional): The maximum number of iterations to perform.
         ncv (int, optional): The number of Lanczos vectors generated. Must be
             greater than k and smaller than n - 1.
-        tol (float, optional): The tolerance for the residual. Defaults to the machine
-            precision of `A.dtype` or 1e-4, whichever is larger.
+        tol (float, optional): The tolerance for the residual. Defaults to 1e-3.
         seed (int, optional): The random seed to use for the starting vector.
         which (str, optional): Which k eigenvalues and eigenvectors to compute.
             Must be one of 'LA', or 'SA'.

@@ -16,6 +16,7 @@ def test_load_prompts():
 
             ds_name, _, config_name = ds_string.partition(" ")
             prompter = DatasetTemplates(ds_name, config_name or None)
+            prompter.drop_non_mc_templates()
 
             limit = cfg.max_examples[0 if split_type == "train" else 1]
             for record in islice(prompt_ds, limit):

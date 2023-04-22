@@ -1,4 +1,3 @@
-import logging
 import os
 import random
 import uuid
@@ -382,17 +381,44 @@ class DatasetTemplates:
     TEMPLATES_KEY = "templates"
     DATASET_KEY = "dataset"
     SUBSET_KEY = "subset"
+    LABEL_COLUMN_KEY = "label_column"
+    LABEL_CHOICES_KEY = "label_choices"
     TEMPLATE_FILENAME = "templates.yaml"
 
-    def __init__(self, dataset_name: str, subset_name: Optional[str] = None):
+    label_column: str | None
+    label_choices: list[str] | None
+
+    def __init__(self, dataset_name: str, subset_name: str | None = None):
         self.dataset_name = dataset_name
         self.subset_name = subset_name
-        # dictionary is keyed by template name.
-        self.templates: dict = self.read_from_file()
+
+        with open(self.yaml_path, "r") as f:
+            yaml_dict = yaml.load(f, Loader=yaml.FullLoader)
+
+            # Required field; contains all the templates keyed by ID
+            self.templates = yaml_dict[self.TEMPLATES_KEY]
+
+            # Optional fields; may be None
+            self.label_column = yaml_dict.get(self.LABEL_COLUMN_KEY)
+            self.label_choices = yaml_dict.get(self.LABEL_CHOICES_KEY)
 
         # Mapping from template name to template id
         self.name_to_id_mapping = {}
         self.sync_mapping()
+
+    def drop_non_mc_templates(self) -> int:
+        """Drop all templates that aren't multiple choice, return the number dropped"""
+        mc_templates = {
+            k: v for k, v in self.templates.items() if v.get_fixed_answer_choices_list()
+        }
+        if not mc_templates:
+            raise ValueError("No multiple choice templates found")
+
+        num_dropped = len(self.templates) - len(mc_templates)
+        self.templates = mc_templates
+        self.sync_mapping()
+
+        return num_dropped
 
     def sync_mapping(self) -> None:
         """
@@ -420,7 +446,11 @@ class DatasetTemplates:
 
     @property
     def yaml_path(self) -> str:
-        return os.path.join(self.folder_path, self.TEMPLATE_FILENAME)
+        path = os.path.join(self.folder_path, self.TEMPLATE_FILENAME)
+        if not os.path.exists(path):
+            raise ValueError(f"Expected prompt templates to exist at {path}")
+
+        return path
 
     def format_for_dump(self) -> dict:
         """
@@ -433,26 +463,6 @@ class DatasetTemplates:
         if self.subset_name:
             formatted_dict[self.SUBSET_KEY] = self.subset_name
         return formatted_dict
-
-    def read_from_file(self) -> dict:
-        """
-        Reads a file containing a prompt collection.
-        """
-
-        if not os.path.exists(self.yaml_path):
-            dataset_name = (
-                f"{self.dataset_name} {self.subset_name}"
-                if self.subset_name
-                else self.dataset_name
-            )
-            logging.warning(
-                f"Tried instantiating `DatasetTemplates` for {dataset_name}, but no "
-                f"prompts found. Please ignore this warning if you are creating new "
-                f"prompts for this dataset."
-            )
-            return {}
-        yaml_dict = yaml.load(open(self.yaml_path, "r"), Loader=yaml.FullLoader)
-        return yaml_dict[self.TEMPLATES_KEY]
 
     def write_to_file(self) -> None:
         """
