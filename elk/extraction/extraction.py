@@ -31,6 +31,7 @@ from ..utils import (
     float32_to_int16,
     infer_label_column,
     infer_num_classes,
+    instantiate_config,
     instantiate_model,
     instantiate_tokenizer,
     is_autoregressive,
@@ -187,8 +188,10 @@ def extract_hiddens(
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
-                ).to(device)
-                input_ids = assert_type(Tensor, encoding.input_ids)
+                )
+
+                encoding = encoding.to(device) if not isinstance(encoding, str) else encoding
+                input_ids = assert_type(Tensor, encoding.input_ids) if not isinstance(encoding, str) else None
 
                 if is_enc_dec:
                     answer = assert_type(Tensor, encoding.labels)
@@ -298,7 +301,7 @@ def extract(
             dataset_name=available_splits.dataset_name,
         )
 
-    model_cfg = AutoConfig.from_pretrained(cfg.model)
+    model_cfg = instantiate_config(cfg.model)
 
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
