@@ -43,6 +43,7 @@ dev = [
     "pytest",
     "pyright",
     "scikit-learn",
+    "pdbpp"
 ]
 
 [project.scripts]
