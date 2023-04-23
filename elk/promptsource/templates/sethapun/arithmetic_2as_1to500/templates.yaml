@@ -1,10 +1,10 @@
 dataset: sethapun/arithmetic_2as_1to500
 templates:
-  a0000500-f0b3-3bcc-a821-f280d3ee0000:
+  a0000500-f0b3-3bcc-a821-f280d3ee0000: !Template
     answer_choices: No ||| Yes
     id: a0000500-f0b3-3bcc-a821-f280d3ee0000
-    jinja: The following is a math problem. You will need to answer correctly. Is {{expression}} = {{answer}}, {{"yes or no"}}? ||| {{answer_choices[label]}}
-    metadata:
+    jinja: 'The following is a math problem. You will need to answer correctly. Is {{expression}} = {{answer}}, {{"yes or no"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en
@@ -13,11 +13,11 @@ templates:
       original_task: true
     name: aras500_0
     reference: ''
-  a0000500-f0b3-3bcc-a821-f280d3ee0001:
+  a0000500-f0b3-3bcc-a821-f280d3ee0001: !Template
     answer_choices: No ||| Yes
     id: a0000500-f0b3-3bcc-a821-f280d3ee0001
-    jinja: Please answer the following math problem correctly. Is {{answer}} the result of {{expression}}, {{"yes or no"}}? ||| {{answer_choices[label]}}
-    metadata:
+    jinja: 'Please answer the following math problem correctly. Is {{answer}} the result of {{expression}}, {{"yes or no"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en
@@ -26,11 +26,11 @@ templates:
       original_task: true
     name: aras500_1
     reference: ''
-  a0000500-f0b3-3bcc-a821-f280d3ee0002:
+  a0000500-f0b3-3bcc-a821-f280d3ee0002: !Template
     answer_choices: False ||| True
     id: a0000500-f0b3-3bcc-a821-f280d3ee0002
-    jinja: The following is a math problem. You will need to answer correctly. The answer to {{expression}} is {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}
-    metadata:
+    jinja: 'The following is a math problem. You will need to answer correctly. The answer to {{expression}} is {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en
@@ -39,11 +39,11 @@ templates:
       original_task: true
     name: aras500_2
     reference: ''
-  a0000500-f0b3-3bcc-a821-f280d3ee0003:
+  a0000500-f0b3-3bcc-a821-f280d3ee0003: !Template
     answer_choices: False ||| True
     id: a0000500-f0b3-3bcc-a821-f280d3ee0003
-    jinja: Please answer the following math problem correctly. {{expression}} = {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}
-    metadata:
+    jinja: 'Please answer the following math problem correctly. {{expression}} = {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en
@@ -52,11 +52,11 @@ templates:
       original_task: true
     name: aras500_3
     reference: ''
-  a0000500-f0b3-3bcc-a821-f280d3ee0004:
+  a0000500-f0b3-3bcc-a821-f280d3ee0004: !Template
     answer_choices: False ||| True
     id: a0000500-f0b3-3bcc-a821-f280d3ee0004
-    jinja: The following is a math problem. You will need to answer correctly. {{answer}} is the result of {{expression}}, {{"true or false"}}? ||| {{answer_choices[label]}}
-    metadata:
+    jinja: 'The following is a math problem. You will need to answer correctly. {{answer}} is the result of {{expression}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en
@@ -65,11 +65,11 @@ templates:
       original_task: true
     name: aras500_4
     reference: ''
-  a0000500-f0b3-3bcc-a821-f280d3ee0005:
+  a0000500-f0b3-3bcc-a821-f280d3ee0005: !Template
     answer_choices: No ||| Yes
     id: a0000500-f0b3-3bcc-a821-f280d3ee0005
-    jinja: Please answer the following math problem correctly. Is {{answer}} = {{expression}}, {{"yes or no"}}? ||| {{answer_choices[label]}}
-    metadata:
+    jinja: 'Please answer the following math problem correctly. Is {{answer}} = {{expression}}, {{"yes or no"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en
@@ -78,11 +78,11 @@ templates:
       original_task: true
     name: aras500_5
     reference: ''
-  a0000500-f0b3-3bcc-a821-f280d3ee0006:
+  a0000500-f0b3-3bcc-a821-f280d3ee0006: !Template
     answer_choices: False ||| True
     id: a0000500-f0b3-3bcc-a821-f280d3ee0006
-    jinja: The following is a math problem. You will need to answer correctly. {{answer}} = {{expression}}, {{"true or false"}}? ||| {{answer_choices[label]}}
-    metadata:
+    jinja: 'The following is a math problem. You will need to answer correctly. {{answer}} = {{expression}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en
@@ -91,11 +91,11 @@ templates:
       original_task: true
     name: aras500_6
     reference: ''
-  a0000500-f0b3-3bcc-a821-f280d3ee0007:
+  a0000500-f0b3-3bcc-a821-f280d3ee0007: !Template
     answer_choices: False ||| True
     id: a0000500-f0b3-3bcc-a821-f280d3ee0007
-    jinja: Please answer the following math problem correctly. {{expression}} evaluates to {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}
-    metadata:
+    jinja: 'Please answer the following math problem correctly. {{expression}} evaluates to {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en
@@ -104,11 +104,11 @@ templates:
       original_task: true
     name: aras500_7
     reference: ''
-  a0000500-f0b3-3bcc-a821-f280d3ee0008:
+  a0000500-f0b3-3bcc-a821-f280d3ee0008: !Template
     answer_choices: False ||| True
     id: a0000500-f0b3-3bcc-a821-f280d3ee0008
-    jinja: The following is a math problem. You will need to answer correctly. The result of {{expression}} is {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}
-    metadata:
+    jinja: 'The following is a math problem. You will need to answer correctly. The result of {{expression}} is {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
       - en

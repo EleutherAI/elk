@@ -147,6 +147,7 @@ def extract_hiddens(
         max_examples += global_max_examples % world_size
 
     for example in islice(prompt_ds, max_examples):
+        print(example)
         num_variants = len(example["prompts"])
         num_choices = len(example["prompts"][0])
 
