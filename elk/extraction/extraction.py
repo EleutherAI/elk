@@ -110,7 +110,7 @@ def extract_hiddens(
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
     model = instantiate_model(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+        cfg.model, torch_dtype=torch.float16
     ).to(device)
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=rank == 0

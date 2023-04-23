@@ -1,0 +1,119 @@
+dataset: sethapun/arithmetic_2as_1to10
+templates:
+  a0000010-f0b3-3bcc-a821-f280d3ee0000:
+    answer_choices: No ||| Yes
+    id: a0000010-f0b3-3bcc-a821-f280d3ee0000
+    jinja: The following is a math problem. You will need to answer correctly. Is {{expression}} = {{answer}}, {{"yes or no"}}? ||| {{answer_choices[label]}}
+    metadata:
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras10_0
+    reference: ''
+  a0000010-f0b3-3bcc-a821-f280d3ee0001:
+    answer_choices: No ||| Yes
+    id: a0000010-f0b3-3bcc-a821-f280d3ee0001
+    jinja: Please answer the following math problem correctly. Is {{answer}} the result of {{expression}}, {{"yes or no"}}? ||| {{answer_choices[label]}}
+    metadata:
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras10_1
+    reference: ''
+  a0000010-f0b3-3bcc-a821-f280d3ee0002:
+    answer_choices: False ||| True
+    id: a0000010-f0b3-3bcc-a821-f280d3ee0002
+    jinja: The following is a math problem. You will need to answer correctly. The answer to {{expression}} is {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}
+    metadata:
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras10_2
+    reference: ''
+  a0000010-f0b3-3bcc-a821-f280d3ee0003:
+    answer_choices: False ||| True
+    id: a0000010-f0b3-3bcc-a821-f280d3ee0003
+    jinja: Please answer the following math problem correctly. {{expression}} = {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}
+    metadata:
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras10_3
+    reference: ''
+  a0000010-f0b3-3bcc-a821-f280d3ee0004:
+    answer_choices: False ||| True
+    id: a0000010-f0b3-3bcc-a821-f280d3ee0004
+    jinja: The following is a math problem. You will need to answer correctly. {{answer}} is the result of {{expression}}, {{"true or false"}}? ||| {{answer_choices[label]}}
+    metadata:
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras10_4
+    reference: ''
+  a0000010-f0b3-3bcc-a821-f280d3ee0005:
+    answer_choices: No ||| Yes
+    id: a0000010-f0b3-3bcc-a821-f280d3ee0005
+    jinja: Please answer the following math problem correctly. Is {{answer}} = {{expression}}, {{"yes or no"}}? ||| {{answer_choices[label]}}
+    metadata:
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras10_5
+    reference: ''
+  a0000010-f0b3-3bcc-a821-f280d3ee0006:
+    answer_choices: False ||| True
+    id: a0000010-f0b3-3bcc-a821-f280d3ee0006
+    jinja: The following is a math problem. You will need to answer correctly. {{answer}} = {{expression}}, {{"true or false"}}? ||| {{answer_choices[label]}}
+    metadata:
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras10_6
+    reference: ''
+  a0000010-f0b3-3bcc-a821-f280d3ee0007:
+    answer_choices: False ||| True
+    id: a0000010-f0b3-3bcc-a821-f280d3ee0007
+    jinja: Please answer the following math problem correctly. {{expression}} evaluates to {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}
+    metadata:
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras10_7
+    reference: ''
+  a0000010-f0b3-3bcc-a821-f280d3ee0008:
+    answer_choices: False ||| True
+    id: a0000010-f0b3-3bcc-a821-f280d3ee0008
+    jinja: The following is a math problem. You will need to answer correctly. The result of {{expression}} is {{answer}}, {{"true or false"}}? ||| {{answer_choices[label]}}
+    metadata:
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: aras10_8
+    reference: ''
