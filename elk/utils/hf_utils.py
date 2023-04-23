@@ -22,7 +22,7 @@ _AUTOREGRESSIVE_SUFFIXES = ["ConditionalGeneration"] + _DECODER_ONLY_SUFFIXES
 def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class."""
     if model_str.startswith("elmo"):
-        return TfElmoModel.from_pretrained(model_str)
+        return TfElmoModel()
 
     model_cfg = AutoConfig.from_pretrained(model_str)
     archs = model_cfg.architectures
@@ -43,7 +43,7 @@ def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
 def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:
     """Instantiate a tokenizer, using the fast one iff it exists."""
     if model_str == "elmo":
-        return ElmoTokenizer.from_pretrained("")
+        return ElmoTokenizer()
 
     try:
         return AutoTokenizer.from_pretrained(model_str, use_fast=True, **kwargs)
