@@ -19,12 +19,12 @@ class ElmoConfig(PretrainedConfig):
 
 
 class ElmoTokenizer(PreTrainedTokenizer):
-    """"
-    The ELMo tokenizer is a wrapper around the GPT-2 tokenizer since much of the extraction 
+    """ "
+    The ELMo tokenizer is a wrapper around the GPT-2 tokenizer since much of the extraction
     pipeline depends on the input being tensors. The ELMo TF implementaiton takes a string
     input, so the tensors are decoded within the TfElmoModel instance.
     """
-    
+
     def __init__(self):
         self.internal_tokenizer = AutoTokenizer.from_pretrained("gpt2")
         self.model_max_length = self.internal_tokenizer.model_max_length
@@ -49,7 +49,7 @@ class ElmoTokenizer(PreTrainedTokenizer):
 
 class TfElmoModel(PreTrainedModel):
     """A HF wrappper around the Tensorflow ELMo model"""
-    
+
     def __init__(self):
         super().__init__(config=ElmoConfig())
         self.internal_tokenizer = AutoTokenizer.from_pretrained("gpt2")
@@ -80,4 +80,3 @@ class TfElmoModel(PreTrainedModel):
                 torch.tensor(embeddings["elmo"].numpy()),
             ]
         }
-
