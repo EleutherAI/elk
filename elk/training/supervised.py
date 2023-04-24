@@ -34,7 +34,11 @@ def evaluate_supervised(
         raise ValueError(f"Invalid val_h shape: {val_h.shape}")
 
     lr_acc = accuracy(labels, raw_preds.flatten())
-    lr_auroc = RocAucResult(-1., -1., -1.) if len(labels.unique()) == 1 else roc_auc_ci(labels, logits.flatten())
+    lr_auroc = (
+        RocAucResult(-1.0, -1.0, -1.0)
+        if len(labels.unique()) == 1
+        else roc_auc_ci(labels.cpu(), logits.cpu().flatten())
+    )
 
     return lr_auroc, assert_type(float, lr_acc)
 
