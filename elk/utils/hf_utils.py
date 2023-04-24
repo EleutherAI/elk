@@ -3,12 +3,13 @@ from transformers import (
     AutoConfig,
     AutoModel,
     AutoTokenizer,
+    GPT2TokenizerFast,
     PretrainedConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
-    GPT2TokenizerFast
 )
-from ..rwkv_lm.rwkv_hf import RWKVModel, RWKVConfig
+
+from ..rwkv_lm.rwkv_hf import RWKVConfig, RWKVModel
 
 # Ordered by preference
 _DECODER_ONLY_SUFFIXES = [
@@ -52,6 +53,7 @@ def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:
             print(f"Falling back to slow tokenizer; fast one failed to load: '{e}'")
 
         return AutoTokenizer.from_pretrained(model_str, use_fast=False, **kwargs)
+
 
 def instantiate_config(model_str: str, **kwargs) -> PretrainedConfig:
     """Instantiate a config."""
