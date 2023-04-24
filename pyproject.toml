@@ -43,6 +43,8 @@ dev = [
     "pytest",
     "pyright",
     "scikit-learn",
+    "nbformat==5.8.0",
+    "plotly"
 ]
 
 [project.scripts]
