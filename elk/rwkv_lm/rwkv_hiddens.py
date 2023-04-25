@@ -102,9 +102,12 @@ class RWKV(MyModule):
     def __init__(self, model, strategy, verbose=True, convert_and_save_and_exit=None):
         super().__init__()
         if verbose:
+
             def prxxx(*args, **kwargs):
                 return print(*args, **kwargs)
+
         else:
+
             def prxxx(*args, **kwargs):
                 return None
 
