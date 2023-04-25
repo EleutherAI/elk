@@ -9,11 +9,13 @@ def extract_dataset_name_and_config(dataset_config_str: str) -> tuple[str, str]:
     ds_name, _, config_name = dataset_config_str.partition(" ")
     return ds_name, config_name
 
+
 class DatasetDictWithName(NamedTuple):
     """A Datasetwith a name attribute.
     The dataset_name is the dataset (e.g. imdb)
     that was used to create the dataset
     """
+
     name: str
     dataset: DatasetDict
 

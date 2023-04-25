@@ -77,9 +77,7 @@ class Run(ABC, Serializable):
         with open(path, "w") as meta_f:
             yaml.dump(
                 {
-                    ds_name: {
-                        split: ds[split]._fingerprint for split in ds.keys()
-                    }
+                    ds_name: {split: ds[split]._fingerprint for split in ds.keys()}
                     for ds_name, ds in self.datasets
                 },
                 meta_f,

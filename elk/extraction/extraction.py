@@ -286,9 +286,7 @@ def extract(
         available_splits = assert_type(SplitDict, info.splits)
         train_name, val_name = select_train_val_splits(available_splits)
 
-        pretty_name = colorize(
-            assert_type(str, ds_name), highlight_color
-        )
+        pretty_name = colorize(assert_type(str, ds_name), highlight_color)
         print(
             f"{pretty_name}: using '{train_name}' for training "
             f"and '{val_name}' for validation"
