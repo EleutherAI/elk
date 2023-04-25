@@ -1,12 +1,12 @@
 import os
-
-from transformers import (
-    PretrainedConfig,
-    PreTrainedModel,
-)
+from huggingface_hub import hf_hub_download
 from transformers.modeling_outputs import CausalLMOutput
+from transformers import PretrainedConfig, PreTrainedModel
 
+# The rwkv.model is the official build 
 # from rwkv.model import RWKV
+
+# rwkv_hiddens is a custom implementation that exposes all the hidden states as layer states - written by Nora
 from .rwkv_hiddens import RWKV
 
 os.environ["RWKV_JIT_ON"] = "1"
@@ -25,9 +25,22 @@ class RWKVConfig(PretrainedConfig):
 class RWKVModel(PreTrainedModel):
     def __init__(self):
         super().__init__(RWKVConfig())
-        weights_path = "/home/kyle/HF-MODEL/rwkv-4-pile-1b5/models--BlinkDL--rwkv-4-pile-1b5/snapshots/6ea995eaa87a17af560c9b41ce1a3d92355c5a49/RWKV-4-Pile-1B5-20220903-8040.pth"
-        # weights_path = "/home/kyle/HF-MODEL/rwkv-4-pile-14b/models--BlinkDL--rwkv-4-pile-14b/snapshots/939b6851f96122b7b49bd00d446b3b49481214dd/RWKV-4-Pile-14B-20230213-8019.pth"
-        self.model = RWKV(model=weights_path, strategy="cuda fp16")
+        
+        # TODO: Add support for specifying the parameter count through the HF path provided in the CLI args
+        
+        # 1.5b
+        # weights_path = hf_hub_download(repo_id="BlinkDL/rwkv-4-pile-1b5", filename="RWKV-4-Pile-1B5-20220903-8040.pth")
+        
+        # 3b
+        # weights_path = hf_hub_download(repo_id="BlinkDL/rwkv-4-pile-3b", filename="RWKV-4-Pile-3B-20221008-8023.pth")
+        
+         # 7b
+        weights_path = hf_hub_download(repo_id="BlinkDL/rwkv-4-pile-7b", filename="RWKV-4-Pile-7B-20221115-8047.pth")
+        
+        # 14b
+        # weights_path = hf_hub_download(repo_id="BlinkDL/rwkv-4-pile-14b", filename="RWKV-4-Pile-14B-20230213-8019.pth")
+        
+        self.model = RWKV(model=weights_path, strategy="cuda bf16")
 
     def forward(
         self,
