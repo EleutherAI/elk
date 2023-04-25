@@ -11,6 +11,7 @@ from .data_utils import (
 from .gpu_utils import select_usable_devices
 from .hf_utils import instantiate_model, instantiate_tokenizer, is_autoregressive
 from .math_util import batch_cov, cov_mean_fused, stochastic_round_constrained
+from .pretty import colorize
 from .tree_utils import pytree_map
 from .typing import assert_type, float32_to_int16, int16_to_float32
 
@@ -18,6 +19,7 @@ __all__ = [
     "assert_type",
     "batch_cov",
     "binarize",
+    "colorize",
     "cov_mean_fused",
     "float32_to_int16",
     "get_columns_all_equal",

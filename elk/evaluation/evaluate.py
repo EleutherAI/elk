@@ -1,69 +1,36 @@
 from dataclasses import dataclass
-from functools import partial
-from pathlib import Path
-from typing import Callable
 
 import pandas as pd
 import torch
-from simple_parsing.helpers import Serializable, field
+from simple_parsing.helpers import field
 
-from ..extraction.extraction import Extract
-from ..files import elk_reporter_dir, transfer_eval_directory
+from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
 from ..run import Run
 from ..training import Reporter
-from ..utils import select_usable_devices
 
 
 @dataclass
-class Eval(Serializable):
-    """
-    Full specification of a reporter evaluation run.
+class Eval(Run):
+    """Full specification of a reporter evaluation run."""
 
-    Args:
-        data: Config specifying hidden states on which the reporter will be evaluated.
-        source: The name of the source run directory
-            which contains the reporters directory.
-        normalization: The normalization method to use. Defaults to "meanonly". See
-            `elk.training.preprocessing.normalize()` for details.
-        num_gpus: The number of GPUs to use. Defaults to -1, which means
-            "use all available GPUs".
-        skip_supervised: Whether to skip evaluation of the supervised classifier.
-        debug: When in debug mode, a useful log file is saved to the memorably-named
-            output directory. Defaults to False.
-    """
-
-    data: Extract
-    source: str = field(positional=True)
-
-    concatenated_layer_offset: int = 0
-    debug: bool = False
-    min_gpu_mem: int | None = None
-    num_gpus: int = -1
-    out_dir: Path | None = None
+    source: str = field(default="", positional=True)
     skip_supervised: bool = False
 
-    disable_cache: bool = field(default=False, to_dict=False)
+    def __post_init__(self):
+        assert self.source, "Must specify a source experiment."
 
-    def execute(self):
-        transfer_dir = transfer_eval_directory(source=self.source)
-        for dataset in self.data.prompts.datasets:
-            run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
-            run.evaluate()
+        transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
+        self.out_dir = transfer_dir / "+".join(self.data.prompts.datasets)
 
-
-@dataclass
-class Evaluate(Run):
-    cfg: Eval
-
-    def evaluate_reporter(
-        self, layer: int, devices: list[str], world_size: int = 1
+    def apply_to_layer(
+        self, layer: int, devices: list[str], world_size: int
     ) -> pd.DataFrame:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
 
-        experiment_dir = elk_reporter_dir() / self.cfg.source
+        experiment_dir = elk_reporter_dir() / self.source
 
         reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
         reporter: Reporter = torch.load(reporter_path, map_location=device)
@@ -80,7 +47,7 @@ class Evaluate(Run):
             }
 
             lr_dir = experiment_dir / "lr_models"
-            if not self.cfg.skip_supervised and lr_dir.exists():
+            if not self.skip_supervised and lr_dir.exists():
                 with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
                     lr_model = torch.load(f, map_location=device).eval()
 
@@ -90,15 +57,3 @@ class Evaluate(Run):
             row_buf.append(stats_row)
 
         return pd.DataFrame.from_records(row_buf)
-
-    def evaluate(self):
-        """Evaluate the reporter on all layers."""
-        devices = select_usable_devices(
-            self.cfg.num_gpus, min_memory=self.cfg.min_gpu_mem
-        )
-
-        num_devices = len(devices)
-        func: Callable[[int], pd.DataFrame] = partial(
-            self.evaluate_reporter, devices=devices, world_size=num_devices
-        )
-        self.apply_to_layers(func=func, num_devices=num_devices)

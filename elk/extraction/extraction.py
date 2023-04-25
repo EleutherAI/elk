@@ -28,6 +28,7 @@ from transformers.modeling_outputs import Seq2SeqLMOutput
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
+    colorize,
     float32_to_int16,
     infer_label_column,
     infer_num_classes,
@@ -271,6 +272,7 @@ def extract(
     cfg: "Extract",
     *,
     disable_cache: bool = False,
+    highlight_color: str = "cyan",
     num_gpus: int = -1,
     min_gpu_mem: int | None = None,
 ) -> DatasetDict:
@@ -279,10 +281,11 @@ def extract(
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
         train_name, val_name = select_train_val_splits(available_splits)
+
+        pretty_name = colorize(assert_type(str, info.builder_name), highlight_color)
         print(
-            # Cyan color for dataset name
-            f"\033[36m{info.builder_name}\033[0m: using '{train_name}' for training and"
-            f" '{val_name}' for validation"
+            f"{pretty_name}: using '{train_name}' for training "
+            f"and '{val_name}' for validation"
         )
         limit_list = cfg.prompts.max_examples
 
