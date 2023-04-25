@@ -38,6 +38,10 @@ from ..utils import (
     select_train_val_splits,
     select_usable_devices,
 )
+from .dataset_name import (
+    DatasetDictWithName,
+    extract_dataset_name_and_config,
+)
 from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
 
@@ -275,14 +279,14 @@ def extract(
     highlight_color: str = "cyan",
     num_gpus: int = -1,
     min_gpu_mem: int | None = None,
-) -> DatasetDict:
+) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
         train_name, val_name = select_train_val_splits(available_splits)
 
-        pretty_name = colorize(assert_type(str, info.builder_name), highlight_color)
+        pretty_name = colorize(assert_type(str, ds_name), highlight_color)
         print(
             f"{pretty_name}: using '{train_name}' for training "
             f"and '{val_name}' for validation"
@@ -303,7 +307,9 @@ def extract(
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
 
-    ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
+    ds_name, config_name = extract_dataset_name_and_config(
+        dataset_config_str=cfg.prompts.datasets[0]
+    )
     info = get_dataset_config_info(ds_name, config_name or None)
 
     ds_features = assert_type(Features, info.features)
@@ -349,6 +355,7 @@ def extract(
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
+            # Use the dataset name from info_with_name, not the builder name
             builder_name=info.builder_name,
             config_name=info.config_name,
             cache_dir=None,
@@ -378,4 +385,8 @@ def extract(
         )
         ds[split] = builder.as_dataset(split=split)
 
-    return DatasetDict(ds)
+    dataset_dict = DatasetDict(ds)
+    return DatasetDictWithName(
+        name=ds_name,
+        dataset=dataset_dict,
+    )
