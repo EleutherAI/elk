@@ -190,7 +190,8 @@ def extract_hiddens(
                 variant_questions.append(text)
                 encoding = tokenizer(
                     text,
-                    add_special_tokens=False,
+                    # Keep [CLS] and [SEP] for BERT-style models
+                    add_special_tokens=True,
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
@@ -202,6 +203,7 @@ def extract_hiddens(
                 else:
                     encoding2 = tokenizer(
                         choice["answer"],
+                        # Don't include [CLS] and [SEP] in the answer
                         add_special_tokens=False,
                         return_tensors="pt",
                     ).to(device)
