@@ -1,7 +1,6 @@
-from dataclasses import dataclass
 from typing import NamedTuple
 
-from datasets import DatasetDict, DatasetInfo, get_dataset_config_info
+from datasets import DatasetDict
 
 
 def extract_dataset_name_and_config(dataset_config_str: str) -> tuple[str, str]:
