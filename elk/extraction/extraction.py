@@ -22,7 +22,7 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig, PreTrainedModel
+from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
@@ -32,6 +32,7 @@ from ..utils import (
     float32_to_int16,
     infer_label_column,
     infer_num_classes,
+    instantiate_config,
     instantiate_model,
     instantiate_tokenizer,
     is_autoregressive,
@@ -304,7 +305,7 @@ def extract(
             dataset_name=available_splits.dataset_name,
         )
 
-    model_cfg = AutoConfig.from_pretrained(cfg.model)
+    model_cfg = instantiate_config(cfg.model)
 
     ds_name, config_name = extract_dataset_name_and_config(
         dataset_config_str=cfg.prompts.datasets[0]

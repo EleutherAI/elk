@@ -8,7 +8,12 @@ from .data_utils import (
     select_train_val_splits,
 )
 from .gpu_utils import select_usable_devices
-from .hf_utils import instantiate_model, instantiate_tokenizer, is_autoregressive
+from .hf_utils import (
+    instantiate_config,
+    instantiate_model,
+    instantiate_tokenizer,
+    is_autoregressive,
+)
 from .math_util import batch_cov, cov_mean_fused, stochastic_round_constrained
 from .pretty import colorize
 from .tree_utils import pytree_map
