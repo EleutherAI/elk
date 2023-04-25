@@ -213,7 +213,7 @@ class EigenReporter(Reporter):
         )
 
         if truncated:
-            L, Q = truncated_eigh(A, k=self.config.num_heads)
+            L, Q = truncated_eigh(A, k=self.config.num_heads, seed=self.config.seed)
         else:
             try:
                 L, Q = torch.linalg.eigh(A)

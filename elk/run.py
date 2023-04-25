@@ -1,9 +1,10 @@
 import os
 import random
-from abc import ABC
-from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Literal, Union
+from typing import Callable, Literal
 
 import numpy as np
 import pandas as pd
@@ -11,11 +12,12 @@ import torch
 import torch.multiprocessing as mp
 import yaml
 from datasets import DatasetDict
+from simple_parsing.helpers import Serializable, field
 from torch import Tensor
 from tqdm import tqdm
 
 from .debug_logging import save_debug_log
-from .extraction import extract
+from .extraction import Extract, extract
 from .files import elk_reporter_dir, memorably_named_dir
 from .utils import (
     assert_type,
@@ -23,35 +25,44 @@ from .utils import (
     get_layers,
     int16_to_float32,
     select_train_val_splits,
+    select_usable_devices,
 )
-
-if TYPE_CHECKING:
-    from .evaluation.evaluate import Eval
-    from .training.train import Elicit
 
 
 @dataclass
-class Run(ABC):
-    cfg: Union["Elicit", "Eval"]
+class Run(ABC, Serializable):
+    data: Extract
     out_dir: Path | None = None
-    datasets: list[DatasetDict] = field(init=False)
+    """Directory to save results to. If None, a directory will be created
+    automatically."""
 
-    def __post_init__(self):
+    datasets: list[DatasetDict] = field(default_factory=list, init=False)
+    """Datasets containing hidden states and labels for each layer."""
+
+    concatenated_layer_offset: int = 0
+    debug: bool = False
+    min_gpu_mem: int | None = None
+    num_gpus: int = -1
+    out_dir: Path | None = None
+    disable_cache: bool = field(default=False, to_dict=False)
+
+    def execute(self, highlight_color: str = "cyan"):
         self.datasets = [
             extract(
                 cfg,
-                disable_cache=self.cfg.disable_cache,
-                num_gpus=self.cfg.num_gpus,
-                min_gpu_mem=self.cfg.min_gpu_mem,
+                disable_cache=self.disable_cache,
+                highlight_color=highlight_color,
+                num_gpus=self.num_gpus,
+                min_gpu_mem=self.min_gpu_mem,
             )
-            for cfg in self.cfg.data.explode()
+            for cfg in self.data.explode()
         ]
 
         if self.out_dir is None:
             # Save in a memorably-named directory inside of
             # ELK_REPORTER_DIR/<model_name>/<dataset_name>
-            ds_name = ", ".join(self.cfg.data.prompts.datasets)
-            root = elk_reporter_dir() / self.cfg.data.model / ds_name
+            ds_name = ", ".join(self.data.prompts.datasets)
+            root = elk_reporter_dir() / self.data.model / ds_name
 
             self.out_dir = memorably_named_dir(root)
 
@@ -61,7 +72,7 @@ class Run(ABC):
 
         path = self.out_dir / "cfg.yaml"
         with open(path, "w") as f:
-            self.cfg.dump_yaml(f)
+            self.dump_yaml(f)
 
         path = self.out_dir / "fingerprints.yaml"
         with open(path, "w") as meta_f:
@@ -74,6 +85,19 @@ class Run(ABC):
                 },
                 meta_f,
             )
+
+        devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
+        num_devices = len(devices)
+        func: Callable[[int], pd.DataFrame] = partial(
+            self.apply_to_layer, devices=devices, world_size=num_devices
+        )
+        self.apply_to_layers(func=func, num_devices=num_devices)
+
+    @abstractmethod
+    def apply_to_layer(
+        self, layer: int, devices: list[str], world_size: int
+    ) -> pd.DataFrame:
+        """Train or eval a reporter on a single layer."""
 
     def make_reproducible(self, seed: int):
         """Make the run reproducible by setting the random seed."""
@@ -114,8 +138,8 @@ class Run(ABC):
 
     def concatenate(self, layers):
         """Concatenate hidden states from a previous layer."""
-        for layer in range(self.cfg.concatenated_layer_offset, len(layers)):
-            layers[layer] += [layers[layer][0] - self.cfg.concatenated_layer_offset]
+        for layer in range(self.concatenated_layer_offset, len(layers)):
+            layers[layer] += [layers[layer][0] - self.concatenated_layer_offset]
 
         return layers
 
@@ -137,10 +161,9 @@ class Run(ABC):
         layers, *rest = [get_layers(ds) for ds in self.datasets]
         assert all(x == layers for x in rest), "All datasets must have the same layers"
 
-        if self.cfg.concatenated_layer_offset > 0:
+        if self.concatenated_layer_offset > 0:
             layers = self.concatenate(layers)
 
-        # Should we write to different CSV files for elicit vs eval?
         ctx = mp.get_context("spawn")
         with ctx.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
             mapper = pool.imap_unordered if num_devices > 1 else map
@@ -154,5 +177,5 @@ class Run(ABC):
                 if df_buf:
                     df = pd.concat(df_buf).sort_values(by="layer")
                     df.round(4).to_csv(f, index=False)
-                if self.cfg.debug:
+                if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
