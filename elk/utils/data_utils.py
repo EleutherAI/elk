@@ -12,9 +12,8 @@ from datasets import (
     get_dataset_config_names,
 )
 
-from .typing import assert_type
-from ..extraction.dataset_name import DatasetInfoWithName
 from ..promptsource.templates import Template
+from .typing import assert_type
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
@@ -25,24 +24,6 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
         raise ValueError("All splits must have the same columns")
 
     return pivot
-
-
-def get_dataset_name(dataset: DatasetDict) -> str:
-    """Get the name of a `DatasetDict`."""
-    builder_name, *rest = [ds.builder_name for ds in dataset.values()]
-    if not all(name == builder_name for name in rest):
-        raise ValueError(
-            f"All splits must have the same name; got {[builder_name, *rest]}"
-        )
-
-    config_name, *rest = [ds.config_name for ds in dataset.values()]
-    if not all(name == config_name for name in rest):
-        raise ValueError(
-            f"All splits must have the same config name; got {[config_name, *rest]}"
-        )
-
-    include_config = config_name and has_multiple_configs(builder_name)
-    return builder_name + " " + config_name if include_config else builder_name
 
 
 @cache

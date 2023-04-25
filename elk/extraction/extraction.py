@@ -17,14 +17,14 @@ from datasets import (
     Sequence,
     SplitDict,
     SplitInfo,
-    Value, Dataset,
+    Value,
+    get_dataset_config_info,
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import AutoConfig, PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
-from .dataset_name import DatasetInfoWithName
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
@@ -37,6 +37,10 @@ from ..utils import (
     is_autoregressive,
     select_train_val_splits,
     select_usable_devices,
+)
+from .dataset_name import (
+    DatasetDictWithName,
+    extract_dataset_name_and_config,
 )
 from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
@@ -275,7 +279,7 @@ def extract(
     highlight_color: str = "cyan",
     num_gpus: int = -1,
     min_gpu_mem: int | None = None,
-) -> DatasetDict:
+) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
@@ -283,7 +287,7 @@ def extract(
         train_name, val_name = select_train_val_splits(available_splits)
 
         pretty_name = colorize(
-            assert_type(str, info_with_name.dataset_name), highlight_color
+            assert_type(str, ds_name), highlight_color
         )
         print(
             f"{pretty_name}: using '{train_name}' for training "
@@ -305,9 +309,10 @@ def extract(
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
 
-    ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
-    info_with_name = DatasetInfoWithName.from_ds_name_and_config(ds_name, config_name)
-    info = info_with_name.info
+    ds_name, config_name = extract_dataset_name_and_config(
+        dataset_config_str=cfg.prompts.datasets[0]
+    )
+    info = get_dataset_config_info(ds_name, config_name or None)
 
     ds_features = assert_type(Features, info.features)
     label_col = (
@@ -353,7 +358,7 @@ def extract(
     builders = {
         split_name: _GeneratorBuilder(
             # Use the dataset name from info_with_name, not the builder name
-            builder_name=info_with_name.dataset_name,
+            builder_name=info.builder_name,
             config_name=info.config_name,
             cache_dir=None,
             features=Features({**layer_cols, **other_cols}),
@@ -380,10 +385,10 @@ def extract(
             download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
             num_proc=len(devices),
         )
-        # This is dumb but the builder's info for builder_name
-        # gets reset by download_and_prepare
-        # so we have to set it again
-        builder.info.builder_name = info_with_name.dataset_name
         ds[split] = builder.as_dataset(split=split)
 
-    return DatasetDict(ds)
+    dataset_dict = DatasetDict(ds)
+    return DatasetDictWithName(
+        name=ds_name,
+        dataset=dataset_dict,
+    )

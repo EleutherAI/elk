@@ -1,13 +1,15 @@
 from pathlib import Path
 from typing import Sequence
 
+import pandas as pd
+
 from elk import Extract
 from elk.evaluation import Eval
 from elk.extraction import PromptConfig
+from elk.extraction.dataset_name import extract_dataset_name_and_config
 from elk.files import transfer_eval_directory
 from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
-import pandas as pd
 
 EVAL_EXPECTED_FILES = [
     "cfg.yaml",
@@ -81,7 +83,8 @@ def eval_assert_files_created(elicit: Elicit, transfer_datasets: Sequence[str] =
 
     for tfr_dataset in transfer_datasets:
         # assert that the dataset column contains the transfer dataset
-        assert tfr_dataset in dataset_col.values
+        ds_name, config_name = extract_dataset_name_and_config(tfr_dataset)
+        assert ds_name in dataset_col.values
 
 
 """TESTS"""
