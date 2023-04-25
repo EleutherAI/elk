@@ -17,14 +17,14 @@ from datasets import (
     Sequence,
     SplitDict,
     SplitInfo,
-    Value,
-    get_dataset_config_info,
+    Value, Dataset,
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import AutoConfig, PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from .dataset_name import DatasetInfoWithName
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
@@ -282,7 +282,9 @@ def extract(
         available_splits = assert_type(SplitDict, info.splits)
         train_name, val_name = select_train_val_splits(available_splits)
 
-        pretty_name = colorize(assert_type(str, info.builder_name), highlight_color)
+        pretty_name = colorize(
+            assert_type(str, info_with_name.dataset_name), highlight_color
+        )
         print(
             f"{pretty_name}: using '{train_name}' for training "
             f"and '{val_name}' for validation"
@@ -304,7 +306,8 @@ def extract(
     model_cfg = AutoConfig.from_pretrained(cfg.model)
 
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
-    info = get_dataset_config_info(ds_name, config_name or None)
+    info_with_name = DatasetInfoWithName.from_ds_name_and_config(ds_name, config_name)
+    info = info_with_name.info
 
     ds_features = assert_type(Features, info.features)
     label_col = (
@@ -349,7 +352,8 @@ def extract(
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
-            builder_name=info.builder_name,
+            # Use the dataset name from info_with_name, not the builder name
+            builder_name=info_with_name.dataset_name,
             config_name=info.config_name,
             cache_dir=None,
             features=Features({**layer_cols, **other_cols}),
@@ -376,6 +380,10 @@ def extract(
             download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
             num_proc=len(devices),
         )
+        # This is dumb but the builder's info for builder_name
+        # gets reset by download_and_prepare
+        # so we have to set it again
+        builder.info.builder_name = info_with_name.dataset_name
         ds[split] = builder.as_dataset(split=split)
 
     return DatasetDict(ds)

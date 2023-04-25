@@ -7,6 +7,7 @@ from elk.extraction import PromptConfig
 from elk.files import transfer_eval_directory
 from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
+import pandas as pd
 
 EVAL_EXPECTED_FILES = [
     "cfg.yaml",
@@ -70,10 +71,17 @@ def eval_run(elicit: Elicit, transfer_datasets: Sequence[str] = []) -> int:
 
 def eval_assert_files_created(elicit: Elicit, transfer_datasets: Sequence[str] = []):
     tmp_path = elicit.out_dir
+    eval_dir = transfer_eval_directory(source=tmp_path)
+    assert eval_dir.exists(), f"transfer eval dir {eval_dir} does not exist"
+    check_contains_files(eval_dir, EVAL_EXPECTED_FILES)
+    # read "eval.csv" into a df
+    df = pd.read_csv(eval_dir / "eval.csv")
+    # get the "dataset" column
+    dataset_col = df["dataset"]
+
     for tfr_dataset in transfer_datasets:
-        eval_dir = transfer_eval_directory(source=tmp_path) / tfr_dataset
-        assert eval_dir.exists(), f"transfer eval dir {eval_dir} does not exist"
-        check_contains_files(eval_dir, EVAL_EXPECTED_FILES)
+        # assert that the dataset column contains the transfer dataset
+        assert tfr_dataset in dataset_col.values
 
 
 """TESTS"""

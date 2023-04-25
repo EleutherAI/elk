@@ -4,7 +4,7 @@ import pandas as pd
 import torch
 from simple_parsing.helpers import field
 
-from ..files import elk_reporter_dir
+from ..files import elk_reporter_dir, transfer_eval_directory
 from ..metrics import evaluate_preds
 from ..run import Run
 from ..training import Reporter
@@ -20,8 +20,12 @@ class Eval(Run):
     def __post_init__(self):
         assert self.source, "Must specify a source experiment."
 
-        transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
-        self.out_dir = transfer_dir / "+".join(self.data.prompts.datasets)
+        # Set the output directory to the transfer directory if it's not specified
+        self.out_dir = (
+            transfer_eval_directory(self.source)
+            if self.out_dir is None
+            else self.out_dir
+        )
 
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int

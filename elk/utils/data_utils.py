@@ -12,8 +12,9 @@ from datasets import (
     get_dataset_config_names,
 )
 
-from ..promptsource.templates import Template
 from .typing import assert_type
+from ..extraction.dataset_name import DatasetInfoWithName
+from ..promptsource.templates import Template
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
