@@ -24,6 +24,9 @@ class Eval(Run):
         transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
         self.out_dir = transfer_dir / "+".join(self.data.prompts.datasets)
 
+    def execute(self, highlight_color: str = "cyan"):
+        return super().execute(highlight_color, split_type="val")
+
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
     ) -> dict[str, pd.DataFrame]:

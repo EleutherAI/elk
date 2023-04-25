@@ -12,6 +12,7 @@ from datasets import (
     Array2D,
     Array3D,
     DatasetDict,
+    DatasetInfo,
     DownloadMode,
     Features,
     Sequence,
@@ -35,6 +36,7 @@ from ..utils import (
     instantiate_model,
     instantiate_tokenizer,
     is_autoregressive,
+    select_split,
     select_train_val_splits,
     select_usable_devices,
 )
@@ -264,39 +266,8 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(
-    cfg: "Extract",
-    *,
-    disable_cache: bool = False,
-    highlight_color: str = "cyan",
-    num_gpus: int = -1,
-    min_gpu_mem: int | None = None,
-) -> DatasetDict:
-    """Extract hidden states from a model and return a `DatasetDict` containing them."""
-
-    def get_splits() -> SplitDict:
-        available_splits = assert_type(SplitDict, info.splits)
-        train_name, val_name = select_train_val_splits(available_splits)
-
-        pretty_name = colorize(assert_type(str, info.builder_name), highlight_color)
-        print(
-            f"{pretty_name}: using '{train_name}' for training "
-            f"and '{val_name}' for validation"
-        )
-        limit_list = cfg.prompts.max_examples
-
-        return SplitDict(
-            {
-                k: SplitInfo(
-                    name=k,
-                    num_examples=min(limit, v.num_examples) * len(cfg.prompts.datasets),
-                    dataset_name=v.dataset_name,
-                )
-                for limit, (k, v) in zip(limit_list, available_splits.items())
-            },
-            dataset_name=available_splits.dataset_name,
-        )
-
+def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
+    """Return the HuggingFace `Features` corresponding to an `Extract` config."""
     model_cfg = AutoConfig.from_pretrained(cfg.model)
 
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
@@ -345,16 +316,47 @@ def extract(
             dtype="float32",
         )
 
+    return info, Features({**layer_cols, **other_cols})
+
+
+def extract(
+    cfg: "Extract",
+    *,
+    disable_cache: bool = False,
+    highlight_color: str = "cyan",
+    num_gpus: int = -1,
+    min_gpu_mem: int | None = None,
+    split_type: Literal["train", "val", None] = None,
+) -> DatasetDict:
+    """Extract hidden states from a model and return a `DatasetDict` containing them."""
+    info, features = hidden_features(cfg)
+
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
+    limit_list = cfg.prompts.max_examples
+    splits = assert_type(SplitDict, info.splits)
+
+    if split_type is None:
+        train, val = select_train_val_splits(splits)
+        pretty_name = colorize(assert_type(str, info.builder_name), highlight_color)
+        print(f"{pretty_name}: using '{train}' for training and '{val}' for validation")
+        splits = SplitDict({train: splits[train], val: splits[val]})
+    else:
+        # Remove the split we're not using
+        del limit_list[1 if split_type == "train" else 0]
+        split_name = select_split(splits, split_type)
+        splits = SplitDict({split_name: splits[split_name]})
+
     builders = {
         split_name: _GeneratorBuilder(
-            builder_name=info.builder_name,
-            config_name=info.config_name,
             cache_dir=None,
-            features=Features({**layer_cols, **other_cols}),
+            features=features,
             generator=_extraction_worker,
             split_name=split_name,
-            split_info=split_info,
+            split_info=SplitInfo(
+                name=split_name,
+                num_examples=min(limit, v.num_examples) * len(cfg.prompts.datasets),
+                dataset_name=v.dataset_name,
+            ),
             gen_kwargs=dict(
                 cfg=[cfg] * len(devices),
                 device=devices,
@@ -363,7 +365,7 @@ def extract(
                 world_size=[len(devices)] * len(devices),
             ),
         )
-        for (split_name, split_info) in get_splits().items()
+        for limit, (split_name, v) in zip(limit_list, splits.items())
     }
     import multiprocess as mp
 

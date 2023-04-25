@@ -47,7 +47,11 @@ class Run(ABC, Serializable):
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
 
-    def execute(self, highlight_color: str = "cyan"):
+    def execute(
+        self,
+        highlight_color: str = "cyan",
+        split_type: Literal["train", "val", None] = None,
+    ):
         self.datasets = [
             extract(
                 cfg,
@@ -55,6 +59,7 @@ class Run(ABC, Serializable):
                 highlight_color=highlight_color,
                 num_gpus=self.num_gpus,
                 min_gpu_mem=self.min_gpu_mem,
+                split_type=split_type,
             )
             for cfg in self.data.explode()
         ]

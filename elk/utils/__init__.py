@@ -6,6 +6,7 @@ from .data_utils import (
     has_multiple_configs,
     infer_label_column,
     infer_num_classes,
+    select_split,
     select_train_val_splits,
 )
 from .gpu_utils import select_usable_devices
@@ -33,6 +34,7 @@ __all__ = [
     "int16_to_float32",
     "is_autoregressive",
     "pytree_map",
+    "select_split",
     "select_train_val_splits",
     "select_usable_devices",
     "stochastic_round_constrained",

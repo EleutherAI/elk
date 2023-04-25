@@ -1,7 +1,7 @@
 import copy
 from functools import cache
 from random import Random
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 from datasets import (
     ClassLabel,
@@ -14,6 +14,13 @@ from datasets import (
 
 from ..promptsource.templates import Template
 from .typing import assert_type
+
+# Lower values are more "train-like" and higher values are more "test-like".
+PRIORITIES = {
+    Split.TRAIN: 0,
+    Split.VALIDATION: 1,
+    Split.TEST: 2,
+}
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
@@ -50,16 +57,18 @@ def has_multiple_configs(ds_name: str) -> bool:
     return len(get_dataset_config_names(ds_name)) > 1
 
 
+def select_split(raw_splits: Iterable[str], split_type: Literal["train", "val"]) -> str:
+    """Return the train or validation split to use, given an Iterable of splits."""
+    assert split_type in ("train", "val")
+
+    reduce_fn = min if split_type == "train" else max
+    return reduce_fn(raw_splits, key=lambda k: PRIORITIES.get(k, 100))  # type: ignore
+
+
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
     """Return splits to use for train and validation, given an Iterable of splits."""
 
-    priorities = {
-        Split.TRAIN: 0,
-        Split.VALIDATION: 1,
-        Split.TEST: 2,
-    }
-
-    splits = sorted(raw_splits, key=lambda k: priorities.get(k, 100))  # type: ignore
+    splits = sorted(raw_splits, key=lambda k: PRIORITIES.get(k, 100))  # type: ignore
     assert len(splits) >= 2, "Must have at least two of train, val, and test splits"
 
     return tuple(splits[:2])
