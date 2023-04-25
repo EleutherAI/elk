@@ -1,4 +1,3 @@
-import warnings
 from dataclasses import dataclass, field
 
 import torch
@@ -68,10 +67,6 @@ class CalibrationError:
                 break
 
             elif not torch.all(freqs * (1 - freqs)):
-                warnings.warn(
-                    "Calibration error estimate may be unreliable due to insufficient"
-                    " data in some bins."
-                )
                 break
 
             # Save the current binning, it's monotonic and may be the best one

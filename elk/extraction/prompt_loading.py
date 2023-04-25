@@ -2,7 +2,6 @@ from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass
 from itertools import zip_longest
-from os.path import exists
 from random import Random
 from typing import Any, Iterator, Literal, Optional
 
@@ -10,7 +9,6 @@ from datasets import (
     Dataset,
     Features,
     load_dataset,
-    load_dataset_builder,
 )
 from datasets.distributed import split_dataset_by_node
 from simple_parsing.helpers import Serializable, field
@@ -29,9 +27,8 @@ from .balanced_sampler import BalancedSampler, FewShotSampler
 class PromptConfig(Serializable):
     """
     Args:
-        datasets: List of space-delimited names of the HuggingFace datasets to use, e.g.
-            [`"super_glue boolq", "imdb"]`.
-        balance: Whether to force class balance in the dataset using undersampling.
+        dataset: List of space-delimited names of the HuggingFace dataset to use, e.g.
+            `"super_glue boolq"` or `"imdb"`.
         data_dir: The directory to use for caching the dataset. Defaults to
             `~/.cache/huggingface/datasets`.
         label_column: The column containing the labels. By default, we infer this from
@@ -44,13 +41,9 @@ class PromptConfig(Serializable):
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot. Defaults to 0.
         num_variants: The number of prompt templates to apply to each predicate upon
-            call to __getitem__. Use -1 to apply all available templates. Defaults to
-            -1.
+            call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
         seed: The seed to use for prompt randomization. Defaults to 42.
         stream: Whether to stream the dataset from the Internet. Defaults to False.
-        combined_template_output_path: Path to save a combined template file to, when
-            applying prompt invariance across multiple datasets. Interpreted as a
-            subpath of `combined_paths` in the templates dir. Defaults to empty string.
     """
 
     datasets: list[str] = field(positional=True)
@@ -62,7 +55,6 @@ class PromptConfig(Serializable):
     num_variants: int = -1
     seed: int = 42
     stream: bool = False
-    combined_template_output_path: str = ""
 
     def __post_init__(self):
         if len(self.max_examples) > 2:
@@ -72,8 +64,6 @@ class PromptConfig(Serializable):
             )
         if not self.max_examples:
             self.max_examples = [int(1e100)]
-
-        self.combine_templates()
 
         # Broadcast the limit to all splits
         if len(self.max_examples) == 1:
@@ -96,60 +86,6 @@ class PromptConfig(Serializable):
                 f" but got {len(self.label_columns)}"
             )
 
-    def combine_templates(self):
-        if not self.combined_template_output_path:
-            return
-
-        print(
-            "Copying templates across datasets to combined_templates/ "
-            + f"{self.combined_template_output_path}/templates.yaml"
-        )
-        combined_prompter = DatasetTemplates(
-            "combined_templates", self.combined_template_output_path
-        )
-        combined_prompter.templates = {}
-        ref_ds_builder = None
-        for i, ds_string in enumerate(self.datasets):
-            ds_name, _, config_name = ds_string.partition(" ")
-            ds_builder = load_dataset_builder(ds_name, config_name or None)
-            if i == 0:
-                # Set first dataset as reference
-                ref_ds_builder = ds_builder
-            elif not self.verify_cols(ref_ds_builder, ds_builder, ds_name):
-                return
-
-            # Once verified, merge templates.
-            prompter = DatasetTemplates(ds_name, config_name)
-            combined_prompter.merge_templates_from(prompter)
-        print("Total number of templates: ", len(combined_prompter.templates))
-        combined_prompter.write_to_file()
-        print(
-            "Saved to promptsource/templates/combined_templates/"
-            + f"{self.combined_template_output_path}.yaml"
-        )
-
-    def verify_cols(self, ref_ds_builder, ds_builder, ds_name) -> bool:
-        """Verify that column parameters match the reference dataset."""
-        # Match feature names
-        for feature in ref_ds_builder.info.features.keys():
-            if feature not in ds_builder.info.features:
-                print(
-                    f"WARNING: Dataset {ds_name} is missing {feature} from reference",
-                    "dataset. Proceeding, but prompting datasets separately.",
-                )
-                return False
-        # Match label classes
-        expected_classes = ref_ds_builder.info.features["label"].num_classes
-        num_classes = ds_builder.info.features["label"].num_classes
-        if expected_classes > 0 and num_classes != expected_classes:
-            print(
-                "WARNING: Datasets do not have the same number of ClassLabel classes",
-                f"{ds_name} has {num_classes} classes while first dataset has",
-                f"{expected_classes}. Prompting datasets separately.",
-            )
-            return False
-        return True
-
     def explode(self) -> list["PromptConfig"]:
         """Explode the config into a list of configs, one for each dataset."""
         copies = []
@@ -168,6 +104,7 @@ class PromptConfig(Serializable):
 
 def load_prompts(
     ds_string: str,
+    *,
     label_column: Optional[str] = None,
     num_classes: int = 0,
     num_shots: int = 0,
@@ -177,13 +114,16 @@ def load_prompts(
     stream: bool = False,
     rank: int = 0,
     world_size: int = 1,
-    combined_template_output_path: str = "",
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified dataset.
 
     Args:
         ds_string: Space-delimited name of the HuggingFace dataset to use,
             e.g. `"super_glue boolq"` or `"imdb"`.
+        label_column: The column containing the labels. By default, we infer this from
+            the datatypes of the columns in the dataset.
+        num_classes: The number of classes in the dataset. If zero, we infer this from
+            the datatypes of the columns in the dataset.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot.
         seed: The seed to use for prompt randomization.
@@ -196,12 +136,7 @@ def load_prompts(
         An iterable of prompt dictionaries.
     """
     ds_name, _, config_name = ds_string.partition(" ")
-
-    prompter = None
-    if combined_template_output_path and exists(combined_template_output_path):
-        prompter = DatasetTemplates("combined_templates", combined_template_output_path)
-    else:
-        prompter = DatasetTemplates(ds_name, config_name)
+    prompter = DatasetTemplates(ds_name, config_name)
 
     ds_dict = assert_type(
         dict, load_dataset(ds_name, config_name or None, streaming=stream)
@@ -300,8 +235,7 @@ def _convert_to_prompts(
                 fake_example[label_column] = answer_idx
 
             q, a = template.apply(fake_example)
-            text = qa_cat(q, a or string_choices[answer_idx])
-            prompt_counter[text] += 1
+            prompt_counter[(q, a)] += 1
 
             if fewshot_iter is not None:
                 # Infinite iterator so we don't need to worry about StopIteration
@@ -309,14 +243,14 @@ def _convert_to_prompts(
                 fewshot_texts = [
                     qa_cat(q, a) for q, a in map(template.apply, fewshot_examples)
                 ]
-                text = "\n\n".join(fewshot_texts) + "\n\n" + text
+                q = "\n\n".join(fewshot_texts) + "\n\n" + q
 
             choices.append(
                 dict(
                     # Strip whitespace from the answer to make it easier to
                     # compare with the model's output
                     answer=a.strip(),
-                    text=text,
+                    question=q,
                 )
             )
 

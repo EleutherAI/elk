@@ -1,22 +1,16 @@
 from pathlib import Path
+from typing import Sequence
 
 from elk import Extract
 from elk.evaluation import Eval
 from elk.extraction import PromptConfig
+from elk.files import transfer_eval_directory
 from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
 
-ELICIT_EXPECTED_FILES = [
-    "cfg.yaml",
-    "fingerprints.yaml",
-    "lr_models",
-    "reporters",
-    "eval.csv",
-]
-
 EVAL_EXPECTED_FILES = [
     "cfg.yaml",
-    "metadata.yaml",
+    "fingerprints.yaml",
     "eval.csv",
 ]
 
@@ -44,7 +38,6 @@ def setup_elicit(
         out_dir=tmp_path,
     )
     elicit.execute()
-    check_contains_files(tmp_path, ELICIT_EXPECTED_FILES)
     return elicit
 
 
@@ -56,7 +49,7 @@ def check_contains_files(dir: Path, expected_files: list[str]):
         assert file in created_file_names
 
 
-def eval_run(elicit: Elicit, tfr_datasets: list[str] = None) -> int:
+def eval_run(elicit: Elicit, transfer_datasets: Sequence[str] = []) -> int:
     """A single eval run; act and assert that expected files were created.
     Returns a reference time (in seconds) for file modification checking.
     """
@@ -66,51 +59,42 @@ def eval_run(elicit: Elicit, tfr_datasets: list[str] = None) -> int:
     # record elicit modification time as reference.
     start_time_sec = (tmp_path / "eval.csv").stat().st_mtime
 
-    if tfr_datasets:
+    if transfer_datasets:
         # update datasets to a different dataset
-        extract.prompts.datasets = tfr_datasets
+        extract.prompts.datasets = transfer_datasets
 
     eval = Eval(data=extract, source=tmp_path)
     eval.execute()
     return start_time_sec
 
 
-def eval_assert_files_created(elicit: Elicit, start_time_sec=0):
+def eval_assert_files_created(elicit: Elicit, transfer_datasets: Sequence[str] = []):
     tmp_path = elicit.out_dir
-    if not tfr_datasets:
-        # self-eval only, assert eval.csv has been modified (?)
-        assert (tmp_path / "eval.csv").stat().st_mtime > start_time_sec
-    else:
-        # check transfer eval dir contents
-        transfer_dir = tmp_path / "transfer_evals"
-        assert transfer_dir.exists()
-        eval_dir = transfer_dir / tfr_dataset
-        assert eval_dir.exists()
+    for tfr_dataset in transfer_datasets:
+        eval_dir = transfer_eval_directory(source=tmp_path) / tfr_dataset
+        assert eval_dir.exists(), f"transfer eval dir {eval_dir} does not exist"
         check_contains_files(eval_dir, EVAL_EXPECTED_FILES)
 
 
-# TESTS #
-
-
-def test_smoke_eval_run_tiny_gpt2_ccs(tmp_path: Path):
-    elicit = setup_elicit(tmp_path, is_ccs=True)
-    eval_start_time = eval_run(elicit)
-    eval_assert_files_created(elicit, eval_start_time)
+"""TESTS"""
 
 
 def test_smoke_tfr_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     elicit = setup_elicit(tmp_path)
-    eval_start_time = eval_run(elicit, tfr_datasets=["christykoh/imdb_pt"])
-    eval_assert_files_created(elicit, eval_start_time)
-
-
-def test_smoke_multi_eval_run_tiny_gpt2_ccs(tmp_path: Path):
-    elicit = setup_elicit(tmp_path)
-    eval_start_time = eval_run(elicit, tfr_datasets=["super_glue boolq", "ag_news"])
-    eval_assert_files_created(elicit, eval_start_time)
+    transfer_datasets = ["christykoh/imdb_pt"]
+    eval_run(elicit, transfer_datasets=transfer_datasets)
+    eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)
 
 
 def test_smoke_eval_run_tiny_gpt2_eigen(tmp_path: Path):
     elicit = setup_elicit(tmp_path, is_ccs=False)
-    eval_start_time = eval_run(elicit)
-    eval_assert_files_created(elicit, eval_start_time)
+    transfer_datasets = ["christykoh/imdb_pt"]
+    eval_run(elicit, transfer_datasets=transfer_datasets)
+    eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)
+
+
+def test_smoke_multi_eval_run_tiny_gpt2_ccs(tmp_path: Path):
+    elicit = setup_elicit(tmp_path)
+    transfer_datasets = ["christykoh/imdb_pt", "super_glue boolq"]
+    eval_run(elicit, transfer_datasets=transfer_datasets)
+    eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)

@@ -75,3 +75,13 @@ def test_auroc_and_acc():
     # Assert that the results from the two implementations are close
     assert math.isclose(acc_ci.lower, lower, rel_tol=2e-3)
     assert math.isclose(acc_ci.upper, upper, rel_tol=2e-3)
+
+    # Sanity check: cluster bootstrap on IID data should give the same result
+    # Reshape y_true_1d_torch and hard_preds to 2D matrices
+    y_true_1d_reshaped = y_true_1d_torch.reshape(-1, 10)
+    hard_preds_reshaped = hard_preds.reshape(-1, 10)
+
+    # Assert that the results from the two implementations are close
+    acc_ci = accuracy_ci(y_true_1d_reshaped, hard_preds_reshaped, level=level)
+    assert math.isclose(acc_ci.lower, lower, rel_tol=2e-3)
+    assert math.isclose(acc_ci.upper, upper, rel_tol=2e-3)

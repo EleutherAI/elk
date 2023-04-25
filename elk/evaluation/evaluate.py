@@ -8,7 +8,7 @@ import torch
 from simple_parsing.helpers import Serializable, field
 
 from ..extraction.extraction import Extract
-from ..files import elk_reporter_dir
+from ..files import elk_reporter_dir, transfer_eval_directory
 from ..metrics import evaluate_preds
 from ..run import Run
 from ..training import Reporter
@@ -42,21 +42,14 @@ class Eval(Serializable):
     num_gpus: int = -1
     out_dir: Path | None = None
     skip_supervised: bool = False
-    combine_evals: bool = False
+
+    disable_cache: bool = field(default=False, to_dict=False)
 
     def execute(self):
-        datasets = self.data.prompts.datasets
-
-        transfer_dir = elk_reporter_dir() / self.source / "transfer_eval"
-
-        if self.combine_evals:
-            run = Evaluate(cfg=self, out_dir=transfer_dir / ", ".join(datasets))
-        else:
-            # eval on each dataset separately
-            for dataset in datasets:
-                self.data.prompts.datasets = [dataset]
-                run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
-                run.evaluate()
+        transfer_dir = transfer_eval_directory(source=self.source)
+        for dataset in self.data.prompts.datasets:
+            run = Evaluate(cfg=self, out_dir=transfer_dir / dataset)
+            run.evaluate()
 
 
 @dataclass

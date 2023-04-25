@@ -5,12 +5,14 @@ from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
 from typing import Any, Iterable, Literal
+from warnings import filterwarnings
 
 import torch
 from datasets import (
     Array2D,
     Array3D,
     DatasetDict,
+    DownloadMode,
     Features,
     Sequence,
     SplitDict,
@@ -20,17 +22,17 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoConfig, PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
-    convert_span,
     float32_to_int16,
     infer_label_column,
     infer_num_classes,
     instantiate_model,
+    instantiate_tokenizer,
     is_autoregressive,
     select_train_val_splits,
     select_usable_devices,
@@ -58,6 +60,7 @@ class Extract(Serializable):
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
+    use_encoder_states: bool = False
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -85,7 +88,7 @@ class Extract(Serializable):
         return copies
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def extract_hiddens(
     cfg: "Extract",
     *,
@@ -99,11 +102,29 @@ def extract_hiddens(
 
     # Silence datasets logging messages from all but the first process
     if rank != 0:
+        filterwarnings("ignore")
         logging.disable(logging.CRITICAL)
 
     p_cfg = cfg.prompts
     ds_names = p_cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
+
+    model = instantiate_model(
+        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+    ).to(device)
+    tokenizer = instantiate_tokenizer(
+        cfg.model, truncation_side="left", verbose=rank == 0
+    )
+
+    is_enc_dec = model.config.is_encoder_decoder
+    if is_enc_dec and cfg.use_encoder_states:
+        assert hasattr(model, "get_encoder") and callable(model.get_encoder)
+        model = assert_type(PreTrainedModel, model.get_encoder())
+        is_enc_dec = False
+
+    has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
+    if has_lm_preds and rank == 0:
+        print("Model has language model head, will store predictions.")
 
     prompt_ds = load_prompts(
         ds_names[0],
@@ -113,18 +134,7 @@ def extract_hiddens(
         stream=p_cfg.stream,
         rank=rank,
         world_size=world_size,
-        combined_template_output_path=cfg.prompts.combined_template_output_path,
-    )  # this dataset is already sharded, but hasn't been truncated to max_examples
-
-    model = instantiate_model(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
-    ).to(device)
-    tokenizer = AutoTokenizer.from_pretrained(
-        cfg.model, truncation_side="left", verbose=False
     )
-    has_lm_preds = is_autoregressive(model.config)
-    if has_lm_preds and rank == 0:
-        print("Model has language model head, will store predictions.")
 
     # Iterating over questions
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
@@ -156,62 +166,64 @@ def extract_hiddens(
             device=device,
             dtype=torch.float32,
         )
-        text_inputs = []
+        text_questions = []
 
         # Iterate over variants
         for i, record in enumerate(example["prompts"]):
-            variant_inputs = []
+            variant_questions = []
 
             # Iterate over answers
             for j, choice in enumerate(record):
-                text = choice["text"]
-
-                # TODO: Do something smarter than "rindex" here. Really we want to
-                # get the span of the answer directly from Jinja, but that doesn't
-                # seem possible. This approach may fail for complex templates.
-                answer_start = text.rindex(choice["answer"])
+                text = choice["question"]
 
                 # Only feed question, not the answer, to the encoder for enc-dec models
-                if model.config.is_encoder_decoder:
-                    # TODO: Maybe make this more generic for complex templates?
-                    text = text[:answer_start].rstrip()
-                    target = choice["answer"]
-                else:
-                    target = None
+                target = choice["answer"] if is_enc_dec else None
 
-                # Record the EXACT string we fed to the model
-                variant_inputs.append(text)
-                inputs = tokenizer(
+                # Record the EXACT question we fed to the model
+                variant_questions.append(text)
+                encoding = tokenizer(
                     text,
-                    return_offsets_mapping=True,
+                    add_special_tokens=False,
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
-                )
+                ).to(device)
+                input_ids = assert_type(Tensor, encoding.input_ids)
 
-                # The offset_mapping is a sorted list of (start, end) tuples. We locate
-                # the start of the answer in the tokenized sequence with binary search.
-                offsets = inputs.pop("offset_mapping").squeeze().tolist()
-                inputs = inputs.to(device)
+                if is_enc_dec:
+                    answer = assert_type(Tensor, encoding.labels)
+                else:
+                    encoding2 = tokenizer(
+                        choice["answer"],
+                        add_special_tokens=False,
+                        return_tensors="pt",
+                    ).to(device)
+                    answer = assert_type(Tensor, encoding2.input_ids)
 
-                # Run the forward pass
-                outputs = model(**inputs, output_hidden_states=True)
+                    input_ids = torch.cat([input_ids, answer], dim=-1)
+                    if max_len := tokenizer.model_max_length:
+                        input_ids = input_ids[..., -max_len:]
+
+                # Make sure we only pass the arguments that the model expects
+                inputs = dict(input_ids=input_ids)
+                if is_enc_dec:
+                    inputs["labels"] = answer
+
+                with torch.autocast("cuda", enabled=torch.cuda.is_available()):
+                    outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
-                    start, end = convert_span(
-                        offsets, (answer_start, answer_start + len(choice["answer"]))
-                    )
-                    log_p = outputs.logits[..., start - 1 : end - 1, :].log_softmax(
-                        dim=-1
-                    )
-                    tokens = inputs.input_ids[..., start:end, None]
+                    answer_len = answer.shape[-1]
+
+                    log_p = outputs.logits[..., -answer_len:, :].log_softmax(dim=-1)
+                    tokens = answer[..., None]
                     lm_logits[i, j] = log_p.gather(-1, tokens).sum()
 
                 elif isinstance(outputs, Seq2SeqLMOutput):
                     # The cross entropy loss is averaged over tokens, so we need to
                     # multiply by the length to get the total log probability.
-                    length = inputs.labels.shape[-1]
+                    length = encoding.labels.shape[-1]
                     lm_logits[i, j] = -assert_type(Tensor, outputs.loss) * length
 
                 hiddens = (
@@ -236,12 +248,12 @@ def extract_hiddens(
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
 
-            text_inputs.append(variant_inputs)
+            text_questions.append(variant_questions)
 
         out_record: dict[str, Any] = dict(
             label=example["label"],
             variant_ids=example["template_names"],
-            text_inputs=text_inputs,
+            text_questions=text_questions,
             **hidden_dict,
         )
         if has_lm_preds:
@@ -256,7 +268,11 @@ def _extraction_worker(**kwargs):
 
 
 def extract(
-    cfg: "Extract", num_gpus: int = -1, min_gpu_mem: int | None = None
+    cfg: "Extract",
+    *,
+    disable_cache: bool = False,
+    num_gpus: int = -1,
+    min_gpu_mem: int | None = None,
 ) -> DatasetDict:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
@@ -284,7 +300,6 @@ def extract(
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
 
-    # Retrieve info, used to get splits
     ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
     info = get_dataset_config_info(ds_name, config_name or None)
 
@@ -313,7 +328,7 @@ def extract(
             length=num_variants,
         ),
         "label": Value(dtype="int64"),
-        "text_inputs": Sequence(
+        "text_questions": Sequence(
             Sequence(
                 Value(dtype="string"),
             ),
@@ -322,7 +337,7 @@ def extract(
     }
 
     # Only add model_logits if the model is an autoregressive model
-    if is_autoregressive(model_cfg):
+    if is_autoregressive(model_cfg, not cfg.use_encoder_states):
         other_cols["model_logits"] = Array2D(
             shape=(num_variants, num_classes),
             dtype="float32",
@@ -354,7 +369,10 @@ def extract(
 
     ds = dict()
     for split, builder in builders.items():
-        builder.download_and_prepare(num_proc=len(devices))
+        builder.download_and_prepare(
+            download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
+            num_proc=len(devices),
+        )
         ds[split] = builder.as_dataset(split=split)
 
     return DatasetDict(ds)

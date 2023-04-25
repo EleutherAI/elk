@@ -1,14 +1,20 @@
 import transformers
-from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
+from transformers import (
+    AutoConfig,
+    AutoModel,
+    AutoTokenizer,
+    PretrainedConfig,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 
 # Ordered by preference
-_AUTOREGRESSIVE_SUFFIXES = [
-    # Encoder-decoder models
-    "ConditionalGeneration",
-    # Autoregressive models
+_DECODER_ONLY_SUFFIXES = [
     "CausalLM",
     "LMHeadModel",
 ]
+# Includes encoder-decoder models
+_AUTOREGRESSIVE_SUFFIXES = ["ConditionalGeneration"] + _DECODER_ONLY_SUFFIXES
 
 
 def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
@@ -29,14 +35,22 @@ def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
     return AutoModel.from_pretrained(model_str, **kwargs)
 
 
-def is_autoregressive(model_cfg: PretrainedConfig) -> bool:
+def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:
+    """Instantiate a tokenizer, using the fast one iff it exists."""
+    try:
+        return AutoTokenizer.from_pretrained(model_str, use_fast=True, **kwargs)
+    except Exception as e:
+        if kwargs.get("verbose", True):
+            print(f"Falling back to slow tokenizer; fast one failed to load: '{e}'")
+
+        return AutoTokenizer.from_pretrained(model_str, use_fast=False, **kwargs)
+
+
+def is_autoregressive(model_cfg: PretrainedConfig, include_enc_dec: bool) -> bool:
     """Check if a model config is autoregressive."""
     archs = model_cfg.architectures
     if not isinstance(archs, list):
         return False
 
-    return any(
-        arch_str.endswith(suffix)
-        for arch_str in archs
-        for suffix in _AUTOREGRESSIVE_SUFFIXES
-    )
+    suffixes = _AUTOREGRESSIVE_SUFFIXES if include_enc_dec else _DECODER_ONLY_SUFFIXES
+    return any(arch_str.endswith(suffix) for arch_str in archs for suffix in suffixes)

@@ -27,7 +27,7 @@ def save_debug_log(datasets: list[DatasetDict], out_dir: Path) -> None:
         )
 
         train_split, val_split = select_train_val_splits(ds)
-        text_inputs = ds[val_split][0]["text_inputs"]
+        text_questions = ds[val_split][0]["text_questions"]
         template_ids = ds[val_split][0]["variant_ids"]
         label = ds[val_split][0]["label"]
 
@@ -35,9 +35,9 @@ def save_debug_log(datasets: list[DatasetDict], out_dir: Path) -> None:
         logging.info(f"Train size: {len(ds[train_split])}")
         logging.info(f"Val size: {len(ds[val_split])}")
 
-        templates_text = f"{len(text_inputs)} templates used:\n"
+        templates_text = f"{len(text_questions)} templates used:\n"
         trailing_whitespace = False
-        for (text0, text1), id in zip(text_inputs, template_ids):
+        for (text0, text1), id in zip(text_questions, template_ids):
             templates_text += (
                 f'***---TEMPLATE "{id}"---***\n'
                 f"{'false' if label else 'true'}:\n"
