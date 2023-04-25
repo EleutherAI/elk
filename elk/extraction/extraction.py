@@ -211,7 +211,8 @@ def extract_hiddens(
 
                     input_ids = torch.cat([input_ids, answer], dim=-1)
                     if max_len := tokenizer.model_max_length:
-                        input_ids = input_ids[..., -max_len:]
+                        cur_len = input_ids.shape[-1]
+                        input_ids = input_ids[..., -min(cur_len, max_len) :]
 
                 # Make sure we only pass the arguments that the model expects
                 inputs = dict(input_ids=input_ids)
