@@ -1,7 +1,6 @@
 from .data_utils import (
     binarize,
     get_columns_all_equal,
-    get_dataset_name,
     get_layers,
     has_multiple_configs,
     infer_label_column,
@@ -23,7 +22,6 @@ __all__ = [
     "cov_mean_fused",
     "float32_to_int16",
     "get_columns_all_equal",
-    "get_dataset_name",
     "get_layers",
     "has_multiple_configs",
     "infer_label_column",
