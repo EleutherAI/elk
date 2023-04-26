@@ -45,21 +45,32 @@ class Eval(Run):
         for ds_name, (val_h, val_gt, _) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
-            val_result = evaluate_preds(val_gt, reporter(val_h))
-            row_bufs["eval"].append({**meta, **val_result.to_dict()})
+            val_credences = reporter(val_h)
+            for mode in ("none", "partial", "full"):
+                row_bufs["eval"].append(
+                    {
+                        **meta,
+                        "ensembling": mode,
+                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                    }
+                )
 
-            lr_dir = experiment_dir / "lr_models"
-            if not self.skip_supervised and lr_dir.exists():
-                with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
-                    lr_models = torch.load(f, map_location=device)
-                    if not isinstance(lr_models, list):  # backward compatibility
-                        lr_models = [lr_models]
+                lr_dir = experiment_dir / "lr_models"
+                if not self.skip_supervised and lr_dir.exists():
+                    with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
+                        lr_models = torch.load(f, map_location=device)
+                        if not isinstance(lr_models, list):  # backward compatibility
+                            lr_models = [lr_models]
 
-                for i, model in enumerate(lr_models):
-                    model.eval()
-                    lr_result = evaluate_preds(val_gt, model(val_h))
-                    row_bufs["lr_eval"].append(
-                        {"inlp_iter": i, **meta, **lr_result.to_dict()}
-                    )
+                    for i, model in enumerate(lr_models):
+                        model.eval()
+                        row_bufs["lr_eval"].append(
+                            {
+                                "ensembling": mode,
+                                "inlp_iter": i,
+                                **meta,
+                                **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            }
+                        )
 
         return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
