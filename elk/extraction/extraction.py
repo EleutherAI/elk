@@ -5,6 +5,7 @@ from copy import copy
 from dataclasses import InitVar, dataclass
 from functools import partial
 from itertools import islice
+from multiprocessing.pool import ThreadPool
 from typing import Any, Callable, Iterable, Literal, Sequence
 from warnings import filterwarnings
 
@@ -100,6 +101,7 @@ class Extract(Serializable):
 def extract_hiddens_list(
     cfg: "Extract",
     *,
+    model: PreTrainedModel,
     device: str | torch.device,
     split_type: Literal["train", "val"],
     rank: int = 0,
@@ -109,6 +111,7 @@ def extract_hiddens_list(
     return list(
         extract_hiddens(
             cfg,
+            model=model,
             device=device,
             split_type=split_type,
             rank=rank,
@@ -121,6 +124,7 @@ def extract_hiddens_list(
 def extract_hiddens(
     cfg: "Extract",
     *,
+    model: PreTrainedModel,
     device: str | torch.device,
     split_type: Literal["train", "val"],
     rank: int = 0,
@@ -138,9 +142,8 @@ def extract_hiddens(
     ds_names = p_cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    model = instantiate_model(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
-    ).to(device)
+    model = model.to(device)
+
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=rank == 0
     )
@@ -290,11 +293,6 @@ def extract_hiddens(
         yield out_record
 
 
-# Dataset.from_generator wraps all the arguments in lists, so we unpack them here
-def _extraction_worker(**kwargs):
-    yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
-
-
 def extract(
     cfg: "Extract",
     *,
@@ -353,14 +351,21 @@ def extract_hiddens_with_gpus(
     """TODO: Some caching based on model name, layers, and dataset?"""
     results: dict[str, list[dict]] = {split_name: [] for split_name in split_names}
 
-    ctx = mp.get_context("spawn")
-    with ctx.Pool(len(devices)) as pool:
+    # ctx = mp.get_context("spawn")
+    first_device = devices[0]
+    use_accelerate = True
+    print("Using Accelerate" if use_accelerate else "Not using Accelerate")
+    model = instantiate_model(
+        cfg.model, torch_dtype="auto" if first_device != "cpu" else torch.float32
+    )
+    with ThreadPool as pool:
         for split_name in split_names:
             thunks: list[Callable[[], list[dict]]] = []
             for rank, device in enumerate(devices):
                 # Create the functions to extract the hidden states
                 thunk: Callable[[], list[dict]] = partial(
                     extract_hiddens_list,
+                    model=model,
                     cfg=cfg,
                     device=device,
                     rank=rank,
