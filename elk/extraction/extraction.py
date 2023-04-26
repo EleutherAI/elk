@@ -358,7 +358,7 @@ def extract_hiddens_with_gpus(
     model = instantiate_model(
         cfg.model, torch_dtype="auto" if first_device != "cpu" else torch.float32
     )
-    with ThreadPool as pool:
+    with ThreadPool(len(devices)) as pool:
         for split_name in split_names:
             thunks: list[Callable[[], list[dict]]] = []
             for rank, device in enumerate(devices):
