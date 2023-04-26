@@ -219,8 +219,7 @@ def extract_hiddens(
                 if is_enc_dec:
                     inputs["labels"] = answer
 
-                with torch.autocast("cuda", enabled=torch.cuda.is_available()):
-                    outputs = model(**inputs, output_hidden_states=True)
+                outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
