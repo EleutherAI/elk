@@ -95,7 +95,6 @@ def extract_hiddens_list(
     *,
     model: PreTrainedModel,
     device: str | torch.device,
-    accelerate_device: torch.device | None,
     split_type: Literal["train", "val"],
     rank: int = 0,
     world_size: int = 1,
@@ -106,7 +105,6 @@ def extract_hiddens_list(
             cfg,
             model=model,
             device=device,
-            accelerate_device=accelerate_device,
             split_type=split_type,
             rank=rank,
             world_size=world_size,
@@ -120,7 +118,6 @@ def extract_hiddens(
     *,
     model: PreTrainedModel,
     device: str | torch.device,
-    accelerate_device: torch.device | None,
     split_type: Literal["train", "val"],
     rank: int = 0,
     world_size: int = 1,
@@ -136,17 +133,6 @@ def extract_hiddens(
     p_cfg = cfg.prompts
     ds_names = p_cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
-
-
-    if not accelerate_device:
-        # We need to move the model to another gpu
-        model = model.to(device)
-    else:
-        # But in the case of using accelerate, we won't
-        # move the model to another gpu, we will just
-        # make sure whatever tensors are created are
-        # on the correct device
-        device = accelerate_device
 
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=rank == 0
@@ -357,15 +343,9 @@ def extract_hiddens_with_gpus(
 
     # ctx = mp.get_context("spawn")
     first_device = devices[0]
-    use_accelerate = True
-    # todo, pass device map
-    print("Using Accelerate" if use_accelerate else "Not using Accelerate")
     model = instantiate_model(
         cfg.model, torch_dtype="auto" if first_device != "cpu" else torch.float32
     )
-    # get the device of the model incase we are using accelerate
-    accelerate_device: torch.device | None = model.device if use_accelerate else None
-    print(f"Accelerate device: {accelerate_device}")
     with ThreadPool(len(devices)) as pool:
         for split_name in split_names:
             thunks: list[Callable[[], list[dict]]] = []
@@ -373,7 +353,6 @@ def extract_hiddens_with_gpus(
                 # Create the functions to extract the hidden states
                 thunk: Callable[[], list[dict]] = partial(
                     extract_hiddens_list,
-                    accelerate_device=accelerate_device,
                     model=model,
                     cfg=cfg,
                     device=device,

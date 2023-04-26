@@ -18,18 +18,10 @@ _DECODER_ONLY_SUFFIXES = [
 _AUTOREGRESSIVE_SUFFIXES = ["ConditionalGeneration"] + _DECODER_ONLY_SUFFIXES
 
 
-def instantiate_model(
-    model_str: str, use_accelerate: bool = False, **kwargs
-) -> PreTrainedModel:
+def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class.
-    See accelerate https://huggingface.co/blog/accelerate-large-models
-    Note, could set device_map via infer_auto_device_map
     """
-    model_cfg = (
-        AutoConfig.from_pretrained(model_str, device_map="auto")
-        if use_accelerate
-        else AutoConfig.from_pretrained(model_str)
-    )
+    model_cfg = AutoConfig.from_pretrained(model_str)
 
     archs = model_cfg.architectures
     if not isinstance(archs, list):
