@@ -41,7 +41,7 @@ dev = [
     "hypothesis",
     "pre-commit",
     "pytest",
-    "pyright",
+    "pyright==1.1.304",
     "scikit-learn",
 ]
 
