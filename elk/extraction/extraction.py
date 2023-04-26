@@ -371,6 +371,7 @@ def extract_hiddens_with_gpus(
                 # Create the functions to extract the hidden states
                 thunk: Callable[[], list[dict]] = partial(
                     extract_hiddens_list,
+                    accelerate_device=accelerate_device,
                     model=model,
                     cfg=cfg,
                     device=device,
