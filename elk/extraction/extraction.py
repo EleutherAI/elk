@@ -40,6 +40,10 @@ from ..utils import (
     select_train_val_splits,
     select_usable_devices,
 )
+from .dataset_name import (
+    DatasetDictWithName,
+    extract_dataset_name_and_config,
+)
 from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
 
@@ -185,7 +189,8 @@ def extract_hiddens(
                 variant_questions.append(text)
                 encoding = tokenizer(
                     text,
-                    add_special_tokens=False,
+                    # Keep [CLS] and [SEP] for BERT-style models
+                    add_special_tokens=True,
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
@@ -197,6 +202,7 @@ def extract_hiddens(
                 else:
                     encoding2 = tokenizer(
                         choice["answer"],
+                        # Don't include [CLS] and [SEP] in the answer
                         add_special_tokens=False,
                         return_tensors="pt",
                     ).to(device)
@@ -205,7 +211,7 @@ def extract_hiddens(
                     input_ids = torch.cat([input_ids, answer], dim=-1)
                     if max_len := tokenizer.model_max_length:
                         cur_len = input_ids.shape[-1]
-                        input_ids = input_ids[..., -min(max_len, cur_len) :]
+                        input_ids = input_ids[..., -min(cur_len, max_len) :]
 
                 # Make sure we only pass the arguments that the model expects
                 inputs = dict(input_ids=input_ids)
@@ -270,7 +276,9 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
     """Return the HuggingFace `Features` corresponding to an `Extract` config."""
     model_cfg = AutoConfig.from_pretrained(cfg.model)
 
-    ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
+    ds_name, config_name = extract_dataset_name_and_config(
+        dataset_config_str=cfg.prompts.datasets[0]
+    )
     info = get_dataset_config_info(ds_name, config_name or None)
 
     prompter = DatasetTemplates(ds_name, config_name)
@@ -327,7 +335,7 @@ def extract(
     num_gpus: int = -1,
     min_gpu_mem: int | None = None,
     split_type: Literal["train", "val", None] = None,
-) -> DatasetDict:
+) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
     info, features = hidden_features(cfg)
 
@@ -379,4 +387,8 @@ def extract(
         )
         ds[split] = builder.as_dataset(split=split)
 
-    return DatasetDict(ds)
+    dataset_dict = DatasetDict(ds)
+    return DatasetDictWithName(
+        name=cfg.prompts.datasets[0],
+        dataset=dataset_dict,
+    )

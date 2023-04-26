@@ -12,17 +12,16 @@ import pandas as pd
 import torch
 import torch.multiprocessing as mp
 import yaml
-from datasets import DatasetDict
 from simple_parsing.helpers import Serializable, field
 from torch import Tensor
 from tqdm import tqdm
 
 from .debug_logging import save_debug_log
 from .extraction import Extract, extract
+from .extraction.dataset_name import DatasetDictWithName
 from .files import elk_reporter_dir, memorably_named_dir
 from .utils import (
     assert_type,
-    get_dataset_name,
     get_layers,
     int16_to_float32,
     select_train_val_splits,
@@ -37,7 +36,7 @@ class Run(ABC, Serializable):
     """Directory to save results to. If None, a directory will be created
     automatically."""
 
-    datasets: list[DatasetDict] = field(default_factory=list, init=False)
+    datasets: list[DatasetDictWithName] = field(default_factory=list, init=False)
     """Datasets containing hidden states and labels for each layer."""
 
     concatenated_layer_offset: int = 0
@@ -84,10 +83,8 @@ class Run(ABC, Serializable):
         with open(path, "w") as meta_f:
             yaml.dump(
                 {
-                    get_dataset_name(ds): {
-                        split: ds[split]._fingerprint for split in ds.keys()
-                    }
-                    for ds in self.datasets
+                    ds_name: {split: ds[split]._fingerprint for split in ds.keys()}
+                    for ds_name, ds in self.datasets
                 },
                 meta_f,
             )
@@ -125,7 +122,7 @@ class Run(ABC, Serializable):
         """Prepare data for the specified layer and split type."""
         out = {}
 
-        for ds in self.datasets:
+        for ds_name, ds in self.datasets:
             train_name, val_name = select_train_val_splits(ds)
             key = train_name if split_type == "train" else val_name
 
@@ -137,7 +134,6 @@ class Run(ABC, Serializable):
                 has_preds = "model_logits" in split.features
                 lm_preds = split["model_logits"] if has_preds else None
 
-            ds_name = get_dataset_name(ds)
             out[ds_name] = (val_h, labels.to(val_h.device), lm_preds)
 
         return out
@@ -164,7 +160,7 @@ class Run(ABC, Serializable):
         """
         self.out_dir = assert_type(Path, self.out_dir)
 
-        layers, *rest = [get_layers(ds) for ds in self.datasets]
+        layers, *rest = [get_layers(ds) for _, ds in self.datasets]
         assert all(x == layers for x in rest), "All datasets must have the same layers"
 
         if self.concatenated_layer_offset > 0:
@@ -182,7 +178,7 @@ class Run(ABC, Serializable):
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
-                    df = pd.concat(dfs).sort_values(by="layer")
+                    df = pd.concat(dfs).sort_values(by=["layer", "ensembling"])
 
                     # Rename layer 0 to "input" to make it more clear
                     df["layer"].replace(0, "input", inplace=True)
