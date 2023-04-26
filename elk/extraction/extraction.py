@@ -22,7 +22,7 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig, PreTrainedModel
+from transformers import AutoConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
@@ -95,10 +95,49 @@ class Extract(Serializable):
         return copies
 
 
+@dataclass(kw_only=True)
+class LoadedModel:
+    """A model and its tokenizer."""
+
+    model: PreTrainedModel
+    tokenizer: PreTrainedTokenizerBase
+    is_encoder_decoder: bool
+    has_lm_preds: bool
+
+
+    def share_memory(self):
+        """Makes the model share memory across processes."""
+        self.model.share_memory()
+
+    @staticmethod
+    def from_config(cfg: Extract, device: str) -> "LoadedModel":
+        model = instantiate_model(
+            cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
+        ).to(device)
+        tokenizer = instantiate_tokenizer(cfg.model, truncation_side="left")
+
+        is_enc_dec = model.config.is_encoder_decoder
+        if is_enc_dec and cfg.use_encoder_states:
+            assert hasattr(model, "get_encoder") and callable(model.get_encoder)
+            model = assert_type(PreTrainedModel, model.get_encoder())
+            is_enc_dec = False
+
+        has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
+        if has_lm_preds:
+            print("Model has language model head, will store predictions.")
+        return LoadedModel(
+            model=model,
+            tokenizer=tokenizer,
+            is_encoder_decoder=is_enc_dec,
+            has_lm_preds=has_lm_preds,
+        )
+
+
 @torch.inference_mode()
 def extract_hiddens(
     cfg: "Extract",
     *,
+    loaded_model: LoadedModel,
     device: str | torch.device = "cpu",
     split_type: Literal["train", "val"] = "train",
     rank: int = 0,
@@ -115,23 +154,10 @@ def extract_hiddens(
     p_cfg = cfg.prompts
     ds_names = p_cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
-
-    model = instantiate_model(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
-    ).to(device)
-    tokenizer = instantiate_tokenizer(
-        cfg.model, truncation_side="left", verbose=rank == 0
-    )
-
-    is_enc_dec = model.config.is_encoder_decoder
-    if is_enc_dec and cfg.use_encoder_states:
-        assert hasattr(model, "get_encoder") and callable(model.get_encoder)
-        model = assert_type(PreTrainedModel, model.get_encoder())
-        is_enc_dec = False
-
-    has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
-    if has_lm_preds and rank == 0:
-        print("Model has language model head, will store predictions.")
+    model = loaded_model.model
+    tokenizer = loaded_model.tokenizer
+    is_enc_dec = loaded_model.is_encoder_decoder
+    has_lm_preds = loaded_model.has_lm_preds
 
     prompt_ds = load_prompts(
         ds_names[0],
@@ -355,6 +381,10 @@ def extract(
         )
 
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
+    # Decide where to load the model from - CPU vs one of the GPUs
+    loaded_model = LoadedModel.from_config(cfg, device=devices[0])
+    # Share the model across all processes
+    loaded_model.share_memory()
     builders = {
         split_name: _GeneratorBuilder(
             # Use the dataset name from info_with_name, not the builder name
@@ -366,6 +396,7 @@ def extract(
             split_name=split_name,
             split_info=split_info,
             gen_kwargs=dict(
+                loaded_model=[loaded_model] * len(devices),
                 cfg=[cfg] * len(devices),
                 device=devices,
                 rank=list(range(len(devices))),
