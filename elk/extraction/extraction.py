@@ -104,9 +104,12 @@ class LoadedModel:
     is_encoder_decoder: bool
     has_lm_preds: bool
 
-
     def share_memory(self):
-        """Makes the model share memory across processes."""
+        """Makes the model share memory across processes.
+        Note that if the model is already on the GPU,
+        this won't do anything, since it is already shared.
+        https://pytorch.org/docs/stable/generated/torch.Tensor.is_shared.html
+        """
         self.model.share_memory()
 
     def to_device(self, device: str):
@@ -118,6 +121,7 @@ class LoadedModel:
         model = instantiate_model(
             cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
         ).to(device)
+        print(f"Model {cfg.model} loaded on device:", device)
         tokenizer = instantiate_tokenizer(cfg.model, truncation_side="left")
 
         is_enc_dec = model.config.is_encoder_decoder
