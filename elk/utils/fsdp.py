@@ -18,10 +18,10 @@ from transformers import PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
 from typing import Any, Callable, Iterable, Type, cast
 
+from ..multiprocessing import A
 from ..utils import instantiate_model, pytree_map, select_usable_devices
 
 
-@dataclass
 class InferenceServer:
     """High-level interface for running inference on a model on multiple GPUs.
 
@@ -29,25 +29,33 @@ class InferenceServer:
     each worker maintains a copy of the model on a dedicated GPU.
     """
 
-    model_str: str
-    num_workers: int = -1
-
-    cpu_offload: bool = False
-    fsdp: bool = False
-
-    def __post_init__(self):
+    def __init__(
+        self,
+        model_str: str,
+        num_workers: int = -1,
+        cpu_offload: bool = False,
+        fsdp: bool = False,
+    ):
+        self.model_str = model_str
+        self.num_workers = num_workers
+        self.cpu_offload = cpu_offload
+        self.fsdp = fsdp
         self._current_id = 0
         self._process_ctx: mp.ProcessContext | None = None
 
         self._result_queues = []
         self._task_queues = []
+        model = instantiate_model(model_str, torch_dtype="auto")
+        model.share_memory()
+        self._model = model
+        self._start()
 
     @property
     def running(self) -> bool:
         """Whether the server is running."""
         return self._process_ctx is not None
 
-    def start(self) -> None:
+    def _start(self) -> None:
         """Spin up the workers."""
         if self._process_ctx is not None:
             raise RuntimeError("The server is already running")
@@ -56,8 +64,7 @@ class InferenceServer:
         # This ensures that we don't copy the model num_workers times on the CPU and
         # run out of RAM for large models
         print("Loading model...")
-        model = instantiate_model(self.model_str, torch_dtype="auto")
-        model.share_memory()
+        model = self._model
         model_size = sum(p.numel() * p.element_size() for p in model.parameters())
 
         # Determine which GPUs we can use
@@ -115,7 +122,6 @@ class InferenceServer:
 
     # Support use as a context manager, just like mp.Pool
     def __enter__(self):
-        self.start()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -123,17 +129,17 @@ class InferenceServer:
 
     def map(
         self,
-        closure: Callable[[ModelOutput], Any],
+        closure: Callable[[ModelOutput], A],
         dataset: Dataset,
-    ) -> list:
+    ) -> list[A]:
         """Run inference on the given inputs, running a closure on the outputs."""
         return list(self.imap(closure, dataset))
 
     def imap(
         self,
-        closure: Callable[[ModelOutput], None],
+        closure: Callable[[ModelOutput], A],
         dataset: Dataset,
-    ) -> Iterable:
+    ) -> Iterable[A]:
         """Run inference on the given inputs, running a closure on the outputs."""
         if self._process_ctx is None:
             raise RuntimeError("Can't run inference on a server that isn't running")

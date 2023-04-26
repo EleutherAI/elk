@@ -21,6 +21,7 @@ from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
+from transformers.utils import ModelOutput
 
 from .dataset_name import (
     DatasetDictWithName,
@@ -39,6 +40,7 @@ from ..utils import (
     select_usable_devices,
 )
 from ..utils.data_utils import flatten_list
+from ..utils.fsdp import InferenceServer
 
 
 @dataclass
@@ -90,6 +92,10 @@ class Extract(Serializable):
         return copies
 
 
+def identity(x):
+    return x
+
+
 def extract_hiddens_list(
     cfg: "Extract",
     *,
@@ -110,6 +116,170 @@ def extract_hiddens_list(
             world_size=world_size,
         )
     )
+
+
+@torch.inference_mode()
+def extract_hiddens_fsdp(
+    cfg: "Extract",
+    *,
+    server: InferenceServer,
+    split_type: Literal["train", "val"],
+) -> Iterable[dict]:
+    """Run inference on a model with a set of prompts, yielding the hidden states."""
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    # Silence datasets logging messages from all but the first process
+
+    p_cfg = cfg.prompts
+    ds_names = p_cfg.datasets
+    assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
+
+    tokenizer = instantiate_tokenizer(cfg.model, truncation_side="left", verbose=True)
+    model = server._model
+
+    is_enc_dec = model.config.is_encoder_decoder
+    if is_enc_dec and cfg.use_encoder_states:
+        assert hasattr(model, "get_encoder") and callable(model.get_encoder)
+        model = assert_type(PreTrainedModel, model.get_encoder())
+        is_enc_dec = False
+
+    has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
+    if has_lm_preds:
+        print("Model has language model head, will store predictions.")
+
+    prompt_ds = load_prompts(
+        ds_names[0],
+        label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
+        num_classes=p_cfg.num_classes,
+        split_type=split_type,
+        stream=p_cfg.stream,
+    )
+    world_size = 1
+
+    # Add one to the number of layers to account for the embedding layer
+    layer_indices = cfg.layers
+
+    global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
+    # break `max_examples` among the processes roughly equally
+    max_examples = global_max_examples
+    device = "cpu"  # doesn't matter, we're using FSDP
+
+    for example in islice(prompt_ds, max_examples):
+        num_variants = len(example["prompts"])
+        num_choices = len(example["prompts"][0])
+
+        hidden_dict = {
+            f"hidden_{layer_idx}": torch.empty(
+                num_variants,
+                num_choices,
+                server._model.config.hidden_size,
+                device=device,
+                dtype=torch.int16,
+            )
+            for layer_idx in layer_indices
+        }
+        lm_logits = torch.empty(
+            num_variants,
+            num_choices,
+            device=device,
+            dtype=torch.float32,
+        )
+        text_questions = []
+
+        # Iterate over variants
+        for i, record in enumerate(example["prompts"]):
+            variant_questions = []
+
+            # Iterate over answers
+            for j, choice in enumerate(record):
+                text = choice["question"]
+
+                # Only feed question, not the answer, to the encoder for enc-dec models
+                target = choice["answer"] if is_enc_dec else None
+
+                # Record the EXACT question we fed to the model
+                variant_questions.append(text)
+                encoding = tokenizer(
+                    text,
+                    # Keep [CLS] and [SEP] for BERT-style models
+                    add_special_tokens=True,
+                    return_tensors="pt",
+                    text_target=target,  # type: ignore[arg-type]
+                    truncation=True,
+                ).to(device)
+                input_ids = assert_type(Tensor, encoding.input_ids)
+
+                if is_enc_dec:
+                    answer = assert_type(Tensor, encoding.labels)
+                else:
+                    encoding2 = tokenizer(
+                        choice["answer"],
+                        # Don't include [CLS] and [SEP] in the answer
+                        add_special_tokens=False,
+                        return_tensors="pt",
+                    ).to(device)
+                    answer = assert_type(Tensor, encoding2.input_ids)
+
+                    input_ids = torch.cat([input_ids, answer], dim=-1)
+                    if max_len := tokenizer.model_max_length:
+                        cur_len = input_ids.shape[-1]
+                        input_ids = input_ids[..., -min(cur_len, max_len) :]
+
+                # Make sure we only pass the arguments that the model expects
+                inputs = dict(input_ids=input_ids)
+                if is_enc_dec:
+                    inputs["labels"] = answer
+
+                # make the dict a dataset
+                input_dataset = Dataset.from_dict(inputs)
+                # this is dumb but we'll just do it one by one for now
+                outputs = server.map(dataset=input_dataset, closure=identity)[0]
+
+                # Compute the log probability of the answer tokens if available
+                if has_lm_preds:
+                    answer_len = answer.shape[-1]
+
+                    log_p = outputs.logits[..., -answer_len:, :].log_softmax(dim=-1)
+                    tokens = answer[..., None]
+                    lm_logits[i, j] = log_p.gather(-1, tokens).sum()
+
+                elif isinstance(outputs, Seq2SeqLMOutput):
+                    # The cross entropy loss is averaged over tokens, so we need to
+                    # multiply by the length to get the total log probability.
+                    length = encoding.labels.shape[-1]
+                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss) * length
+
+                hiddens = (
+                    outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                )
+                # Throw out layers we don't care about
+                hiddens = [hiddens[i] for i in layer_indices]
+
+                # Current shape of each element: (batch_size, seq_len, hidden_size)
+                if cfg.token_loc == "first":
+                    hiddens = [h[..., 0, :] for h in hiddens]
+                elif cfg.token_loc == "last":
+                    hiddens = [h[..., -1, :] for h in hiddens]
+                elif cfg.token_loc == "mean":
+                    hiddens = [h.mean(dim=-2) for h in hiddens]
+                else:
+                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+
+                for layer_idx, hidden in zip(layer_indices, hiddens):
+                    hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
+
+            text_questions.append(variant_questions)
+
+        out_record: dict[str, Any] = dict(
+            label=example["label"],
+            variant_ids=example["template_names"],
+            text_questions=text_questions,
+            **hidden_dict,
+        )
+        if has_lm_preds:
+            out_record["model_logits"] = lm_logits
+
+        yield out_record
 
 
 @torch.inference_mode()
@@ -343,29 +513,17 @@ def extract_hiddens_with_gpus(
 
     # ctx = mp.get_context("spawn")
     first_device = devices[0]
-    model = instantiate_model(
-        cfg.model, torch_dtype="auto" if first_device != "cpu" else torch.float32
-    )
-    with ThreadPool(len(devices)) as pool:
-        for split_name in split_names:
-            thunks: list[Callable[[], list[dict]]] = []
-            for rank, device in enumerate(devices):
-                # Create the functions to extract the hidden states
-                thunk: Callable[[], list[dict]] = partial(
-                    extract_hiddens_list,
-                    model=model,
-                    cfg=cfg,
-                    device=device,
-                    rank=rank,
-                    split_type=split_name,  # type: ignore
-                    world_size=len(devices),
-                )
-                thunks.append(thunk)
-            # Now evaluate them in parallel
-            split_result: list[dict] = flatten_list(
-                evaluate_with_processes(sequence=thunks, pool=pool)
-            )
-            results[split_name] = split_result
+
+    server = InferenceServer(model_str=cfg.model)
+
+    for split_name in split_names:
+        hiddens = []
+        for hidden in extract_hiddens_fsdp(
+            cfg=cfg, server=server, split_type=split_name
+        ):
+            hiddens.append(hidden)
+        split_result: list[dict] = hiddens
+        results[split_name] = split_result
 
     # Turn the results into a DatasetDict, that has the splits
     # and the list of dicts from extract_hiddens_list
