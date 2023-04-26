@@ -1,7 +1,7 @@
 import copy
 from functools import cache
 from random import Random
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from datasets import (
     ClassLabel,
@@ -12,6 +12,7 @@ from datasets import (
     get_dataset_config_names,
 )
 
+from ..multiprocessing import A
 from ..promptsource.templates import Template
 from .typing import assert_type
 
@@ -128,3 +129,7 @@ def binarize(template: Template, label: int, new_label: int, rng: Random) -> Tem
     )
 
     return new_template
+
+
+def flatten_list(seq: Sequence[Sequence[A]]) -> list[A]:
+    return [item for sublist in seq for item in sublist]

@@ -3,16 +3,18 @@ import logging
 import os
 from copy import copy
 from dataclasses import InitVar, dataclass
+from functools import partial
 from itertools import islice
-from typing import Any, Iterable, Literal
+from typing import Any, Callable, Iterable, Literal
 from warnings import filterwarnings
 
 import torch
+import torch.multiprocessing as mp
 from datasets import (
     Array2D,
     Array3D,
+    Dataset,
     DatasetDict,
-    DownloadMode,
     Features,
     Sequence,
     SplitDict,
@@ -25,6 +27,7 @@ from torch import Tensor
 from transformers import AutoConfig, PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from ..multiprocessing import evaluate_with_processes
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
@@ -38,11 +41,11 @@ from ..utils import (
     select_train_val_splits,
     select_usable_devices,
 )
+from ..utils.data_utils import flatten_list
 from .dataset_name import (
     DatasetDictWithName,
     extract_dataset_name_and_config,
 )
-from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
 
 
@@ -95,12 +98,32 @@ class Extract(Serializable):
         return copies
 
 
+def extract_hiddens_list(
+    cfg: "Extract",
+    *,
+    device: str | torch.device,
+    split_type: Literal["train", "val"],
+    rank: int = 0,
+    world_size: int = 1,
+) -> list[dict]:
+    """Run inference on a model with a set of prompts, yielding the hidden states."""
+    return list(
+        extract_hiddens(
+            cfg,
+            device=device,
+            split_type=split_type,
+            rank=rank,
+            world_size=world_size,
+        )
+    )
+
+
 @torch.inference_mode()
 def extract_hiddens(
     cfg: "Extract",
     *,
-    device: str | torch.device = "cpu",
-    split_type: Literal["train", "val"] = "train",
+    device: str | torch.device,
+    split_type: Literal["train", "val"],
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterable[dict]:
@@ -306,89 +329,58 @@ def extract(
             dataset_name=available_splits.dataset_name,
         )
 
-    model_cfg = AutoConfig.from_pretrained(cfg.model)
-
     ds_name, config_name = extract_dataset_name_and_config(
         dataset_config_str=cfg.prompts.datasets[0]
     )
     info = get_dataset_config_info(ds_name, config_name or None)
 
-    ds_features = assert_type(Features, info.features)
-    label_col = (
-        cfg.prompts.label_columns[0]
-        if cfg.prompts.label_columns
-        else infer_label_column(ds_features)
-    )
-    num_classes = cfg.prompts.num_classes or infer_num_classes(ds_features[label_col])
-    num_variants = cfg.prompts.num_variants
-    if num_variants < 0:
-        prompter = DatasetTemplates(ds_name, config_name)
-        num_variants = len(prompter.templates)
-
-    layer_cols = {
-        f"hidden_{layer}": Array3D(
-            dtype="int16",
-            shape=(num_variants, num_classes, model_cfg.hidden_size),
-        )
-        # Add 1 to include the embedding layer
-        for layer in cfg.layers or range(model_cfg.num_hidden_layers + 1)
-    }
-    other_cols = {
-        "variant_ids": Sequence(
-            Value(dtype="string"),
-            length=num_variants,
-        ),
-        "label": Value(dtype="int64"),
-        "text_questions": Sequence(
-            Sequence(
-                Value(dtype="string"),
-            ),
-            length=num_variants,
-        ),
-    }
-
-    # Only add model_logits if the model is an autoregressive model
-    if is_autoregressive(model_cfg, not cfg.use_encoder_states):
-        other_cols["model_logits"] = Array2D(
-            shape=(num_variants, num_classes),
-            dtype="float32",
-        )
-
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
-    builders = {
-        split_name: _GeneratorBuilder(
-            # Use the dataset name from info_with_name, not the builder name
-            builder_name=info.builder_name,
-            config_name=info.config_name,
-            cache_dir=None,
-            features=Features({**layer_cols, **other_cols}),
-            generator=_extraction_worker,
-            split_name=split_name,
-            split_info=split_info,
-            gen_kwargs=dict(
-                cfg=[cfg] * len(devices),
-                device=devices,
-                rank=list(range(len(devices))),
-                split_type=[split_name] * len(devices),
-                world_size=[len(devices)] * len(devices),
-            ),
-        )
-        for (split_name, split_info) in get_splits().items()
-    }
-    import multiprocess as mp
 
-    mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
+    split_names = list(get_splits().keys())
+    return extract_hiddens_with_gpus(
+        cfg=cfg,
+        split_names=split_names,
+        ds_name=ds_name,
+        devices=devices,
+    )
 
-    ds = dict()
-    for split, builder in builders.items():
-        builder.download_and_prepare(
-            download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
-            num_proc=len(devices),
-        )
-        ds[split] = builder.as_dataset(split=split)
 
-    dataset_dict = DatasetDict(ds)
+def extract_hiddens_with_gpus(
+    cfg: Extract,
+    split_names: list[str],
+    ds_name: str,
+    devices: Sequence[torch.device | str],
+) -> DatasetDictWithName:
+    results: dict[str, list[dict]] = {split_name: [] for split_name in split_names}
+
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(len(devices)) as pool:
+        for split_name in split_names:
+            thunks: list[Callable[[], list[dict]]] = []
+            for rank, device in enumerate(devices):
+                thunk: Callable[[], list[dict]] = partial(extract_hiddens_list)(
+                    cfg=cfg,
+                    device=device,
+                    rank=rank,
+                    split_type=split_name,  # type: ignore
+                    world_size=len(devices),
+                )
+                thunks.append(thunk)
+            split_result: list[dict] = flatten_list(
+                evaluate_with_processes(sequence=thunks, pool=pool)
+            )
+            results[split_name] = split_result
+
+    # Turn the results into a DatasetDict, that has the splits
+    # and the list of dicts from extract_hiddens_list
+    ds_dict = DatasetDict(
+        {
+            split_name: Dataset.from_list(mapping=split_results)
+            for split_name, split_results in results.items()
+        }
+    )
+
     return DatasetDictWithName(
         name=ds_name,
-        dataset=dataset_dict,
+        dataset=ds_dict,
     )
