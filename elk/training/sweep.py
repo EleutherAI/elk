@@ -89,11 +89,12 @@ class Sweep:
                     if eval_dataset in train_datasets:
                         continue
 
+                    data = deepcopy(run.data)
+                    data.model = model_str
+                    data.prompts.datasets = [eval_dataset]
+
                     eval = Eval(
-                        data=Extract(
-                            model=model_str,
-                            prompts=PromptConfig(datasets=[eval_dataset]),
-                        ),
+                        data=data,
                         source=str(run.out_dir),
                         out_dir=out_dir,
                     )

@@ -1,6 +1,7 @@
 import os
 import random
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -85,7 +86,7 @@ class Run(ABC, Serializable):
 
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
-        func: Callable[[int], pd.DataFrame] = partial(
+        func: Callable[[int], dict[str, pd.DataFrame]] = partial(
             self.apply_to_layer, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)
@@ -93,7 +94,7 @@ class Run(ABC, Serializable):
     @abstractmethod
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> pd.DataFrame:
+    ) -> dict[str, pd.DataFrame]:
         """Train or eval a reporter on a single layer."""
 
     def make_reproducible(self, seed: int):
@@ -141,7 +142,7 @@ class Run(ABC, Serializable):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], pd.DataFrame],
+        func: Callable[[int], dict[str, pd.DataFrame]],
         num_devices: int,
     ):
         """Apply a function to each layer of the datasets in parallel
@@ -161,20 +162,18 @@ class Run(ABC, Serializable):
             layers = self.concatenate(layers)
 
         ctx = mp.get_context("spawn")
-        with ctx.Pool(num_devices) as pool, open(self.out_dir / "eval.csv", "w") as f:
+        with ctx.Pool(num_devices) as pool:
             mapper = pool.imap_unordered if num_devices > 1 else map
-            df_buf = []
+            df_buffers = defaultdict(list)
 
             try:
-                for df in tqdm(mapper(func, layers), total=len(layers)):
-                    df_buf.append(df)
+                for df_dict in tqdm(mapper(func, layers), total=len(layers)):
+                    for k, v in df_dict.items():
+                        df_buffers[k].append(v)
             finally:
-                # Make sure the CSV is written even if we crash or get interrupted
-                if df_buf:
-                    df = pd.concat(df_buf).sort_values(by="layer")
-
-                    # Rename layer 0 to "input" to make it more clear
-                    df["layer"].replace(0, "input", inplace=True)
-                    df.round(4).to_csv(f, index=False)
+                # Make sure the CSVs are written even if we crash or get interrupted
+                for name, dfs in df_buffers.items():
+                    df = pd.concat(dfs).sort_values(by="layer")
+                    df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)

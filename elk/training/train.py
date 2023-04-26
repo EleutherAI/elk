@@ -1,5 +1,6 @@
 """Main training loop."""
 
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -27,7 +28,7 @@ class Elicit(Run):
     )
     """Config for building the reporter network."""
 
-    supervised: Literal["none", "single", "cv"] = "single"
+    supervised: Literal["none", "single", "inlp", "cv"] = "single"
     """Whether to train a supervised classifier, and if so, whether to use
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
@@ -47,7 +48,7 @@ class Elicit(Run):
         layer: int,
         devices: list[str],
         world_size: int,
-    ) -> pd.DataFrame:
+    ) -> dict[str, pd.DataFrame]:
         """Train a single reporter on a single layer."""
 
         self.make_reproducible(seed=self.net.seed + layer)
@@ -109,33 +110,38 @@ class Elicit(Run):
 
         # Fit supervised logistic regression model
         if self.supervised != "none":
-            lr_model = train_supervised(
-                train_dict, device=device, cv=self.supervised == "cv"
+            lr_models = train_supervised(
+                train_dict,
+                device=device,
+                mode=self.supervised,
             )
             with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
-                torch.save(lr_model, file)
+                torch.save(lr_models, file)
         else:
-            lr_model = None
+            lr_models = []
 
-        row_buf = []
+        row_bufs = defaultdict(list)
         for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
+            meta = {"dataset": ds_name, "layer": layer}
+
             val_result = evaluate_preds(val_gt, reporter(val_h))
-            row = {
-                "dataset": ds_name,
-                "layer": layer,
-                "pseudo_auroc": pseudo_auroc,
-                "train_loss": train_loss,
-                **val_result.to_dict(),
-            }
+            row_bufs["eval"].append(
+                {
+                    **meta,
+                    "pseudo_auroc": pseudo_auroc,
+                    "train_loss": train_loss,
+                    **val_result.to_dict(),
+                }
+            )
 
             if val_lm_preds is not None:
                 lm_result = evaluate_preds(val_gt, val_lm_preds)
-                row.update(lm_result.to_dict(prefix="lm_"))
+                row_bufs["lm_eval"].append({**meta, **lm_result.to_dict()})
 
-            if lr_model is not None:
-                lr_result = evaluate_preds(val_gt, lr_model(val_h))
-                row.update(lr_result.to_dict(prefix="lr_"))
+            for i, model in enumerate(lr_models):
+                lr_result = evaluate_preds(val_gt, model(val_h))
+                row_bufs["lr_eval"].append(
+                    {"inlp_iter": i, **meta, **lr_result.to_dict()}
+                )
 
-            row_buf.append(row)
-
-        return pd.DataFrame.from_records(row_buf)
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
