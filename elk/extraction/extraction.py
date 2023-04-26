@@ -358,12 +358,14 @@ def extract_hiddens_with_gpus(
     # ctx = mp.get_context("spawn")
     first_device = devices[0]
     use_accelerate = True
+    # todo, pass device map
     print("Using Accelerate" if use_accelerate else "Not using Accelerate")
     model = instantiate_model(
         cfg.model, torch_dtype="auto" if first_device != "cpu" else torch.float32
     )
     # get the device of the model incase we are using accelerate
     accelerate_device: torch.device | None = model.device if use_accelerate else None
+    print(f"Accelerate device: {accelerate_device}")
     with ThreadPool(len(devices)) as pool:
         for split_name in split_names:
             thunks: list[Callable[[], list[dict]]] = []
