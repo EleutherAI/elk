@@ -10,31 +10,28 @@ from typing import Any, Callable, Iterable, Literal, Sequence
 from warnings import filterwarnings
 
 import torch
-import torch.multiprocessing as mp
 from datasets import (
-    Array2D,
-    Array3D,
     Dataset,
     DatasetDict,
-    Features,
     SplitDict,
     SplitInfo,
-    Value,
     get_dataset_config_info,
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig, PreTrainedModel
+from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from .dataset_name import (
+    DatasetDictWithName,
+    extract_dataset_name_and_config,
+)
+from .prompt_loading import PromptConfig, load_prompts
 from ..multiprocessing import evaluate_with_processes
-from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
     colorize,
     float32_to_int16,
-    infer_label_column,
-    infer_num_classes,
     instantiate_model,
     instantiate_tokenizer,
     is_autoregressive,
@@ -42,11 +39,6 @@ from ..utils import (
     select_usable_devices,
 )
 from ..utils.data_utils import flatten_list
-from .dataset_name import (
-    DatasetDictWithName,
-    extract_dataset_name_and_config,
-)
-from .prompt_loading import PromptConfig, load_prompts
 
 
 @dataclass
@@ -103,6 +95,7 @@ def extract_hiddens_list(
     *,
     model: PreTrainedModel,
     device: str | torch.device,
+    accelerate_device: torch.device | None,
     split_type: Literal["train", "val"],
     rank: int = 0,
     world_size: int = 1,
@@ -113,6 +106,7 @@ def extract_hiddens_list(
             cfg,
             model=model,
             device=device,
+            accelerate_device=accelerate_device,
             split_type=split_type,
             rank=rank,
             world_size=world_size,
@@ -126,6 +120,7 @@ def extract_hiddens(
     *,
     model: PreTrainedModel,
     device: str | torch.device,
+    accelerate_device: torch.device | None,
     split_type: Literal["train", "val"],
     rank: int = 0,
     world_size: int = 1,
@@ -142,7 +137,16 @@ def extract_hiddens(
     ds_names = p_cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    model = model.to(device)
+
+    if not accelerate_device:
+        # We need to move the model to another gpu
+        model = model.to(device)
+    else:
+        # But in the case of using accelerate, we won't
+        # move the model to another gpu, we will just
+        # make sure whatever tensors are created are
+        # on the correct device
+        device = accelerate_device
 
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=rank == 0
@@ -358,6 +362,8 @@ def extract_hiddens_with_gpus(
     model = instantiate_model(
         cfg.model, torch_dtype="auto" if first_device != "cpu" else torch.float32
     )
+    # get the device of the model incase we are using accelerate
+    accelerate_device: torch.device | None = model.device if use_accelerate else None
     with ThreadPool(len(devices)) as pool:
         for split_name in split_names:
             thunks: list[Callable[[], list[dict]]] = []
