@@ -5,7 +5,7 @@ from copy import copy
 from dataclasses import InitVar, dataclass
 from functools import partial
 from itertools import islice
-from typing import Any, Callable, Iterable, Literal
+from typing import Any, Callable, Iterable, Literal, Sequence
 from warnings import filterwarnings
 
 import torch
@@ -16,7 +16,6 @@ from datasets import (
     Dataset,
     DatasetDict,
     Features,
-    Sequence,
     SplitDict,
     SplitInfo,
     Value,
@@ -351,6 +350,7 @@ def extract_hiddens_with_gpus(
     ds_name: str,
     devices: Sequence[torch.device | str],
 ) -> DatasetDictWithName:
+    """TODO: Some caching based on model name, layers, and dataset?"""
     results: dict[str, list[dict]] = {split_name: [] for split_name in split_names}
 
     ctx = mp.get_context("spawn")
@@ -358,7 +358,9 @@ def extract_hiddens_with_gpus(
         for split_name in split_names:
             thunks: list[Callable[[], list[dict]]] = []
             for rank, device in enumerate(devices):
-                thunk: Callable[[], list[dict]] = partial(extract_hiddens_list)(
+                # Create the functions to extract the hidden states
+                thunk: Callable[[], list[dict]] = partial(
+                    extract_hiddens_list,
                     cfg=cfg,
                     device=device,
                     rank=rank,
@@ -366,6 +368,7 @@ def extract_hiddens_with_gpus(
                     world_size=len(devices),
                 )
                 thunks.append(thunk)
+            # Now evaluate them in parallel
             split_result: list[dict] = flatten_list(
                 evaluate_with_processes(sequence=thunks, pool=pool)
             )
