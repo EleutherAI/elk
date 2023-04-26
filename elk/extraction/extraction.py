@@ -109,6 +109,10 @@ class LoadedModel:
         """Makes the model share memory across processes."""
         self.model.share_memory()
 
+    def to_device(self, device: str):
+        """Moves the model to the specified device."""
+        self.model.to(device)
+
     @staticmethod
     def from_config(cfg: Extract, device: str) -> "LoadedModel":
         model = instantiate_model(
@@ -150,6 +154,8 @@ def extract_hiddens(
     if rank != 0:
         filterwarnings("ignore")
         logging.disable(logging.CRITICAL)
+
+    loaded_model.to_device(device)
 
     p_cfg = cfg.prompts
     ds_names = p_cfg.datasets
