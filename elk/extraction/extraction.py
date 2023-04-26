@@ -394,8 +394,10 @@ def extract(
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
     # Decide where to load the model from - CPU vs one of the GPUs
     loaded_model = LoadedModel.from_config(cfg, device=devices[0])
-    # Share the model across all processes
-    loaded_model.share_memory()
+    print("Loaded model from config successful")
+    # Share the model across all processes if we're using multiple GPUs
+    if len(devices) > 1:
+        loaded_model.share_memory()
     builders = {
         split_name: _GeneratorBuilder(
             # Use the dataset name from info_with_name, not the builder name
@@ -420,7 +422,7 @@ def extract(
     import multiprocess as mp
 
     mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
-
+    print(f"Starting extraction with {len(devices)} devices")
     ds = dict()
     for split, builder in builders.items():
         builder.download_and_prepare(
