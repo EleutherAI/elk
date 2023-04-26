@@ -318,6 +318,7 @@ def extract(
     min_gpu_mem: int | None = None,
 ) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
+    print("Running extract")
 
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
