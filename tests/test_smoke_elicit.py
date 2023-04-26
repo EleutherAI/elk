@@ -5,7 +5,11 @@ from elk.extraction import PromptConfig
 from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
 
-
+""""
+TODO: Allow to specify cache in config so you don't have to
+run this
+rm -rf ~/.cache/huggingface/datasets/generator/
+"""
 def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
     # we need about 5 mb of gpu memory to run this test
     model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024**2
