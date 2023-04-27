@@ -231,6 +231,7 @@ def _worker(
                 try:
                     print("Running forward")
                     outputs = model(**inputs_cuda, output_hidden_states=True)
+                    print("Done running forward")
                 except Exception as e:
                     print(f"forward failed {e}")
                     raise e
@@ -251,7 +252,7 @@ def _worker(
 
         # Clean up the FSDP process group
         # if fsdp_port is not None:
-        #     dist.destroy_process_group()
+            dist.destroy_process_group()
     except Exception as e:
         print(f"Worker failed with {e}")
 
