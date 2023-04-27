@@ -135,7 +135,6 @@ class InferenceServer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
 
-
     def map(
         self,
         closure: Callable[[ModelOutput], A],
@@ -152,26 +151,6 @@ class InferenceServer:
     ) -> ModelOutput:
         """Run inference on the given input, running a closure on the outputs."""
         return self.map(lambda x: x, dataset)[0]
-
-    def imap(
-        self,
-        closure: Callable[[ModelOutput], A],
-        dataset: Dataset,
-    ) -> Iterable[A]:
-        """Run inference on the given inputs, running a closure on the outputs."""
-        if self._process_ctx is None:
-            raise RuntimeError("Can't run inference on a server that isn't running")
-
-        # Pickle the closure and send it to the workers
-        closure_pkl = dill.dumps(closure)
-        result_queues = []
-        for q, result_queue in zip(self._task_queues, self._result_queues):
-            # Put the same dataset on each queue, so that each worker gets the same
-            # inputs
-            q.put((closure_pkl, dataset))
-            result_queues.append(result_queue)
-
-        yield from round_robin(result_queues, sentinel=SingletonSentinel)  # type: ignore
 
     def imap(
         self,
@@ -352,7 +331,7 @@ def round_robin(queues: list[mp.Queue], sentinel: SingletonSentinel) -> Iterable
             break
 
         try:
-            item = q.get(timeout=5)
+            item = q.get(timeout=0.01)
         except std_mp.queues.Empty:  # type: ignore[attr-defined]
             continue
         else:
