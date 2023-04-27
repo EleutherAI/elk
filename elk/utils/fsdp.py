@@ -208,8 +208,7 @@ def _worker(
         in_queue = qs[rank]
         out_queue = out_qs[rank]
 
-        while True:
-            msg = in_queue.get()
+        while msg := in_queue.get():
             print("Got msg")
             # Someone called map() giving us a new closure and dataset to use
             assert isinstance(msg, tuple) and len(msg) == 2, "Expected a tuple"
@@ -255,8 +254,8 @@ def _worker(
             out_queue.put_nowait(None)
 
         # Clean up the FSDP process group
-        if fsdp_port is not None:
-            dist.destroy_process_group()
+        # if fsdp_port is not None:
+        #     dist.destroy_process_group()
     except Exception as e:
         print(f"Worker failed with {e}, Type: {type(e)}")
 
