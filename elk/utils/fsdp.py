@@ -163,6 +163,24 @@ class InferenceServer:
 
         # Pickle the closure and send it to the workers
         closure_pkl = dill.dumps(closure)
+        result_queues = []
+        for q, result_queue in zip(self._task_queues, self._result_queues):
+            q.put((closure_pkl, dataset))
+            result_queues.append(result_queue)
+
+        yield from round_robin(result_queues, sentinel=SingletonSentinel)  # type: ignore
+
+    def imap_for_non_fsdp(  # todo: delete
+        self,
+        closure: Callable[[ModelOutput], A],
+        dataset: Dataset,
+    ) -> Iterable[A]:
+        """Run inference on the given inputs, running a closure on the outputs."""
+        if self._process_ctx is None:
+            raise RuntimeError("Can't run inference on a server that isn't running")
+
+        # Pickle the closure and send it to the workers
+        closure_pkl = dill.dumps(closure)
         shards = [dataset.shard(self.num_workers, i) for i in range(self.num_workers)]
         result_queues = []
         for q, shard, result_queue in zip(
