@@ -308,7 +308,7 @@ def round_robin(queues: list[mp.Queue], sentinel: Any = None) -> Iterable[Any]:
             break
 
         try:
-            item = q.get(timeout=0.01)
+            item = q.get(timeout=5)
         except std_mp.queues.Empty:  # type: ignore[attr-defined]
             continue
         else:
