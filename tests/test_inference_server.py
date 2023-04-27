@@ -36,7 +36,7 @@ def test_inference_server_normal():
     )
 
 
-def test_inference_server_fsdp():
+def test_inference_server_fsdp_single():
     model_str = "sshleifer/tiny-gpt2"
     server = InferenceServer(
         model_str=model_str, num_workers=2, fsdp=True, cpu_offload=True
