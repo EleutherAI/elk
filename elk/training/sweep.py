@@ -1,7 +1,6 @@
-from copy import deepcopy
 from dataclasses import InitVar, dataclass, replace
 
-from ..evaluation.evaluate import Eval
+from ..evaluation import Eval
 from ..extraction import Extract
 from ..files import elk_reporter_dir, memorably_named_dir
 from ..utils import colorize
@@ -12,10 +11,12 @@ from .train import Elicit
 class Sweep:
     models: list[str]
     """List of Huggingface model strings to sweep over."""
+
     datasets: list[str]
     """List of dataset strings to sweep over. Each dataset string can contain
     multiple datasets, separated by plus signs. For example, "sst2+imdb" will
     pool SST-2 and IMDB together."""
+
     add_pooled: InitVar[bool] = False
     """Whether to add a dataset that pools all of the other datasets together."""
 
@@ -62,20 +63,21 @@ class Sweep:
             }
         )
 
-        for i, model_str in enumerate(self.models):
-            print(colorize(f"===== {model_str} ({i + 1} of {M}) =====", "magenta"))
+        for i, model in enumerate(self.models):
+            print(colorize(f"===== {model} ({i + 1} of {M}) =====", "magenta"))
 
             for dataset_str in self.datasets:
-                out_dir = sweep_dir / model_str / dataset_str
+                out_dir = sweep_dir / model / dataset_str
 
                 # Allow for multiple datasets to be specified in a single string with
                 # plus signs. This means we can pool datasets together inside of a
                 # single sweep.
                 train_datasets = tuple(ds.strip() for ds in dataset_str.split("+"))
 
-                run = deepcopy(self.run_template)
-                run.data = replace(run.data, model=model_str, datasets=train_datasets)
-                run.out_dir = out_dir
+                data = replace(
+                    self.run_template.data, model=model, datasets=train_datasets
+                )
+                run = replace(self.run_template, data=data, out_dir=out_dir)
                 run.execute()
 
                 if len(eval_datasets) > 1:
@@ -88,11 +90,9 @@ class Sweep:
                         continue
 
                     eval = Eval(
-                        data=replace(
-                            run.data, model=model_str, datasets=(eval_dataset,)
-                        ),
+                        data=replace(run.data, model=model, datasets=(eval_dataset,)),
                         source=run.out_dir,
-                        out_dir=out_dir,
+                        out_dir=out_dir / "transfer" / eval_dataset,
                         num_gpus=run.num_gpus,
                         min_gpu_mem=run.min_gpu_mem,
                     )

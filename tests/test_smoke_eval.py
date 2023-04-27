@@ -5,7 +5,6 @@ import pandas as pd
 from elk import Extract
 from elk.evaluation import Eval
 from elk.extraction.dataset_name import extract_dataset_name_and_config
-from elk.files import transfer_eval_directory
 from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
 
@@ -75,7 +74,7 @@ def eval_assert_files_created(elicit: Elicit, transfer_datasets: tuple[str, ...]
     tmp_path = elicit.out_dir
     assert tmp_path is not None
 
-    eval_dir = transfer_eval_directory(source=tmp_path)
+    eval_dir = tmp_path / "transfer" / "+".join(transfer_datasets)
     assert eval_dir.exists(), f"transfer eval dir {eval_dir} does not exist"
     check_contains_files(eval_dir, EVAL_EXPECTED_FILES)
     # read "eval.csv" into a df

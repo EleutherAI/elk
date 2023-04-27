@@ -16,6 +16,7 @@ from .balanced_sampler import BalancedSampler, FewShotSampler
 def load_prompts(
     ds_string: str,
     *,
+    binarize: bool = False,
     num_shots: int = 0,
     num_variants: int = -1,
     seed: int = 42,
@@ -28,6 +29,7 @@ def load_prompts(
 
     Args:
         ds_string: Name of HF dataset to use, e.g. `"super_glue:boolq"` or `"imdb"`.
+        binarize: Whether to binarize the dataset labels for multi-class datasets.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot.
         seed: The seed to use for prompt randomization.
@@ -108,6 +110,7 @@ def load_prompts(
     for example in ds:
         yield _convert_to_prompts(
             example,
+            binarize=binarize,
             label_column=label_column,
             label_choices=label_choices,  # type: ignore[arg-type]
             num_variants=num_variants,
@@ -120,6 +123,7 @@ def load_prompts(
 def _convert_to_prompts(
     example: dict[str, Any],
     prompter: DatasetTemplates,
+    binarize: bool,
     label_column: str,
     label_choices: list[bool | int | str],
     num_variants: int,
@@ -140,6 +144,15 @@ def _convert_to_prompts(
     # For sanity checking that prompts are unique
     prompt_counter = Counter()
     label = example[label_column]
+    if binarize:
+        # Replace the full list of possibilities with a randomly sampled false label
+        # and the correct label, as done in the DLK paper. Note that this does add some
+        # "supervision" by stacking the deck in favor of the correct answer.
+        label_choices = [
+            rng.choice([c for c in label_choices if c != label]),
+            label,
+        ]
+        rng.shuffle(label_choices)
 
     for template in templates:
         choices = []

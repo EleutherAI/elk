@@ -27,6 +27,7 @@ from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
 from ..utils import (
+    Color,
     assert_type,
     colorize,
     float32_to_int16,
@@ -60,6 +61,9 @@ class Extract(Serializable):
     data_dirs: tuple[str, ...] = ()
     """Directory to use for caching the hiddens. Defaults to `HF_DATASETS_CACHE`."""
 
+    binarize: bool = False
+    """Whether to binarize the dataset labels for multi-class datasets."""
+
     max_examples: tuple[int, int] = (1000, 1000)
     """Maximum number of examples to use from each split of the dataset."""
 
@@ -70,15 +74,15 @@ class Extract(Serializable):
     """The number of prompt templates to use for each example. If -1, all available
     templates are used."""
 
-    seed: int = 42
-    """Seed to use for prompt randomization. Defaults to 42."""
-
     layers: tuple[int, ...] = ()
     """Indices of layers to extract hidden states from. We follow the HF convention, so
     0 is the embedding, and 1 is the output of the first transformer layer."""
 
     layer_stride: InitVar[int] = 1
     """Shortcut for `layers = (0,) + tuple(range(1, num_layers + 1, stride))`."""
+
+    seed: int = 42
+    """Seed to use for prompt randomization. Defaults to 42."""
 
     template_path: str | None = None
     """Path to pass into `DatasetTemplates`. By default we use the dataset name."""
@@ -170,6 +174,7 @@ def extract_hiddens(
 
     prompt_ds = load_prompts(
         ds_names[0],
+        binarize=cfg.binarize,
         split_type=split_type,
         template_path=cfg.template_path,
         rank=rank,
@@ -322,8 +327,10 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
 
     ds_features = assert_type(Features, info.features)
     label_col = prompter.label_column or infer_label_column(ds_features)
-    num_classes = len(prompter.label_choices) or infer_num_classes(
-        ds_features[label_col]
+    num_classes = (
+        2
+        if cfg.binarize
+        else (len(prompter.label_choices) or infer_num_classes(ds_features[label_col]))
     )
 
     num_variants = cfg.num_variants
@@ -369,7 +376,7 @@ def extract(
     cfg: "Extract",
     *,
     disable_cache: bool = False,
-    highlight_color: str = "cyan",
+    highlight_color: Color = "cyan",
     num_gpus: int = -1,
     min_gpu_mem: int | None = None,
     split_type: Literal["train", "val", None] = None,

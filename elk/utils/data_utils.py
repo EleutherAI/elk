@@ -1,6 +1,4 @@
-import copy
 from functools import cache
-from random import Random
 from typing import Any, Iterable, Literal
 
 from datasets import (
@@ -11,7 +9,6 @@ from datasets import (
     get_dataset_config_names,
 )
 
-from ..promptsource.templates import Template
 from .typing import assert_type
 
 
@@ -135,33 +132,3 @@ def get_layer_indices(ds: DatasetDict) -> list[int]:
 
     # Convert to the suffixes that are integral to ints, then sort them
     return sorted(int(suffix) for suffix in suffixes if suffix.isdigit())
-
-
-def binarize(template: Template, label: int, new_label: int, rng: Random) -> Template:
-    """Binarize a template with >2 answer choices, returning a new template and label.
-    Returns:
-        `new_template`:
-            A deepcopy of the original template with with 2 answer choices, one of
-            which is the true answer and the other is a random false answer.
-        `new_label`:
-            the index of the true answer into `new_template.answer_choices`
-    """
-
-    # TODO: it would be nice in the future to binarize exhaustively so we're not
-    # cheating here (since this step requires a label). e.g. this function would
-    # also take a candidate answer and the template would ask whether the candidate
-    # answer is true or false. This would require rewriting the jinja templates though.
-    answer_choices = assert_type(str, template.answer_choices).split(" ||| ")
-    assert len(answer_choices) > 2
-
-    true = answer_choices[label]
-    false = rng.choice([c for c in answer_choices if c != true])
-
-    assert new_label in (0, 1)
-
-    new_template = copy.deepcopy(template)
-    new_template.answer_choices = (
-        f"{false} ||| {true}" if new_label else f"{true} ||| {false}"
-    )
-
-    return new_template

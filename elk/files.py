@@ -38,8 +38,3 @@ def memorably_named_dir(parent: Path):
     out_dir = parent / sub_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir
-
-
-def transfer_eval_directory(source: Path) -> Path:
-    """Return the directory where transfer evals are stored."""
-    return elk_reporter_dir() / source / "transfer_eval"
