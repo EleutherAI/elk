@@ -249,7 +249,7 @@ def _worker(
                 out_queue.put(output_applied)
 
             # Indicate we're done with this dataset
-            time.sleep(5)
+            time.sleep(1)
             out_queue.put(None)
 
         # Clean up the FSDP process group
