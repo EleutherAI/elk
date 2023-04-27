@@ -1,0 +1,15 @@
+dataset: NeelNanda/counterfact-tracing
+templates:
+  f0890c76-596c-43c8-b7b6-7668c6f6dfe7: !Template
+    answer_choices: '{{target_true}} ||| {{target_false}}'
+    id: f0890c76-596c-43c8-b7b6-7668c6f6dfe7
+    jinja: '{{prompt}}: 1. {{answer_choices[0]}} 2. {{answer_choices[1]}} ||| {{answer_choices[0]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: false
+    name: alex-1
+    reference: ''

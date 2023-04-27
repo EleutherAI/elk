@@ -9,6 +9,7 @@ class EvalLog:
 
     layer: int
     eval_result: EvalResult
+    proposition_results: dict
 
     @staticmethod
     def csv_columns() -> list[str]:

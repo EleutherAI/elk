@@ -7,6 +7,8 @@ from datasets import DatasetDict
 from elk.evaluation.evaluate_log import EvalLog
 from elk.logging import save_debug_log
 from elk.training.train_log import ElicitLog
+import os
+import pickle
 
 """A generic log type that contains a layer field
 The layer field is used to sort the logs by layer."""
@@ -32,7 +34,10 @@ def write_iterator_to_file(
     finally:
         # Make sure the CSV is written even if we crash or get interrupted
         sorted_by_layer = sorted(row_buf, key=lambda x: x.layer)
-        for row in sorted_by_layer:
+        for i, row in enumerate(sorted_by_layer):
+            # as above except format the layer number as a 4 digits
+            if isinstance(row, EvalLog):
+                pickle.dump(row.proposition_results, open(os.path.join(out_dir, f"layer_{i:04d}_propositions.pkl"), "wb"))
             row = to_csv_line(row)
             writer.writerow(row)
         if debug:

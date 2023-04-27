@@ -71,7 +71,7 @@ class Evaluate(Run):
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
 
-        _, _, test_x0, test_x1, _, test_labels = self.prepare_data(
+        _, _, test_x0, test_x1, _, test_labels, train_text_inputs, test_text_inputs = self.prepare_data(
             device,
             layer,
         )
@@ -82,7 +82,7 @@ class Evaluate(Run):
         reporter: Reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
-        test_result = reporter.score(
+        test_result, cal_preds, raw_preds = reporter.score(
             test_labels,
             test_x0,
             test_x1,
@@ -91,6 +91,8 @@ class Evaluate(Run):
         return EvalLog(
             layer=layer,
             eval_result=test_result,
+            proposition_results={"cal_preds": cal_preds.cpu(), "raw_preds": raw_preds.cpu(), 
+                                 "test_labels": test_labels.cpu(), "test_text_inputs": test_text_inputs},
         )
 
     def evaluate(self):

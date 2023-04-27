@@ -1,0 +1,78 @@
+{
+  "citation": "",
+  "description": "",
+  "features": {
+    "case_id": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "pararel_idx": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "requested_rewrite": {
+      "prompt": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "relation_id": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "subject": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "target_new": {
+        "id": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "str": {
+          "dtype": "string",
+          "_type": "Value"
+        }
+      },
+      "target_true": {
+        "id": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "str": {
+          "dtype": "string",
+          "_type": "Value"
+        }
+      }
+    },
+    "paraphrase_prompts": {
+      "feature": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "_type": "Sequence"
+    },
+    "neighborhood_prompts": {
+      "feature": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "_type": "Sequence"
+    },
+    "attribute_prompts": {
+      "feature": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "_type": "Sequence"
+    },
+    "generation_prompts": {
+      "feature": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "_type": "Sequence"
+    }
+  },
+  "homepage": "",
+  "license": ""
+}

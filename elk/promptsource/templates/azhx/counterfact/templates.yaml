@@ -1,0 +1,13 @@
+dataset: azhx/counterfact
+templates:
+  aeb754e5-e991-41b9-8730-48dd49e669c3: !Template
+    answer_choices: null
+    id: aeb754e5-e991-41b9-8730-48dd49e669c3
+    jinja: ''
+    metadata: !TemplateMetadata
+      choices_in_prompt: null
+      languages: null
+      metrics: null
+      original_task: null
+    name: alex-1
+    reference: ''

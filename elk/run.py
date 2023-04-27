@@ -68,6 +68,7 @@ class Run(ABC):
         with self.dataset.formatted_as("torch", device=device, dtype=torch.int16):
             train_split, val_split = select_train_val_splits(self.dataset)
             train, val = self.dataset[train_split], self.dataset[val_split]
+            train_text_inputs, test_text_inputs = self.dataset['train']['text_inputs'], self.dataset['test']['text_inputs']
 
             train_labels = assert_type(Tensor, train["label"])
             val_labels = assert_type(Tensor, val["label"])
@@ -88,7 +89,7 @@ class Run(ABC):
             x0, x1 = train_h.unbind(dim=-2)
             val_x0, val_x1 = val_h.unbind(dim=-2)
 
-        return x0, x1, val_x0, val_x1, train_labels, val_labels
+        return x0, x1, val_x0, val_x1, train_labels, val_labels, train_text_inputs, test_text_inputs
 
     def concatenate(self, layers):
         """Concatenate hidden states from a previous layer."""

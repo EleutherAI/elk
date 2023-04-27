@@ -211,4 +211,4 @@ class Reporter(nn.Module, ABC):
             cal_acc=torch.max(cal_acc, 1 - cal_acc).item(),
             auroc=max(auroc, 1 - auroc),
             ece=cal_err.ece,
-        )
+        ), cal_preds, raw_preds

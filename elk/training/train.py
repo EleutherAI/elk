@@ -124,7 +124,7 @@ class Train(Run):
 
         device = self.get_device(devices, world_size)
 
-        x0, x1, val_x0, val_x1, train_labels, val_labels = self.prepare_data(
+        x0, x1, val_x0, val_x1, train_labels, val_labels, train_text_inputs, test_text_inputs = self.prepare_data(
             device, layer
         )
         pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
@@ -137,7 +137,7 @@ class Train(Run):
             raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
 
         train_loss = reporter.fit(x0, x1, train_labels)
-        val_result = reporter.score(
+        val_result, cal_preds, raw_preds = reporter.score(
             val_labels,
             val_x0,
             val_x1,

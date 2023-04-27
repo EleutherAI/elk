@@ -1,0 +1,40 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Eval",
+        "type": "python",
+        "request": "launch",
+        "program": "/home/alex/miniconda3/envs/elk/bin/elk",
+        "args": [
+          "eval",
+          "serene-meitner",
+          "microsoft/deberta-v2-xxlarge-mnli",
+          "dbpedia_14",
+          "--num_gpus=1"
+        ],
+        "console": "integratedTerminal",
+        "env": {},
+        "cwd": "${workspaceFolder}",
+        "justMyCode": true,
+        "stopOnEntry": false,
+      },
+      {
+        "name": "Counterfact elicit",
+        "type": "python",
+        "request": "launch",
+        "program": "/home/alex/miniconda3/envs/elk/bin/elk",
+        "args": [
+          "elicit",
+          "microsoft/deberta-v2-xxlarge-mnli",
+          "azhx/counterfact-simple",
+          "--num_gpus=1"
+        ],
+        "console": "integratedTerminal",
+        "env": {},
+        "cwd": "${workspaceFolder}",
+        "justMyCode": true,
+        "stopOnEntry": false,
+      }
+    ]
+  }
