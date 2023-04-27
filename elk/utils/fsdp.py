@@ -202,7 +202,6 @@ def _worker(
         else:
             model.to(device)
 
-
         # Breaks when x is None, the sentinel value indicating we should shut down
         in_queue = qs[rank]
         out_queue = out_qs[rank]
@@ -238,9 +237,7 @@ def _worker(
                 print("Ran forward successfully")
 
                 outputs_cls = type(outputs)
-                outputs_dict = pytree_map(
-                    lambda x: x.cpu().share_memory_(), outputs
-                )
+                outputs_dict = pytree_map(lambda x: x.cpu().share_memory_(), outputs)
                 outputs = outputs_cls(**outputs_dict)
                 # apply the closure
                 output_applied = closure(outputs)
@@ -298,21 +295,19 @@ def find_available_port() -> int:
 
 def round_robin(queues: list[mp.Queue], sentinel: Any = None) -> Iterable[Any]:
     """Yield items from the given queues in round-robin order."""
-    exhausted = set()
+    remaining_queues = len(queues)
 
     for idx, q in cycle(enumerate(queues)):
-        if len(exhausted) == len(queues):
+        if remaining_queues == 0:
             break
-        if idx in exhausted:
-            continue
 
         try:
             item = q.get(timeout=0.01)
         except std_mp.queues.Empty:  # type: ignore[attr-defined]
-            pass
+            continue
         else:
             if item == sentinel:
                 print("Got sentinel")
-                exhausted.add(idx)
+                remaining_queues -= 1
             else:
                 yield item
