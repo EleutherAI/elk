@@ -155,10 +155,17 @@ class InferenceServer:
         # Pickle the closure and send it to the workers
         closure_pkl = dill.dumps(closure)
         shards = [dataset.shard(self.num_workers, i) for i in range(self.num_workers)]
-        for q, shard in zip(self._task_queues, shards):
-            q.put((closure_pkl, shard))
+        result_queues = []
+        for q, shard, result_queue in zip(
+            self._task_queues, shards, self._result_queues
+        ):
+            # skip empty shards, this also sticky tapes
+            # an issue when we have workers > len(dataset)
+            if len(shard) >= 1:
+                q.put((closure_pkl, shard))
+                result_queues.append(result_queue)
 
-        yield from round_robin(self._result_queues)  # type: ignore
+        yield from round_robin(result_queues)  # type: ignore
 
 
 @torch.inference_mode()
