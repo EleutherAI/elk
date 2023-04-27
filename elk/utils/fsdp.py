@@ -242,6 +242,10 @@ def _worker(
                 forward_prefetch=True,
             )
             model = cast(PreTrainedModel, wrapped)
+            # This is dumb, but we need to run a forward pass to initialize the
+            # FSDP. Otherwise, the first forward pass on all workers will not run
+            # if one of the workers doesn't receive a dataset to run on
+            model(input_ids=torch.Tensor([0]).long().to(device))
             print(f"FSDP running on rank {rank} with {device}")
         else:
             model.to(device)
