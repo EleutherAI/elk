@@ -36,7 +36,7 @@ def test_inference_server_normal():
     )
 
 
-def test_inference_server_fsdp_single():
+def test_inference_server_fsdp():
     model_str = "sshleifer/tiny-gpt2"
     server = InferenceServer(
         model_str=model_str, num_workers=2, fsdp=True, cpu_offload=True
@@ -51,7 +51,7 @@ def test_inference_server_fsdp_single():
     inputs = dict(input_ids=input_ids)
     # make the dict a dataset, while still making it a pytorch dataset
     input_dataset = Dataset.from_dict(inputs)
-    input_dataset.set_format(tyxpe="torch")
+    input_dataset.set_format(type="torch")
     outputs = server.map(dataset=input_dataset, closure=lambda x: x)[0]
     assert (
         type(outputs) == transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
