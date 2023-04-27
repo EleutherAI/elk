@@ -248,7 +248,7 @@ def _worker(
                 out_queue.put(output_applied)
 
             # Indicate we're done with this dataset
-            out_queue.put(None)
+            # out_queue.put_nowait(None)
 
         # Clean up the FSDP process group
         if fsdp_port is not None:
