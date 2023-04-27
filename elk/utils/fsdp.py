@@ -142,6 +142,7 @@ class InferenceServer:
         dataset: Dataset,
     ) -> ModelOutput:
         """Run inference on the given input, running a closure on the outputs."""
+        assert len(dataset) == 1
         return self.map(lambda x: x, dataset)[0]
 
     def imap(
@@ -250,11 +251,11 @@ def _worker(
 
             # Indicate we're done with this dataset
             time.sleep(5)
-            out_queue.put(None)
+            out_queue.put_nowait(None)
 
         # Clean up the FSDP process group
-        if fsdp_port is not None:
-            dist.destroy_process_group()
+        # if fsdp_port is not None:
+        #     dist.destroy_process_group()
     except Exception as e:
         print(f"Worker failed with {e}, Type: {type(e)}")
 
