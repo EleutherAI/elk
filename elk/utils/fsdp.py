@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from functools import partial
 from itertools import cycle
@@ -248,6 +249,7 @@ def _worker(
                 out_queue.put(output_applied)
 
             # Indicate we're done with this dataset
+            time.sleep(1)
             out_queue.put(None)
 
         # Clean up the FSDP process group
