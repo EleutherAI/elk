@@ -20,15 +20,12 @@ def pytree_map(func: Callable, tree: TreeType) -> TreeType:
     """
     # Recursive case
     if isinstance(tree, Mapping):
-        print("recursing")
         return {k: pytree_map(func, v) for k, v in tree.items()}  # type: ignore
 
     if isinstance(tree, list):
-        print("recursing")
         return [pytree_map(func, v) for v in tree]  # type: ignore
 
     if isinstance(tree, tuple):
-        print("recursing")
         return tuple(pytree_map(func, v) for v in tree)  # type: ignore
 
     # Stopping condition

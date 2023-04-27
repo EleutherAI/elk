@@ -176,14 +176,14 @@ def _worker(
     dataset: Dataset | None = None
     device = devices[rank]
 
-    # Fully Sharded Data Parallel for large models
-    if fsdp_port is not None:
-        os.environ["MASTER_ADDR"] = "127.0.0.1"
-        os.environ["MASTER_PORT"] = str(fsdp_port)
-        dist.init_process_group("nccl", rank=rank, world_size=len(devices))
-        torch.cuda.set_device(device)
+    try:
+        # Fully Sharded Data Parallel for large models
+        if fsdp_port is not None:
+            os.environ["MASTER_ADDR"] = "127.0.0.1"
+            os.environ["MASTER_PORT"] = str(fsdp_port)
+            dist.init_process_group("nccl", rank=rank, world_size=len(devices))
+            torch.cuda.set_device(device)
 
-        try:
             wrapped = FSDP(
                 model,
                 auto_wrap_policy=wrap_policy,
@@ -191,12 +191,11 @@ def _worker(
                 device_id=torch.device(device),
                 forward_prefetch=True,
             )
-        except Exception as e:
-            print(f"Failed to wrap model with FSDP: {e}")
-        else:
             model = cast(PreTrainedModel, wrapped)
-    else:
-        model.to(device)
+        else:
+            model.to(device)
+    except Exception as e:
+        print(f"Failed to intialise model with FSDP: {e}")
 
     # Breaks when x is None, the sentinel value indicating we should shut down
     in_queue = qs[rank]
