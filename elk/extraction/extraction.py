@@ -451,7 +451,13 @@ def extract_hiddens(
                 if has_lm_preds:
                     answer_len = answer.shape[-1]
 
-                    log_p = outputs.logits[..., -answer_len:, :].log_softmax(dim=-1)
+                    # TODO: make this less dumb
+                    # Ok if fsdp, we'll get back torch16 on the cpu, but that
+                    # is not compatible with the log_softmax call below.
+                    logits = outputs.logits[..., -answer_len:, :]
+                    if logits.dtype == torch.float16:
+                        logits = logits.to(torch.float32)
+                    log_p = logits.log_softmax(dim=-1)
                     tokens = answer[..., None]
                     lm_logits[i, j] = log_p.gather(-1, tokens).sum()
 
