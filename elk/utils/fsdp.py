@@ -2,10 +2,22 @@ import logging
 import multiprocessing as std_mp
 import os
 import socket
+import uuid
 import warnings
+from dataclasses import dataclass
 from functools import partial
 from itertools import cycle
-from typing import Any, Callable, Iterable, Type, cast
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    Type,
+    cast,
+    Sequence,
+    TypeAlias,
+    TYPE_CHECKING,
+)
+from uuid import UUID
 
 import dill
 import torch
@@ -24,6 +36,28 @@ from ..utils import instantiate_model, pytree_map, select_usable_devices
 
 class SingletonSentinel:
     ...
+
+
+@dataclass(kw_only=True)
+class TaskMessage:
+    id: UUID
+    data: Dataset
+    closure: Any  # dill closure
+
+
+@dataclass(kw_only=True)
+class ResultMessage:
+    id: UUID
+    data: Any
+
+
+if TYPE_CHECKING:
+    ResultQueue = mp.Queue[ResultMessage | Type[SingletonSentinel]]
+    TaskQueue = mp.Queue[TaskMessage | Type[SingletonSentinel]]
+
+else:
+    ResultQueue = mp.Queue
+    TaskQueue = mp.Queue
 
 
 class InferenceServer:
@@ -47,13 +81,22 @@ class InferenceServer:
         self.fsdp = fsdp
         self._current_id = 0
         self._process_ctx: mp.ProcessContext | None = None
-
-        self._result_queues = []
-        self._task_queues = []
+        # UUID to be thread-safe
+        self._manager = mp.Manager()
+        self._task_queues: list[TaskQueue] = [  # type: ignore
+            self._manager.Queue() for _ in range(self.num_workers)
+        ]
+        self._result_queues: dict[UUID, list[ResultQueue]] = self._manager.dict()  # type: ignore
         model = instantiate_model(model_str, torch_dtype="auto")
         model.share_memory()
         self._model = model
         self._start()
+
+    def create_result_queues(self, _uuid: UUID) -> list[ResultQueue]:
+        """Create a queue for the given task ID."""
+        self._result_queues[_uuid] = [mp.Queue() for _ in range(self.num_workers)]
+        print(f"Created result queues for {_uuid}")
+        return self._result_queues[_uuid]  # type: ignore
 
     @property
     def running(self) -> bool:
@@ -94,10 +137,6 @@ class InferenceServer:
                 )
 
             print(msg)
-
-        self._manager = mp.Manager()
-        self._result_queues = [self._manager.Queue() for _ in range(self.num_workers)]
-        self._task_queues = [self._manager.Queue() for _ in range(self.num_workers)]
         self._process_ctx = mp.spawn(
             _worker,
             args=(
@@ -164,12 +203,15 @@ class InferenceServer:
         # Pickle the closure and send it to the workers
         closure_pkl = dill.dumps(closure)
         shards = [dataset.shard(self.num_workers, i) for i in range(self.num_workers)]
-        result_queues = []
-        for q, shard, result_queue in zip(
-            self._task_queues, shards, self._result_queues
+        # create a uuid to track what messages belong to what imap on different threads
+        _id: UUID = uuid.uuid4()
+        result_queues = self.create_result_queues(_uuid=_id)
+        for task_q, shard in zip(
+            self._task_queues,
+            shards,
         ):
-            q.put((closure_pkl, shard))
-            result_queues.append(result_queue)
+            message = TaskMessage(id=_id, closure=closure_pkl, data=shard)
+            task_q.put(message)
 
         yield from round_robin(result_queues, sentinel=SingletonSentinel)  # type: ignore
 
@@ -179,8 +221,8 @@ def _worker(
     rank: int,
     devices: list[str],
     model: PreTrainedModel,
-    qs: list[mp.Queue],
-    out_qs: list[mp.Queue],
+    qs: list[TaskQueue],
+    out_qs: dict[UUID, list[ResultQueue]],
     cpu_offload: bool = False,
     fsdp_port: int | None = None,
     wrap_policy: partial[bool] | None = None,
@@ -224,7 +266,6 @@ def _worker(
 
         # Breaks when x is None, the sentinel value indicating we should shut down
         in_queue = qs[rank]
-        out_queue = out_qs[rank]
 
         while msg := in_queue.get():
             if isinstance(msg, SingletonSentinel):
@@ -233,9 +274,12 @@ def _worker(
                 return
             print("Got msg")
             # Someone called map() giving us a new closure and dataset to use
-            assert isinstance(msg, tuple) and len(msg) == 2, "Expected a tuple"
-            closure_pkl, dataset = msg
+            assert isinstance(msg, TaskMessage)
+            closure_pkl = msg.closure
+            dataset = msg.data
             closure = dill.loads(closure_pkl)
+            # We need to send the results back to the correct queue
+            out_queue = out_qs[msg.id][rank]
             print(f"Loaded closure and dataset: {dataset}")
 
             assert dataset is not None, "Dataset should not be None"
@@ -267,7 +311,7 @@ def _worker(
                 output_applied = closure(outputs)
 
                 # Send the outputs back to the main process
-                out_queue.put(output_applied)
+                out_queue.put(ResultMessage(data=output_applied, id=msg.id))
 
             # Indicate we're done with this dataset
             out_queue.put_nowait(SingletonSentinel)
@@ -317,19 +361,16 @@ def find_available_port() -> int:
     return port
 
 
-def round_robin(queues: list[mp.Queue], sentinel: SingletonSentinel) -> Iterable[Any]:
+def round_robin(
+    result_queue: list[ResultQueue], sentinel: SingletonSentinel
+) -> Iterable[Any]:
     """Yield items from the given queues in round-robin order."""
-    remaining_queues = len(queues)
+    remaining_queues = len(result_queue)
 
-    count = 0
-    for idx, q in cycle(enumerate(queues)):
-        count += 1
-        if count % 1000 == 0:
-            print(f"Round robin: {count}")
+    for idx, q in cycle(enumerate(result_queue)):
         if remaining_queues == 0:
             print("breaking the generator")
             break
-
         try:
             item = q.get(timeout=0.01)
         except std_mp.queues.Empty:  # type: ignore[attr-defined]

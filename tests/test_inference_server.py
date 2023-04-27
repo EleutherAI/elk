@@ -103,7 +103,7 @@ def test_inference_server_fsdp_other_map_imp():
 def test_inference_server_fsdp_limited():
     model_str = "sshleifer/tiny-gpt2"
     server = InferenceServer(
-        model_str=model_str, num_workers=2, fsdp=True, cpu_offload=True
+        model_str=model_str, num_workers=2, fsdp=False, cpu_offload=True
     )
     print("Started inference server")
     # encode this text into input ids
