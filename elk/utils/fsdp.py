@@ -266,6 +266,10 @@ def _worker(
             print(f"Loaded closure and dataset: {dataset}")
 
             assert dataset is not None, "Dataset should not be None"
+            if len(dataset) == 0:
+                # this is dumb, but we need to run the model once to make FSDP happy
+                print("Empty dataset, skipping")
+                model()
             for record in dataset:
                 assert isinstance(record, dict)
                 try:
