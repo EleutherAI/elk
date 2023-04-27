@@ -1,103 +1,37 @@
 """Main training loop."""
 
-import pickle
-import warnings
+from collections import defaultdict
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
-from typing import Literal, Optional, Callable
+from typing import Literal
 
+import pandas as pd
 import torch
-from simple_parsing import Serializable, field, subgroups
-from sklearn.metrics import accuracy_score, roc_auc_score
-from torch import Tensor
+from einops import rearrange, repeat
+from simple_parsing import subgroups
 
-from elk.extraction.extraction import Extract
-from elk.run import Run
-from elk.utils.typing import assert_type
-
+from ..metrics import evaluate_preds, to_one_hot
+from ..run import Run
+from ..training.supervised import train_supervised
+from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
-from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
-from .reporter import OptimConfig, Reporter, ReporterConfig
-from .train_log import ElicitLog
-from ..utils import select_usable_devices
+from .reporter import ReporterConfig
 
 
 @dataclass
-class Elicit(Serializable):
-    """Full specification of a reporter training run.
+class Elicit(Run):
+    """Full specification of a reporter training run."""
 
-    Args:
-        data: Config specifying hidden states on which the reporter will be trained.
-        net: Config for building the reporter network.
-        optim: Config for the `.fit()` loop.
-        num_gpus: The number of GPUs to use. Defaults to -1, which means
-            "use all available GPUs".
-        normalization: The normalization method to use. Defaults to "meanonly". See
-            `elk.training.preprocessing.normalize()` for details.
-        skip_baseline: Whether to skip training the baseline classifier. Defaults to
-            False.
-        debug: When in debug mode, a useful log file is saved to the memorably-named
-            output directory. Defaults to False.
-    """
-
-    data: Extract
     net: ReporterConfig = subgroups(
         {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
     )
-    optim: OptimConfig = field(default_factory=OptimConfig)
+    """Config for building the reporter network."""
 
-    num_gpus: int = -1
-    normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
-    skip_baseline: bool = False
-    concatenated_layer_offset: int = 0
-    # if nonzero, appends the hidden states of layer concatenated_layer_offset before
-    debug: bool = False
-    out_dir: Optional[Path] = None
-
-    def execute(self):
-        train_run = Train(cfg=self, out_dir=self.out_dir)
-        train_run.train()
-
-
-@dataclass
-class Train(Run):
-    cfg: Elicit
-
-    def train_baseline(
-        self,
-        x0: Tensor,
-        x1: Tensor,
-        val_x0: Tensor,
-        val_x1: Tensor,
-        train_labels: Tensor,
-        val_labels: Tensor,
-        device: str,
-    ):
-        # repeat_interleave makes `num_variants` copies of each label, all within a
-        # single dimension of size `num_variants * 2 * n`, such that the labels align
-        # with X.view(-1, X.shape[-1])
-        train_labels_aug = torch.cat(
-            [train_labels, 1 - train_labels]
-        ).repeat_interleave(x0.shape[1])
-        val_labels_aug = (
-            torch.cat([val_labels, 1 - val_labels]).repeat_interleave(x0.shape[1])
-        ).cpu()
-
-        X = torch.cat([x0, x1]).squeeze()
-        d = X.shape[-1]
-        lr_model = Classifier(d, device=device)
-        lr_model.fit_cv(X.view(-1, d), train_labels_aug)
-
-        X_val = torch.cat([val_x0, val_x1]).view(-1, d)
-        with torch.no_grad():
-            lr_preds = lr_model(X_val).sigmoid().cpu()
-
-        lr_acc = accuracy_score(val_labels_aug, lr_preds > 0.5)
-        lr_auroc = roc_auc_score(val_labels_aug, lr_preds)
-
-        return lr_model, lr_auroc, lr_acc
+    supervised: Literal["none", "single", "inlp", "cv"] = "single"
+    """Whether to train a supervised classifier, and if so, whether to use
+    cross-validation. Defaults to "single", which means to train a single classifier
+    on the training data. "cv" means to use cross-validation."""
 
     def create_models_dir(self, out_dir: Path):
         lr_dir = None
@@ -109,97 +43,105 @@ class Train(Run):
 
         return reporter_dir, lr_dir
 
-    def save_baseline(self, lr_dir: Path, layer: int, lr_model: Classifier):
-        with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
-            pickle.dump(lr_model, file)
-
-    def train_reporter(
+    def apply_to_layer(
         self,
         layer: int,
         devices: list[str],
-        world_size: int = 1,
-    ) -> ElicitLog:
+        world_size: int,
+    ) -> dict[str, pd.DataFrame]:
         """Train a single reporter on a single layer."""
-        self.make_reproducible(seed=self.cfg.net.seed + layer)
 
+        self.make_reproducible(seed=self.net.seed + layer)
         device = self.get_device(devices, world_size)
 
-        x0, x1, val_x0, val_x1, train_labels, val_labels, train_text_inputs, test_text_inputs = self.prepare_data(
-            device, layer
-        )
-        pseudo_auroc = self.get_pseudo_auroc(layer, x0, x1, val_x0, val_x1)
+        train_dict = self.prepare_data(device, layer, "train")
+        val_dict = self.prepare_data(device, layer, "val")
 
-        if isinstance(self.cfg.net, CcsReporterConfig):
-            reporter = CcsReporter(x0.shape[-1], self.cfg.net, device=device)
-        elif isinstance(self.cfg.net, EigenReporterConfig):
-            reporter = EigenReporter(x0.shape[-1], self.cfg.net, device=device)
-        else:
-            raise ValueError(f"Unknown reporter config type: {type(self.cfg.net)}")
-
-        train_loss = reporter.fit(x0, x1, train_labels)
-        val_result, cal_preds, raw_preds = reporter.score(
-            val_labels,
-            val_x0,
-            val_x1,
-        )
+        (first_train_h, train_labels, _), *rest = train_dict.values()
+        d = first_train_h.shape[-1]
+        if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
+            raise ValueError("All datasets must have the same hidden state size")
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        stats: ElicitLog = ElicitLog(
-            layer=layer,
-            pseudo_auroc=pseudo_auroc,
-            train_loss=train_loss,
-            eval_result=val_result,
-        )
+        if isinstance(self.net, CcsReporterConfig):
+            assert len(train_dict) == 1, "CCS only supports single-task training"
 
-        if not self.cfg.skip_baseline:
-            lr_model, lr_auroc, lr_acc = self.train_baseline(
-                x0,
-                x1,
-                val_x0,
-                val_x1,
-                train_labels,
-                val_labels,
-                device,
+            reporter = CcsReporter(self.net, d, device=device)
+            train_loss = reporter.fit(first_train_h, train_labels)
+
+            (val_h, val_gt, _) = next(iter(val_dict.values()))
+            x0, x1 = first_train_h.unbind(2)
+            val_x0, val_x1 = val_h.unbind(2)
+            pseudo_auroc = reporter.check_separability(
+                train_pair=(reporter.neg_norm(x0), reporter.pos_norm(x1)),
+                val_pair=(reporter.neg_norm(val_x0), reporter.pos_norm(val_x1)),
             )
-            stats.lr_auroc = lr_auroc
-            stats.lr_acc = lr_acc
-            self.save_baseline(lr_dir, layer, lr_model)
 
+        elif isinstance(self.net, EigenReporterConfig):
+            # We set num_classes to None to enable training on datasets with different
+            # numbers of classes. Under the hood, this causes the covariance statistics
+            # to be simply averaged across all batches passed to update().
+            reporter = EigenReporter(self.net, d, num_classes=None, device=device)
+
+            hidden_list, label_list = [], []
+            for ds_name, (train_h, train_labels, _) in train_dict.items():
+                (_, v, k, _) = train_h.shape
+
+                # Datasets can have different numbers of variants and different numbers
+                # of classes, so we need to flatten them here before concatenating
+                hidden_list.append(rearrange(train_h, "n v k d -> (n v k) d"))
+                label_list.append(
+                    to_one_hot(repeat(train_labels, "n -> (n v)", v=v), k).flatten()
+                )
+                reporter.update(train_h)
+
+            pseudo_auroc = None
+            train_loss = reporter.fit_streaming()
+            reporter.platt_scale(
+                torch.cat(label_list),
+                torch.cat(hidden_list),
+            )
+        else:
+            raise ValueError(f"Unknown reporter config type: {type(self.net)}")
+
+        # Save reporter checkpoint to disk
         with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
             torch.save(reporter, file)
 
-        return stats
-
-    def get_pseudo_auroc(
-        self, layer: int, x0: Tensor, x1: Tensor, val_x0: Tensor, val_x1: Tensor
-    ):
-        """Check the separability of the pseudo-labels at a given layer."""
-
-        with torch.no_grad():
-            pseudo_auroc = Reporter.check_separability(
-                train_pair=(x0, x1), val_pair=(val_x0, val_x1)
+        # Fit supervised logistic regression model
+        if self.supervised != "none":
+            lr_models = train_supervised(
+                train_dict,
+                device=device,
+                mode=self.supervised,
             )
-            if pseudo_auroc > 0.6:
-                warnings.warn(
-                    f"The pseudo-labels at layer {layer} are linearly separable with "
-                    f"an AUROC of {pseudo_auroc:.3f}. This may indicate that the "
-                    f"algorithm will not converge to a good solution."
+            with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
+                torch.save(lr_models, file)
+        else:
+            lr_models = []
+
+        row_bufs = defaultdict(list)
+        for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
+            meta = {"dataset": ds_name, "layer": layer}
+
+            val_result = evaluate_preds(val_gt, reporter(val_h))
+            row_bufs["eval"].append(
+                {
+                    **meta,
+                    "pseudo_auroc": pseudo_auroc,
+                    "train_loss": train_loss,
+                    **val_result.to_dict(),
+                }
+            )
+
+            if val_lm_preds is not None:
+                lm_result = evaluate_preds(val_gt, val_lm_preds)
+                row_bufs["lm_eval"].append({**meta, **lm_result.to_dict()})
+
+            for i, model in enumerate(lr_models):
+                lr_result = evaluate_preds(val_gt, model(val_h))
+                row_bufs["lr_eval"].append(
+                    {"inlp_iter": i, **meta, **lr_result.to_dict()}
                 )
 
-        return pseudo_auroc
-
-    def train(self):
-        """Train a reporter on each layer of the network."""
-        devices = select_usable_devices(self.cfg.num_gpus)
-        num_devices = len(devices)
-        func: Callable[[int], ElicitLog] = partial(
-            self.train_reporter, devices=devices, world_size=num_devices
-        )
-        self.apply_to_layers(
-            func=func,
-            num_devices=num_devices,
-            to_csv_line=lambda item: item.to_csv_line(
-                skip_baseline=self.cfg.skip_baseline
-            ),
-            csv_columns=ElicitLog.csv_columns(self.cfg.skip_baseline),
-        )
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}

@@ -1,15 +1,38 @@
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Callable, Optional, Any, Dict
+from typing import Any, Callable
 
-import datasets
+from datasets import (
+    BuilderConfig,
+    DatasetInfo,
+    Features,
+    GeneratorBasedBuilder,
+    SplitInfo,
+)
 from datasets.splits import NamedSplit
 
 
 @dataclass
-class _GeneratorConfig(datasets.BuilderConfig):
-    generator: Optional[Callable] = None
+class _GeneratorConfig(BuilderConfig):
+    generator: Callable | None = None
     gen_kwargs: dict[str, Any] = field(default_factory=dict)
-    features: Optional[datasets.Features] = None
+    features: Features | None = None
+
+    def create_config_id(
+        self, config_kwargs: dict, custom_features: Features | None
+    ) -> str:
+        config_kwargs = deepcopy(config_kwargs)
+
+        # By default the values in gen_kwargs are lists of length world_size. We want
+        # to erase the world_size dimension so that the config id is the same no matter
+        # how many processes are used. We also remove the explicit device, rank, and
+        # world_size keys.
+        config_kwargs["gen_kwargs"] = {
+            k: v[0]
+            for k, v in config_kwargs.get("gen_kwargs", {}).items()
+            if k not in ("device", "rank", "world_size")
+        }
+        return super().create_config_id(config_kwargs, custom_features)
 
 
 @dataclass
@@ -19,28 +42,41 @@ class _SplitGenerator:
     """
 
     name: str
-    split_info: datasets.SplitInfo
-    gen_kwargs: Dict = field(default_factory=dict)
+    split_info: SplitInfo
+    gen_kwargs: dict = field(default_factory=dict)
 
     def __post_init__(self):
         self.name = str(self.name)  # Make sure we convert NamedSplits in strings
         NamedSplit(self.name)  # check that it's a valid split name
 
 
-class _GeneratorBuilder(datasets.GeneratorBasedBuilder):
+class _GeneratorBuilder(GeneratorBasedBuilder):
     """Patched version of `datasets.Generator` allowing for splits besides `train`"""
 
     BUILDER_CONFIG_CLASS = _GeneratorConfig
     config: _GeneratorConfig
 
-    def __init__(self, split_name: str, split_info: datasets.SplitInfo, **kwargs):
+    def __init__(
+        self,
+        builder_name: str | None,
+        config_name: str | None,
+        split_name: str,
+        split_info: SplitInfo,
+        **kwargs,
+    ):
         self.split_name = split_name
         self.split_info = split_info
 
         super().__init__(**kwargs)
 
+        # Weirdly we need to set DatasetInfo.builder_name and DatasetInfo.config_name
+        # here, not in _info, because super().__init__ modifies them
+        self.info.builder_name = builder_name
+        self.info.config_name = config_name
+
     def _info(self):
-        return datasets.DatasetInfo(features=self.config.features)
+        # Use the same builder and config name as the original builder
+        return DatasetInfo(features=self.config.features)
 
     def _split_generators(self, dl_manager):
         return [

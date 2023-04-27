@@ -1,113 +1,65 @@
-import csv
-import os
+from collections import defaultdict
 from dataclasses import dataclass
-from functools import partial
-from pathlib import Path
-from typing import Callable, Literal, Optional, cast
 
+import pandas as pd
 import torch
-import torch.multiprocessing as mp
-from simple_parsing.helpers import Serializable, field
-from torch import Tensor
-from tqdm.auto import tqdm
+from simple_parsing.helpers import field
 
-from datasets import DatasetDict
-from elk.evaluation.evaluate_log import EvalLog
-from elk.extraction.extraction import Extract
-from elk.run import Run
-from elk.training import Reporter
-
-from ..files import elk_reporter_dir, memorably_named_dir
-from ..training.preprocessing import normalize
-from ..utils import (
-    assert_type,
-    int16_to_float32,
-    select_train_val_splits,
-    select_usable_devices,
-)
+from ..files import elk_reporter_dir, transfer_eval_directory
+from ..metrics import evaluate_preds
+from ..run import Run
+from ..training import Reporter
 
 
 @dataclass
-class Eval(Serializable):
-    """
-    Full specification of a reporter evaluation run.
+class Eval(Run):
+    """Full specification of a reporter evaluation run."""
 
-    Args:
-        data: Config specifying hidden states on which the reporter will be evaluated.
-        source: The name of the source run directory
-            which contains the reporters directory.
-        normalization: The normalization method to use. Defaults to "meanonly". See
-            `elk.training.preprocessing.normalize()` for details.
-        num_gpus: The number of GPUs to use. Defaults to -1, which means
-            "use all available GPUs".
-        debug: When in debug mode, a useful log file is saved to the memorably-named
-            output directory. Defaults to False.
-    """
+    source: str = field(default="", positional=True)
+    skip_supervised: bool = False
 
-    data: Extract
-    source: str = field(positional=True)
-    normalization: Literal["legacy", "none", "elementwise", "meanonly"] = "meanonly"
+    def __post_init__(self):
+        assert self.source, "Must specify a source experiment."
 
-    debug: bool = False
-    out_dir: Optional[Path] = None
-    num_gpus: int = -1
+        # Set the output directory to the transfer directory if it's not specified
+        self.out_dir = (
+            transfer_eval_directory(self.source)
+            if self.out_dir is None
+            else self.out_dir
+        )
 
-    concatenated_layer_offset: int = 0
-
-    def execute(self):
-        transfer_eval = elk_reporter_dir() / self.source / "transfer_eval"
-
-        run = Evaluate(cfg=self, out_dir=transfer_eval)
-        run.evaluate()
-
-
-@dataclass
-class Evaluate(Run):
-    cfg: Eval
-
-    def evaluate_reporter(
-        self, layer: int, devices: list[str], world_size: int = 1
-    ) -> EvalLog:
+    def apply_to_layer(
+        self, layer: int, devices: list[str], world_size: int
+    ) -> dict[str, pd.DataFrame]:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
+        val_output = self.prepare_data(device, layer, "val")
 
-        _, _, test_x0, test_x1, _, test_labels, train_text_inputs, test_text_inputs = self.prepare_data(
-            device,
-            layer,
-        )
+        experiment_dir = elk_reporter_dir() / self.source
 
-        reporter_path = (
-            elk_reporter_dir() / self.cfg.source / "reporters" / f"layer_{layer}.pt"
-        )
+        reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
         reporter: Reporter = torch.load(reporter_path, map_location=device)
         reporter.eval()
 
-        test_result, cal_preds, raw_preds = reporter.score(
-            test_labels,
-            test_x0,
-            test_x1,
-        )
+        row_bufs = defaultdict(list)
+        for ds_name, (val_h, val_gt, _) in val_output.items():
+            meta = {"dataset": ds_name, "layer": layer}
 
-        return EvalLog(
-            layer=layer,
-            eval_result=test_result,
-            proposition_results={"cal_preds": cal_preds.cpu(), "raw_preds": raw_preds.cpu(), 
-                                 "test_labels": test_labels.cpu(), "test_text_inputs": test_text_inputs},
-        )
+            val_result = evaluate_preds(val_gt, reporter(val_h))
+            row_bufs["eval"].append({**meta, **val_result.to_dict()})
 
-    def evaluate(self):
-        """Evaluate the reporter on all layers."""
-        devices = select_usable_devices(
-            self.cfg.num_gpus, min_memory=self.cfg.data.min_gpu_mem
-        )
+            lr_dir = experiment_dir / "lr_models"
+            if not self.skip_supervised and lr_dir.exists():
+                with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
+                    lr_models = torch.load(f, map_location=device)
+                    if not isinstance(lr_models, list):  # backward compatibility
+                        lr_models = [lr_models]
 
-        num_devices = len(devices)
-        func: Callable[[int], EvalLog] = partial(
-            self.evaluate_reporter, devices=devices, world_size=num_devices
-        )
-        self.apply_to_layers(
-            func=func,
-            num_devices=num_devices,
-            to_csv_line=lambda item: item.to_csv_line(),
-            csv_columns=EvalLog.csv_columns(),
-        )
+                for i, model in enumerate(lr_models):
+                    model.eval()
+                    lr_result = evaluate_preds(val_gt, model(val_h))
+                    row_bufs["lr_eval"].append(
+                        {"inlp_iter": i, **meta, **lr_result.to_dict()}
+                    )
+
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}

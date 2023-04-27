@@ -1,16 +1,17 @@
 """Utilities that use PyNVML to get GPU usage info, and select GPUs accordingly."""
 
-from .typing import assert_type
-from typing import Optional
 import os
+import time
+import warnings
+
 import pynvml
 import torch
-import warnings
-import time
+
+from .typing import assert_type
 
 
 def select_usable_devices(
-    num_gpus: int = -1, *, min_memory: Optional[int] = None
+    num_gpus: int = -1, *, min_memory: int | None = None
 ) -> list[str]:
     """Select a set of devices that have at least `min_memory` bytes of free memory.
     Blocks until at least `num_gpus` devices are available.

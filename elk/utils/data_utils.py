@@ -1,17 +1,19 @@
-from .typing import assert_type
-from ..promptsource.templates import Template
+import copy
+from functools import cache
+from random import Random
+from typing import Any, Iterable
+
 from datasets import (
     ClassLabel,
     DatasetDict,
     Features,
     Split,
     Value,
+    get_dataset_config_names,
 )
-from random import Random
-import torch
-from typing import Iterable, Optional, List, Any
-import numpy as np
-import copy
+
+from ..promptsource.templates import Template
+from .typing import assert_type
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
@@ -22,6 +24,12 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
         raise ValueError("All splits must have the same columns")
 
     return pivot
+
+
+@cache
+def has_multiple_configs(ds_name: str) -> bool:
+    """Return whether a dataset has multiple configs."""
+    return len(get_dataset_config_names(ds_name)) > 1
 
 
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
@@ -81,11 +89,12 @@ def infer_num_classes(label_feature: Any) -> int:
         )
 
 
-def get_layers(ds: DatasetDict) -> List[int]:
+def get_layers(ds: DatasetDict) -> list[int]:
     """Get a list of indices of hidden layers given a `DatasetDict`."""
+    train, _ = select_train_val_splits(ds.keys())
     layers = [
         int(feat[len("hidden_") :])
-        for feat in ds["train"].features
+        for feat in ds[train].features
         if feat.startswith("hidden_")
     ]
     return layers
@@ -93,7 +102,6 @@ def get_layers(ds: DatasetDict) -> List[int]:
 
 def binarize(template: Template, label: int, new_label: int, rng: Random) -> Template:
     """Binarize a template with >2 answer choices, returning a new template and label.
-
     Returns:
         `new_template`:
             A deepcopy of the original template with with 2 answer choices, one of

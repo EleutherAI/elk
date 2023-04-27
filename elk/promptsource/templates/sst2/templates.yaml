@@ -1,0 +1,224 @@
+# Taken from "Overthinking the Truth" by Halawi et al. (2023)
+# Translated into Promptsource YAML by GPT-4
+dataset: sst-2
+subset: default
+templates:
+  a1: !Template
+    answer_choices: Negative ||| Positive
+    id: a1
+    jinja: 'Review: {{sentence}}
+
+      Answer: |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: review_a1
+    reference: ''
+  a2: !Template
+    answer_choices: bad ||| good
+    id: a2
+    jinja: 'Review: {{sentence}}
+
+      Answer: |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: review_a2
+    reference: ''
+  a3: !Template
+    answer_choices: bad ||| good
+    id: a3
+    jinja: 'My review for last night''s film: {{sentence}} The critics agreed that this movie was |||{{answer_choices[label]}}.'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: last_night_film
+    reference: ''
+  a4: !Template
+    answer_choices: negative ||| positive
+    id: a4
+    jinja: 'One of our critics wrote "{{sentence}}". Her sentiment towards the film was |||{{answer_choices[label]}}.'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: critic_sentiment
+    reference: ''
+  a5: !Template
+    answer_choices: bad ||| good
+    id: a5
+    jinja: 'In a contemporary review, Roger Ebert wrote: "{{sentence}}". Entertainment Weekly agreed, and the overall critical reception of the film was |||{{answer_choices[label]}}.'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: roger_ebert
+    reference: ''
+  a6: !Template
+    answer_choices: No ||| Yes
+    id: a6
+    jinja: 'Review: {{sentence}}
+
+      Positive Review? |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: review_positive
+    reference: ''
+  a7: !Template
+    answer_choices: Negative ||| Positive
+    id: a7
+    jinja: 'Review: {{sentence}}
+
+      Question: Is the sentiment of the above review Positive or Negative?
+
+      Answer: |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: review_sentiment_question
+    reference: ''
+  a8: !Template
+    answer_choices: bad ||| good
+    id: a8
+    jinja: 'Review: {{sentence}}
+
+      Question: Did the author think that the movie was good or bad?
+
+      Answer: |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: author_opinion_question
+    reference: ''
+  a9: !Template
+    answer_choices: bad ||| good
+    id: a9
+    jinja: 'Question: Did the author of the following tweet think that the movie was good or bad?
+
+      Tweet: {{sentence}}
+
+      Answer: |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: tweet_opinion_question
+    reference: ''
+  a10: !Template
+    answer_choices: bad ||| good
+    id: a10
+    jinja: '{{sentence}} My overall feeling was that the movie was |||{{answer_choices[label]}}.'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: overall_feeling
+    reference: ''
+  a11: !Template
+    answer_choices: liked ||| hated
+    id: a11
+    jinja: '{{sentence}} I |||{{answer_choices[label]}}.'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: liked_or_hated
+    reference: ''
+  a12: !Template
+    answer_choices: 0 ||| 5
+    id: a12
+    jinja: '{{sentence}} My friend asked me if I would give the movie 0 or 5 stars, I said |||{{answer_choices[label]}}.'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: movie_stars
+    reference: ''
+  a13: !Template
+    answer_choices: Negative ||| Positive
+    id: a13
+    jinja: 'Input: {{sentence}}
+
+      Sentiment: |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: input_sentiment
+    reference: ''
+  a14: !Template
+    answer_choices: False ||| True
+    id: a14
+    jinja: 'Review: {{sentence}}
+
+      Positive: |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: review_positive_boolean
+    reference: ''
+  a15: !Template
+    answer_choices: 0 ||| 5
+    id: a15
+    jinja: 'Review: {{sentence}}
+
+      Stars: |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: review_stars
+    reference: ''

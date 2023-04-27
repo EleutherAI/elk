@@ -1,18 +1,18 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
+from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
-from typing import Iterable, Literal, Optional, Union
+from typing import Any, Iterable, Literal
+from warnings import filterwarnings
 
 import torch
-from simple_parsing import Serializable, field
-from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
-
 from datasets import (
+    Array2D,
     Array3D,
-    ClassLabel,
     DatasetDict,
+    DownloadMode,
     Features,
     Sequence,
     SplitDict,
@@ -20,15 +20,28 @@ from datasets import (
     Value,
     get_dataset_config_info,
 )
-from elk.utils.typing import float32_to_int16
+from simple_parsing import Serializable, field
+from torch import Tensor
+from transformers import AutoConfig, PreTrainedModel
+from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
+    colorize,
+    float32_to_int16,
     infer_label_column,
+    infer_num_classes,
+    instantiate_model,
+    instantiate_tokenizer,
+    is_autoregressive,
     select_train_val_splits,
     select_usable_devices,
 )
-from .balanced_sampler import BalancedSampler
+from .dataset_name import (
+    DatasetDictWithName,
+    extract_dataset_name_and_config,
+)
 from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
 
@@ -44,7 +57,6 @@ class Extract(Serializable):
         layer_stride: Shortcut for setting `layers` to `range(0, num_layers, stride)`.
         token_loc: The location of the token to extract hidden states from. Can be
             either "first", "last", or "mean". Defaults to "last".
-        min_gpu_mem: Minimum amount of free memory (in bytes) required to select a GPU.
     """
 
     prompts: PromptConfig
@@ -53,8 +65,7 @@ class Extract(Serializable):
     layers: tuple[int, ...] = ()
     layer_stride: InitVar[int] = 1
     token_loc: Literal["first", "last", "mean"] = "last"
-    min_gpu_mem: Optional[int] = None
-    num_gpus: int = -1
+    use_encoder_states: bool = False
 
     def __post_init__(self, layer_stride: int):
         if self.layers and layer_stride > 1:
@@ -68,111 +79,165 @@ class Extract(Serializable):
             config = assert_type(
                 PretrainedConfig, AutoConfig.from_pretrained(self.model)
             )
-            self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
+            # Note that we always include 0 which is the embedding layer
+            layer_range = range(1, config.num_hidden_layers + 1, layer_stride)
+            self.layers = (0,) + tuple(layer_range)
 
-    def execute(self):
-        extract(cfg=self, num_gpus=self.num_gpus)
+    def explode(self) -> list["Extract"]:
+        """Explode this config into a list of configs, one for each layer."""
+        copies = []
+
+        for prompt_cfg in self.prompts.explode():
+            cfg = copy(self)
+            cfg.prompts = prompt_cfg
+            copies.append(cfg)
+
+        return copies
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def extract_hiddens(
     cfg: "Extract",
     *,
-    device: Union[str, torch.device] = "cpu",
+    device: str | torch.device = "cpu",
     split_type: Literal["train", "val"] = "train",
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterable[dict]:
-    """Run inference on a model with a set of prompts, yielding the hidden states.
-
-    This is a lightweight, functional version of the `Extractor` API.
-    """
+    """Run inference on a model with a set of prompts, yielding the hidden states."""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     # Silence datasets logging messages from all but the first process
     if rank != 0:
+        filterwarnings("ignore")
         logging.disable(logging.CRITICAL)
 
-    prompt_ds = load_prompts(
-        *cfg.prompts.datasets,
-        split_type=split_type,
-        stream=cfg.prompts.stream,
-        rank=rank,
-        world_size=world_size,
-    )  # this dataset is already sharded, but hasn't been truncated to max_examples
+    p_cfg = cfg.prompts
+    ds_names = p_cfg.datasets
+    assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    # AutoModel should do the right thing here in nearly all cases. We don't actually
-    # care what head the model has, since we are just extracting hidden states.
-    model = AutoModel.from_pretrained(
+    model = instantiate_model(
         cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
     ).to(device)
-    # TODO: Maybe also make this configurable?
-    # We want to make sure the answer is never truncated
-    tokenizer = AutoTokenizer.from_pretrained(
-        cfg.model, truncation_side="left", verbose=False
+    tokenizer = instantiate_tokenizer(
+        cfg.model, truncation_side="left", verbose=rank == 0
     )
+
     is_enc_dec = model.config.is_encoder_decoder
-
-    # If this is an encoder-decoder model we don't need to run the decoder at all.
-    # Just strip it off, making the problem equivalent to a regular encoder-only model.
-    if is_enc_dec:
-        # This isn't actually *guaranteed* by HF, but it's true for all existing models
-        if not hasattr(model, "get_encoder") or not callable(model.get_encoder):
-            raise ValueError(
-                "Encoder-decoder model doesn't have expected get_encoder() method"
-            )
-
+    if is_enc_dec and cfg.use_encoder_states:
+        assert hasattr(model, "get_encoder") and callable(model.get_encoder)
         model = assert_type(PreTrainedModel, model.get_encoder())
+        is_enc_dec = False
 
-    # Iterating over questions
-    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
-    # print(f"Using {prompt_ds} variants for each dataset")
+    has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
+    if has_lm_preds and rank == 0:
+        print("Model has language model head, will store predictions.")
 
-    global_max_examples = cfg.prompts.max_examples[0 if split_type == "train" else 1]
+    prompt_ds = load_prompts(
+        ds_names[0],
+        label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
+        num_classes=p_cfg.num_classes,
+        split_type=split_type,
+        stream=p_cfg.stream,
+        rank=rank,
+        world_size=world_size,
+    )
+
+    # Add one to the number of layers to account for the embedding layer
+    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
+
+    global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
     # break `max_examples` among the processes roughly equally
     max_examples = global_max_examples // world_size
     # the last process gets the remainder (which is usually small)
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
 
-    print(f"Extracting {max_examples} examples from {prompt_ds} on {device}")
-
-    for example in islice(BalancedSampler(prompt_ds), max_examples):
+    for example in islice(prompt_ds, max_examples):
         num_variants = len(example["prompts"])
+        num_choices = len(example["prompts"][0])
+
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
                 num_variants,
-                2,  # contrast pair
+                num_choices,
                 model.config.hidden_size,
                 device=device,
                 dtype=torch.int16,
             )
             for layer_idx in layer_indices
         }
-        text_inputs = []
+        lm_logits = torch.empty(
+            num_variants,
+            num_choices,
+            device=device,
+            dtype=torch.float32,
+        )
+        text_questions = []
 
         # Iterate over variants
         for i, record in enumerate(example["prompts"]):
-            variant_inputs = []
+            variant_questions = []
 
             # Iterate over answers
-            for j in range(2):
-                text = record[j]["text"]
-                variant_inputs.append(text)
+            for j, choice in enumerate(record):
+                text = choice["question"]
 
-                inputs = tokenizer(
+                # Only feed question, not the answer, to the encoder for enc-dec models
+                target = choice["answer"] if is_enc_dec else None
+
+                # Record the EXACT question we fed to the model
+                variant_questions.append(text)
+                encoding = tokenizer(
                     text,
+                    # Keep [CLS] and [SEP] for BERT-style models
+                    add_special_tokens=True,
                     return_tensors="pt",
+                    text_target=target,  # type: ignore[arg-type]
                     truncation=True,
                 ).to(device)
+                input_ids = assert_type(Tensor, encoding.input_ids)
+
+                if is_enc_dec:
+                    answer = assert_type(Tensor, encoding.labels)
+                else:
+                    encoding2 = tokenizer(
+                        choice["answer"],
+                        # Don't include [CLS] and [SEP] in the answer
+                        add_special_tokens=False,
+                        return_tensors="pt",
+                    ).to(device)
+                    answer = assert_type(Tensor, encoding2.input_ids)
+
+                    input_ids = torch.cat([input_ids, answer], dim=-1)
+                    if max_len := tokenizer.model_max_length:
+                        cur_len = input_ids.shape[-1]
+                        input_ids = input_ids[..., -min(cur_len, max_len) :]
+
+                # Make sure we only pass the arguments that the model expects
+                inputs = dict(input_ids=input_ids)
+                if is_enc_dec:
+                    inputs["labels"] = answer
+
                 outputs = model(**inputs, output_hidden_states=True)
+
+                # Compute the log probability of the answer tokens if available
+                if has_lm_preds:
+                    answer_len = answer.shape[-1]
+
+                    log_p = outputs.logits[..., -answer_len:, :].log_softmax(dim=-1)
+                    tokens = answer[..., None]
+                    lm_logits[i, j] = log_p.gather(-1, tokens).sum()
+
+                elif isinstance(outputs, Seq2SeqLMOutput):
+                    # The cross entropy loss is averaged over tokens, so we need to
+                    # multiply by the length to get the total log probability.
+                    length = encoding.labels.shape[-1]
+                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss) * length
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 )
-                # First element of list is the input embeddings
-                hiddens = hiddens[1:]
-
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
 
@@ -189,14 +254,18 @@ def extract_hiddens(
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
 
-            text_inputs.append(variant_inputs)
+            text_questions.append(variant_questions)
 
-        yield dict(
+        out_record: dict[str, Any] = dict(
             label=example["label"],
             variant_ids=example["template_names"],
-            text_inputs=text_inputs,
+            text_questions=text_questions,
             **hidden_dict,
         )
+        if has_lm_preds:
+            out_record["model_logits"] = lm_logits
+
+        yield out_record
 
 
 # Dataset.from_generator wraps all the arguments in lists, so we unpack them here
@@ -204,14 +273,25 @@ def _extraction_worker(**kwargs):
     yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
 
 
-def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
+def extract(
+    cfg: "Extract",
+    *,
+    disable_cache: bool = False,
+    highlight_color: str = "cyan",
+    num_gpus: int = -1,
+    min_gpu_mem: int | None = None,
+) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
         train_name, val_name = select_train_val_splits(available_splits)
-        print(f"Using '{train_name}' for training and '{val_name}' for validation")
 
+        pretty_name = colorize(assert_type(str, ds_name), highlight_color)
+        print(
+            f"{pretty_name}: using '{train_name}' for training "
+            f"and '{val_name}' for validation"
+        )
         limit_list = cfg.prompts.max_examples
 
         return SplitDict(
@@ -227,35 +307,59 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
         )
 
     model_cfg = AutoConfig.from_pretrained(cfg.model)
-    num_variants = cfg.prompts.num_variants
 
-    ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
+    ds_name, config_name = extract_dataset_name_and_config(
+        dataset_config_str=cfg.prompts.datasets[0]
+    )
     info = get_dataset_config_info(ds_name, config_name or None)
+
+    ds_features = assert_type(Features, info.features)
+    label_col = (
+        cfg.prompts.label_columns[0]
+        if cfg.prompts.label_columns
+        else infer_label_column(ds_features)
+    )
+    num_classes = cfg.prompts.num_classes or infer_num_classes(ds_features[label_col])
+    num_variants = cfg.prompts.num_variants
+    if num_variants < 0:
+        prompter = DatasetTemplates(ds_name, config_name)
+        num_variants = len(prompter.templates)
 
     layer_cols = {
         f"hidden_{layer}": Array3D(
             dtype="int16",
-            shape=(num_variants, 2, model_cfg.hidden_size),
+            shape=(num_variants, num_classes, model_cfg.hidden_size),
         )
-        for layer in cfg.layers or range(model_cfg.num_hidden_layers)
+        # Add 1 to include the embedding layer
+        for layer in cfg.layers or range(model_cfg.num_hidden_layers + 1)
     }
     other_cols = {
         "variant_ids": Sequence(
             Value(dtype="string"),
             length=num_variants,
         ),
-        "label": ClassLabel(names=["neg", "pos"]),
-        "text_inputs": Sequence(
+        "label": Value(dtype="int64"),
+        "text_questions": Sequence(
             Sequence(
                 Value(dtype="string"),
-                length=2,
             ),
             length=num_variants,
         ),
     }
-    devices = select_usable_devices(num_gpus, min_memory=cfg.min_gpu_mem)
+
+    # Only add model_logits if the model is an autoregressive model
+    if is_autoregressive(model_cfg, not cfg.use_encoder_states):
+        other_cols["model_logits"] = Array2D(
+            shape=(num_variants, num_classes),
+            dtype="float32",
+        )
+
+    devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
+            # Use the dataset name from info_with_name, not the builder name
+            builder_name=info.builder_name,
+            config_name=info.config_name,
             cache_dir=None,
             features=Features({**layer_cols, **other_cols}),
             generator=_extraction_worker,
@@ -271,10 +375,20 @@ def extract(cfg: "Extract", num_gpus: int = -1) -> DatasetDict:
         )
         for (split_name, split_info) in get_splits().items()
     }
+    import multiprocess as mp
+
+    mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
 
     ds = dict()
     for split, builder in builders.items():
-        builder.download_and_prepare(num_proc=len(devices))
+        builder.download_and_prepare(
+            download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
+            num_proc=len(devices),
+        )
         ds[split] = builder.as_dataset(split=split)
 
-    return DatasetDict(ds)
+    dataset_dict = DatasetDict(ds)
+    return DatasetDictWithName(
+        name=ds_name,
+        dataset=dataset_dict,
+    )

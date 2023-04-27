@@ -8,7 +8,7 @@ Specifically, we're building on the **Contrastive Representation Clustering** (C
 
 ### Quick **Start**
 
-Our code is based on [PyTorch](http://pytorch.org) and [Huggingface Transformers](https://huggingface.co/docs/transformers/index). We test the code on Python 3.9 and 3.10.
+Our code is based on [PyTorch](http://pytorch.org) and [Huggingface Transformers](https://huggingface.co/docs/transformers/index). We test the code on Python 3.10 and 3.11.
 
 First install the package with `pip install -e .` in the root directory, or `pip install -e .[dev]` if you'd like to contribute to the project (see **Development** section below). This should install all the necessary dependencies.
 
@@ -32,12 +32,28 @@ The following command will evaluate the probe from the run naughty-northcutt on 
 elk eval naughty-northcutt microsoft/deberta-v2-xxlarge-mnli imdb
 ```
 
+The following runs `elicit` on the Cartesian product of the listed models and datasets, storing it in a special folder ELK_DIR/sweeps/<memorable_name>. Moreover, `--add_pooled` adds an additional dataset that pools all of the datasets together.
+
+```bash
+elk sweep --models gpt2-{medium,large,xl} --datasets imdb amazon_polarity --add_pooled
+```
+
 ## Caching
 
 The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the same place as all other HuggingFace datasets, which is usually `~/.cache/huggingface/datasets`.
 
 ## Development
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
+
+### Devcontainer
+
+[
+    ![Open in Remote - Containers](
+        https://img.shields.io/static/v1?label=Remote%20-%20Containers&message=Open&color=blue&logo=visualstudiocode
+    )
+](
+    https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/EleutherAI/elk
+)
 
 ### Run tests
 ```bash
@@ -47,6 +63,13 @@ pytest
 We use [pyright](https://github.com/microsoft/pyright), which is built into the VSCode editor. If you'd like to run it as a standalone tool, it requires a [nodejs installation.](https://nodejs.org/en/download/)
 ```bash
 pyright
+```
+
+### Run the linter
+We use [ruff](https://beta.ruff.rs/docs/). It is installed as a pre-commit hook, so you don't have to run it manually.
+If you want to run it manually, you can do so with:
+```bash
+ruff . --fix
 ```
 
 ### Contributing to this repository

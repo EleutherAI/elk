@@ -1,13 +1,11 @@
 """Main entry point for `elk`."""
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Union
 
 from simple_parsing import ArgumentParser
 
 from elk.evaluation.evaluate import Eval
-from elk.extraction.extraction import Extract
+from elk.training.sweep import Sweep
 from elk.training.train import Elicit
 
 
@@ -15,7 +13,7 @@ from elk.training.train import Elicit
 class Command:
     """Some top-level command"""
 
-    command: Union[Elicit, Eval, Extract]
+    command: Elicit | Eval | Sweep
 
     def execute(self):
         return self.command.execute()

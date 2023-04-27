@@ -1,12 +1,21 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+import torch
+from torch import Tensor
 from torch.nn.functional import (
     binary_cross_entropy_with_logits as bce_with_logits,
+)
+from torch.nn.functional import (
     cross_entropy,
 )
-from torch import Tensor
-from typing import Optional
-import torch
-import warnings
+
+
+@dataclass
+class InlpResult:
+    """Result of Iterative Nullspace Projection (NLP)."""
+
+    losses: list[float] = field(default_factory=list)
+    classifiers: list["Classifier"] = field(default_factory=list)
 
 
 @dataclass
@@ -33,20 +42,20 @@ class Classifier(torch.nn.Module):
     def __init__(
         self,
         input_dim: int,
-        num_classes: int = 1,
-        device: Optional[str] = None,
-        dtype: Optional[torch.dtype] = None,
+        num_classes: int = 2,
+        device: str | torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
 
         self.linear = torch.nn.Linear(
-            input_dim, num_classes, device=device, dtype=dtype
+            input_dim, num_classes if num_classes > 2 else 1, device=device, dtype=dtype
         )
         self.linear.bias.data.zero_()
         self.linear.weight.data.zero_()
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.linear(x)
+        return self.linear(x).squeeze(-1)
 
     @torch.enable_grad()
     def fit(
@@ -54,9 +63,8 @@ class Classifier(torch.nn.Module):
         x: Tensor,
         y: Tensor,
         *,
-        l2_penalty: float = 0.1,
+        l2_penalty: float = 0.0,
         max_iter: int = 10_000,
-        tol: float = 1e-4,
     ) -> float:
         """Fits the model to the input data using L-BFGS with L2 regularization.
 
@@ -67,23 +75,22 @@ class Classifier(torch.nn.Module):
                 multiclass classification, where C is the number of classes.
             l2_penalty: L2 regularization strength.
             max_iter: Maximum number of iterations for the L-BFGS optimizer.
-            tol: Tolerance for the L-BFGS optimizer.
 
         Returns:
             Final value of the loss function after optimization.
         """
-
         optimizer = torch.optim.LBFGS(
             self.parameters(),
             line_search_fn="strong_wolfe",
             max_iter=max_iter,
-            tolerance_grad=tol,
         )
 
         num_classes = self.linear.out_features
         loss_fn = bce_with_logits if num_classes == 1 else cross_entropy
         loss = torch.inf
-        y = y.float()
+        y = y.to(
+            torch.get_default_dtype() if num_classes == 1 else torch.long,
+        )
 
         def closure():
             nonlocal loss
@@ -92,13 +99,12 @@ class Classifier(torch.nn.Module):
             # Calculate the loss function
             logits = self(x).squeeze(-1)
             loss = loss_fn(logits, y)
+            if l2_penalty:
+                reg_loss = loss + l2_penalty * self.linear.weight.square().sum()
+            else:
+                reg_loss = loss
 
-            # Add L2 regularization penalty the way scikit-learn does
-            l2_reg = 0.5 * self.linear.weight.square().sum()
-
-            reg_loss = loss + l2_penalty * l2_reg
             reg_loss.backward()
-
             return float(reg_loss)
 
         optimizer.step(closure)
@@ -114,7 +120,6 @@ class Classifier(torch.nn.Module):
         max_iter: int = 10_000,
         num_penalties: int = 10,
         seed: int = 42,
-        tol: float = 1e-4,
     ) -> RegularizationPath:
         """Fit using k-fold cross-validation to select the best L2 penalty.
 
@@ -127,7 +132,6 @@ class Classifier(torch.nn.Module):
             max_iter: Maximum number of iterations for the L-BFGS optimizer.
             num_penalties: Number of L2 regularization penalties to try.
             seed: Random seed for the k-fold cross-validation.
-            tol: Tolerance for the L-BFGS optimizer.
 
         Returns:
             `RegularizationPath` containing the penalties tried and the validation loss
@@ -145,12 +149,15 @@ class Classifier(torch.nn.Module):
         fold_size = num_samples // k
         indices = torch.randperm(num_samples, device=x.device, generator=rng)
 
-        l2_penalties = torch.logspace(-4, 4, num_penalties).tolist()
-        y = y.float()
+        # Try a range of L2 penalties, including 0
+        l2_penalties = [0.0] + torch.logspace(-4, 4, num_penalties).tolist()
 
         num_classes = self.linear.out_features
         loss_fn = bce_with_logits if num_classes == 1 else cross_entropy
-        losses = x.new_zeros((k, num_penalties))
+        losses = x.new_zeros((k, num_penalties + 1))
+        y = y.to(
+            torch.get_default_dtype() if num_classes == 1 else torch.long,
+        )
 
         for i in range(k):
             start, end = i * fold_size, (i + 1) * fold_size
@@ -162,9 +169,7 @@ class Classifier(torch.nn.Module):
 
             # Regularization path with warm-starting
             for j, l2_penalty in enumerate(l2_penalties):
-                self.fit(
-                    train_x, train_y, l2_penalty=l2_penalty, max_iter=max_iter, tol=tol
-                )
+                self.fit(train_x, train_y, l2_penalty=l2_penalty, max_iter=max_iter)
 
                 logits = self(val_x).squeeze(-1)
                 loss = loss_fn(logits, val_y)
@@ -175,8 +180,56 @@ class Classifier(torch.nn.Module):
 
         # Refit with the best penalty
         best_penalty = l2_penalties[best_idx]
-        self.fit(x, y, l2_penalty=best_penalty, max_iter=max_iter, tol=tol)
+        self.fit(x, y, l2_penalty=best_penalty, max_iter=max_iter)
         return RegularizationPath(l2_penalties, mean_losses.tolist())
+
+    @classmethod
+    def inlp(
+        cls, x: Tensor, y: Tensor, max_iter: int | None = None, tol: float = 0.01
+    ) -> InlpResult:
+        """Iterative Nullspace Projection (INLP) <https://arxiv.org/abs/2004.07667>.
+
+        Args:
+            x: Input tensor of shape (N, D), where N is the number of samples and D is
+                the input dimension.
+            y: Target tensor of shape (N,) for binary classification or (N, C) for
+                multiclass classification, where C is the number of classes.
+            max_iter: Maximum number of iterations to run. If `None`, run for the full
+                dimension of the input.
+            tol: Tolerance for the loss function. The algorithm will stop when the loss
+                is within `tol` of the entropy of the labels.
+
+        Returns:
+            `InlpResult` containing the classifiers and losses achieved at each
+            iteration.
+        """
+
+        y.shape[-1] if y.ndim > 1 else 2
+        d = x.shape[-1]
+        loss = 0.0
+
+        # Compute entropy of the labels
+        p = y.float().mean()
+        H = -p * torch.log(p) - (1 - p) * torch.log(1 - p)
+
+        if max_iter is not None:
+            d = min(d, max_iter)
+
+        # Iterate until the loss is within epsilon of the entropy
+        result = InlpResult()
+        for _ in range(d):
+            clf = cls(d, device=x.device, dtype=x.dtype)
+            loss = clf.fit(x, y)
+            result.classifiers.append(clf)
+            result.losses.append(loss)
+
+            if loss >= (1.0 - tol) * H:
+                break
+
+            # Project the data onto the nullspace of the classifier
+            x = clf.nullspace_project(x)
+
+        return result
 
     def nullspace_project(self, x: Tensor) -> Tensor:
         """Project the given data onto the nullspace of the classifier."""
@@ -184,4 +237,4 @@ class Classifier(torch.nn.Module):
         # https://en.wikipedia.org/wiki/Projection_(linear_algebra)
         A = self.linear.weight.data.T
         P = A @ torch.linalg.solve(A.mT @ A, A.mT)
-        return x - P @ x
+        return x - x @ P
