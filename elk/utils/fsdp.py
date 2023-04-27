@@ -299,6 +299,7 @@ def round_robin(queues: list[mp.Queue], sentinel: Any = None) -> Iterable[Any]:
 
     for idx, q in cycle(enumerate(queues)):
         if remaining_queues == 0:
+            print("breaking the generator")
             break
 
         try:
