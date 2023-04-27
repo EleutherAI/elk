@@ -209,12 +209,12 @@ def _worker(
         while msg := in_queue.get():
             print("Got msg")
             # Someone called map() giving us a new closure and dataset to use
-            assert isinstance(msg, tuple) and len(msg) == 2
+            assert isinstance(msg, tuple) and len(msg) == 2, "Expected a tuple"
             closure_pkl, dataset = msg
             closure = dill.loads(closure_pkl)
             print(f"Loaded closure and dataset: {dataset}")
 
-            assert dataset is not None
+            assert dataset is not None, "Dataset should not be None"
             for record in dataset:
                 print(f"Running on record {record}")
                 assert isinstance(record, dict)
@@ -251,7 +251,7 @@ def _worker(
             out_queue.put_nowait(None)
 
         # Clean up the FSDP process group
-        # if fsdp_port is not None:
+        if fsdp_port is not None:
             dist.destroy_process_group()
     except Exception as e:
         print(f"Worker failed with {e}")
