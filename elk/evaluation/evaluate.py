@@ -10,25 +10,21 @@ from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
 from ..run import Run
 from ..training import Reporter
+from ..utils import Color
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Eval(Run):
     """Full specification of a reporter evaluation run."""
 
-    # Using None as a default here is a hack; we actually raise an error if it's not
-    # specified in __post_init__. TODO: Maybe this is an indication we should be using
-    # composition and not inheritance here?
-    source: Path | None = field(default=None, positional=True)
+    source: Path = field(positional=True)
     skip_supervised: bool = False
 
     def __post_init__(self):
-        assert self.source, "Must specify a source experiment."
-
         if not self.out_dir:
             self.out_dir = self.source / "transfer" / "+".join(self.data.datasets)
 
-    def execute(self, highlight_color: str = "cyan"):
+    def execute(self, highlight_color: Color = "cyan"):
         return super().execute(highlight_color, split_type="val")
 
     @torch.inference_mode()
@@ -39,7 +35,6 @@ class Eval(Run):
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
 
-        assert self.source, "Must specify a source experiment."
         experiment_dir = elk_reporter_dir() / self.source
 
         reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"

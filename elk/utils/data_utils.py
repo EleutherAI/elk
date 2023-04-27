@@ -118,10 +118,7 @@ def infer_num_classes(label_feature: Any) -> int:
     elif isinstance(label_feature, Value) and label_feature.dtype == "bool":
         return 2
     else:
-        raise ValueError(
-            f"Can't infer number of classes from label column of type {label_feature}. "
-            f"Please update the num_classes field in the prompt template yaml file."
-        )
+        return -1
 
 
 def get_layer_indices(ds: DatasetDict) -> list[int]:

@@ -1,0 +1,118 @@
+# Adapted from the ARC-Easy templates
+dataset: norabelrose/truthful_qa_mc
+choices_column: choices
+templates:
+  a1: !Template
+    answer_choices: 'A|||B|||C|||D|||E|||F|||G|||H|||I|||J|||K|||L|||M|||N'
+    id: a1
+    jinja: 'Pick the most correct option to answer the following question.
+
+
+      {{question}}
+
+
+      Options:
+
+      {% for letter, t in zip(answer_choices, choices) %}
+
+      - {{letter}}: {{t}}
+
+      {% endfor %} |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: pick_the_most_correct_option
+    reference: ''
+  a2: !Template
+    answer_choices: 'A|||B|||C|||D|||E|||F|||G|||H|||I|||J|||K|||L|||M|||N'
+    id: a2
+    jinja: '{{question}}
+
+
+      Options:
+
+      {% for letter, t in zip(answer_choices, choices) %}
+
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+
+      A:|||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: qa_options
+    reference: ''
+  a3: !Template
+    answer_choices: 'A|||B|||C|||D|||E|||F|||G|||H|||I|||J|||K|||L|||M|||N'
+    id: a3
+    jinja: 'I am hesitating between 4 options to answer the following question, which
+      option should I choose?
+
+      Question: {{question}}
+
+      Possibilities:
+
+      {% for letter, t in zip(answer_choices, choices) %}
+
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+
+      A:|||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: i_am_hesitating
+    reference: ''
+  a4: !Template
+    answer_choices: 'A|||B|||C|||D|||E|||F|||G|||H|||I|||J|||K|||L|||M|||N'
+    id: a4
+    jinja: 'I gave my students this multiple choice question: {{question}}
+
+
+      Only one answer is correct among these 4 choices:
+
+      {% for letter, t in zip(answer_choices, choices) %}
+
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+
+      A:|||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: multiple_choice
+    reference: ''
+  a6: !Template
+    answer_choices: 'A|||B|||C|||D|||E|||F|||G|||H|||I|||J|||K|||L|||M|||N'
+    id: a6
+    jinja: "Here's a problem to solve: {{question}}\n\nAmong the 4 following options,\
+      \ which is the correct answer?\n{% for letter, t in zip(answer_choices, choices)\
+      \ %}\n- {{letter}}: {{t}}\n {% endfor %}A:|||{{answer_choices[label]}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: heres_a_problem
+    reference: ''

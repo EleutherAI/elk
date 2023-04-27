@@ -104,13 +104,11 @@ def load_prompts(
             print("No label column found, not balancing")
         ds = ds.to_iterable_dataset()
 
-    if rank == 0:
-        print(f"Label choices: {label_choices}")
-
     for example in ds:
         yield _convert_to_prompts(
             example,
             binarize=binarize,
+            choices_column=prompter.choices_column,
             label_column=label_column,
             label_choices=label_choices,  # type: ignore[arg-type]
             num_variants=num_variants,
@@ -124,6 +122,7 @@ def _convert_to_prompts(
     example: dict[str, Any],
     prompter: DatasetTemplates,
     binarize: bool,
+    choices_column: str | None,
     label_column: str,
     label_choices: list[bool | int | str],
     num_variants: int,
@@ -144,6 +143,11 @@ def _convert_to_prompts(
     # For sanity checking that prompts are unique
     prompt_counter = Counter()
     label = example[label_column]
+    if choices_column:
+        label_choices = example[choices_column]
+        if isinstance(label, int):
+            label_choices = list(range(len(label_choices)))
+
     if binarize:
         # Replace the full list of possibilities with a randomly sampled false label
         # and the correct label, as done in the DLK paper. Note that this does add some

@@ -21,6 +21,7 @@ from .extraction import Extract, extract
 from .extraction.dataset_name import DatasetDictWithName
 from .files import elk_reporter_dir, memorably_named_dir
 from .utils import (
+    Color,
     assert_type,
     get_layer_indices,
     int16_to_float32,
@@ -48,7 +49,7 @@ class Run(ABC, Serializable):
 
     def execute(
         self,
-        highlight_color: str = "cyan",
+        highlight_color: Color = "cyan",
         split_type: Literal["train", "val", None] = None,
     ):
         self.datasets = [
@@ -127,6 +128,7 @@ class Run(ABC, Serializable):
 
             split = ds[key].with_format("torch", device=device, dtype=torch.int16)
             labels = assert_type(Tensor, split["label"])
+            breakpoint()
             val_h = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
 
             with split.formatted_as("torch", device=device):

@@ -270,13 +270,7 @@ class DatasetTemplates:
     helper functions necessary to read/write to the yaml file
     """
 
-    TEMPLATES_KEY = "templates"
-    DATASET_KEY = "dataset"
-    SUBSET_KEY = "subset"
-    LABEL_COLUMN_KEY = "label_column"
-    LABEL_CHOICES_KEY = "label_choices"
-    TEMPLATE_FILENAME = "templates.yaml"
-
+    choices_column: str | None
     label_column: str | None
     label_choices: list[int | str]
     templates: dict[str, Template]
@@ -289,11 +283,11 @@ class DatasetTemplates:
             yaml_dict = yaml.load(f, Loader=yaml.FullLoader)
 
             # Required field; contains all the templates keyed by ID
-            self.templates = yaml_dict[self.TEMPLATES_KEY]
+            self.templates = yaml_dict["templates"]
 
-            # Optional fields; may be None
-            self.label_column = yaml_dict.get(self.LABEL_COLUMN_KEY)
-            self.label_choices = yaml_dict.get(self.LABEL_CHOICES_KEY, [])
+            self.choices_column = yaml_dict.get("choices_column")
+            self.label_column = yaml_dict.get("label_column")
+            self.label_choices = yaml_dict.get("label_choices", [])
 
     def drop_non_mc_templates(self) -> int:
         """Drop all templates that aren't multiple choice, return the number dropped"""
@@ -326,7 +320,7 @@ class DatasetTemplates:
 
     @property
     def yaml_path(self) -> str:
-        path = os.path.join(self.folder_path, self.TEMPLATE_FILENAME)
+        path = os.path.join(self.folder_path, "templates.yaml")
         if not os.path.exists(path):
             raise ValueError(f"Expected prompt templates to exist at {path}")
 

@@ -253,7 +253,7 @@ def extract_hiddens(
                         input_ids = input_ids[..., -min(cur_len, max_len) :]
 
                 # Make sure we only pass the arguments that the model expects
-                inputs = dict(input_ids=input_ids)
+                inputs = dict(input_ids=input_ids.long())
                 if is_enc_dec:
                     inputs["labels"] = answer
 
