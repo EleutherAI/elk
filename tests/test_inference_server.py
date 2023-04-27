@@ -32,7 +32,7 @@ def test_inference_server_normal():
 
 def test_inference_server_fsdp():
     model_str = "sshleifer/tiny-gpt2"
-    server = InferenceServer(model_str=model_str, num_workers=4, fsdp=True, cpu_offload=True)
+    server = InferenceServer(model_str=model_str, num_workers=4, fsdp=True, cpu_offload=False)
     print("Started inference server")
     # encode this text into input ids
     text = "Hello, my dog is cute"
