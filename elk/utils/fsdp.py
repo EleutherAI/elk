@@ -70,7 +70,7 @@ class InferenceServer:
 
         # Determine which GPUs we can use
         devices = select_usable_devices(
-            self.num_workers, min_memory=model_size if not self.fsdp else None
+            self.num_workers, min_memory=model_size if not self.fsdp else 100
         )
         self.num_workers = len(devices)  # This may have been -1 before
 
