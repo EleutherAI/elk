@@ -223,7 +223,6 @@ def _worker(
 
             assert dataset is not None, "Dataset should not be None"
             for record in dataset:
-                print(f"Running on record {record}")
                 assert isinstance(record, dict)
                 try:
                     inputs_cuda = pytree_map(
@@ -236,7 +235,7 @@ def _worker(
 
                 # We always want to return the hidden states
                 try:
-                    print("Running forward")
+                    print(f"Running forward with {inputs_cuda}")
                     outputs = model(**inputs_cuda, output_hidden_states=True)
                     print("Done running forward")
                 except Exception as e:
@@ -249,7 +248,6 @@ def _worker(
                 outputs = outputs_cls(**outputs_dict)
                 # apply the closure
                 output_applied = closure(outputs)
-                print(f"Sending outputs back to main process {output_applied}")
 
                 # Send the outputs back to the main process
                 out_queue.put(output_applied)
