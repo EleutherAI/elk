@@ -111,8 +111,8 @@ def extract_hiddens(
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
     model = instantiate_model(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
-    ).to(device)
+        cfg.model, device, torch_dtype="auto" if device != "cpu" else torch.float32
+    )
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=rank == 0
     )
@@ -231,7 +231,7 @@ def extract_hiddens(
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 )
                 # First element of list is the input embeddings
-                hiddens = hiddens[1:]
+                # hiddens = hiddens[1:]
 
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
@@ -240,7 +240,7 @@ def extract_hiddens(
                 if cfg.token_loc == "first":
                     hiddens = [h[..., 0, :] for h in hiddens]
                 elif cfg.token_loc == "last":
-                    hiddens = [h[..., -1, :] for h in hiddens]
+                    hiddens = [h[..., -1, :] if len(h.shape) >= 2 else h for h in hiddens]
                 elif cfg.token_loc == "mean":
                     hiddens = [h.mean(dim=-2) for h in hiddens]
                 else:

@@ -1,3 +1,4 @@
+import torch
 import transformers
 from transformers import (
     AutoConfig,
@@ -9,7 +10,7 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
-from ..rwkv_lm.rwkv_hf import RWKVConfig, RWKVModel
+from ..rwkv_lm.rwkv_hf import RWKVConfig, RWKVModel, RWKVTokenizer
 
 # Ordered by preference
 _DECODER_ONLY_SUFFIXES = [
@@ -20,15 +21,15 @@ _DECODER_ONLY_SUFFIXES = [
 _AUTOREGRESSIVE_SUFFIXES = ["ConditionalGeneration"] + _DECODER_ONLY_SUFFIXES
 
 
-def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
+def instantiate_model(model_str: str, device: torch.device, **kwargs) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class."""
     if model_str.startswith("rwkv"):
-        return RWKVModel()
+        return RWKVModel(device)
 
     model_cfg = AutoConfig.from_pretrained(model_str)
     archs = model_cfg.architectures
     if not isinstance(archs, list):
-        return AutoModel.from_pretrained(model_str, **kwargs)
+        return AutoModel.from_pretrained(model_str, **kwargs).to(device)
 
     for suffix in _AUTOREGRESSIVE_SUFFIXES:
         # Check if any of the architectures in the config end with the suffix.
@@ -36,15 +37,16 @@ def instantiate_model(model_str: str, **kwargs) -> PreTrainedModel:
         for arch_str in archs:
             if arch_str.endswith(suffix):
                 model_cls = getattr(transformers, arch_str)
-                return model_cls.from_pretrained(model_str, **kwargs)
+                return model_cls.from_pretrained(model_str, **kwargs).to(device)
 
-    return AutoModel.from_pretrained(model_str, **kwargs)
+    return AutoModel.from_pretrained(model_str, **kwargs).to(device)
 
 
 def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:
     """Instantiate a tokenizer, using the fast one iff it exists."""
     if model_str.startswith("rwkv"):
-        return GPT2TokenizerFast(tokenizer_file="elk/rwkv_lm/20B_tokenizer.json")
+        return RWKVTokenizer()
+        # return GPT2TokenizerFast(tokenizer_file="elk/rwkv_lm/20B_tokenizer.json")
 
     try:
         return AutoTokenizer.from_pretrained(model_str, use_fast=True, **kwargs)

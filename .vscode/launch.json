@@ -9,9 +9,9 @@
             "type": "python",
             "request": "launch",
             "module": "elk",
-            "args": ["elicit", "rwkv", "imdb", "--max_examples=5"],
+            "args": ["elicit", "rwkv", "imdb", "--max_examples=6"],
             "env": {
-                "CUDA_VISIBLE_DEVICES": "5",
+                "CUDA_VISIBLE_DEVICES": "6",
             },
             "justMyCode": true
         }

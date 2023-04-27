@@ -1,13 +1,14 @@
 import os
-
+import torch
 from huggingface_hub import hf_hub_download
-from transformers import PretrainedConfig, PreTrainedModel
+from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizer, BatchEncoding
 from transformers.modeling_outputs import CausalLMOutput
 
 # The rwkv.model is the official build
 # from rwkv.model import RWKV
 # rwkv_hiddens is a custom implementation that exposes all the hidden states as layer states - written by Nora
 from .rwkv_hiddens import RWKV
+from rwkv.utils import PIPELINE
 
 os.environ["RWKV_JIT_ON"] = "1"
 os.environ["RWKV_CUDA_ON"] = "0"
@@ -16,14 +17,14 @@ os.environ["RWKV_CUDA_ON"] = "0"
 class RWKVConfig(PretrainedConfig):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.hidden_size = 2048
-        self.num_hidden_layers = 25
+        self.hidden_size = 4096
+        self.num_hidden_layers = 33
         self.is_encoder_decoder = False
         self.architectures = ["RWKV-LM"]
 
 
 class RWKVModel(PreTrainedModel):
-    def __init__(self):
+    def __init__(self, device):
         super().__init__(RWKVConfig())
 
         # TODO: Add support for specifying the parameter count through the HF path provided in the CLI args
@@ -43,7 +44,9 @@ class RWKVModel(PreTrainedModel):
         # 14b
         # weights_path = hf_hub_download(repo_id="BlinkDL/rwkv-4-pile-14b", filename="RWKV-4-Pile-14B-20230213-8019.pth")
 
-        self.model = RWKV(model=weights_path, strategy="cuda bf16")
+        strategy = f"{device} bf16"
+        self.model = RWKV(model=weights_path, strategy=strategy)
+        self.device_object = torch.device(device)
 
     def forward(
         self,
@@ -55,18 +58,40 @@ class RWKVModel(PreTrainedModel):
         labels=None,
         output_hidden_states=None,
     ):
-        inputs = input_ids.detach().cpu()
+        inputs = input_ids[0].detach().cpu()
         token, states = self.model.forward(inputs, None)
-        mock_embedding_state = states[0].clone()
-        output_states = [mock_embedding_state] + states
         response = CausalLMOutput(
             logits=token.detach().clone(),
-            hidden_states=[state.detach() for state in output_states],
+            hidden_states=states
+            # hidden_states=[states[-1]],
+            # hidden_states=[state.detach() for state in output_states],
         )
+
         return response
 
-    # @staticmethod
-    # def from_pretrained(pretrained_model_name_or_path):
-    #     weights_path = "/home/kyle/HF-MODEL/rwkv-4-pile-1b5/models--BlinkDL--rwkv-4-pile-1b5/snapshots/6ea995eaa87a17af560c9b41ce1a3d92355c5a49/RWKV-4-Pile-1B5-20220903-8040.pth"
-    #     model = RWKVModel(weights_path)
-    #     return model
+class RWKVTokenizer(PreTrainedTokenizer):
+
+    model_max_length = 2048
+
+    def __init__(self, vocab_file_path="elk/rwkv_lm/20B_tokenizer.json"):
+        self.pipeline = PIPELINE(None, vocab_file_path)
+
+    def __call__(
+        self,
+        text=None,
+        return_tensors=None,
+        truncation=None,
+        return_offsets_mapping=None,
+        text_target=None,
+        add_special_tokens=None,
+    ):
+        input_ids = self.encode(text)
+        return BatchEncoding({
+            "input_ids": torch.tensor([input_ids])
+        })
+
+    def encode(self, text):
+        return self.pipeline.encode(text)
+
+    def decode(self, token_ids):
+        return self.pipeline.decode(token_ids)
