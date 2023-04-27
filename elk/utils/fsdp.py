@@ -215,6 +215,7 @@ def _worker(
                 forward_prefetch=True,
             )
             model = cast(PreTrainedModel, wrapped)
+            print(f"FSDP running on rank {rank} with {device}")
         else:
             model.to(device)
 
