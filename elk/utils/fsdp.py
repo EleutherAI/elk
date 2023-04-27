@@ -236,11 +236,9 @@ def _worker(
                 except Exception as e:
                     print(f"forward failed {e}")
                     raise e
-
+                print("Ran forward successfully")
 
                 outputs_cls = type(outputs)
-                # Need to clone to avoid
-                # Attempted to send CUDA tensor received from another process; this is not currently supported. Consider cloning before sending.
                 outputs_dict = pytree_map(
                     lambda x: x.cpu().share_memory_(), outputs
                 )
