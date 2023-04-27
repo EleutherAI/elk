@@ -53,7 +53,7 @@ def test_inference_server_fsdp_one():
     # make the dict a dataset, while still making it a pytorch dataset
     input_dataset = Dataset.from_dict(inputs)
     input_dataset.set_format(type="torch")
-    outputs = server.map_for_non_fsdp(dataset=input_dataset, closure=lambda x: x)[0]
+    outputs = server.map(dataset=input_dataset, closure=lambda x: x)[0]
     assert (
         type(outputs) == transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
     )
@@ -82,7 +82,7 @@ def test_inference_server_fsdp_other_map_imp():
         [{"input_ids": input_ids_one}, {"input_ids": input_ids_two}]
     )
     input_dataset.set_format(type="torch")
-    outputs = server.map_for_non_fsdp(dataset=input_dataset, closure=lambda x: x)
+    outputs = server.map(dataset=input_dataset, closure=lambda x: x)
     assert len(outputs) == 2
     first_output = outputs[0]
     assert (

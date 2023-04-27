@@ -135,6 +135,7 @@ class InferenceServer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
 
+
     def map(
         self,
         closure: Callable[[ModelOutput], A],
@@ -144,16 +145,6 @@ class InferenceServer:
         Note that the order of the outputs is not guaranteed to match
         """
         return list(self.imap(closure, dataset))
-
-    def map_for_non_fsdp(
-        self,
-        closure: Callable[[ModelOutput], A],
-        dataset: Dataset,
-    ) -> list[A]:
-        """Run inference on the given inputs, running a closure on the outputs.
-        Note that the order of the outputs is not guaranteed to match
-        """
-        return list(self.imap_for_non_fsdp(closure, dataset))
 
     def one(
         self,
@@ -182,7 +173,7 @@ class InferenceServer:
 
         yield from round_robin(result_queues, sentinel=SingletonSentinel)  # type: ignore
 
-    def imap_for_non_fsdp(  # todo: delete
+    def imap(
         self,
         closure: Callable[[ModelOutput], A],
         dataset: Dataset,
@@ -245,6 +236,8 @@ def _worker(
             # This is dumb, but we need to run a forward pass to initialize the
             # FSDP. Otherwise, the first forward pass on all workers will not run
             # if one of the workers doesn't receive a dataset to run on
+            # This can happen if the first dataset len is lesser than the number of
+            # workers
             model(input_ids=torch.Tensor([0]).long().to(device))
             print(f"FSDP running on rank {rank} with {device}")
         else:
