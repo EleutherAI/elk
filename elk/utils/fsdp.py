@@ -223,7 +223,7 @@ def _worker(
             print("Am I getting stuck here??")
             try:
                 inputs_cuda = pytree_map(
-                    lambda t: torch.clone(t).to(device).unsqueeze(0), record
+                    lambda t: t.to(device).unsqueeze(0), record
                 )
             except Exception as e:
                 print(f"Failed to move inputs to cuda: {e}")
@@ -238,20 +238,19 @@ def _worker(
                 print(f"forward failed {e}")
                 raise e
 
-            if callable(closure):
-                outputs = closure(outputs)
-            else:
-                # Move the outputs back to the CPU
-                outputs_cls = type(outputs)
-                # Need to clone to avoid
-                # Attempted to send CUDA tensor received from another process; this is not currently supported. Consider cloning before sending.
-                outputs_dict = pytree_map(
-                    lambda x: torch.clone(x).cpu().share_memory_(), outputs
-                )
-                outputs = outputs_cls(**outputs_dict)
+
+            outputs_cls = type(outputs)
+            # Need to clone to avoid
+            # Attempted to send CUDA tensor received from another process; this is not currently supported. Consider cloning before sending.
+            outputs_dict = pytree_map(
+                lambda x: x.cpu().share_memory_(), outputs
+            )
+            outputs = outputs_cls(**outputs_dict)
+            # apply the closure
+            output_applied = closure(outputs)
 
             # Send the outputs back to the main process
-            out_queue.put(outputs)
+            out_queue.put(output_applied)
 
         # Indicate we're done with this dataset
         out_queue.put_nowait(None)
