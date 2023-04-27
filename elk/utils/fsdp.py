@@ -219,7 +219,6 @@ def _worker(
             for record in dataset:
                 print(f"Running on record {record}")
                 assert isinstance(record, dict)
-                print("Am I getting stuck here??")
                 try:
                     inputs_cuda = pytree_map(
                         lambda t: t.to(device).unsqueeze(0), record
@@ -313,6 +312,7 @@ def round_robin(queues: list[mp.Queue], sentinel: Any = None) -> Iterable[Any]:
             pass
         else:
             if item == sentinel:
+                print("Got sentinel")
                 exhausted.add(idx)
             else:
                 yield item
