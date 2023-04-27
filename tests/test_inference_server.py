@@ -1,3 +1,4 @@
+import torch
 import transformers
 import transformers.modeling_outputs
 from datasets import Dataset
@@ -39,7 +40,7 @@ def test_inference_server_normal():
 def test_inference_server_fsdp_one():
     model_str = "sshleifer/tiny-gpt2"
     server = InferenceServer(
-        model_str=model_str, num_workers=2, fsdp=True, cpu_offload=True
+        model_str=model_str, num_workers=2, fsdp=False, cpu_offload=True
     )
     print("Started inference server")
     # encode this text into input ids
@@ -60,6 +61,7 @@ def test_inference_server_fsdp_one():
 
 def test_inference_server_fsdp_two():
     model_str = "sshleifer/tiny-gpt2"
+    single_model = transformers.AutoModelForCausalLM.from_pretrained(model_str)
     server = InferenceServer(
         model_str=model_str, num_workers=2, fsdp=True, cpu_offload=True
     )
@@ -74,10 +76,16 @@ def test_inference_server_fsdp_two():
     # make the dict a dataset, while still making it a pytorch dataset
     input_dataset = Dataset.from_list([inputs, inputs])
     input_dataset.set_format(type="torch")
-    outputs = server.map(dataset=input_dataset, closure=lambda x: x)[0]
+    first_output = server.map(dataset=input_dataset, closure=lambda x: x)[0]
     assert (
-        type(outputs) == transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
+        type(first_output)
+        == transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
     )
+    # assert that the first output's logits is equal
+    first_output_logits = first_output.logits
+    second_output = single_model(**inputs)
+    second_output_logits = second_output.logits
+    assert torch.allclose(first_output_logits, second_output_logits)
 
 
 def test_inference_server_fsdp_limited():
