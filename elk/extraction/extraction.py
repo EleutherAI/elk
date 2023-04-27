@@ -541,7 +541,9 @@ def extract(
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
 
     split_names = list(get_splits().keys())
-    server = InferenceServer(model_str=cfg.model, fsdp=True, cpu_offload=True)
+    server = InferenceServer(
+        model_str=cfg.model, fsdp=True, cpu_offload=True, num_workers=8
+    )
 
     return extract_hiddens_with_server(
         cfg=cfg,
