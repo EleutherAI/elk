@@ -1,0 +1,160 @@
+# Meta-template for binarizing a multiple choice dataset
+dataset: sciq_binary
+label_choices:
+  - 0
+  - 1
+# This column doesn't actually exist in the sciq dataset, but that's okay. We end up
+# creating this column in the output dataset, and never directly read it from the
+# input dataset.
+label_column: label
+templates:
+  a1: !Template
+    answer_choices: '{{distractor1}} ||| {{distractor2}} ||| {{distractor3}} ||| {{correct_answer}}'
+    id: a1
+    jinja: "\
+      {% set order = 4 | permutation %}
+      {% set response_idx = order.index(3 if label else (range(3) | choice)) %}
+      {% set shuffled_choices = answer_choices | reorder(order) %}
+      You will see a question followed by a response which may be incorrect.
+      You will be asked to figure out whether the answer is correct or not.
+
+
+      \"Q: {{question}}
+
+      {% for i, c in enumerate(shuffled_choices) %}
+      {{i | to_letter}}) {{c}}
+
+      {% endfor %}
+      Response: {{response_idx | to_letter}}, {{shuffled_choices[response_idx]}}\"
+
+
+      Is the response correct, yes or no?|||{{'yes' if label else 'no'}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: yes_no
+    reference: ''
+  a2: !Template
+    answer_choices: '{{distractor1}} ||| {{distractor2}} ||| {{distractor3}} ||| {{correct_answer}}'
+    id: a2
+    jinja: "\
+      {% set order = 4 | permutation %}
+      {% set response_idx = order.index(3 if label else (range(3) | choice)) %}
+      {% set shuffled_choices = answer_choices | reorder(order) %}
+      The following quote contains a question followed by a response which may be
+      incorrect. Your task is to determine whether the answer is correct or incorrect.
+
+
+      \"Q: {{question}}
+
+      {% for i, c in enumerate(shuffled_choices) %}
+      {{i | to_letter}}) {{c}}
+
+      {% endfor %}
+      Response: {{response_idx | to_letter}}, {{shuffled_choices[response_idx]}}\"
+
+
+      Was the response correct or incorrect?|||{{'correct' if label else 'incorrect'}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: correct_incorrect
+    reference: ''
+  a3: !Template
+    answer_choices: '{{distractor1}} ||| {{distractor2}} ||| {{distractor3}} ||| {{correct_answer}}'
+    id: a3
+    jinja: "\
+      {% set order = 4 | permutation %}
+      {% set response_idx = order.index(3 if label else (range(3) | choice)) %}
+      {% set shuffled_choices = answer_choices | reorder(order) %}
+      The following quote is an exam question followed by a student's response.
+      You will determine whether student chose the right answer.
+
+
+      \"Q: {{question}}
+
+      {% for i, c in enumerate(shuffled_choices) %}
+      {{i | to_letter}}) {{c}}
+
+      {% endfor %}
+      Student's response: {{response_idx | to_letter}}, {{shuffled_choices[response_idx]}}\"
+
+
+      Did the student choose the right answer, yes or no?|||{{'yes' if label else 'no'}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: student_yes_no
+    reference: ''
+  a4: !Template
+    answer_choices: '{{distractor1}} ||| {{distractor2}} ||| {{distractor3}} ||| {{correct_answer}}'
+    id: a4
+    jinja: "\
+      {% set order = 4 | permutation %}
+      {% set response_idx = order.index(3 if label else (range(3) | choice)) %}
+      {% set shuffled_choices = answer_choices | reorder(order) %}
+      The paragraph below is a quiz question followed by a student's response.
+      You will determine if the response was right or wrong.
+
+
+      \"Q: {{question}}
+
+      {% for i, c in enumerate(shuffled_choices) %}
+      {{i | to_letter}}) {{c}}
+
+      {% endfor %}
+      Student's response: {{response_idx | to_letter}}, {{shuffled_choices[response_idx]}}\"
+
+
+      Was the response right or wrong?|||{{'right' if label else 'wrong'}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: student_correct_incorrect
+    reference: ''
+  a5: !Template
+    answer_choices: '{{distractor1}} ||| {{distractor2}} ||| {{distractor3}} ||| {{correct_answer}}'
+    id: a5
+    jinja: "\
+      {% set order = 4 | permutation %}
+      {% set response_idx = order.index(3 if label else (range(3) | choice)) %}
+      {% set shuffled_choices = answer_choices | reorder(order) %}
+      The following is an exam question followed by a student's response.
+      You will guess if they received full credit for the answer.
+
+
+      \"Q: {{question}}
+
+      {% for i, c in enumerate(shuffled_choices) %}
+      {{i | to_letter}}) {{c}}
+
+      {% endfor %}
+      Student's response: {{response_idx | to_letter}}, {{shuffled_choices[response_idx]}}\"
+
+
+      Did the student get full credit for this answer (yes or no)?|||{{'yes' if label else 'no'}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: student_full_credit
+    reference: ''

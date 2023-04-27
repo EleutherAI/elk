@@ -1,5 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 import torch
@@ -15,7 +16,10 @@ from ..training import Reporter
 class Eval(Run):
     """Full specification of a reporter evaluation run."""
 
-    source: str = field(default="", positional=True)
+    # Using None as a default here is a hack; we actually raise an error if it's not
+    # specified in __post_init__. TODO: Maybe this is an indication we should be using
+    # composition and not inheritance here?
+    source: Path | None = field(default=None, positional=True)
     skip_supervised: bool = False
 
     def __post_init__(self):
@@ -38,6 +42,7 @@ class Eval(Run):
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
 
+        assert self.source, "Must specify a source experiment."
         experiment_dir = elk_reporter_dir() / self.source
 
         reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"

@@ -1,9 +1,8 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
-from copy import copy
-from dataclasses import InitVar, dataclass
-from itertools import islice
+from dataclasses import InitVar, dataclass, replace
+from itertools import islice, zip_longest
 from typing import Any, Iterable, Literal
 from warnings import filterwarnings
 
@@ -45,31 +44,70 @@ from .dataset_name import (
     extract_dataset_name_and_config,
 )
 from .generator import _GeneratorBuilder
-from .prompt_loading import PromptConfig, load_prompts
+from .prompt_loading import load_prompts
 
 
 @dataclass
 class Extract(Serializable):
-    """
-    Args:
-        model: HuggingFace model string identifying the language model to extract
-            hidden states from.
-        prompts: The configuration for the prompt prompts.
-        layers: The layers to extract hidden states from.
-        layer_stride: Shortcut for setting `layers` to `range(0, num_layers, stride)`.
-        token_loc: The location of the token to extract hidden states from. Can be
-            either "first", "last", or "mean". Defaults to "last".
-    """
+    """Config for extracting hidden states from a language model."""
 
-    prompts: PromptConfig
     model: str = field(positional=True)
+    """HF model string identifying the language model to extract hidden states from."""
+
+    datasets: tuple[str, ...] = field(positional=True)
+    """Names of HF datasets to use, e.g. `"super_glue:boolq"` or `"imdb"`"""
+
+    data_dirs: tuple[str, ...] = ()
+    """Directory to use for caching the hiddens. Defaults to `HF_DATASETS_CACHE`."""
+
+    max_examples: tuple[int, int] = (1000, 1000)
+    """Maximum number of examples to use from each split of the dataset."""
+
+    num_shots: int = 0
+    """Number of examples for few-shot prompts. If zero, prompts are zero-shot."""
+
+    num_variants: int = -1
+    """The number of prompt templates to use for each example. If -1, all available
+    templates are used."""
+
+    seed: int = 42
+    """Seed to use for prompt randomization. Defaults to 42."""
 
     layers: tuple[int, ...] = ()
+    """Indices of layers to extract hidden states from. We follow the HF convention, so
+    0 is the embedding, and 1 is the output of the first transformer layer."""
+
     layer_stride: InitVar[int] = 1
+    """Shortcut for `layers = (0,) + tuple(range(1, num_layers + 1, stride))`."""
+
+    template_path: str | None = None
+    """Path to pass into `DatasetTemplates`. By default we use the dataset name."""
+
     token_loc: Literal["first", "last", "mean"] = "last"
+    """The location of the token to extract hidden states from."""
+
     use_encoder_states: bool = False
+    """Whether to extract hidden states from the encoder instead of the decoder in the
+    case of encoder-decoder models."""
 
     def __post_init__(self, layer_stride: int):
+        if len(self.max_examples) > 2:
+            raise ValueError(
+                "max_examples should be a list of length 0, 1, or 2,"
+                f"but got {len(self.max_examples)}"
+            )
+        if not self.max_examples:
+            self.max_examples = (int(1e100), int(1e100))
+
+        # Broadcast the dataset name to all data_dirs
+        if len(self.data_dirs) == 1:
+            self.data_dirs *= len(self.datasets)
+        elif self.data_dirs and len(self.data_dirs) != len(self.datasets):
+            raise ValueError(
+                "data_dirs should be a list of length 0, 1, or len(datasets),"
+                f" but got {len(self.data_dirs)}"
+            )
+
         if self.layers and layer_stride > 1:
             raise ValueError(
                 "Cannot use both --layers and --layer-stride. Please use only one."
@@ -87,14 +125,10 @@ class Extract(Serializable):
 
     def explode(self) -> list["Extract"]:
         """Explode this config into a list of configs, one for each layer."""
-        copies = []
-
-        for prompt_cfg in self.prompts.explode():
-            cfg = copy(self)
-            cfg.prompts = prompt_cfg
-            copies.append(cfg)
-
-        return copies
+        return [
+            replace(self, datasets=(ds,), data_dirs=(data_dir,) if data_dir else ())
+            for ds, data_dir in zip_longest(self.datasets, self.data_dirs)
+        ]
 
 
 @torch.inference_mode()
@@ -114,8 +148,7 @@ def extract_hiddens(
         filterwarnings("ignore")
         logging.disable(logging.CRITICAL)
 
-    p_cfg = cfg.prompts
-    ds_names = p_cfg.datasets
+    ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
     model = instantiate_model(
@@ -138,6 +171,7 @@ def extract_hiddens(
     prompt_ds = load_prompts(
         ds_names[0],
         split_type=split_type,
+        template_path=cfg.template_path,
         rank=rank,
         world_size=world_size,
     )
@@ -145,7 +179,7 @@ def extract_hiddens(
     # Add one to the number of layers to account for the embedding layer
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
 
-    global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
+    global_max_examples = cfg.max_examples[0 if split_type == "train" else 1]
     # break `max_examples` among the processes roughly equally
     max_examples = global_max_examples // world_size
     # the last process gets the remainder (which is usually small)
@@ -277,18 +311,22 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
     model_cfg = AutoConfig.from_pretrained(cfg.model)
 
     ds_name, config_name = extract_dataset_name_and_config(
-        dataset_config_str=cfg.prompts.datasets[0]
+        dataset_config_str=cfg.datasets[0]
     )
     info = get_dataset_config_info(ds_name, config_name or None)
 
-    prompter = DatasetTemplates(ds_name, config_name)
+    if not cfg.template_path:
+        prompter = DatasetTemplates(ds_name, config_name)
+    else:
+        prompter = DatasetTemplates(cfg.template_path)
+
     ds_features = assert_type(Features, info.features)
     label_col = prompter.label_column or infer_label_column(ds_features)
     num_classes = len(prompter.label_choices) or infer_num_classes(
         ds_features[label_col]
     )
 
-    num_variants = cfg.prompts.num_variants
+    num_variants = cfg.num_variants
     if num_variants < 0:
         num_dropped = prompter.drop_non_mc_templates()
         num_variants = len(prompter.templates)
@@ -340,19 +378,27 @@ def extract(
     info, features = hidden_features(cfg)
 
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
-    limit_list = cfg.prompts.max_examples
+    limits = cfg.max_examples
     splits = assert_type(SplitDict, info.splits)
 
+    pretty_name = colorize(assert_type(str, cfg.datasets[0]), highlight_color)
     if split_type is None:
         train, val = select_train_val_splits(splits)
-        pretty_name = colorize(assert_type(str, info.builder_name), highlight_color)
-        print(f"{pretty_name}: using '{train}' for training and '{val}' for validation")
+
+        print(f"{pretty_name} using '{train}' for training and '{val}' for validation")
         splits = SplitDict({train: splits[train], val: splits[val]})
+        split_types = ["train", "val"]
     else:
         # Remove the split we're not using
-        del limit_list[1 if split_type == "train" else 0]
+        limits = [limits[0]] if split_type == "train" else limits
         split_name = select_split(splits, split_type)
         splits = SplitDict({split_name: splits[split_name]})
+        split_types = [split_type]
+
+        if split_type == "train":
+            print(f"{pretty_name} using '{split_name}' for training")
+        else:
+            print(f"{pretty_name} using '{split_name}' for validation")
 
     builders = {
         split_name: _GeneratorBuilder(
@@ -362,18 +408,18 @@ def extract(
             split_name=split_name,
             split_info=SplitInfo(
                 name=split_name,
-                num_examples=min(limit, v.num_examples) * len(cfg.prompts.datasets),
+                num_examples=min(limit, v.num_examples) * len(cfg.datasets),
                 dataset_name=v.dataset_name,
             ),
             gen_kwargs=dict(
                 cfg=[cfg] * len(devices),
                 device=devices,
                 rank=list(range(len(devices))),
-                split_type=[split_name] * len(devices),
+                split_type=[ty] * len(devices),
                 world_size=[len(devices)] * len(devices),
             ),
         )
-        for limit, (split_name, v) in zip(limit_list, splits.items())
+        for limit, (split_name, v), ty in zip(limits, splits.items(), split_types)
     }
     import multiprocess as mp
 
@@ -389,6 +435,6 @@ def extract(
 
     dataset_dict = DatasetDict(ds)
     return DatasetDictWithName(
-        name=cfg.prompts.datasets[0],
+        name=cfg.datasets[0],
         dataset=dataset_dict,
     )

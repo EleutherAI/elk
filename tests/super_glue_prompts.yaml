@@ -1,7 +1,8 @@
-balance: true
 datasets:
   - "super_glue boolq"
   - "super_glue copa"
+model:
+  - gpt2
 label_column: null
 max_examples:
 - 5

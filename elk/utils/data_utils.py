@@ -7,20 +7,12 @@ from datasets import (
     ClassLabel,
     DatasetDict,
     Features,
-    Split,
     Value,
     get_dataset_config_names,
 )
 
 from ..promptsource.templates import Template
 from .typing import assert_type
-
-# Lower values are more "train-like" and higher values are more "test-like".
-PRIORITIES = {
-    Split.TRAIN: 0,
-    Split.VALIDATION: 1,
-    Split.TEST: 2,
-}
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
@@ -33,6 +25,18 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
     return pivot
 
 
+def get_split_priority(split: str) -> int:
+    """Return an integer indicating how "test-like" a split is given its name."""
+    if split.startswith("train"):
+        return 0
+    elif split.startswith("val"):
+        return 1
+    elif split.startswith("test"):
+        return 2
+
+    return 3
+
+
 @cache
 def has_multiple_configs(ds_name: str) -> bool:
     """Return whether a dataset has multiple configs."""
@@ -41,16 +45,22 @@ def has_multiple_configs(ds_name: str) -> bool:
 
 def select_split(raw_splits: Iterable[str], split_type: Literal["train", "val"]) -> str:
     """Return the train or validation split to use, given an Iterable of splits."""
-    assert split_type in ("train", "val")
+    assert split_type in ("train", "val"), f"Invalid split type: {split_type}"
 
-    reduce_fn = min if split_type == "train" else max
-    return reduce_fn(raw_splits, key=lambda k: PRIORITIES.get(k, 100))  # type: ignore
+    # Note we use the alphabetical order of the splits as a tiebreaker.
+    sorted_splits = sorted(raw_splits, key=lambda k: (get_split_priority(k), k))
+    if not sorted_splits:
+        raise ValueError("No splits found!")
+    elif len(sorted_splits) == 1:
+        return sorted_splits[0]
+    else:
+        return sorted_splits[0] if split_type == "train" else sorted_splits[1]
 
 
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
     """Return splits to use for train and validation, given an Iterable of splits."""
 
-    splits = sorted(raw_splits, key=lambda k: PRIORITIES.get(k, 100))  # type: ignore
+    splits = sorted(raw_splits, key=lambda k: (get_split_priority(k), k))
     assert len(splits) >= 2, "Must have at least two of train, val, and test splits"
 
     return tuple(splits[:2])
@@ -117,15 +127,14 @@ def infer_num_classes(label_feature: Any) -> int:
         )
 
 
-def get_layers(ds: DatasetDict) -> list[int]:
-    """Get a list of indices of hidden layers given a `DatasetDict`."""
-    train, _ = select_train_val_splits(ds.keys())
-    layers = [
-        int(feat[len("hidden_") :])
-        for feat in ds[train].features
-        if feat.startswith("hidden_")
-    ]
-    return layers
+def get_layer_indices(ds: DatasetDict) -> list[int]:
+    """Return the indices of the layers from which the hiddens have been extracted."""
+    # Dataset has a bunch of columns of the form "hidden_0", "hidden_1", etc.
+    # str.removeprefix() is a no-op if the prefix isn't present
+    suffixes = (col.removeprefix("hidden_") for col in get_columns_all_equal(ds))
+
+    # Convert to the suffixes that are integral to ints, then sort them
+    return sorted(int(suffix) for suffix in suffixes if suffix.isdigit())
 
 
 def binarize(template: Template, label: int, new_label: int, rng: Random) -> Template:

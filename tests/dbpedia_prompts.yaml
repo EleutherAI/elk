@@ -1,6 +1,7 @@
-balance: true
 datasets:
   - "dbpedia_14"
+model:
+  - gpt2
 label_column: null
 max_examples:
 - 5

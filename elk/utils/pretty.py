@@ -1,4 +1,4 @@
-# Kind of kickass that this file has no imports
+from typing import Literal
 
 # ANSI color codes for use in terminal output.
 COLOR_CODES = {
@@ -11,9 +11,10 @@ COLOR_CODES = {
     "cyan": 36,
     "white": 37,
 }
+Color = Literal["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"]
 
 
-def colorize(message: str, color: str) -> str:
+def colorize(message: str, color: Color) -> str:
     """Colorize a message for terminal output."""
     # Get the ANSI color code based on the human-readable color name.
     code = COLOR_CODES.get(color.lower())

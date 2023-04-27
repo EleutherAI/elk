@@ -19,7 +19,7 @@ TEMPLATES_FOLDER_PATH = Path(__file__).parent / "templates"
 env = Environment(loader=BaseLoader)  # type: ignore
 
 # Allow the python function zip()
-env.globals.update(zip=zip)
+env.globals.update(enumerate=enumerate, zip=zip)
 
 # These are users whose datasets should be included in the results returned by
 # filter_english_datasets (regardless of their metadata)
@@ -32,6 +32,18 @@ def highlight(input):
 
 def choice(choices):
     return random.choice(choices)
+
+
+def permutation(n):
+    return random.sample(range(n), n)
+
+
+def reorder(arr, permutation):
+    return [arr[i] for i in permutation]
+
+
+def to_letter(n):
+    return chr(n + ord("A"))
 
 
 def most_frequent(items):
@@ -47,6 +59,9 @@ def most_frequent(items):
 env.filters["highlight"] = highlight
 env.filters["choice"] = choice
 env.filters["most_frequent"] = most_frequent
+env.filters["permutation"] = permutation
+env.filters["reorder"] = reorder
+env.filters["to_letter"] = to_letter
 
 
 class Template(yaml.YAMLObject):
@@ -386,7 +401,7 @@ class DatasetTemplates:
     TEMPLATE_FILENAME = "templates.yaml"
 
     label_column: str | None
-    label_choices: list[str]
+    label_choices: list[int | str]
 
     def __init__(self, dataset_name: str, subset_name: str | None = None):
         self.dataset_name = dataset_name
@@ -409,7 +424,7 @@ class DatasetTemplates:
     def drop_non_mc_templates(self) -> int:
         """Drop all templates that aren't multiple choice, return the number dropped"""
         mc_templates = {
-            k: v for k, v in self.templates.items() if v.get_fixed_answer_choices_list()
+            k: v for k, v in self.templates.items() if v.answer_choices is not None
         }
         if not mc_templates:
             raise ValueError("No multiple choice templates found")

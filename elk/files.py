@@ -40,6 +40,6 @@ def memorably_named_dir(parent: Path):
     return out_dir
 
 
-def transfer_eval_directory(source: str) -> Path:
+def transfer_eval_directory(source: Path) -> Path:
     """Return the directory where transfer evals are stored."""
     return elk_reporter_dir() / source / "transfer_eval"
