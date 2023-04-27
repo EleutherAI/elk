@@ -28,16 +28,16 @@ OUT_DIRECTORY='output/'${tag}
 mkdir ${OUT_DIRECTORY};
 
 # Submit jobs.
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_10 --num_gpus 1
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_10 --net ccs --num_gpus 1
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_20 --num_gpus 1
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_20 --net ccs --num_gpus 1
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_30 --num_gpus 1
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_30 --net ccs --num_gpus 1
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_40 --num_gpus 1
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_40 --net ccs --num_gpus 1
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_50 --num_gpus 1
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_50 --net ccs --num_gpus 1
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_10 
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_10 --net ccs 
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_20 
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_20 --net ccs 
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_30 
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_30 --net ccs 
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_40 
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_40 --net ccs 
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_50 
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_50 --net ccs 
 
 # Finish the script
 exit 0
