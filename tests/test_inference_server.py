@@ -41,5 +41,6 @@ def test_inference_server_fsdp():
     inputs = dict(input_ids=input_ids)
     # make the dict a dataset, while still making it a pytorch dataset
     input_dataset = Dataset.from_dict(inputs)
+    input_dataset.set_format(type="torch")
     outputs = server.map(dataset=input_dataset, closure=lambda x: x)[0]
     assert type(outputs) == transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
