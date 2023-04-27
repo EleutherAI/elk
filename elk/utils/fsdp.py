@@ -32,11 +32,12 @@ class InferenceServer:
     def __init__(
         self,
         model_str: str,
-        num_workers: int = -1,
+        num_workers: int = 1,
         cpu_offload: bool = False,
         fsdp: bool = False,
     ):
         self.model_str = model_str
+        assert num_workers > 0
         self.num_workers = num_workers
         self.cpu_offload = cpu_offload
         self.fsdp = fsdp
@@ -165,6 +166,7 @@ def _worker(
     wrap_policy: partial[bool] | None = None,
 ):
     """Worker process that maintains a copy of the model on a dedicated GPU."""
+    print("Starting worker!")
     # Prevent duplicate logging messages
     if rank != 0:
         logging.disable(logging.CRITICAL)
@@ -201,18 +203,31 @@ def _worker(
     out_queue = out_qs[rank]
 
     while msg := in_queue.get():
+        print("Got msg")
         # Someone called map() giving us a new closure and dataset to use
         assert isinstance(msg, tuple) and len(msg) == 2
         closure_pkl, dataset = msg
         closure = dill.loads(closure_pkl)
+        print("Loaded closure")
 
         assert dataset is not None
+        # set the format in the dataset
+        # todo: don't mutate the dataset input?
+        dataset.set_format(type="torch")
         for record in dataset:
+            print(f"Running on record {record}")
             assert isinstance(record, dict)
-            inputs_cuda = pytree_map(lambda v: v.to(device).unsqueeze(0), record)
+            print("Am I getting stuck here??")
+            try:
+                inputs_cuda = pytree_map(lambda v: v.to(device).unsqueeze(0), record)
+            except Exception as e:
+                print(f"Failed to move inputs to cuda: {e}")
+                raise e
+            print("Got cuda inputs")
 
             # We always want to return the hidden states
             try:
+                print("Running forward")
                 outputs = model(**inputs_cuda, output_hidden_states=True)
             except Exception as e:
                 print(f"forward failed {e}")
