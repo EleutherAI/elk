@@ -254,7 +254,7 @@ def _worker(
         if fsdp_port is not None:
             dist.destroy_process_group()
     except Exception as e:
-        print(f"Worker failed with {e}")
+        print(f"Worker failed with {e}, Type: {type(e)}")
 
 
 def get_transformer_layer_cls(model: torch.nn.Module) -> Type[torch.nn.Module] | None:
