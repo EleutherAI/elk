@@ -196,6 +196,7 @@ class InferenceServer:
         """
         return list(self.imap(closure, dataset))
 
+
     def one(
         self,
         dataset: Dataset,
