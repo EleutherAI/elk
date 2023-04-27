@@ -443,6 +443,7 @@ def extract_hiddens(
                 if is_enc_dec:
                     inputs["labels"] = answer
                 input_dataset = Dataset.from_dict(inputs)
+                input_dataset.set_format(type="torch")
 
                 outputs = server.one(input_dataset)
 

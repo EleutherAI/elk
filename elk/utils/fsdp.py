@@ -217,9 +217,6 @@ def _worker(
         print("Loaded closure")
 
         assert dataset is not None
-        # set the format in the dataset
-        # todo: don't mutate the dataset input?
-        dataset.set_format(type="torch")
         for record in dataset:
             print(f"Running on record {record}")
             assert isinstance(record, dict)
