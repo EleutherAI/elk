@@ -542,7 +542,7 @@ def extract(
 
     split_names = list(get_splits().keys())
     server = InferenceServer(
-        model_str=cfg.model, fsdp=True, cpu_offload=False, num_workers=8
+        model_str=cfg.model, fsdp=True, cpu_offload=False, num_workers=6
     )
 
     return extract_hiddens_with_server(

@@ -68,9 +68,12 @@ class InferenceServer:
         model = self._model
         model_size = sum(p.numel() * p.element_size() for p in model.parameters())
 
+        fdsp_min_mem = model_size / self.num_workers if self.fsdp else None
+
         # Determine which GPUs we can use
         devices = select_usable_devices(
-            self.num_workers, min_memory=model_size if not self.fsdp else 100
+            self.num_workers,
+            min_memory=model_size if fdsp_min_mem is None else fdsp_min_mem,
         )
         self.num_workers = len(devices)  # This may have been -1 before
 
@@ -133,7 +136,9 @@ class InferenceServer:
         closure: Callable[[ModelOutput], A],
         dataset: Dataset,
     ) -> list[A]:
-        """Run inference on the given inputs, running a closure on the outputs."""
+        """Run inference on the given inputs, running a closure on the outputs.
+        Note that the order of the outputs is not guaranteed to match
+        """
         return list(self.imap(closure, dataset))
 
     def one(
@@ -201,7 +206,7 @@ def _worker(
             wrapped = FSDP(
                 model,
                 auto_wrap_policy=wrap_policy,
-                cpu_offload=CPUOffload(offload_params=False),
+                cpu_offload=CPUOffload(offload_params=cpu_offload),
                 device_id=torch.device(device),
                 forward_prefetch=True,
             )
