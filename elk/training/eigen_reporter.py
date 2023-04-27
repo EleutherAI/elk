@@ -1,6 +1,7 @@
 """An ELK reporter network."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import torch
@@ -67,9 +68,9 @@ class EigenReporter(Reporter):
 
     config: EigenReporterConfig
 
-    intercluster_cov_M2: Tensor  # variance
-    intracluster_cov: Tensor  # invariance
-    contrastive_xcov_M2: Tensor  # negative covariance
+    intercluster_cov_M2: Tensor | None  # variance
+    intracluster_cov: Tensor | None  # invariance
+    contrastive_xcov_M2: Tensor | None  # negative covariance
     n: Tensor
     class_means: Tensor | None
     weight: Tensor
@@ -147,13 +148,33 @@ class EigenReporter(Reporter):
 
     def clear(self) -> None:
         """Clear the running statistics of the reporter."""
+        assert (
+            self.contrastive_xcov_M2 is not None
+            and self.intercluster_cov_M2 is not None
+            and self.intracluster_cov is not None
+        ), "Covariance matrices have been deleted"
         self.contrastive_xcov_M2.zero_()
         self.intracluster_cov.zero_()
         self.intercluster_cov_M2.zero_()
         self.n.zero_()
 
+    def delete_stats(self) -> None:
+        """Delete the running covariance matrices.
+
+        This is useful for saving memory when we're done training the reporter.
+        """
+        self.contrastive_xcov_M2 = None
+        self.intercluster_cov_M2 = None
+        self.intracluster_cov = None
+
     @torch.no_grad()
     def update(self, hiddens: Tensor) -> None:
+        assert (
+            self.contrastive_xcov_M2 is not None
+            and self.intercluster_cov_M2 is not None
+            and self.intracluster_cov is not None
+        ), "Covariance matrices have been deleted"
+
         (n, _, k, d) = hiddens.shape
 
         # Sanity checks
@@ -206,6 +227,11 @@ class EigenReporter(Reporter):
     def fit_streaming(self, truncated: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
         inv_weight = 1 - self.config.neg_cov_weight
+        assert (
+            self.contrastive_xcov_M2 is not None
+            and self.intercluster_cov_M2 is not None
+            and self.intracluster_cov is not None
+        ), "Covariance matrices have been deleted"
         A = (
             self.config.var_weight * self.intercluster_cov
             - inv_weight * self.intracluster_cov
@@ -285,3 +311,9 @@ class EigenReporter(Reporter):
             return float(loss)
 
         opt.step(closure)
+
+    def save(self, path: Path | str, save_stats=False):
+        # TODO: this method will save separate JSON and PT files
+        if not save_stats:
+            self.delete_stats()
+        super().save(path)
