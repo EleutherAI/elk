@@ -41,7 +41,7 @@ class Run(ABC, Serializable):
 
     concatenated_layer_offset: int = 0
     debug: bool = False
-    min_gpu_mem: int | None = None
+    min_gpu_mem: int | None = None  # in bytes
     num_gpus: int = -1
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)

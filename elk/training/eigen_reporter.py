@@ -29,6 +29,7 @@ class EigenReporterConfig(ReporterConfig):
     neg_cov_weight: float = 0.5
 
     num_heads: int = 1
+    save_reporter_stats: bool = False
 
     def __post_init__(self):
         if not (0 <= self.neg_cov_weight <= 1):
@@ -312,8 +313,8 @@ class EigenReporter(Reporter):
 
         opt.step(closure)
 
-    def save(self, path: Path | str, save_stats=False):
+    def save(self, path: Path | str):
         # TODO: this method will save separate JSON and PT files
-        if not save_stats:
+        if not self.config.save_reporter_stats:
             self.delete_stats()
         super().save(path)
