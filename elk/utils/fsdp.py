@@ -201,63 +201,64 @@ def _worker(
             model = cast(PreTrainedModel, wrapped)
         else:
             model.to(device)
-    except Exception as e:
-        print(f"Failed to intialise model with FSDP: {e}")
 
-    # Breaks when x is None, the sentinel value indicating we should shut down
-    in_queue = qs[rank]
-    out_queue = out_qs[rank]
 
-    while msg := in_queue.get():
-        print("Got msg")
-        # Someone called map() giving us a new closure and dataset to use
-        assert isinstance(msg, tuple) and len(msg) == 2
-        closure_pkl, dataset = msg
-        closure = dill.loads(closure_pkl)
-        print("Loaded closure")
+        # Breaks when x is None, the sentinel value indicating we should shut down
+        in_queue = qs[rank]
+        out_queue = out_qs[rank]
 
-        assert dataset is not None
-        for record in dataset:
-            print(f"Running on record {record}")
-            assert isinstance(record, dict)
-            print("Am I getting stuck here??")
-            try:
-                inputs_cuda = pytree_map(
-                    lambda t: t.to(device).unsqueeze(0), record
+        while msg := in_queue.get():
+            print("Got msg")
+            # Someone called map() giving us a new closure and dataset to use
+            assert isinstance(msg, tuple) and len(msg) == 2
+            closure_pkl, dataset = msg
+            closure = dill.loads(closure_pkl)
+            print("Loaded closure")
+
+            assert dataset is not None
+            for record in dataset:
+                print(f"Running on record {record}")
+                assert isinstance(record, dict)
+                print("Am I getting stuck here??")
+                try:
+                    inputs_cuda = pytree_map(
+                        lambda t: t.to(device).unsqueeze(0), record
+                    )
+                except Exception as e:
+                    print(f"Failed to move inputs to cuda: {e}")
+                    raise e
+                print("Got cuda inputs")
+
+                # We always want to return the hidden states
+                try:
+                    print("Running forward")
+                    outputs = model(**inputs_cuda, output_hidden_states=True)
+                except Exception as e:
+                    print(f"forward failed {e}")
+                    raise e
+
+
+                outputs_cls = type(outputs)
+                # Need to clone to avoid
+                # Attempted to send CUDA tensor received from another process; this is not currently supported. Consider cloning before sending.
+                outputs_dict = pytree_map(
+                    lambda x: x.cpu().share_memory_(), outputs
                 )
-            except Exception as e:
-                print(f"Failed to move inputs to cuda: {e}")
-                raise e
-            print("Got cuda inputs")
+                outputs = outputs_cls(**outputs_dict)
+                # apply the closure
+                output_applied = closure(outputs)
 
-            # We always want to return the hidden states
-            try:
-                print("Running forward")
-                outputs = model(**inputs_cuda, output_hidden_states=True)
-            except Exception as e:
-                print(f"forward failed {e}")
-                raise e
+                # Send the outputs back to the main process
+                out_queue.put(output_applied)
 
+            # Indicate we're done with this dataset
+            out_queue.put_nowait(None)
 
-            outputs_cls = type(outputs)
-            # Need to clone to avoid
-            # Attempted to send CUDA tensor received from another process; this is not currently supported. Consider cloning before sending.
-            outputs_dict = pytree_map(
-                lambda x: x.cpu().share_memory_(), outputs
-            )
-            outputs = outputs_cls(**outputs_dict)
-            # apply the closure
-            output_applied = closure(outputs)
-
-            # Send the outputs back to the main process
-            out_queue.put(output_applied)
-
-        # Indicate we're done with this dataset
-        out_queue.put_nowait(None)
-
-    # Clean up the FSDP process group
-    if fsdp_port is not None:
-        dist.destroy_process_group()
+        # Clean up the FSDP process group
+        if fsdp_port is not None:
+            dist.destroy_process_group()
+    except Exception as e:
+        print(f"Worker failed with {e}")
 
 
 def get_transformer_layer_cls(model: torch.nn.Module) -> Type[torch.nn.Module] | None:
