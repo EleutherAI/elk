@@ -298,7 +298,8 @@ def round_robin(queues: list[mp.Queue], sentinel: Any = None) -> Iterable[Any]:
     remaining_queues = len(queues)
 
     for idx, q in cycle(enumerate(queues)):
-        print("Getting item")
+        if idx % 1000 == 0:
+            print(f"Round robin: {idx}")
         if remaining_queues == 0:
             print("breaking the generator")
             break
