@@ -59,7 +59,7 @@ def test_inference_server_fsdp_one():
     )
 
 
-def test_inference_server_fsdp_two():
+def test_inference_server_fsdp_other_map_imp():
     model_str = "sshleifer/tiny-gpt2"
     single_model = transformers.AutoModelForCausalLM.from_pretrained(model_str)
     server = InferenceServer(
@@ -82,7 +82,7 @@ def test_inference_server_fsdp_two():
         [{"input_ids": input_ids_one}, {"input_ids": input_ids_two}]
     )
     input_dataset.set_format(type="torch")
-    outputs = server.map(dataset=input_dataset, closure=lambda x: x)
+    outputs = server.imap_for_non_fsdp(dataset=input_dataset, closure=lambda x: x)
     assert len(outputs) == 2
     first_output = outputs[0]
     assert (

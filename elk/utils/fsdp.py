@@ -145,6 +145,17 @@ class InferenceServer:
         """
         return list(self.imap(closure, dataset))
 
+
+    def map_for_non_fsdp(
+        self,
+        closure: Callable[[ModelOutput], A],
+        dataset: Dataset,
+    ) -> list[A]:
+        """Run inference on the given inputs, running a closure on the outputs.
+        Note that the order of the outputs is not guaranteed to match
+        """
+        return list(self.imap_for_non_fsdp(closure, dataset))
+
     def one(
         self,
         dataset: Dataset,
