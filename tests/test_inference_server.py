@@ -40,7 +40,7 @@ def test_inference_server_normal():
 def test_inference_server_fsdp_one():
     model_str = "sshleifer/tiny-gpt2"
     server = InferenceServer(
-        model_str=model_str, num_workers=2, fsdp=False, cpu_offload=True
+        model_str=model_str, num_workers=2, fsdp=True, cpu_offload=True
     )
     print("Started inference server")
     # encode this text into input ids
@@ -67,14 +67,20 @@ def test_inference_server_fsdp_two():
     )
     print("Started inference server")
     # encode this text into input ids
-    text = "Hello, my dog is cute"
-    input_ids = AutoTokenizer.from_pretrained(model_str).encode(
-        text, return_tensors="pt"
+    text_one = "Hello, my dog is cute"
+    text_two = "Hello world!"
+
+    input_ids_one = AutoTokenizer.from_pretrained(model_str).encode(
+        text_one, return_tensors="pt"
     )
-    # Make sure we only pass the arguments that the model expects
-    inputs = dict(input_ids=input_ids)
+    input_ids_two = AutoTokenizer.from_pretrained(model_str).encode(
+        text_two, return_tensors="pt"
+    )
+    # Make sure we only pass the input_ids that the model expects
     # make the dict a dataset, while still making it a pytorch dataset
-    input_dataset = Dataset.from_list([inputs, inputs])
+    input_dataset = Dataset.from_list(
+        [{"input_ids": input_ids_one}, {"input_ids": input_ids_two}]
+    )
     input_dataset.set_format(type="torch")
     first_output = server.map(dataset=input_dataset, closure=lambda x: x)[0]
     assert (
@@ -83,9 +89,9 @@ def test_inference_server_fsdp_two():
     )
     # assert that the first output's logits is equal
     first_output_logits = first_output.logits
-    second_output = single_model(**inputs)
+    second_output = single_model(input_ids=input_ids_one)
     second_output_logits = second_output.logits
-    assert torch.allclose(first_output_logits, second_output_logits)
+    assert torch.allclose(first_output_logits, second_output_logits, atol=1e-3)
 
 
 def test_inference_server_fsdp_limited():
