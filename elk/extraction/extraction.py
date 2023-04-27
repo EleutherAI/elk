@@ -538,7 +538,6 @@ def extract(
     )
     info = get_dataset_config_info(ds_name, config_name or None)
 
-    devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
 
     split_names = list(get_splits().keys())
     server = InferenceServer(
