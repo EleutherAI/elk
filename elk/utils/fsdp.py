@@ -213,7 +213,7 @@ def _worker(
             assert isinstance(msg, tuple) and len(msg) == 2
             closure_pkl, dataset = msg
             closure = dill.loads(closure_pkl)
-            print("Loaded closure")
+            print(f"Loaded closure and dataset: {dataset}")
 
             assert dataset is not None
             for record in dataset:
