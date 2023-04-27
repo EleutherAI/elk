@@ -3,10 +3,8 @@ import logging
 import os
 from copy import copy
 from dataclasses import InitVar, dataclass
-from functools import partial
 from itertools import islice
-from multiprocessing.pool import ThreadPool
-from typing import Any, Callable, Iterable, Literal, Sequence, NewType
+from typing import Any, Iterable, Literal, NewType
 from warnings import filterwarnings
 
 import torch
@@ -21,26 +19,21 @@ from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
-from transformers.utils import ModelOutput
 
+from ..utils import (
+    assert_type,
+    colorize,
+    float32_to_int16,
+    instantiate_tokenizer,
+    is_autoregressive,
+    select_train_val_splits,
+)
+from ..utils.fsdp import InferenceServer
 from .dataset_name import (
     DatasetDictWithName,
     extract_dataset_name_and_config,
 )
 from .prompt_loading import PromptConfig, load_prompts
-from ..multiprocessing import evaluate_with_processes
-from ..utils import (
-    assert_type,
-    colorize,
-    float32_to_int16,
-    instantiate_model,
-    instantiate_tokenizer,
-    is_autoregressive,
-    select_train_val_splits,
-    select_usable_devices,
-)
-from ..utils.data_utils import flatten_list
-from ..utils.fsdp import InferenceServer
 
 
 @dataclass
@@ -537,7 +530,6 @@ def extract(
         dataset_config_str=cfg.prompts.datasets[0]
     )
     info = get_dataset_config_info(ds_name, config_name or None)
-
 
     split_names = list(get_splits().keys())
     server = InferenceServer(

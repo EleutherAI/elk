@@ -1,22 +1,22 @@
-from dataclasses import dataclass
-from functools import partial
-from itertools import cycle
 import logging
 import multiprocessing as std_mp
+import os
 import socket
 import warnings
+from functools import partial
+from itertools import cycle
+from typing import Any, Callable, Iterable, Type, cast
 
 import dill
-import os
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from datasets import Dataset
-from torch.distributed.fsdp import CPUOffload, FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp import CPUOffload
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
-from typing import Any, Callable, Iterable, Type, cast
 
 from ..multiprocessing import A
 from ..utils import instantiate_model, pytree_map, select_usable_devices
@@ -144,7 +144,6 @@ class InferenceServer:
         Note that the order of the outputs is not guaranteed to match
         """
         return list(self.imap(closure, dataset))
-
 
     def map_for_non_fsdp(
         self,
