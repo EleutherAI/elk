@@ -154,7 +154,6 @@ def extract_hiddens_fsdp(
         split_type=split_type,
         stream=p_cfg.stream,
     )
-    world_size = 1
 
     # Add one to the number of layers to account for the embedding layer
     layer_indices = cfg.layers
@@ -162,7 +161,6 @@ def extract_hiddens_fsdp(
     global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
     # break `max_examples` among the processes roughly equally
     max_examples = global_max_examples
-    device = "cpu"  # doesn't matter, we're using FSDP
 
     for example in islice(prompt_ds, max_examples):
         num_variants = len(example["prompts"])
@@ -173,7 +171,6 @@ def extract_hiddens_fsdp(
                 num_variants,
                 num_choices,
                 server._model.config.hidden_size,
-                device=device,
                 dtype=torch.int16,
             )
             for layer_idx in layer_indices
@@ -181,7 +178,6 @@ def extract_hiddens_fsdp(
         lm_logits = torch.empty(
             num_variants,
             num_choices,
-            device=device,
             dtype=torch.float32,
         )
         text_questions = []
@@ -206,7 +202,7 @@ def extract_hiddens_fsdp(
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
-                ).to(device)
+                )
                 input_ids = assert_type(Tensor, encoding.input_ids)
 
                 if is_enc_dec:
@@ -217,7 +213,7 @@ def extract_hiddens_fsdp(
                         # Don't include [CLS] and [SEP] in the answer
                         add_special_tokens=False,
                         return_tensors="pt",
-                    ).to(device)
+                    )
                     answer = assert_type(Tensor, encoding2.input_ids)
 
                     input_ids = torch.cat([input_ids, answer], dim=-1)
@@ -511,17 +507,14 @@ def extract_hiddens_with_gpus(
     """TODO: Some caching based on model name, layers, and dataset?"""
     results: dict[str, list[dict]] = {split_name: [] for split_name in split_names}
 
-    # ctx = mp.get_context("spawn")
-    first_device = devices[0]
-
-    server = InferenceServer(model_str=cfg.model)
+    server = InferenceServer(model_str=cfg.model, fsdp=True)
 
     for split_name in split_names:
         hiddens = []
-        for hidden in extract_hiddens_fsdp(
+        for split_hiddens in extract_hiddens_fsdp(
             cfg=cfg, server=server, split_type=split_name
         ):
-            hiddens.append(hidden)
+            hiddens.append(split_hiddens)
         split_result: list[dict] = hiddens
         results[split_name] = split_result
 
