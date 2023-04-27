@@ -136,6 +136,13 @@ class InferenceServer:
         """Run inference on the given inputs, running a closure on the outputs."""
         return list(self.imap(closure, dataset))
 
+    def one(
+        self,
+        dataset: Dataset,
+    ) -> ModelOutput:
+        """Run inference on the given input, running a closure on the outputs."""
+        return self.map(lambda x: x, dataset)[0]
+
     def imap(
         self,
         closure: Callable[[ModelOutput], A],
