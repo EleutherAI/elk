@@ -16,6 +16,7 @@ from typing import (
     Sequence,
     TypeAlias,
     TYPE_CHECKING,
+    NewType,
 )
 from uuid import UUID
 
@@ -59,6 +60,12 @@ else:
     ResultQueue = mp.Queue
     TaskQueue = mp.Queue
 
+QueueID = NewType("QueueID", str)
+
+
+def get_queue_id(uuid: UUID, rank: int) -> QueueID:
+    return QueueID(f"{str(uuid)}_{rank}")
+
 
 class InferenceServer:
     """High-level interface for running inference on a model on multiple GPUs.
@@ -86,17 +93,22 @@ class InferenceServer:
         self._task_queues: list[TaskQueue] = [  # type: ignore
             self._manager.Queue() for _ in range(self.num_workers)
         ]
-        self._result_queues: dict[UUID, list[ResultQueue]] = self._manager.dict()  # type: ignore
+        # QueueId to make it thread-safe
+        self._result_queues: dict[QueueID, ResultQueue] = self._manager.dict()  # type: ignore
         model = instantiate_model(model_str, torch_dtype="auto")
         model.share_memory()
         self._model = model
         self._start()
 
-    def create_result_queues(self, _uuid: UUID) -> list[ResultQueue]:
+    def create_result_queues(self, _uuid: UUID, num_workers: int) -> list[QueueID]:
         """Create a queue for the given task ID."""
-        self._result_queues[_uuid] = [mp.Queue() for _ in range(self.num_workers)]
-        print(f"Created result queues for {_uuid}")
-        return self._result_queues[_uuid]  # type: ignore
+        queue_ids = []
+        for i in range(num_workers):
+            queue_id = get_queue_id(_uuid, i)
+            new_queue = self._manager.Queue()
+            self._result_queues[queue_id] = new_queue
+            queue_ids.append(queue_id)
+        return queue_ids
 
     @property
     def running(self) -> bool:
@@ -205,7 +217,7 @@ class InferenceServer:
         shards = [dataset.shard(self.num_workers, i) for i in range(self.num_workers)]
         # create a uuid to track what messages belong to what imap on different threads
         _id: UUID = uuid.uuid4()
-        result_queues = self.create_result_queues(_uuid=_id)
+        queue_ids = self.create_result_queues(_uuid=_id, num_workers=self.num_workers)
         for task_q, shard in zip(
             self._task_queues,
             shards,
@@ -213,7 +225,11 @@ class InferenceServer:
             message = TaskMessage(id=_id, closure=closure_pkl, data=shard)
             task_q.put(message)
 
-        yield from round_robin(result_queues, sentinel=SingletonSentinel)  # type: ignore
+        yield from round_robin(
+            sentinel=SingletonSentinel,
+            queue_ids=queue_ids,
+            result_queue_dict=self._result_queues,
+        )
 
 
 @torch.inference_mode()
@@ -222,7 +238,7 @@ def _worker(
     devices: list[str],
     model: PreTrainedModel,
     qs: list[TaskQueue],
-    out_qs: dict[UUID, list[ResultQueue]],
+    out_qs: dict[QueueID, ResultQueue],
     cpu_offload: bool = False,
     fsdp_port: int | None = None,
     wrap_policy: partial[bool] | None = None,
@@ -278,8 +294,9 @@ def _worker(
             closure_pkl = msg.closure
             dataset = msg.data
             closure = dill.loads(closure_pkl)
+            queue_id = get_queue_id(msg.id, rank=rank)
             # We need to send the results back to the correct queue
-            out_queue = out_qs[msg.id][rank]
+            out_queue = out_qs[queue_id]
             print(f"Loaded closure and dataset: {dataset}")
 
             assert dataset is not None, "Dataset should not be None"
@@ -362,14 +379,20 @@ def find_available_port() -> int:
 
 
 def round_robin(
-    result_queue: list[ResultQueue], sentinel: SingletonSentinel
+    sentinel: SingletonSentinel,
+    queue_ids: list[QueueID],
+    result_queue_dict: dict[QueueID, ResultQueue],
 ) -> Iterable[Any]:
     """Yield items from the given queues in round-robin order."""
+    result_queue = [result_queue_dict[queue_id] for queue_id in queue_ids]
     remaining_queues = len(result_queue)
 
     for idx, q in cycle(enumerate(result_queue)):
         if remaining_queues == 0:
             print("breaking the generator")
+            # We've exhausted all queues. Delete the queues and break
+            for queue_id in queue_ids:
+                del result_queue_dict[queue_id]
             break
         try:
             item = q.get(timeout=0.01)
@@ -380,4 +403,4 @@ def round_robin(
                 print("Got sentinel")
                 remaining_queues -= 1
             else:
-                yield item
+                yield item.data
