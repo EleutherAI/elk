@@ -247,6 +247,7 @@ def _worker(
                 outputs = outputs_cls(**outputs_dict)
                 # apply the closure
                 output_applied = closure(outputs)
+                print(f"Sending outputs back to main process {output_applied}")
 
                 # Send the outputs back to the main process
                 out_queue.put(output_applied)
