@@ -250,8 +250,8 @@ def _worker(
             out_queue.put_nowait(None)
 
         # Clean up the FSDP process group
-        if fsdp_port is not None:
-            dist.destroy_process_group()
+        # if fsdp_port is not None:
+        #     dist.destroy_process_group()
     except Exception as e:
         print(f"Worker failed with {e}")
 
