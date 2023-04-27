@@ -22,6 +22,10 @@ from ..multiprocessing import A
 from ..utils import instantiate_model, pytree_map, select_usable_devices
 
 
+class SingletonSentinel:
+    ...
+
+
 class InferenceServer:
     """High-level interface for running inference on a model on multiple GPUs.
 
@@ -117,7 +121,7 @@ class InferenceServer:
         # Let the workers know that they should shut down
         for q in self._task_queues:
             try:
-                q.put_nowait(None)
+                q.put_nowait(SingletonSentinel)
             except std_mp.queues.Empty:  # type: ignore[attr-defined]
                 pass
 
@@ -170,7 +174,7 @@ class InferenceServer:
                 q.put((closure_pkl, shard))
                 result_queues.append(result_queue)
 
-        yield from round_robin(result_queues)  # type: ignore
+        yield from round_robin(result_queues, sentinel=SingletonSentinel)  # type: ignore
 
 
 @torch.inference_mode()
@@ -219,6 +223,10 @@ def _worker(
         out_queue = out_qs[rank]
 
         while msg := in_queue.get():
+            if isinstance(msg, SingletonSentinel):
+                # Someone called shutdown() on the server
+                print("Shutting down worker")
+                return
             print("Got msg")
             # Someone called map() giving us a new closure and dataset to use
             assert isinstance(msg, tuple) and len(msg) == 2, "Expected a tuple"
@@ -258,13 +266,14 @@ def _worker(
                 out_queue.put(output_applied)
 
             # Indicate we're done with this dataset
-            out_queue.put_nowait(None)
+            out_queue.put_nowait(SingletonSentinel)
 
         # Clean up the FSDP process group
         if fsdp_port is not None:
             dist.destroy_process_group()
     except Exception as e:
         print(f"Worker failed with {e}, Type: {type(e)}")
+        raise e
 
 
 def get_transformer_layer_cls(model: torch.nn.Module) -> Type[torch.nn.Module] | None:
@@ -304,7 +313,7 @@ def find_available_port() -> int:
     return port
 
 
-def round_robin(queues: list[mp.Queue], sentinel: Any = None) -> Iterable[Any]:
+def round_robin(queues: list[mp.Queue], sentinel: SingletonSentinel) -> Iterable[Any]:
     """Yield items from the given queues in round-robin order."""
     remaining_queues = len(queues)
 
