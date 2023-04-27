@@ -198,11 +198,8 @@ class InferenceServer:
         for q, shard, result_queue in zip(
             self._task_queues, shards, self._result_queues
         ):
-            # skip empty shards, this also sticky tapes
-            # an issue when we have workers > len(dataset)
-            if len(shard) >= 1:
-                q.put((closure_pkl, shard))
-                result_queues.append(result_queue)
+            q.put((closure_pkl, shard))
+            result_queues.append(result_queue)
 
         yield from round_robin(result_queues, sentinel=SingletonSentinel)  # type: ignore
 
