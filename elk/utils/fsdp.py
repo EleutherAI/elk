@@ -229,7 +229,7 @@ def _worker(
 
                 # We always want to return the hidden states
                 try:
-                    print("Running forward")
+                    print(f"Running forward with {inputs_cuda}")
                     outputs = model(**inputs_cuda, output_hidden_states=True)
                     print("Done running forward")
                 except Exception as e:
