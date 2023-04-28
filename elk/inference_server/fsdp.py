@@ -231,10 +231,11 @@ class InferenceServer:
         inputs_dataset = Dataset.from_dict(kwargs)
         # format the inputs as torch
         inputs_dataset.set_format("torch")
-
+        # This is also a bit of a hack, where the tensors get serialized so they can be
+        # sent to the worker?
 
         # Send the task to the worker
-        message = TaskMessage(id=queue_id, func=None, data=[inputs_dataset])
+        message = TaskMessage(id=queue_id, func=None, data=inputs_dataset)
         self._task_queue.put(message)
 
         # Wait for the result
@@ -317,14 +318,17 @@ def _worker(
             result_queue = out_qs[queue_id]
             try:
                 for record in data:
-                    assert isinstance(record, dict)
-                    inputs_cuda = record
-
+                    # assert isinstance(record, dict)
+                    inputs_cuda = pytree_map(
+                        lambda t: t.to(device), record
+                    )
                     # We always want to return the hidden states
                     outputs = model(**inputs_cuda, output_hidden_states=True)
 
                     outputs_cls = type(outputs)
-                    outputs_dict = pytree_map(lambda x: x.cpu(), outputs)
+                    outputs_dict = pytree_map(
+                        lambda x: x.cpu().share_memory_(), outputs
+                    )
                     outputs = outputs_cls(**outputs_dict)
                     # apply the func
                     output_applied = func(outputs)
