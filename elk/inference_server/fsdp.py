@@ -26,6 +26,7 @@ import dill
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from datasets import Dataset
 from torch.distributed.fsdp import CPUOffload
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
@@ -227,10 +228,13 @@ class InferenceServer:
         queue_id = get_queue_id(_id)
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
-        inputs_cuda = pytree_map(lambda t: t.detach().clone().share_memory_(), kwargs)
+        inputs_dataset = Dataset.from_dict(kwargs)
+        # format the inputs as torch
+        inputs_dataset.set_format("torch")
+
 
         # Send the task to the worker
-        message = TaskMessage(id=queue_id, func=None, data=[inputs_cuda])
+        message = TaskMessage(id=queue_id, func=None, data=[inputs_dataset])
         self._task_queue.put(message)
 
         # Wait for the result
