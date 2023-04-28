@@ -54,6 +54,7 @@ class TaskMessage:
 
     def func(self) -> Callable[[ModelOutput], Any] | None:
         return dill.loads(self.func_dill) if self.func_dill else None
+
     def data_and_func(
         self,
     ) -> tuple[Sequence[dict], Callable[[ModelOutput], Any] | None]:
@@ -305,7 +306,7 @@ def _worker(
             # if one of the workers doesn't something to run on
             # This can happen if the first batch is lesser than the number of
             # workers
-            model(input_ids=torch.Tensor([0]).long().to(device))
+            model(input_ids=torch.Tensor([[0]]).long().to(device))
             print(f"FSDP running on rank {rank} with {device}")
         else:
             model.to(device)
