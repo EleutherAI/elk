@@ -17,6 +17,17 @@ def elk_reporter_dir() -> Path:
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 
+def elk_extract_cache_dir() -> Path:
+    """Return the directory where extract cache dir is stored"""
+    env_dir = os.environ.get("ELK_DIR", None)
+    if env_dir is None:
+        log_dir = Path.home() / "elk-extract-cache"
+    else:
+        log_dir = Path(env_dir) / "elk-extract-cache"
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
 
 def memorably_named_dir(parent: Path):
     """Return a memorably-named cached directory of the form 'goofy-goodall'."""

@@ -1,13 +1,16 @@
 """Functions for extracting the hidden states of a model."""
+import hashlib
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, Future
 from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
+from pathlib import Path
 from typing import Any, Iterable, Literal, NewType
 from warnings import filterwarnings
 
+import dill
 import torch
 from datasets import (
     Dataset,
@@ -21,6 +24,7 @@ from torch import Tensor
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from ..files import elk_extract_cache_dir
 from ..utils import (
     assert_type,
     colorize,
@@ -348,6 +352,45 @@ def extract_hiddens(
     return output
 
 
+def extract_cache_key(cfg: "Extract", ds_name: str) -> str:
+    """Return a unique key for the extract cache."""
+    cfg_str = str(cfg.to_dict())
+    # hash it. note that the hash has to be deterministic
+    cfg_hash = hashlib.md5(cfg_str.encode("utf-8")).hexdigest()
+    return f"{ds_name}-{cfg_hash}"
+
+
+def load_dataset_with_name(ds_name: str) -> DatasetDictWithName:
+    # Use dill to load the DatasetDict
+    path = elk_extract_cache_dir() / f"{ds_name}.dill"
+    with open(path, "rb") as f:
+        dataset_dict = dill.load(f)
+    assert isinstance(dataset_dict, DatasetDict)
+    print(f"Loaded cached extract dataset from {path}")
+    return DatasetDictWithName(name=ds_name, dataset=dataset_dict)
+
+
+def maybe_load_cache(
+    cfg: "Extract", ds_name: str, disable_cache: bool
+) -> DatasetDictWithName | None:
+    if disable_cache:
+        return None
+    cache_key = extract_cache_key(cfg, ds_name)
+    try:
+        dataset_dict = load_dataset_with_name(cache_key)
+        return dataset_dict
+    except Exception as e:
+        print(f"Failed to load cached extract dataset {cache_key}: {e}")
+        return None
+
+
+def write_dataset_with_name(dataset_dict: DatasetDictWithName) -> None:
+    """Write a DatasetDictWithName to disk."""
+    path = elk_extract_cache_dir() / f"{dataset_dict.name}.dill"
+    with open(path, "wb") as f:
+        dill.dump(dataset_dict.dataset, f)
+
+
 def extract(
     cfg: "Extract",
     *,
@@ -357,6 +400,12 @@ def extract(
     min_gpu_mem: int | None = None,
 ) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
+    ds_name, config_name = extract_dataset_name_and_config(
+        dataset_config_str=cfg.prompts.datasets[0]
+    )
+    cached = maybe_load_cache(cfg=cfg, ds_name=ds_name, disable_cache=disable_cache)
+    if cached is not None:
+        return cached
 
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
@@ -381,9 +430,6 @@ def extract(
             dataset_name=available_splits.dataset_name,
         )
 
-    ds_name, config_name = extract_dataset_name_and_config(
-        dataset_config_str=cfg.prompts.datasets[0]
-    )
     info = get_dataset_config_info(ds_name, config_name or None)
 
     split_names = list(get_splits().keys())
@@ -391,9 +437,12 @@ def extract(
         model_str=cfg.model, fsdp=True, cpu_offload=False, num_workers=6
     )
 
-    return extract_hiddens_with_server(
+    extracted: DatasetDictWithName = extract_hiddens_with_server(
         cfg=cfg,
         split_names=split_names,
         server=server,
         ds_name=ds_name,
     )
+    # write the extracted dataset to the cache
+    write_dataset_with_name(extracted)
+    return extracted
