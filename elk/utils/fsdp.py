@@ -1,6 +1,7 @@
 import logging
 import multiprocessing as std_mp
 import os
+import random
 import socket
 import uuid
 import warnings
@@ -213,12 +214,14 @@ class InferenceServer:
         # Pickle the closure and send it to the workers
         closure_pkl = dill.dumps(closure)
         shards = [dataset.shard(self.num_workers, i) for i in range(self.num_workers)]
+        # shuffle the shards so that we distribute the load evenly
+        shuffled_shards = random.sample(shards, len(shards))
         # create a uuid to track what messages belong to what imap on different threads
         _id: UUID = uuid.uuid4()
         queue_ids = self.create_result_queues(_uuid=_id, num_workers=self.num_workers)
         for task_q, shard in zip(
             self._task_queues,
-            shards,
+            shuffled_shards,
         ):
             message = TaskMessage(id=_id, closure=closure_pkl, data=shard)
             task_q.put(message)

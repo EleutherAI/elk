@@ -152,6 +152,8 @@ def extract_hiddens_with_server(
     with ThreadPoolExecutor(max_workers=world_size) as executor:
         hiddens = map_threadpool(
             items=ranks_and_splits,
+            # TODO: Probably can speed this up by loading the prompts first,
+            # then passing them in here.
             func=lambda param: extract_hiddens(
                 cfg=cfg,
                 server=server,
