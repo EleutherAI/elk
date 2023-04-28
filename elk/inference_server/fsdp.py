@@ -97,9 +97,6 @@ class InferenceServer:
         model.share_memory()
         self._model = model
         """Spin up the workers."""
-        if self._process_ctx is not None:
-            raise RuntimeError("The server is already running")
-
         # Load the model on the main process, then zero-copy share it with the workers.
         # This ensures that we don't copy the model num_workers times on the CPU and
         # run out of RAM for large models
@@ -253,7 +250,7 @@ def _worker(
     wrap_policy: partial[bool] | None = None,
 ):
     """Worker process that maintains a copy of the model on a dedicated GPU."""
-    print("Starting worker!")
+    print("Starting model worker!")
     # Prevent duplicate logging messages
     if rank != 0:
         logging.disable(logging.CRITICAL)
@@ -398,7 +395,7 @@ def round_robin(
         else:
             if item == sentinel:
                 remaining_queues -= 1
-            if item.exception is not None:
+            elif item.exception is not None:
                 # We got an exception from the worker. Raise it here
                 raise item.exception
             else:

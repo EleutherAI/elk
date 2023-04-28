@@ -1,12 +1,14 @@
 import hashlib
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import dill
 from datasets import DatasetDict
 
-from elk import Extract
 from elk.extraction.dataset_name import DatasetDictWithName
 from elk.files import elk_extract_cache_dir
+
+if TYPE_CHECKING:
+    from elk import Extract
 
 
 def extract_cache_key(cfg: "Extract", ds_name: str) -> str:
@@ -17,7 +19,9 @@ def extract_cache_key(cfg: "Extract", ds_name: str) -> str:
     return f"{ds_name}-{cfg_hash}"
 
 
-def load_extract_from_cache(ds_name: str, cache_key: str) -> Optional[DatasetDictWithName]:
+def load_extract_from_cache(
+    ds_name: str, cache_key: str
+) -> Optional[DatasetDictWithName]:
     # Use dill to load the DatasetDict
     path = elk_extract_cache_dir() / f"{cache_key}.dill"
     # check if the cache exists
