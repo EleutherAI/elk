@@ -5,4 +5,4 @@ mkdir: cannot create directory ‘output/elk-elk_imdb_mispellings-rerun3’: No 
   warnings.warn(
 [36mNone[0m: using 'train' for training and 'validation' for validation
 Downloading and preparing dataset None/None to /u/sethapun/.cache/huggingface/datasets/generator/default-0fc18ee1f85aebb7/0.0.0...
-Generating train split:   0%|          | 0/1000 [00:00<?, ? examples/s]
+Generating train split:   0%|          | 0/1000 [00:00<?, ? examples/s]Loading checkpoint shards:   0%|          | 0/3 [00:00<?, ?it/s]Loading checkpoint shards:   0%|          | 0/3 [00:00<?, ?it/s]Loading checkpoint shards:   0%|          | 0/3 [00:00<?, ?it/s]
