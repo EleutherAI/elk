@@ -51,5 +51,6 @@ def maybe_load_extract_cache(
 def write_extract_to_cache(dataset_dict: DatasetDictWithName, cache_key: str) -> None:
     """Write a DatasetDictWithName to disk."""
     path = elk_extract_cache_dir() / f"{cache_key}.dill"
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
         dill.dump(dataset_dict.dataset, f)

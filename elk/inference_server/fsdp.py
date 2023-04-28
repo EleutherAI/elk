@@ -224,7 +224,6 @@ class InferenceServer:
         """Run inference on the given input. These are passed directly to the model."""
         # Optimized version of map for one input. No need to create so many queues.
         # Pick the first available worker
-        worker_idx = random.randint(0, self.num_workers - 1)
         _id: UUID = uuid.uuid4()
         queue_id = get_queue_id(_id)
         result_queue = self._manager.Queue()
@@ -316,7 +315,7 @@ def _worker(
                 for record in data:
                     assert isinstance(record, dict)
                     inputs_cuda = pytree_map(
-                        lambda t: t.to(device).unsqueeze(0), record
+                        lambda t: t.to(device), record
                     )
 
                     # We always want to return the hidden states

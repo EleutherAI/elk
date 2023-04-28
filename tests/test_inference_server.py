@@ -81,7 +81,7 @@ def test_fsdp_map():
     # the length of the 2nd dimension of the logits is equal to the number of repeats
     lengths = []
     for i, output in enumerate(outputs_server):
-        lengths.append(output.logits.shape[1])
+        lengths.append(len(output.logits))
     sorted_lengths = sorted(lengths)
     assert sorted_lengths == [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -105,8 +105,8 @@ def test_fsdp_multithreading():
         items=_dicts, func=lambda x: server.infer(**x).logits, threadpool=threadpool
     )
     # the length of the 2nd dimension of the logits is equal to the number of repeats
-    for i, output in enumerate(outputs_server):
-        assert output.shape[1] == i + 1
+    lengths = [len(output) for output in outputs_server]
+    assert lengths == [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 def test_shared_seq():
