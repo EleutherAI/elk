@@ -20,6 +20,7 @@ from .debug_logging import save_debug_log
 from .extraction import Extract, extract
 from .extraction.dataset_name import DatasetDictWithName
 from .files import elk_reporter_dir, memorably_named_dir
+from .inference_server.fsdp_options import FSDPOptions
 from .utils import (
     assert_type,
     get_layers,
@@ -45,6 +46,7 @@ class Run(ABC, Serializable):
     num_gpus: int = -1
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
+    fsdp: FSDPOptions | None = None
 
     def execute(self, highlight_color: str = "cyan"):
         self.datasets = [
@@ -177,3 +179,5 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
+
+

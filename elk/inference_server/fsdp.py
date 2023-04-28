@@ -18,6 +18,7 @@ from typing import (
     TypeAlias,
     TYPE_CHECKING,
     NewType,
+    Optional,
 )
 from uuid import UUID
 
@@ -32,8 +33,9 @@ from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
 
-from ..multiprocessing import A
-from ..utils import instantiate_model, pytree_map, select_usable_devices
+from elk.inference_server.fsdp_options import FSDPOptions
+from elk.multiprocessing import A
+from elk.utils import instantiate_model, pytree_map, select_usable_devices
 
 
 class SingletonSentinel:
@@ -78,14 +80,13 @@ class InferenceServer:
     def __init__(
         self,
         model_str: str,
+        min_gpu_mem: Optional[float | int],
         num_workers: int = 1,
-        cpu_offload: bool = False,
-        fsdp: bool = False,
+        fsdp: Optional[FSDPOptions] = None,
     ):
         self.model_str = model_str
         assert num_workers > 0
         self.num_workers = num_workers
-        self.cpu_offload = cpu_offload
         self.fsdp = fsdp
         self._current_id = 0
         self._process_ctx: mp.ProcessContext | None = None
@@ -109,14 +110,18 @@ class InferenceServer:
         print("Loading model...")
         model = self._model
         model_size = sum(p.numel() * p.element_size() for p in model.parameters())
-
         fdsp_min_mem = model_size / self.num_workers if self.fsdp else None
 
-        # Determine which GPUs we can use
-        devices = select_usable_devices(
-            self.num_workers,
-            min_memory=model_size if fdsp_min_mem is None else fdsp_min_mem,
+        min_gpu_mem = (
+            min_gpu_mem
+            if min_gpu_mem is not None
+            else fdsp_min_mem
+            if fdsp_min_mem is not None
+            else model_size
         )
+
+        # Determine which GPUs we can use
+        devices = select_usable_devices(self.num_workers, min_memory=min_gpu_mem)
         self.devices = devices
         self.num_workers = len(devices)  # This may have been -1 before
 
@@ -133,6 +138,7 @@ class InferenceServer:
                 )
 
             print(msg)
+        cpu_offload: bool = fsdp.cpu_offload if fsdp else False
         self._process_ctx = mp.spawn(
             _worker,
             args=(
@@ -140,7 +146,7 @@ class InferenceServer:
                 model,
                 self._task_queues,
                 self._result_queues,
-                self.cpu_offload,
+                cpu_offload,
                 fsdp_port,
                 wrap_policy,
             ),
@@ -252,7 +258,6 @@ def _worker(
         warnings.filterwarnings("ignore")
 
     closure: Callable[[ModelOutput], Any]
-    dataset: Dataset | None = None
     device = devices[rank]
 
     try:

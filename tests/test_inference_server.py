@@ -8,7 +8,7 @@ from transformers import AutoTokenizer
 
 from elk.utils import pytree_map
 from elk.utils.concurrency_utils import map_threadpool
-from elk.utils.fsdp import InferenceServer
+from elk.inference_server.fsdp import InferenceServer
 
 
 def test_pytree_map():

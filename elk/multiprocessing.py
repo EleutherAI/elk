@@ -12,7 +12,7 @@ def eval_thunk(func: Callable[[], B]) -> B:
 
 def evaluate_with_processes(
     sequence: Sequence[Callable[[], B]],
-    pool: Optional[mp.pool.Pool],  # type: ignore
+    pool: Optional["mp.pool.Pool"],  # type: ignore
 ) -> list[B]:
     """Evaluates thunks for and return a list of the results."""
     mapper = pool.imap_unordered if pool else map

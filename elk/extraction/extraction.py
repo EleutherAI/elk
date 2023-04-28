@@ -2,12 +2,11 @@
 import hashlib
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor
 from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
-from pathlib import Path
-from typing import Any, Iterable, Literal, NewType
+from typing import Any, Literal, Optional
 from warnings import filterwarnings
 
 import dill
@@ -24,6 +23,7 @@ from torch import Tensor
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from ..inference_server.fsdp_options import FSDPOptions
 from ..files import elk_extract_cache_dir
 from ..utils import (
     assert_type,
@@ -35,7 +35,7 @@ from ..utils import (
 )
 from ..utils.concurrency_utils import map_threadpool
 from ..utils.data_utils import flatten_list
-from ..utils.fsdp import InferenceServer
+from elk.inference_server.fsdp import InferenceServer
 from .dataset_name import (
     DatasetDictWithName,
     extract_dataset_name_and_config,
@@ -398,6 +398,7 @@ def extract(
     highlight_color: str = "cyan",
     num_gpus: int = -1,
     min_gpu_mem: int | None = None,
+    fsdp: Optional[FSDPOptions] = None
 ) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
     ds_name, config_name = extract_dataset_name_and_config(
@@ -434,7 +435,10 @@ def extract(
 
     split_names = list(get_splits().keys())
     server = InferenceServer(
-        model_str=cfg.model, fsdp=True, cpu_offload=False, num_workers=6
+        model_str=cfg.model,
+        fsdp=fsdp,
+        num_workers=num_gpus,
+        min_gpu_mem=min_gpu_mem,
     )
 
     extracted: DatasetDictWithName = extract_hiddens_with_server(
