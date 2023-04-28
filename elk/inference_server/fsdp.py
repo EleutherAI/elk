@@ -209,6 +209,7 @@ class InferenceServer:
         _id: UUID = uuid.uuid4()
         queue_id: ResultQueueID = self.create_result_queue(_uuid=_id)
         for shard in shards:
+            # todo: share memory here too
             message = TaskMessage(id=queue_id, func=func_pkl, data=shard)
             self._task_queue.put(message)
 
@@ -226,9 +227,10 @@ class InferenceServer:
         queue_id = get_queue_id(_id)
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
+        inputs_cuda = pytree_map(lambda t: t.share_memory_(), kwargs)
 
         # Send the task to the worker
-        message = TaskMessage(id=queue_id, func=None, data=[kwargs])
+        message = TaskMessage(id=queue_id, func=None, data=[inputs_cuda])
         self._task_queue.put(message)
 
         # Wait for the result
@@ -312,17 +314,13 @@ def _worker(
             try:
                 for record in data:
                     assert isinstance(record, dict)
-                    inputs_cuda = pytree_map(
-                        lambda t: t.to(device), record
-                    )
+                    inputs_cuda = record
 
                     # We always want to return the hidden states
                     outputs = model(**inputs_cuda, output_hidden_states=True)
 
                     outputs_cls = type(outputs)
-                    outputs_dict = pytree_map(
-                        lambda x: x.cpu().share_memory_(), outputs
-                    )
+                    outputs_dict = pytree_map(lambda x: x.cpu(), outputs)
                     outputs = outputs_cls(**outputs_dict)
                     # apply the func
                     output_applied = func(outputs)
@@ -392,9 +390,7 @@ def round_robin(
 
     while remaining_workers > 0:
         try:
-            item: ResultMessage | SingletonSentinel = result_queue.get(
-                timeout=0.01
-            )
+            item: ResultMessage | SingletonSentinel = result_queue.get(timeout=0.01)
         except std_mp.queues.Empty:  # type: ignore[attr-defined]
             continue
         else:
