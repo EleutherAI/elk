@@ -34,14 +34,14 @@ mkdir ${OUT_DIRECTORY};
 # Submit jobs.
 elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0
 elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0 --net ccs
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_50
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_50 --net ccs
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_30
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_30 --net ccs
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_20
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_20 --net ccs
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_5
-elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_5 --net ccs
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0 --net ccs
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0 --net ccs
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0 --net ccs
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0
+elk elicit huggyllama/llama-13b sethapun/imdb_misspelled_0 --net ccs
 
 # Finish the script
 exit 0
