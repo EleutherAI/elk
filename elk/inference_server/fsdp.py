@@ -15,7 +15,6 @@ from typing import (
     Type,
     cast,
     Sequence,
-    TypeAlias,
     TYPE_CHECKING,
     NewType,
     Optional,
@@ -26,7 +25,6 @@ import dill
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from datasets import Dataset
 from torch.distributed.fsdp import CPUOffload
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
@@ -45,7 +43,7 @@ class SingletonSentinel:
 @dataclass(kw_only=True)
 class TaskMessage:
     id: UUID
-    data: Dataset
+    data: Sequence[dict]
     closure: Any  # dill closure
 
 
@@ -69,6 +67,11 @@ QueueID = NewType("QueueID", str)
 
 def get_queue_id(uuid: UUID, rank: int) -> QueueID:
     return QueueID(f"{str(uuid)}_{rank}")
+
+
+def shard_seq(seq: Sequence[A], num_shards: int) -> Sequence[Sequence[A]]:
+    """Shard a sequence into `num_shards` chunks."""
+    return [seq[i::num_shards] for i in range(num_shards)]
 
 
 class InferenceServer:
@@ -190,27 +193,22 @@ class InferenceServer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
 
+    def infer(self, **kwargs) -> ModelOutput:
+        """Run inference on the given input. These are passed directly to the model."""
+        return self.map(keywords=[kwargs], closure=lambda x: x)[0]
+
     def map(
-        self,
-        closure: Callable[[ModelOutput], A],
-        dataset: Dataset,
+        self, keywords: list[dict[str, Any]], closure: Callable[[ModelOutput], A]
     ) -> list[A]:
         """Run inference on the given inputs, running a closure on the outputs.
         Note that the order of the outputs is not guaranteed to match
         """
-        return list(self.imap(closure, dataset))
-
-    def infer(
-        self,
-        dataset: Dataset,
-    ) -> ModelOutput:
-        """Run inference on the given input, running a closure on the outputs."""
-        return self.map(lambda x: x, dataset)[0]
+        return list(self.imap(keywords=keywords, closure=closure))
 
     def imap(
         self,
+        keywords: list[dict[str, Any]],
         closure: Callable[[ModelOutput], A],
-        dataset: Dataset,
     ) -> Iterable[A]:
         """Run inference on the given inputs, running a closure on the outputs."""
         if self._process_ctx is None:
@@ -218,7 +216,7 @@ class InferenceServer:
 
         # Pickle the closure and send it to the workers
         closure_pkl = dill.dumps(closure)
-        shards = [dataset.shard(self.num_workers, i) for i in range(self.num_workers)]
+        shards = shard_seq(keywords, self.num_workers)
         # shuffle the shards so that we distribute the load evenly
         shuffled_shards = random.sample(shards, len(shards))
         # create a uuid to track what messages belong to what imap on different threads
@@ -277,8 +275,8 @@ def _worker(
             model = cast(PreTrainedModel, wrapped)
             # This is dumb, but we need to run a forward pass to initialize the
             # FSDP. Otherwise, the first forward pass on all workers will not run
-            # if one of the workers doesn't receive a dataset to run on
-            # This can happen if the first dataset len is lesser than the number of
+            # if one of the workers doesn't something to run on
+            # This can happen if the first batch is lesser than the number of
             # workers
             model(input_ids=torch.Tensor([0]).long().to(device))
             print(f"FSDP running on rank {rank} with {device}")
@@ -296,13 +294,13 @@ def _worker(
             # Someone called map() giving us a new closure and dataset to use
             assert isinstance(msg, TaskMessage)
             closure_pkl = msg.closure
-            dataset = msg.data
+            data = msg.data
             closure = dill.loads(closure_pkl)
             queue_id = get_queue_id(msg.id, rank=rank)
             # We need to send the results back to the correct queue
             result_queue = out_qs[queue_id]
             try:
-                for record in dataset:
+                for record in data:
                     assert isinstance(record, dict)
                     inputs_cuda = pytree_map(
                         lambda t: t.to(device).unsqueeze(0), record
@@ -385,6 +383,8 @@ def round_robin(
     for idx, q in cycle(enumerate(result_queue)):
         if remaining_queues == 0:
             # We've exhausted all queues. Delete the queues and break
+            # TODO: Consider using thread_ids instead of UUIDs
+            # That way we can just use the queues?
             for queue_id in queue_ids:
                 del result_queue_dict[queue_id]
             break

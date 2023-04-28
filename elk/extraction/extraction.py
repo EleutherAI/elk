@@ -20,6 +20,7 @@ from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
+from transformers.utils import ModelOutput
 
 from .caching import extract_cache_key, maybe_load_extract_cache, write_extract_to_cache
 from ..inference_server.fsdp_options import FSDPOptions
@@ -292,13 +293,11 @@ def extract_hiddens(
                         input_ids = input_ids[..., -min(cur_len, max_len) :]
 
                 # Make sure we only pass the arguments that the model expects
-                inputs = dict(input_ids=input_ids)
-                if is_enc_dec:
-                    inputs["labels"] = answer
-                input_dataset = Dataset.from_dict(inputs)
-                input_dataset.set_format(type="torch")
-
-                outputs = server.infer(input_dataset)
+                outputs: ModelOutput = (
+                    server.infer(input_ids=input_ids, labels=answer)
+                    if is_enc_dec
+                    else server.infer(input_ids=input_ids)
+                )
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:

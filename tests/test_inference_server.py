@@ -9,7 +9,7 @@ from transformers import AutoTokenizer
 
 from elk.inference_server.fsdp_options import FSDPOptions
 from elk.utils.concurrency_utils import map_threadpool
-from elk.inference_server.fsdp import InferenceServer
+from elk.inference_server.fsdp import InferenceServer, shard_seq
 
 
 def test_inference_server_non_fsdp():
@@ -26,12 +26,7 @@ def test_inference_server_non_fsdp():
     input_ids = AutoTokenizer.from_pretrained(model_str).encode(
         text, return_tensors="pt"
     )
-    # Make sure we only pass the arguments that the model expects
-    inputs = dict(input_ids=input_ids)
-    # make the dict a dataset, while still making it a pytorch dataset
-    input_dataset = Dataset.from_dict(inputs)
-    input_dataset.set_format(type="torch")
-    outputs = server.map(dataset=input_dataset, closure=lambda x: x)[0]
+    outputs = server.infer(input_ids=input_ids)
     assert (
         type(outputs) == transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
     )
@@ -46,19 +41,11 @@ def test_inference_server_propagates_error():
         fsdp=FSDPOptions(fsdp_enabled=False),
         min_gpu_mem=0,
     )
-    # encode this text into input ids
-    text = "Hello, my dog is cute"
-    input_ids = AutoTokenizer.from_pretrained(model_str).encode(
-        text, return_tensors="pt"
-    )
-    # Make sure we only pass the arguments that the model expects
-    inputs = dict(wrongargument=input_ids)
-    # make the dict a dataset, while still making it a pytorch dataset
-    input_dataset = Dataset.from_dict(inputs)
-    input_dataset.set_format(type="torch")
-    # GPT2LMHeadModel.forward() got an unexpected keyword argument 'wrongargument'
     with pytest.raises(TypeError, match="got an unexpected keyword argument"):
-        outputs = server.map(dataset=input_dataset, closure=lambda x: x)
+        outputs = server.map(
+            [{"wrongkeyword": torch.Tensor([1, 2, 3])}], closure=lambda x: x
+        )
+
 
 @pytest.mark.gpu
 def test_fsdp_same_result():
@@ -76,25 +63,16 @@ def test_fsdp_same_result():
     input_ids = AutoTokenizer.from_pretrained(model_str).encode(
         text, return_tensors="pt"
     )
-    # Make sure we only pass the arguments that the model expects
-    inputs = dict(input_ids=input_ids)
-    # make the dict a dataset, while still making it a pytorch dataset
-    input_dataset = Dataset.from_dict(inputs)
-    input_dataset.set_format(type="torch")
-    outputs = server.map(dataset=input_dataset, closure=lambda x: x)[0]
+    outputs = server.infer(input_ids=input_ids)
     assert (
         type(outputs) == transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
     )
+
 
 @pytest.mark.gpu
 def test_fsdp_multithreading():
     """Test that fsdp works with multithreading"""
     _dicts = [{"input_ids": torch.tensor([[55] * i])} for i in range(1, 10)]
-    items: list[Dataset] = [
-        Dataset.from_dict({"input_ids": torch.tensor([[1] * i])}) for i in range(1, 10)
-    ]
-    for item in items:
-        item.set_format(type="torch")
     # make a threadpool
     threadpool = ThreadPoolExecutor(max_workers=2)
     # # make a server
@@ -107,8 +85,18 @@ def test_fsdp_multithreading():
     )
     # run the function .one on the server
     outputs_server = map_threadpool(
-        items=items, func=lambda x: server.infer(x).logits, threadpool=threadpool
+        items=_dicts,
+        func=lambda x: server.infer(**x).logits,
+        threadpool=threadpool
     )
     # assert that the length of the 2nd dimension of the logits is equal to the number of repeats
     for i, output in enumerate(outputs_server):
         assert output.shape[1] == i + 1
+
+
+def test_shared_seq():
+    assert shard_seq([1, 2, 3, 4, 5, 6], 2) == [[1, 3, 5], [2, 4, 6]]
+    assert shard_seq([1, 2, 3, 4, 5, 6], 4) == [[1, 5], [2, 6], [3], [4]]
+    assert shard_seq([1, 2, 3, 4, 5, 6], 1) == [[1, 2, 3, 4, 5, 6]]
+    assert shard_seq([1, 2, 3, 4, 5, 6], 6) == [[1], [2], [3], [4], [5], [6]]
+    assert shard_seq([1, 2, 3, 4, 5, 6], 7) == [[1], [2], [3], [4], [5], [6], []]
