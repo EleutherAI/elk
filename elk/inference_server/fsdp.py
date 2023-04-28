@@ -53,6 +53,7 @@ class TaskMessage:
 class ResultMessage:
     id: UUID
     data: Any
+    exception: Exception | None = None
 
 
 if TYPE_CHECKING:
@@ -302,35 +303,33 @@ def _worker(
             closure = dill.loads(closure_pkl)
             queue_id = get_queue_id(msg.id, rank=rank)
             # We need to send the results back to the correct queue
-            out_queue = out_qs[queue_id]
-            for record in dataset:
-                assert isinstance(record, dict)
-                try:
+            result_queue = out_qs[queue_id]
+            try:
+                for record in dataset:
+                    assert isinstance(record, dict)
                     inputs_cuda = pytree_map(
                         lambda t: t.to(device).unsqueeze(0), record
                     )
-                except Exception as e:
-                    print(f"Failed to move inputs to cuda: {e}")
-                    raise e
 
-                # We always want to return the hidden states
-                try:
+                    # We always want to return the hidden states
                     outputs = model(**inputs_cuda, output_hidden_states=True)
-                except Exception as e:
-                    print(f"forward failed {e}")
-                    raise e
 
-                outputs_cls = type(outputs)
-                outputs_dict = pytree_map(lambda x: x.cpu().share_memory_(), outputs)
-                outputs = outputs_cls(**outputs_dict)
-                # apply the closure
-                output_applied = closure(outputs)
+                    outputs_cls = type(outputs)
+                    outputs_dict = pytree_map(
+                        lambda x: x.cpu().share_memory_(), outputs
+                    )
+                    outputs = outputs_cls(**outputs_dict)
+                    # apply the closure
+                    output_applied = closure(outputs)
 
-                # Send the outputs back to the main process
-                out_queue.put(ResultMessage(data=output_applied, id=msg.id))
+                    # Send the outputs back to the main process
+                    result_queue.put(ResultMessage(data=output_applied, id=msg.id))
+            except Exception as e:
+                # Send the exception back to the main process
+                result_queue.put(ResultMessage(exception=e, id=msg.id, data=None))
 
             # Indicate we're done with this dataset
-            out_queue.put_nowait(SingletonSentinel)
+            result_queue.put_nowait(SingletonSentinel)
 
         # Clean up the FSDP process group
         if fsdp_port is not None:
@@ -393,11 +392,14 @@ def round_robin(
                 del result_queue_dict[queue_id]
             break
         try:
-            item = q.get(timeout=0.01)
+            item: ResultMessage | Type[SingletonSentinel] = q.get(timeout=0.01)
         except std_mp.queues.Empty:  # type: ignore[attr-defined]
             continue
         else:
             if item == sentinel:
                 remaining_queues -= 1
+            if item.exception is not None:
+                # We got an exception from the worker. Raise it here
+                raise item.exception
             else:
                 yield cast(ResultMessage, item).data
