@@ -44,12 +44,13 @@ class SingletonSentinel:
 class TaskMessage:
     id: UUID
     data: Sequence[dict]
-    closure: Any  # dill closure
+    func: Callable[[ModelOutput], Any]
 
 
 @dataclass(kw_only=True)
 class ResultMessage:
     id: UUID
+    # Either ModelOutput or something applied by the func to the output
     data: Any
     exception: Exception | None = None
 
@@ -195,29 +196,25 @@ class InferenceServer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
 
-    def infer(self, **kwargs) -> ModelOutput:
-        """Run inference on the given input. These are passed directly to the model."""
-        return self.map(keywords=[kwargs], closure=lambda x: x)[0]
-
     def map(
-        self, keywords: list[dict[str, Any]], closure: Callable[[ModelOutput], A]
+        self, keywords: list[dict[str, Any]], func: Callable[[ModelOutput], A]
     ) -> list[A]:
-        """Run inference on the given inputs, running a closure on the outputs.
+        """Run inference on the given inputs, running a func on the outputs.
         Note that the order of the outputs is not guaranteed to match
         """
-        return list(self.imap(keywords=keywords, closure=closure))
+        return list(self.imap(keywords=keywords, func=func))
 
     def imap(
         self,
         keywords: list[dict[str, Any]],
-        closure: Callable[[ModelOutput], A],
+        func: Callable[[ModelOutput], A],
     ) -> Iterable[A]:
-        """Run inference on the given inputs, running a closure on the outputs."""
+        """Run inference on the given inputs, running a func on the outputs."""
         if self._process_ctx is None:
             raise RuntimeError("Can't run inference on a server that isn't running")
 
-        # Pickle the closure and send it to the workers
-        closure_pkl = dill.dumps(closure)
+        # Pickle the func and send it to the workers
+        func_pkl = dill.dumps(func)
         shards = shard_seq(keywords, self.num_workers)
         # shuffle the shards so that we distribute the load evenly
         shuffled_shards = random.sample(shards, len(shards))
@@ -228,7 +225,7 @@ class InferenceServer:
             self._task_queues,
             shuffled_shards,
         ):
-            message = TaskMessage(id=_id, closure=closure_pkl, data=shard)
+            message = TaskMessage(id=_id, func=func_pkl, data=shard)
             task_q.put(message)
 
         yield from round_robin(
@@ -236,6 +233,33 @@ class InferenceServer:
             queue_ids=queue_ids,
             result_queue_dict=self._result_queues,
         )
+
+    def infer(self, **kwargs) -> ModelOutput:
+        """Run inference on the given input. These are passed directly to the model."""
+        # Optimized version of map for one input. No need to create so many queues.
+        # Pick the first available worker
+        worker_idx = random.randint(0, self.num_workers - 1)
+        task_queue = self._task_queues[worker_idx]
+        _id: UUID = uuid.uuid4()
+        queue_id = get_queue_id(_id, worker_idx)
+        result_queue = self._manager.Queue()
+        self._result_queues[queue_id] = result_queue  # type: ignore
+
+        # Send the task to the worker
+        message = TaskMessage(id=_id, func=lambda x: x, data=[kwargs])
+        task_queue.put(message)
+
+        # Wait for the result
+        result_msg: ResultMessage = result_queue.get()
+        if result_msg.exception is not None:
+            raise result_msg.exception
+        else:
+            output = result_msg.data
+
+        # Clean up the result queue
+        del self._result_queues[queue_id]
+
+        return output
 
 
 @torch.inference_mode()
@@ -256,7 +280,7 @@ def _worker(
         logging.disable(logging.CRITICAL)
         warnings.filterwarnings("ignore")
 
-    closure: Callable[[ModelOutput], Any]
+    func: Callable[[ModelOutput], Any]
     device = devices[rank]
 
     try:
@@ -293,11 +317,11 @@ def _worker(
                 # Someone called shutdown() on the server
                 print("Shutting down worker")
                 return
-            # Someone called map() giving us a new closure and dataset to use
+            # Someone called map() giving us a new func and dataset to use
             assert isinstance(msg, TaskMessage)
-            closure_pkl = msg.closure
+            func_pkl = msg.func
             data = msg.data
-            closure = dill.loads(closure_pkl)
+            func = dill.loads(func_pkl)
             queue_id = get_queue_id(msg.id, rank=rank)
             # We need to send the results back to the correct queue
             result_queue = out_qs[queue_id]
@@ -316,8 +340,8 @@ def _worker(
                         lambda x: x.cpu().share_memory_(), outputs
                     )
                     outputs = outputs_cls(**outputs_dict)
-                    # apply the closure
-                    output_applied = closure(outputs)
+                    # apply the func
+                    output_applied = func(outputs)
 
                     # Send the outputs back to the main process
                     result_queue.put(ResultMessage(data=output_applied, id=msg.id))
@@ -397,8 +421,8 @@ def round_robin(
         else:
             if item == sentinel:
                 remaining_queues -= 1
-            elif item.exception is not None:
+            elif item.exception is not None:  # type: ignore
                 # We got an exception from the worker. Raise it here
-                raise item.exception
+                raise item.exception  # type: ignore
             else:
                 yield cast(ResultMessage, item).data

@@ -42,7 +42,7 @@ def test_inference_server_propagates_error():
     )
     with pytest.raises(TypeError, match="got an unexpected keyword argument"):
         server.map(
-            [{"wrongkeyword": torch.Tensor([1, 2, 3])}], closure=lambda x: x
+            [{"wrongkeyword": torch.Tensor([1, 2, 3])}], func=lambda x: x
         )
 
 
