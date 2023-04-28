@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass
+from typing import Literal
 
 import torch
 from einops import repeat
@@ -37,16 +38,20 @@ class EvalResult:
             else {}
         )
         auroc_dict = {f"{prefix}auroc_{k}": v for k, v in asdict(self.roc_auc).items()}
-        return {**acc_dict, **cal_acc_dict, **cal_dict, **auroc_dict}
+        return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
 
 
-def evaluate_preds(y_true: Tensor, y_logits: Tensor) -> EvalResult:
+def evaluate_preds(
+    y_true: Tensor,
+    y_logits: Tensor,
+    ensembling: Literal["none", "partial", "full"] = "none",
+) -> EvalResult:
     """
     Evaluate the performance of a classification model.
 
     Args:
         y_true: Ground truth tensor of shape (N,).
-        y_pred: Predicted class tensor of shape (N, variants, n_classes).
+        y_logits: Predicted class tensor of shape (N, variants, n_classes).
 
     Returns:
         dict: A dictionary containing the accuracy, AUROC, and ECE.
@@ -54,16 +59,29 @@ def evaluate_preds(y_true: Tensor, y_logits: Tensor) -> EvalResult:
     (n, v, c) = y_logits.shape
     assert y_true.shape == (n,)
 
-    # Clustered bootstrap confidence intervals for AUROC
-    y_true = repeat(y_true, "n -> n v", v=v)
-    auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(1), y_logits.flatten(1))
-    acc = accuracy_ci(y_true, y_logits.argmax(dim=-1))
+    if ensembling == "full":
+        y_logits = y_logits.mean(dim=1)
+    else:
+        y_true = repeat(y_true, "n -> n v", v=v)
 
+    y_pred = y_logits.argmax(dim=-1)
+    if ensembling == "none":
+        auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(1), y_logits.flatten(1))
+    elif ensembling in ("partial", "full"):
+        # Pool together the negative and positive class logits
+        if c == 2:
+            auroc = roc_auc_ci(y_true, y_logits[..., 1] - y_logits[..., 0])
+        else:
+            auroc = roc_auc_ci(to_one_hot(y_true, c).long(), y_logits)
+    else:
+        raise ValueError(f"Unknown mode: {ensembling}")
+
+    acc = accuracy_ci(y_true, y_pred)
     cal_acc = None
     cal_err = None
 
     if c == 2:
-        pos_probs = y_logits.softmax(-1)[..., 1]
+        pos_probs = torch.sigmoid(y_logits[..., 1] - y_logits[..., 0])
 
         # Calibrated accuracy
         cal_thresh = pos_probs.float().quantile(y_true.float().mean())
