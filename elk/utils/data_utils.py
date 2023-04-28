@@ -12,8 +12,8 @@ from datasets import (
     get_dataset_config_names,
 )
 
-from ..multiprocessing import A
 from ..promptsource.templates import Template
+from .multiprocessing_utils import A
 from .typing import assert_type
 
 

@@ -1,26 +1,24 @@
 import logging
 import multiprocessing as std_mp
 import os
-import random
 import socket
 import traceback
 import uuid
 import warnings
 from dataclasses import dataclass
 from functools import partial
-from itertools import cycle
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Iterable,
+    Literal,
     NewType,
     Optional,
     Sequence,
     Type,
-    cast,
-    Literal,
     TypeAlias,
+    cast,
 )
 from uuid import UUID
 
@@ -35,9 +33,8 @@ from transformers import PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
 
 from elk.inference_server.fsdp_options import FSDPOptions
-from elk.multiprocessing import A
 from elk.utils import instantiate_model, pytree_map, select_usable_devices
-
+from elk.utils.multiprocessing_utils import A
 
 sentinel: Literal["sentinel"] = "sentinel"
 SingletonSentinel: TypeAlias = Literal["sentinel"]
