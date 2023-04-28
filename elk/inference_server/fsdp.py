@@ -18,6 +18,8 @@ from typing import (
     Sequence,
     Type,
     cast,
+    Literal,
+    TypeAlias,
 )
 from uuid import UUID
 
@@ -36,8 +38,8 @@ from elk.multiprocessing import A
 from elk.utils import instantiate_model, pytree_map, select_usable_devices
 
 
-class SingletonSentinel:
-    ...
+sentinel: Literal["sentinel"] = "sentinel"
+SingletonSentinel: TypeAlias = Literal["sentinel"]
 
 
 @dataclass(kw_only=True)
@@ -56,8 +58,8 @@ class ResultMessage:
 
 
 if TYPE_CHECKING:
-    ResultQueue = mp.Queue[ResultMessage | Type[SingletonSentinel]]
-    TaskQueue = mp.Queue[TaskMessage | Type[SingletonSentinel]]
+    ResultQueue = mp.Queue[ResultMessage | SingletonSentinel]
+    TaskQueue = mp.Queue[TaskMessage | SingletonSentinel]
 
 else:
     ResultQueue = mp.Queue
@@ -172,7 +174,7 @@ class InferenceServer:
         # Let the workers know that they should shut down
         for _ in range(self.num_workers):
             try:
-                self._task_queue.put_nowait(SingletonSentinel)
+                self._task_queue.put_nowait(sentinel)
             except std_mp.queues.Empty:  # type: ignore[attr-defined]
                 pass
 
@@ -212,7 +214,6 @@ class InferenceServer:
             self._task_queue.put(message)
 
         yield from round_robin(
-            sentinel=SingletonSentinel,
             queue_ids=queue_ids,
             result_queue_dict=self._result_queues,
         )
@@ -298,7 +299,7 @@ def _worker(
         # Breaks when x is None, the sentinel value indicating we should shut down
 
         while msg := task_queue.get():
-            if isinstance(msg, SingletonSentinel):
+            if msg == sentinel:
                 # Someone called shutdown() on the server
                 print("Shutting down worker")
                 return
@@ -334,12 +335,13 @@ def _worker(
                 result_queue.put(ResultMessage(exception=e, id=msg.id, data=None))
 
             # Indicate we're done with this dataset
-            result_queue.put_nowait(SingletonSentinel)
+            result_queue.put_nowait(sentinel)
 
         # Clean up the FSDP process group
         if fsdp_port is not None:
             dist.destroy_process_group()
     except Exception as e:
+        # TODO: Log the traceback too
         print(f"Worker failed with {e}, Type: {type(e)}")
         raise e
 
@@ -382,7 +384,6 @@ def find_available_port() -> int:
 
 
 def round_robin(
-    sentinel: Type[SingletonSentinel],
     queue_ids: list[QueueID],
     result_queue_dict: dict[QueueID, ResultQueue],
 ) -> Iterable[Any]:
@@ -399,14 +400,14 @@ def round_robin(
                 del result_queue_dict[queue_id]
             break
         try:
-            item: ResultMessage | Type[SingletonSentinel] = q.get(timeout=0.01)
+            item: ResultMessage | SingletonSentinel = q.get(timeout=0.01)
         except std_mp.queues.Empty:  # type: ignore[attr-defined]
             continue
         else:
             if item == sentinel:
                 remaining_queues -= 1
-            elif item.exception is not None:  # type: ignore
+            elif item.exception is not None:
                 # We got an exception from the worker. Raise it here
-                raise item.exception  # type: ignore
+                raise item.exception
             else:
                 yield cast(ResultMessage, item).data
