@@ -80,9 +80,9 @@ class InferenceServer:
     def __init__(
         self,
         model_str: str,
+        fsdp: FSDPOptions,
         min_gpu_mem: Optional[float | int],
         num_workers: int = 1,
-        fsdp: Optional[FSDPOptions] = None,
     ):
         self.model_str = model_str
         assert num_workers > 0
@@ -110,7 +110,7 @@ class InferenceServer:
         print("Loading model...")
         model = self._model
         model_size = sum(p.numel() * p.element_size() for p in model.parameters())
-        fdsp_min_mem = model_size / self.num_workers if self.fsdp else None
+        fdsp_min_mem = model_size / self.num_workers if self.fsdp.fsdp_enabled else None
 
         min_gpu_mem = (
             min_gpu_mem
@@ -126,7 +126,7 @@ class InferenceServer:
         self.num_workers = len(devices)  # This may have been -1 before
 
         fsdp_port, wrap_policy = None, None
-        if self.fsdp:
+        if self.fsdp.fsdp_enabled:
             fsdp_port = find_available_port()
             msg = f"Fully Sharded Data Parallel running on port {fsdp_port}"
 

@@ -394,11 +394,11 @@ def write_dataset_with_name(dataset_dict: DatasetDictWithName) -> None:
 def extract(
     cfg: "Extract",
     *,
+    fsdp: FSDPOptions,
     disable_cache: bool = False,
     highlight_color: str = "cyan",
     num_gpus: int = -1,
     min_gpu_mem: int | None = None,
-    fsdp: Optional[FSDPOptions] = None
 ) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
     ds_name, config_name = extract_dataset_name_and_config(

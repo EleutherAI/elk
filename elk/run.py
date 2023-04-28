@@ -46,12 +46,13 @@ class Run(ABC, Serializable):
     num_gpus: int = -1
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
-    fsdp: FSDPOptions | None = None
+    fsdp: FSDPOptions = field(default_factory=lambda: FSDPOptions())
 
     def execute(self, highlight_color: str = "cyan"):
         self.datasets = [
             extract(
                 cfg,
+                fsdp=self.fsdp,
                 disable_cache=self.disable_cache,
                 highlight_color=highlight_color,
                 num_gpus=self.num_gpus,
@@ -179,5 +180,3 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
-
-

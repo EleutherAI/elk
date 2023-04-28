@@ -1,5 +1,5 @@
 from copy import deepcopy
-from dataclasses import InitVar, dataclass
+from dataclasses import InitVar, dataclass, field
 
 from ..evaluation.evaluate import Eval
 from ..extraction import Extract, PromptConfig
@@ -22,10 +22,12 @@ class Sweep:
     name: str | None = None
 
     # A bit of a hack to add all the command line arguments from Elicit
-    run_template: Elicit = Elicit(
-        data=Extract(
-            model="<placeholder>",
-            prompts=PromptConfig(datasets=["<placeholder>"]),
+    run_template: Elicit = field(
+        default_factory=lambda: Elicit(
+            data=Extract(
+                model="<placeholder>",
+                prompts=PromptConfig(datasets=["<placeholder>"]),
+            )
         )
     )
 
