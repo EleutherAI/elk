@@ -44,7 +44,7 @@ class SingletonSentinel:
 class TaskMessage:
     id: UUID
     data: Sequence[dict]
-    func: Callable[[ModelOutput], Any]
+    func: Callable[[ModelOutput], Any] | None
 
 
 @dataclass(kw_only=True)
@@ -92,10 +92,11 @@ class InferenceServer:
         self.model_str = model_str
         self.fsdp = fsdp
         self._current_id = 0
-        self._process_ctx: mp.ProcessContext | None = None
-        # UUID to be thread-safe
         self._manager = mp.Manager()
-        # QueueId to make it thread-safe
+        # Single task_queue, so that the tasks are distributed evenly
+        self._task_queue: TaskQueue = self._manager.Queue()  # type: ignore
+        # Multiple result_queues, for each run of map / infer
+        # so that its thread-safe
         self._result_queues: dict[
             QueueID, ResultQueue
         ] = self._manager.dict()  # type: ignore
@@ -127,9 +128,6 @@ class InferenceServer:
         devices = select_usable_devices(num_workers, min_memory=min_gpu_mem)
         self.devices = devices
         self.num_workers = len(devices)  # This may have been -1 before
-        self._task_queues: list[TaskQueue] = [  # type: ignore
-            self._manager.Queue() for _ in range(self.num_workers)
-        ]
         fsdp_port, wrap_policy = None, None
         if self.fsdp.fsdp_enabled:
             fsdp_port = find_available_port()
@@ -144,12 +142,12 @@ class InferenceServer:
 
             print(msg)
         cpu_offload: bool = fsdp.cpu_offload if fsdp else False
-        self._process_ctx = mp.spawn(
+        self._process_ctx: mp.ProcessContext = mp.spawn(  # type: ignore
             _worker,
             args=(
                 devices,
                 model,
-                self._task_queues,
+                self._task_queue,
                 self._result_queues,
                 cpu_offload,
                 fsdp_port,
@@ -169,20 +167,12 @@ class InferenceServer:
             queue_ids.append(queue_id)
         return queue_ids
 
-    @property
-    def running(self) -> bool:
-        """Whether the server is running."""
-        return self._process_ctx is not None
-
     def shutdown(self) -> bool:
         """Shut down all the workers, returning `True` if successful."""
-        if self._process_ctx is None:
-            raise RuntimeError("Can't shut down a server that isn't running")
-
         # Let the workers know that they should shut down
-        for q in self._task_queues:
+        for _ in range(self.num_workers):
             try:
-                q.put_nowait(SingletonSentinel)
+                self._task_queue.put_nowait(SingletonSentinel)
             except std_mp.queues.Empty:  # type: ignore[attr-defined]
                 pass
 
@@ -214,17 +204,12 @@ class InferenceServer:
         # Pickle the func and send it to the workers
         func_pkl = dill.dumps(func)
         shards = shard_seq(keywords, self.num_workers)
-        # shuffle the shards so that we distribute the load evenly
-        shuffled_shards = random.sample(shards, len(shards))
         # create a uuid to track what messages belong to what imap on different threads
         _id: UUID = uuid.uuid4()
         queue_ids = self.create_result_queues(_uuid=_id, num_workers=self.num_workers)
-        for task_q, shard in zip(
-            self._task_queues,
-            shuffled_shards,
-        ):
+        for shard in shards:
             message = TaskMessage(id=_id, func=func_pkl, data=shard)
-            task_q.put(message)
+            self._task_queue.put(message)
 
         yield from round_robin(
             sentinel=SingletonSentinel,
@@ -237,15 +222,14 @@ class InferenceServer:
         # Optimized version of map for one input. No need to create so many queues.
         # Pick the first available worker
         worker_idx = random.randint(0, self.num_workers - 1)
-        task_queue = self._task_queues[worker_idx]
         _id: UUID = uuid.uuid4()
         queue_id = get_queue_id(_id, worker_idx)
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
 
         # Send the task to the worker
-        message = TaskMessage(id=_id, func=lambda x: x, data=[kwargs])
-        task_queue.put(message)
+        message = TaskMessage(id=_id, func=None, data=[kwargs])
+        self._task_queue.put(message)
 
         # Wait for the result
         result_msg: ResultMessage = result_queue.get()
@@ -260,12 +244,16 @@ class InferenceServer:
         return output
 
 
+def identity(x):
+    return x
+
+
 @torch.inference_mode()
 def _worker(
     rank: int,
     devices: list[str],
     model: PreTrainedModel,
-    qs: list[TaskQueue],
+    task_queue: TaskQueue,
     out_qs: dict[QueueID, ResultQueue],
     cpu_offload: bool = False,
     fsdp_port: int | None = None,
@@ -308,18 +296,16 @@ def _worker(
             model.to(device)
 
         # Breaks when x is None, the sentinel value indicating we should shut down
-        in_queue = qs[rank]
 
-        while msg := in_queue.get():
+        while msg := task_queue.get():
             if isinstance(msg, SingletonSentinel):
                 # Someone called shutdown() on the server
                 print("Shutting down worker")
                 return
             # Someone called map() giving us a new func and dataset to use
             assert isinstance(msg, TaskMessage)
-            func_pkl = msg.func
             data = msg.data
-            func = dill.loads(func_pkl)
+            func = dill.loads(msg.func) if msg.func is not None else identity
             queue_id = get_queue_id(msg.id, rank=rank)
             # We need to send the results back to the correct queue
             result_queue = out_qs[queue_id]
