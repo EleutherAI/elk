@@ -106,7 +106,7 @@ class InferenceServer:
         for i in range(num_workers):
             queue_id = get_queue_id(_uuid, i)
             new_queue = self._manager.Queue()
-            self._result_queues[queue_id] = new_queue
+            self._result_queues[queue_id] = new_queue  # type: ignore
             queue_ids.append(queue_id)
         return queue_ids
 
@@ -195,7 +195,6 @@ class InferenceServer:
         Note that the order of the outputs is not guaranteed to match
         """
         return list(self.imap(closure, dataset))
-
 
     def one(
         self,
@@ -380,7 +379,7 @@ def find_available_port() -> int:
 
 
 def round_robin(
-    sentinel: SingletonSentinel,
+    sentinel: Type[SingletonSentinel],
     queue_ids: list[QueueID],
     result_queue_dict: dict[QueueID, ResultQueue],
 ) -> Iterable[Any]:
@@ -404,4 +403,4 @@ def round_robin(
                 print("Got sentinel")
                 remaining_queues -= 1
             else:
-                yield item.data
+                yield cast(ResultMessage, item).data

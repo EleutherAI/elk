@@ -1,6 +1,7 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, Future
 from copy import copy
 from dataclasses import InitVar, dataclass
 from itertools import islice
@@ -28,6 +29,8 @@ from ..utils import (
     is_autoregressive,
     select_train_val_splits,
 )
+from ..utils.concurrency_utils import map_threadpool
+from ..utils.data_utils import flatten_list
 from ..utils.fsdp import InferenceServer
 from .dataset_name import (
     DatasetDictWithName,
@@ -85,30 +88,24 @@ class Extract(Serializable):
         return copies
 
 
-def identity(x):
-    return x
+@dataclass
+class ExtractedHidden:
+    split_type: str
+    data: dict[str, Any]
 
 
-def extract_hiddens_with_server(
-    cfg: Extract,
-    split_names: list[str],
-    server: InferenceServer,
-    ds_name: str,
+def extracted_hiddens_to_dataset_with_name(
+    extracted_hiddens: list[ExtractedHidden], ds_name: str
 ) -> DatasetDictWithName:
-    """Run inference on a model with a set of prompts, yielding the hidden states."""
-    results: dict[str, list[dict]] = {split_name: [] for split_name in split_names}
+    # Group the results by split type
+    results: dict[str, list[dict]] = {}
+    for extracted_hidden in extracted_hiddens:
+        split_type = extracted_hidden.split_type
+        if split_type not in results:
+            results[split_type] = []
+        results[split_type].append(extracted_hidden.data)
 
-    for split_name in split_names:
-        hiddens = []
-        for split_hiddens in extract_hiddens(
-            cfg=cfg, server=server, split_type=split_name, device="cpu"
-        ):
-            hiddens.append(split_hiddens)
-        split_result: list[dict] = hiddens
-        results[split_name] = split_result
-
-    # Turn the results into a DatasetDict, that has the splits
-    # and the list of dicts from extract_hiddens_list
+    # Turn the results into a DatasetDict
     ds_dict = DatasetDict(
         {
             split_name: Dataset.from_list(mapping=split_results)
@@ -122,194 +119,38 @@ def extract_hiddens_with_server(
     )
 
 
-"""InputIdsDict will contain
-variants_ids: str
-text_questions: str
-input_ids : list[int]
-answer_ids: list[int]
-and optionally
-labels: list[int]
-"""
-InputIdsDict = NewType("InputIdsDict", dict[str, Any])
-
-
-@torch.inference_mode()
-def extract_input_ids(
-    cfg: "Extract",
-    *,
-    model: PreTrainedModel,
-    split_type: Literal["train", "val"],
-) -> InputIdsDict:
-    """Run inference on a model with a set of prompts, yielding the hidden states."""
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-    # Silence datasets logging messages from all but the first process
-
-    p_cfg = cfg.prompts
-    ds_names = p_cfg.datasets
-    assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
-
-    tokenizer = instantiate_tokenizer(cfg.model, truncation_side="left", verbose=True)
-
-    is_enc_dec = model.config.is_encoder_decoder
-    if is_enc_dec and cfg.use_encoder_states:
-        assert hasattr(model, "get_encoder") and callable(model.get_encoder)
-        model = assert_type(PreTrainedModel, model.get_encoder())
-        is_enc_dec = False
-
-    has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
-    if has_lm_preds:
-        print("Model has language model head, will store predictions.")
-
-    prompt_ds = load_prompts(
-        ds_names[0],
-        label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
-        num_classes=p_cfg.num_classes,
-        split_type=split_type,
-        stream=p_cfg.stream,
-    )
-
-    global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
-    max_examples = global_max_examples
-
-    all_rows = []
-
-    for example in islice(prompt_ds, max_examples):
-        # Iterate over variants
-        for i, record in enumerate(example["prompts"]):
-            variant_questions = []
-
-            # Iterate over answers
-            for j, choice in enumerate(record):
-                text = choice["question"]
-
-                # Only feed question, not the answer, to the encoder for enc-dec models
-                target = choice["answer"] if is_enc_dec else None
-
-                # Record the EXACT question we fed to the model
-                variant_questions.append(text)
-                encoding = tokenizer(
-                    text,
-                    # Keep [CLS] and [SEP] for BERT-style models
-                    add_special_tokens=True,
-                    return_tensors="pt",
-                    text_target=target,  # type: ignore[arg-type]
-                    truncation=True,
-                )
-                input_ids = assert_type(Tensor, encoding.input_ids)
-
-                if is_enc_dec:
-                    answer = assert_type(Tensor, encoding.labels)
-                else:
-                    encoding2 = tokenizer(
-                        choice["answer"],
-                        # Don't include [CLS] and [SEP] in the answer
-                        add_special_tokens=False,
-                        return_tensors="pt",
-                    )
-                    answer = assert_type(Tensor, encoding2.input_ids)
-
-                    input_ids = torch.cat([input_ids, answer], dim=-1)
-                    if max_len := tokenizer.model_max_length:
-                        cur_len = input_ids.shape[-1]
-                        input_ids = input_ids[..., -min(cur_len, max_len) :]
-
-                out_row: dict[str, Any] = dict(
-                    variant_ids=example["template_names"],
-                    text_questions=text,
-                    input_ids=input_ids,
-                    answer_ids=answer,
-                )
-                if is_enc_dec:
-                    out_row["labels"] = answer
-                all_rows.append(out_row)
-
-        # Make it into a DatasetDict
-        input_dataset = Dataset.from_list(all_rows)
-        # turn into torch tensors
-        input_dataset.set_format(type="torch")
-        return input_dataset
-
-
-# def process_model_outputs(
-#     input_dataset: InputIdsDict,
-#     model_outputs: list[ModelOutput],
-# ) -> DatasetDict:
-#     """Process the model outputs into a DatasetDict."""
-#     assert len(model_outputs) == len(input_dataset), "Mismatched number of inputs."
-#     has_lm_preds = "labels" in input_dataset
-#     num_variants = len(example["prompts"])
-#     num_choices = len(example["prompts"][0])
-#     # Add one to the number of layers to account for the embedding layer
-#     layer_indices = cfg.layers
-#     hidden_dict = {
-#         f"hidden_{layer_idx}": torch.empty(
-#             num_variants,
-#             num_choices,
-#             server._model.config.hidden_size,
-#             dtype=torch.int16,
-#         )
-#         for layer_idx in layer_indices
-#     }
-#     lm_logits = torch.empty(
-#         num_variants,
-#         num_choices,
-#         dtype=torch.float32,
-#     )
-#     for i, (example, outputs) in enumerate(zip(input_dataset, model_outputs)):
-#         # Compute the log probability of the answer tokens if available
-#         answer = example["answer_ids"]
-#         if has_lm_preds:
-#             answer_len = answer.shape[-1]
-#             log_p = outputs.logits[..., -answer_len:, :].log_softmax(dim=-1)
-#             tokens = answer[..., None]
-#             lm_logits[i, j] = log_p.gather(-1, tokens).sum()
-#
-#         elif isinstance(outputs, Seq2SeqLMOutput):
-#             # The cross entropy loss is averaged over tokens, so we need to
-#             # multiply by the length to get the total log probability.
-#             length = encoding.labels.shape[-1]
-#             lm_logits[i, j] = -assert_type(Tensor, outputs.loss) * length
-#
-#     hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-#     # Throw out layers we don't care about
-#     hiddens = [hiddens[i] for i in layer_indices]
-#
-#     # Current shape of each element: (batch_size, seq_len, hidden_size)
-#     if cfg.token_loc == "first":
-#         hiddens = [h[..., 0, :] for h in hiddens]
-#     elif cfg.token_loc == "last":
-#         hiddens = [h[..., -1, :] for h in hiddens]
-#     elif cfg.token_loc == "mean":
-#         hiddens = [h.mean(dim=-2) for h in hiddens]
-#     else:
-#         raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
-#
-#     for layer_idx, hidden in zip(layer_indices, hiddens):
-#         hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
-#     if has_lm_preds:
-#         out_record["model_logits"] = lm_logits
-
-
-@torch.inference_mode()
-def extract_hiddens_list(
-    cfg: "Extract",
-    *,
+def extract_hiddens_with_server(
+    cfg: Extract,
+    split_names: list[str],
     server: InferenceServer,
-    device: str | torch.device,
-    split_type: Literal["train", "val"],
-    rank: int = 0,
-    world_size: int = 1,
-) -> list[dict]:
-    return list(
-        extract_hiddens(
-            cfg,
-            server=server,
-            device=device,
-            split_type=split_type,
-            rank=rank,
-            world_size=world_size,
+    ds_name: str,
+) -> DatasetDictWithName:
+    """Run inference on a model with a set of prompts, yielding the hidden states."""
+
+    # Note: We can remove the need for a threadpool here if we refactor
+    # extract_hiddens to first extract the input_ids, and then run inference
+    # on the input_ids, then create the DatasetDict from the results.
+    world_size = server.num_workers * 2
+    ranks_and_splits: list[tuple[int, str]] = [
+        (i, split_name) for i in range(world_size) for split_name in split_names
+    ]
+    with ThreadPoolExecutor(max_workers=server.num_workers * 2) as executor:
+        hiddens = map_threadpool(
+            items=ranks_and_splits,
+            func=lambda tup: extract_hiddens(
+                cfg=cfg,
+                server=server,
+                device="cpu",
+                split_type=tup[1],
+                world_size=world_size,
+                rank=tup[0],
+            ),
+            threadpool=executor,
         )
+    flattened_hiddens: list[ExtractedHidden] = flatten_list(hiddens)
+    return extracted_hiddens_to_dataset_with_name(
+        extracted_hiddens=flattened_hiddens,
+        ds_name=ds_name,
     )
 
 
@@ -319,10 +160,10 @@ def extract_hiddens(
     *,
     server: InferenceServer,
     device: str | torch.device,
-    split_type: Literal["train", "val"],
+    split_type: str,
     rank: int = 0,
     world_size: int = 1,
-) -> Iterable[dict]:
+) -> list[ExtractedHidden]:
     model = server._model
     """Run inference on a model with a set of prompts, yielding the hidden states."""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -354,7 +195,7 @@ def extract_hiddens(
         ds_names[0],
         label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
         num_classes=p_cfg.num_classes,
-        split_type=split_type,
+        split_type=split_type,  # type: ignore
         stream=p_cfg.stream,
         rank=rank,
         world_size=world_size,
@@ -369,7 +210,7 @@ def extract_hiddens(
     # the last process gets the remainder (which is usually small)
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
-
+    output = []
     for example in islice(prompt_ds, max_examples):
         num_variants = len(example["prompts"])
         num_choices = len(example["prompts"][0])
@@ -490,7 +331,8 @@ def extract_hiddens(
         if has_lm_preds:
             out_record["model_logits"] = lm_logits
 
-        yield out_record
+        output.append(ExtractedHidden(split_type=split_type, data=out_record))
+    return output
 
 
 def extract(
@@ -542,38 +384,3 @@ def extract(
         server=server,
         ds_name=ds_name,
     )
-
-
-# def extract_hiddens_with_gpus(
-#     cfg: Extract,
-#     split_names: list[str],
-#     ds_name: str,
-#     devices: Sequence[torch.device | str],
-# ) -> DatasetDictWithName:
-#     """TODO: Some caching based on model name, layers, and dataset?"""
-#     results: dict[str, list[dict]] = {split_name: [] for split_name in split_names}
-#
-#     server = InferenceServer(model_str=cfg.model, fsdp=True)
-#
-#     for split_name in split_names:
-#         hiddens = []
-#         for split_hiddens in extract_hiddens_fsdp(
-#             cfg=cfg, server=server, split_type=split_name
-#         ):
-#             hiddens.append(split_hiddens)
-#         split_result: list[dict] = hiddens
-#         results[split_name] = split_result
-#
-#     # Turn the results into a DatasetDict, that has the splits
-#     # and the list of dicts from extract_hiddens_list
-#     ds_dict = DatasetDict(
-#         {
-#             split_name: Dataset.from_list(mapping=split_results)
-#             for split_name, split_results in results.items()
-#         }
-#     )
-#
-#     return DatasetDictWithName(
-#         name=ds_name,
-#         dataset=ds_dict,
-#     )

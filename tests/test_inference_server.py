@@ -1,5 +1,4 @@
 from concurrent.futures import ThreadPoolExecutor
-from typing import Sequence, Callable
 
 import torch
 import transformers
@@ -7,8 +6,8 @@ import transformers.modeling_outputs
 from datasets import Dataset
 from transformers import AutoTokenizer
 
-from elk.multiprocessing import A, B
 from elk.utils import pytree_map
+from elk.utils.concurrency_utils import map_threadpool
 from elk.utils.fsdp import InferenceServer
 
 
@@ -129,19 +128,6 @@ def test_inference_server_fsdp_limited():
     )
 
 
-def ordered_map_threads(
-    items: Sequence[A], func: Callable[[A], B], threadpool: ThreadPoolExecutor
-) -> list[B]:
-    """
-    Map a function over a sequence of items using a threadpool
-    """
-    futures = [threadpool.submit(func, item) for item in items]
-    results = []
-    for fut in futures:
-        results.append(fut.result())
-    return results
-
-
 def test_fsdp_multithreading():
     # make items repeat input_ids 1, but with ascending number of repeats
     _dicts = [{"input_ids": torch.tensor([[55] * i])} for i in range(1, 10)]
@@ -158,7 +144,7 @@ def test_fsdp_multithreading():
         model_str=model_str, num_workers=2, fsdp=False, cpu_offload=True
     )
     # run the function .one on the server
-    outputs_server = ordered_map_threads(
+    outputs_server = map_threadpool(
         items=items, func=lambda x: server.one(x).logits, threadpool=threadpool
     )
     # assert that the length of the 2nd dimension of the logits is equal to the number of repeats
