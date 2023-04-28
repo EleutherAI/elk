@@ -85,9 +85,7 @@ def test_fsdp_multithreading():
     )
     # run the function .one on the server
     outputs_server = map_threadpool(
-        items=_dicts,
-        func=lambda x: server.infer(**x).logits,
-        threadpool=threadpool
+        items=_dicts, func=lambda x: server.infer(**x).logits, threadpool=threadpool
     )
     # assert that the length of the 2nd dimension of the logits is equal to the number of repeats
     for i, output in enumerate(outputs_server):
@@ -95,6 +93,7 @@ def test_fsdp_multithreading():
 
 
 def test_shared_seq():
+    assert shard_seq([], 3) == [[], [], []]
     assert shard_seq([1, 2, 3, 4, 5, 6], 2) == [[1, 3, 5], [2, 4, 6]]
     assert shard_seq([1, 2, 3, 4, 5, 6], 4) == [[1, 5], [2, 6], [3], [4]]
     assert shard_seq([1, 2, 3, 4, 5, 6], 1) == [[1, 2, 3, 4, 5, 6]]
