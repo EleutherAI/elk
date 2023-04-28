@@ -320,7 +320,7 @@ def extract_hiddens(
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-                ).to(device)
+                )
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
 

@@ -294,7 +294,6 @@ def _worker(
                 # Someone called shutdown() on the server
                 print("Shutting down worker")
                 return
-            print("Got msg")
             # Someone called map() giving us a new closure and dataset to use
             assert isinstance(msg, TaskMessage)
             closure_pkl = msg.closure
@@ -388,7 +387,6 @@ def round_robin(
 
     for idx, q in cycle(enumerate(result_queue)):
         if remaining_queues == 0:
-            print("breaking the generator")
             # We've exhausted all queues. Delete the queues and break
             for queue_id in queue_ids:
                 del result_queue_dict[queue_id]
@@ -399,7 +397,6 @@ def round_robin(
             continue
         else:
             if item == sentinel:
-                print("Got sentinel")
                 remaining_queues -= 1
             else:
                 yield cast(ResultMessage, item).data
