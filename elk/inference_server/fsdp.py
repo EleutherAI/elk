@@ -46,8 +46,21 @@ ResultQueueID = NewType("QueueID", str)
 @dataclass(kw_only=True)
 class TaskMessage:
     id: ResultQueueID
-    data: Sequence[dict]
-    func: Callable[[ModelOutput], Any] | None
+    data_dill: bytes
+    func_dill: bytes | None
+
+    def data(self) -> Sequence[dict]:
+        return dill.loads(self.data_dill)
+
+    def func(self) -> Callable[[ModelOutput], Any] | None:
+        return dill.loads(self.func_dill) if self.func_dill else None
+    def data_and_func(
+        self,
+    ) -> tuple[Sequence[dict], Callable[[ModelOutput], Any] | None]:
+        return (
+            dill.loads(self.data_dill),
+            dill.loads(self.func_dill) if self.func_dill else None,
+        )
 
 
 @dataclass(kw_only=True)
@@ -204,14 +217,14 @@ class InferenceServer:
         """Run inference on the given inputs, running a func on the outputs."""
 
         # Pickle the func and send it to the workers
-        func_pkl = dill.dumps(func)
+        func_dill = dill.dumps(func)
         shards = shard_seq(keywords, self.num_workers)
         # create a uuid to track what messages belong to what imap on different threads
         _id: UUID = uuid.uuid4()
         queue_id: ResultQueueID = self.create_result_queue(_uuid=_id)
         for shard in shards:
-            # todo: share memory here too
-            message = TaskMessage(id=queue_id, func=func_pkl, data=shard)
+            data_dill = dill.dumps(shard)
+            message = TaskMessage(id=queue_id, func_dill=func_dill, data_dill=data_dill)
             self._task_queue.put(message)
 
         yield from round_robin(
@@ -228,14 +241,9 @@ class InferenceServer:
         queue_id = get_queue_id(_id)
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
-        inputs_dataset = Dataset.from_dict(kwargs)
-        # format the inputs as torch
-        inputs_dataset.set_format("torch")
-        # This is also a bit of a hack, where the tensors get serialized so they can be
-        # sent to the worker?
-
+        data_dill = dill.dumps([kwargs])
         # Send the task to the worker
-        message = TaskMessage(id=queue_id, func=None, data=inputs_dataset)
+        message = TaskMessage(id=queue_id, func_dill=None, data_dill=data_dill)
         self._task_queue.put(message)
 
         # Wait for the result
@@ -311,17 +319,15 @@ def _worker(
                 return
             # Someone called map() giving us a new func and dataset to use
             assert isinstance(msg, TaskMessage)
-            data = msg.data
-            func = dill.loads(msg.func) if msg.func is not None else identity
+            data = msg.data()
+            func = msg.func()
             queue_id = msg.id
             # We need to send the results back to the correct queue
             result_queue = out_qs[queue_id]
             try:
                 for record in data:
-                    # assert isinstance(record, dict)
-                    inputs_cuda = pytree_map(
-                        lambda t: t.to(device).unsqueeze(0), record
-                    )
+                    assert isinstance(record, dict)
+                    inputs_cuda = pytree_map(lambda t: t.to(device), record)
                     # We always want to return the hidden states
                     outputs = model(**inputs_cuda, output_hidden_states=True)
 
@@ -331,7 +337,7 @@ def _worker(
                     )
                     outputs = outputs_cls(**outputs_dict)
                     # apply the func
-                    output_applied = func(outputs)
+                    output_applied = func(outputs) if func is not None else outputs
 
                     # Send the outputs back to the main process
                     result_queue.put(ResultMessage(data=output_applied, id=msg.id))
