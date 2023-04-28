@@ -22,7 +22,8 @@ from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 from transformers.utils import ModelOutput
 
-from .caching import extract_cache_key, maybe_load_extract_cache, write_extract_to_cache
+from elk.inference_server.fsdp import InferenceServer
+
 from ..inference_server.fsdp_options import FSDPOptions
 from ..utils import (
     assert_type,
@@ -34,7 +35,7 @@ from ..utils import (
 )
 from ..utils.concurrency_utils import map_threadpool
 from ..utils.data_utils import flatten_list
-from elk.inference_server.fsdp import InferenceServer
+from .caching import extract_cache_key, maybe_load_extract_cache, write_extract_to_cache
 from .dataset_name import (
     DatasetDictWithName,
     extract_dataset_name_and_config,

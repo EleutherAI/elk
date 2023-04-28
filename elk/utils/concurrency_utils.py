@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from typing import Sequence, Callable
+from typing import Callable, Sequence
 
 from elk.multiprocessing import A, B
 

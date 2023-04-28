@@ -9,15 +9,15 @@ from dataclasses import dataclass
 from functools import partial
 from itertools import cycle
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Iterable,
-    Type,
-    cast,
-    Sequence,
-    TYPE_CHECKING,
     NewType,
     Optional,
+    Sequence,
+    Type,
+    cast,
 )
 from uuid import UUID
 
@@ -95,7 +95,9 @@ class InferenceServer:
         # UUID to be thread-safe
         self._manager = mp.Manager()
         # QueueId to make it thread-safe
-        self._result_queues: dict[QueueID, ResultQueue] = self._manager.dict()  # type: ignore
+        self._result_queues: dict[
+            QueueID, ResultQueue
+        ] = self._manager.dict()  # type: ignore
         model = instantiate_model(model_str, torch_dtype="auto")
         model.share_memory()
         self._model = model

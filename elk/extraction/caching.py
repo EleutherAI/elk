@@ -1,5 +1,5 @@
 import hashlib
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import dill
 from datasets import DatasetDict

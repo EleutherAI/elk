@@ -4,12 +4,11 @@ import pytest
 import torch
 import transformers
 import transformers.modeling_outputs
-from datasets import Dataset
 from transformers import AutoTokenizer
 
+from elk.inference_server.fsdp import InferenceServer, shard_seq
 from elk.inference_server.fsdp_options import FSDPOptions
 from elk.utils.concurrency_utils import map_threadpool
-from elk.inference_server.fsdp import InferenceServer, shard_seq
 
 
 def test_inference_server_non_fsdp():
@@ -42,14 +41,14 @@ def test_inference_server_propagates_error():
         min_gpu_mem=0,
     )
     with pytest.raises(TypeError, match="got an unexpected keyword argument"):
-        outputs = server.map(
+        server.map(
             [{"wrongkeyword": torch.Tensor([1, 2, 3])}], closure=lambda x: x
         )
 
 
 @pytest.mark.gpu
 def test_fsdp_same_result():
-    """Test that the results from fsdp are the same as the results from a single model"""
+    """The results should be the same as the results from a single model"""
     model_str = "sshleifer/tiny-gpt2"
     server = InferenceServer(
         model_str=model_str,
@@ -87,7 +86,7 @@ def test_fsdp_multithreading():
     outputs_server = map_threadpool(
         items=_dicts, func=lambda x: server.infer(**x).logits, threadpool=threadpool
     )
-    # assert that the length of the 2nd dimension of the logits is equal to the number of repeats
+    # the length of the 2nd dimension of the logits is equal to the number of repeats
     for i, output in enumerate(outputs_server):
         assert output.shape[1] == i + 1
 
