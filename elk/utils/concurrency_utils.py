@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from typing import Sequence, Callable
 
-from elk.multiprocessing import A, B
+from elk.utils.typing import A, B
 
 
 def map_threadpool(

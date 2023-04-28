@@ -1,8 +1,7 @@
 import multiprocessing as mp
-from typing import Callable, Optional, Sequence, TypeVar
+from typing import Callable, Sequence, Optional
 
-A = TypeVar("A")
-B = TypeVar("B")
+from elk.utils.typing import B
 
 
 def eval_thunk(func: Callable[[], B]) -> B:

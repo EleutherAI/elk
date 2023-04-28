@@ -34,7 +34,7 @@ from transformers import PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
 
 from elk.inference_server.fsdp_options import FSDPOptions
-from elk.multiprocessing import A
+from elk.utils.typing import A
 from elk.utils import instantiate_model, pytree_map, select_usable_devices
 
 
