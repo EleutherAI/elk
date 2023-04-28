@@ -360,9 +360,12 @@ def extract_cache_key(cfg: "Extract", ds_name: str) -> str:
     return f"{ds_name}-{cfg_hash}"
 
 
-def load_dataset_with_name(ds_name: str) -> DatasetDictWithName:
+def load_extract_from_cache(ds_name: str, cache_key: str) -> Optional[DatasetDictWithName]:
     # Use dill to load the DatasetDict
-    path = elk_extract_cache_dir() / f"{ds_name}.dill"
+    path = elk_extract_cache_dir() / f"{cache_key}.dill"
+    # check if the cache exists
+    if not path.exists():
+        return None
     with open(path, "rb") as f:
         dataset_dict = dill.load(f)
     assert isinstance(dataset_dict, DatasetDict)
@@ -370,23 +373,23 @@ def load_dataset_with_name(ds_name: str) -> DatasetDictWithName:
     return DatasetDictWithName(name=ds_name, dataset=dataset_dict)
 
 
-def maybe_load_cache(
+def maybe_load_extract_cache(
     cfg: "Extract", ds_name: str, disable_cache: bool
 ) -> DatasetDictWithName | None:
     if disable_cache:
         return None
     cache_key = extract_cache_key(cfg, ds_name)
     try:
-        dataset_dict = load_dataset_with_name(cache_key)
+        dataset_dict = load_extract_from_cache(ds_name=ds_name, cache_key=cache_key)
         return dataset_dict
     except Exception as e:
         print(f"Failed to load cached extract dataset {cache_key}: {e}")
         return None
 
 
-def write_dataset_with_name(dataset_dict: DatasetDictWithName) -> None:
+def write_extract_to_cache(dataset_dict: DatasetDictWithName, cache_key: str) -> None:
     """Write a DatasetDictWithName to disk."""
-    path = elk_extract_cache_dir() / f"{dataset_dict.name}.dill"
+    path = elk_extract_cache_dir() / f"{cache_key}.dill"
     with open(path, "wb") as f:
         dill.dump(dataset_dict.dataset, f)
 
@@ -404,7 +407,9 @@ def extract(
     ds_name, config_name = extract_dataset_name_and_config(
         dataset_config_str=cfg.prompts.datasets[0]
     )
-    cached = maybe_load_cache(cfg=cfg, ds_name=ds_name, disable_cache=disable_cache)
+    cached = maybe_load_extract_cache(
+        cfg=cfg, ds_name=ds_name, disable_cache=disable_cache
+    )
     if cached is not None:
         return cached
 
@@ -448,5 +453,7 @@ def extract(
         ds_name=ds_name,
     )
     # write the extracted dataset to the cache
-    write_dataset_with_name(extracted)
+    write_extract_to_cache(
+        extracted, cache_key=extract_cache_key(cfg=cfg, ds_name=ds_name)
+    )
     return extracted

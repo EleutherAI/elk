@@ -82,19 +82,14 @@ class InferenceServer:
         model_str: str,
         fsdp: FSDPOptions,
         min_gpu_mem: Optional[float | int],
-        num_workers: int = 1,
+        num_workers: int,
     ):
         self.model_str = model_str
-        assert num_workers > 0
-        self.num_workers = num_workers
         self.fsdp = fsdp
         self._current_id = 0
         self._process_ctx: mp.ProcessContext | None = None
         # UUID to be thread-safe
         self._manager = mp.Manager()
-        self._task_queues: list[TaskQueue] = [  # type: ignore
-            self._manager.Queue() for _ in range(self.num_workers)
-        ]
         # QueueId to make it thread-safe
         self._result_queues: dict[QueueID, ResultQueue] = self._manager.dict()  # type: ignore
         model = instantiate_model(model_str, torch_dtype="auto")
@@ -110,7 +105,11 @@ class InferenceServer:
         print("Loading model...")
         model = self._model
         model_size = sum(p.numel() * p.element_size() for p in model.parameters())
-        fdsp_min_mem = model_size / self.num_workers if self.fsdp.fsdp_enabled else None
+        fdsp_min_mem = (
+            model_size / num_workers
+            if self.fsdp.fsdp_enabled and num_workers > 0
+            else None
+        )
 
         min_gpu_mem = (
             min_gpu_mem
@@ -121,10 +120,12 @@ class InferenceServer:
         )
 
         # Determine which GPUs we can use
-        devices = select_usable_devices(self.num_workers, min_memory=min_gpu_mem)
+        devices = select_usable_devices(num_workers, min_memory=min_gpu_mem)
         self.devices = devices
         self.num_workers = len(devices)  # This may have been -1 before
-
+        self._task_queues: list[TaskQueue] = [  # type: ignore
+            self._manager.Queue() for _ in range(self.num_workers)
+        ]
         fsdp_port, wrap_policy = None, None
         if self.fsdp.fsdp_enabled:
             fsdp_port = find_available_port()
