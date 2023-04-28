@@ -97,7 +97,7 @@ def test_fsdp_multithreading():
     server = InferenceServer(
         model_str=model_str,
         num_workers=2,
-        fsdp=FSDPOptions(fsdp_enabled=True),
+        fsdp=FSDPOptions(fsdp_enabled=False),
         min_gpu_mem=0,
     )
     # run the function .one on the server

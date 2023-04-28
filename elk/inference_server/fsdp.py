@@ -3,6 +3,7 @@ import multiprocessing as std_mp
 import os
 import random
 import socket
+import traceback
 import uuid
 import warnings
 from dataclasses import dataclass
@@ -342,8 +343,8 @@ def _worker(
         if fsdp_port is not None:
             dist.destroy_process_group()
     except Exception as e:
-        # TODO: Log the traceback too
         print(f"Worker failed with {e}, Type: {type(e)}")
+        print(traceback.format_exc()
         raise e
 
 
