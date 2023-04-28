@@ -3,7 +3,7 @@ from pathlib import Path
 from elk import Extract
 from elk.extraction import PromptConfig, extract
 from elk.extraction.dataset_name import DatasetDictWithName
-from elk.extraction.extraction import extract_cache_key, load_extract_from_cache
+from elk.extraction.caching import extract_cache_key, load_extract_from_cache
 from elk.files import elk_extract_cache_dir
 from elk.inference_server.fsdp_options import FSDPOptions
 
