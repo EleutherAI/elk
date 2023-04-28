@@ -344,7 +344,7 @@ def _worker(
             dist.destroy_process_group()
     except Exception as e:
         print(f"Worker failed with {e}, Type: {type(e)}")
-        print(traceback.format_exc()
+        print(traceback.format_exc())
         raise e
 
 
