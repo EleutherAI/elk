@@ -119,35 +119,50 @@ def extracted_hiddens_to_dataset_with_name(
     )
 
 
+@dataclass
+class ExtractHiddenThreadParam:
+    rank: int
+    device: str
+    split_type: str
+
+
 def extract_hiddens_with_server(
     cfg: Extract,
     split_names: list[str],
     server: InferenceServer,
     ds_name: str,
 ) -> DatasetDictWithName:
-    """Run inference on a model with a set of prompts, yielding the hidden states."""
-
-    # Note: We can remove the need for a threadpool here if we refactor
-    # extract_hiddens to first extract the input_ids, and then run inference
-    # on the input_ids, then create the DatasetDict from the results.
-    world_size = server.num_workers * 2
-    ranks_and_splits: list[tuple[int, str]] = [
-        (i, split_name) for i in range(world_size) for split_name in split_names
+    """Run inference on a model with a set of prompts.
+    Eventually we want to refactor extract_hiddens to first extract the input_ids,
+    then call InferenceServer.map on the input_ids, then create the DatasetDict from
+    the results.
+    But for now, we need to use a threadpool utilize all the InferenceServer workerss
+    """
+    world_size = len(server.devices) * 2
+    ranks_and_splits: list[ExtractHiddenThreadParam] = [
+        ExtractHiddenThreadParam(
+            rank=i,
+            split_type=split_name,
+            # Evenly distribute the ranks across the devices
+            device=server.devices[i % len(server.devices)],
+        )
+        for i in range(world_size)
+        for split_name in split_names
     ]
-    with ThreadPoolExecutor(max_workers=server.num_workers * 2) as executor:
+    with ThreadPoolExecutor(max_workers=world_size) as executor:
         hiddens = map_threadpool(
             items=ranks_and_splits,
-            func=lambda tup: extract_hiddens(
+            func=lambda param: extract_hiddens(
                 cfg=cfg,
                 server=server,
-                device="cpu",
-                split_type=tup[1],
+                device=param.device,
+                split_type=param.split_type,
                 world_size=world_size,
-                rank=tup[0],
+                rank=param.rank,
             ),
             threadpool=executor,
         )
-    flattened_hiddens: list[ExtractedHidden] = flatten_list(hiddens)
+    flattened_hiddens = flatten_list(hiddens)
     return extracted_hiddens_to_dataset_with_name(
         extracted_hiddens=flattened_hiddens,
         ds_name=ds_name,
@@ -284,13 +299,9 @@ def extract_hiddens(
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
                     answer_len = answer.shape[-1]
-
-                    # TODO: make this less dumb
-                    # Ok if fsdp, we'll get back torch16 on the cpu, but that
-                    # is not compatible with the log_softmax call below.
-                    logits = outputs.logits[..., -answer_len:, :]
-                    if logits.dtype == torch.float16:
-                        logits = logits.to(torch.float32)
+                    # If we are using fsdp, we'll get back cpu tensors
+                    # which we need to move to the device for fp16 compatibility
+                    logits = outputs.logits[..., -answer_len:, :].to(device)
                     log_p = logits.log_softmax(dim=-1)
                     tokens = answer[..., None]
                     lm_logits[i, j] = log_p.gather(-1, tokens).sum()
@@ -303,7 +314,7 @@ def extract_hiddens(
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-                )
+                ).to(device)
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
 

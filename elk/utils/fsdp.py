@@ -98,24 +98,6 @@ class InferenceServer:
         model = instantiate_model(model_str, torch_dtype="auto")
         model.share_memory()
         self._model = model
-        self._start()
-
-    def create_result_queues(self, _uuid: UUID, num_workers: int) -> list[QueueID]:
-        """Create a queue for the given task ID."""
-        queue_ids = []
-        for i in range(num_workers):
-            queue_id = get_queue_id(_uuid, i)
-            new_queue = self._manager.Queue()
-            self._result_queues[queue_id] = new_queue  # type: ignore
-            queue_ids.append(queue_id)
-        return queue_ids
-
-    @property
-    def running(self) -> bool:
-        """Whether the server is running."""
-        return self._process_ctx is not None
-
-    def _start(self) -> None:
         """Spin up the workers."""
         if self._process_ctx is not None:
             raise RuntimeError("The server is already running")
@@ -134,6 +116,7 @@ class InferenceServer:
             self.num_workers,
             min_memory=model_size if fdsp_min_mem is None else fdsp_min_mem,
         )
+        self.devices = devices
         self.num_workers = len(devices)  # This may have been -1 before
 
         fsdp_port, wrap_policy = None, None
@@ -163,6 +146,21 @@ class InferenceServer:
             join=False,
             nprocs=self.num_workers,
         )
+
+    def create_result_queues(self, _uuid: UUID, num_workers: int) -> list[QueueID]:
+        """Create a queue for the given task ID."""
+        queue_ids = []
+        for i in range(num_workers):
+            queue_id = get_queue_id(_uuid, i)
+            new_queue = self._manager.Queue()
+            self._result_queues[queue_id] = new_queue  # type: ignore
+            queue_ids.append(queue_id)
+        return queue_ids
+
+    @property
+    def running(self) -> bool:
+        """Whether the server is running."""
+        return self._process_ctx is not None
 
     def shutdown(self) -> bool:
         """Shut down all the workers, returning `True` if successful."""
