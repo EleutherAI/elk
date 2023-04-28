@@ -303,9 +303,6 @@ def _worker(
             queue_id = get_queue_id(msg.id, rank=rank)
             # We need to send the results back to the correct queue
             out_queue = out_qs[queue_id]
-            print(f"Loaded closure and dataset: {dataset}")
-
-            assert dataset is not None, "Dataset should not be None"
             for record in dataset:
                 assert isinstance(record, dict)
                 try:
@@ -315,17 +312,13 @@ def _worker(
                 except Exception as e:
                     print(f"Failed to move inputs to cuda: {e}")
                     raise e
-                print("Got cuda inputs")
 
                 # We always want to return the hidden states
                 try:
-                    print(f"Running forward with {inputs_cuda} on device {device}")
                     outputs = model(**inputs_cuda, output_hidden_states=True)
-                    print("Done running forward")
                 except Exception as e:
                     print(f"forward failed {e}")
                     raise e
-                print("Ran forward successfully")
 
                 outputs_cls = type(outputs)
                 outputs_dict = pytree_map(lambda x: x.cpu().share_memory_(), outputs)
