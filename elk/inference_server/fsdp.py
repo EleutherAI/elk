@@ -210,8 +210,6 @@ class InferenceServer:
         func: Callable[[ModelOutput], A],
     ) -> Iterable[A]:
         """Run inference on the given inputs, running a func on the outputs."""
-        if self._process_ctx is None:
-            raise RuntimeError("Can't run inference on a server that isn't running")
 
         # Pickle the func and send it to the workers
         func_pkl = dill.dumps(func)
