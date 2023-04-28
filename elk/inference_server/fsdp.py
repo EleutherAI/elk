@@ -227,7 +227,7 @@ class InferenceServer:
         queue_id = get_queue_id(_id)
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
-        inputs_cuda = pytree_map(lambda t: t.share_memory_(), kwargs)
+        inputs_cuda = pytree_map(lambda t: t.detach().clone().share_memory_(), kwargs)
 
         # Send the task to the worker
         message = TaskMessage(id=queue_id, func=None, data=[inputs_cuda])
