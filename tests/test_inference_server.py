@@ -107,7 +107,7 @@ def test_fsdp_multithreading():
     )
     # run the function .one on the server
     outputs_server = map_threadpool(
-        items=items, func=lambda x: server.one(x).logits, threadpool=threadpool
+        items=items, func=lambda x: server.infer(x).logits, threadpool=threadpool
     )
     # assert that the length of the 2nd dimension of the logits is equal to the number of repeats
     for i, output in enumerate(outputs_server):

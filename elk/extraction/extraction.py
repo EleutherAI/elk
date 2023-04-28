@@ -298,7 +298,7 @@ def extract_hiddens(
                 input_dataset = Dataset.from_dict(inputs)
                 input_dataset.set_format(type="torch")
 
-                outputs = server.one(input_dataset)
+                outputs = server.infer(input_dataset)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:

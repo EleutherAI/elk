@@ -200,7 +200,7 @@ class InferenceServer:
         """
         return list(self.imap(closure, dataset))
 
-    def one(
+    def infer(
         self,
         dataset: Dataset,
     ) -> ModelOutput:
