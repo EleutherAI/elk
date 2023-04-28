@@ -38,9 +38,19 @@ The following runs `elicit` on the Cartesian product of the listed models and da
 elk sweep --models gpt2-{medium,large,xl} --datasets imdb amazon_polarity --add_pooled
 ```
 
+## Running big models
+For big models that cannot fit on a single gpu, you'll need to use FSDP.
+```
+elk elicit huggyllama/llama-{7b,13b,30b,65b} imdb --fsdp_enabled
+```
+With an optional cpu loading
+```
+elk elicit huggyllama/llama-{7b,13b,30b,65b} imdb --fsdp_enabled --cpu_offload
+```
+
 ## Caching
 
-The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the same place as all other HuggingFace datasets, which is usually `~/.cache/huggingface/datasets`.
+The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the same place as all other HuggingFace datasets, which is usually `~/elk-extract-cache`.
 
 ## Development
 Use `pip install pre-commit && pre-commit install` in the root folder before your first commit.
