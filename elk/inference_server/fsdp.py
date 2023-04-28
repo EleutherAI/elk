@@ -320,7 +320,7 @@ def _worker(
                 for record in data:
                     # assert isinstance(record, dict)
                     inputs_cuda = pytree_map(
-                        lambda t: t.to(device), record
+                        lambda t: t.to(device).unsqueeze(0), record
                     )
                     # We always want to return the hidden states
                     outputs = model(**inputs_cuda, output_hidden_states=True)
