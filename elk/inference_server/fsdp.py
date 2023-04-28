@@ -41,17 +41,19 @@ from elk.utils import instantiate_model, pytree_map, select_usable_devices
 sentinel: Literal["sentinel"] = "sentinel"
 SingletonSentinel: TypeAlias = Literal["sentinel"]
 
+ResultQueueID = NewType("QueueID", str)
+
 
 @dataclass(kw_only=True)
 class TaskMessage:
-    id: UUID
+    id: ResultQueueID
     data: Sequence[dict]
     func: Callable[[ModelOutput], Any] | None
 
 
 @dataclass(kw_only=True)
 class ResultMessage:
-    id: UUID
+    id: ResultQueueID
     # Either ModelOutput or something applied by the func to the output
     data: Any
     exception: Exception | None = None
@@ -65,11 +67,13 @@ else:
     ResultQueue = mp.Queue
     TaskQueue = mp.Queue
 
-QueueID = NewType("QueueID", str)
 
-
-def get_queue_id(uuid: UUID, rank: int) -> QueueID:
-    return QueueID(f"{str(uuid)}_{rank}")
+def get_queue_id(_uuid: UUID) -> ResultQueueID:
+    """
+    _uuid: UUID of the task. E.g. for a map operation, this is the UUID of the map
+    rank: rank of the worker. Each worker will output to a different queue
+    """
+    return ResultQueueID(str(_uuid))
 
 
 def shard_seq(seq: Sequence[A], num_shards: int) -> Sequence[Sequence[A]]:
@@ -100,7 +104,7 @@ class InferenceServer:
         # Multiple result_queues, for each run of map / infer
         # so that its thread-safe
         self._result_queues: dict[
-            QueueID, ResultQueue
+            ResultQueueID, ResultQueue
         ] = self._manager.dict()  # type: ignore
         model = instantiate_model(model_str, torch_dtype="auto")
         model.share_memory()
@@ -159,15 +163,12 @@ class InferenceServer:
             nprocs=self.num_workers,
         )
 
-    def create_result_queues(self, _uuid: UUID, num_workers: int) -> list[QueueID]:
+    def create_result_queue(self, _uuid: UUID) -> ResultQueueID:
         """Create a queue for the given task ID."""
-        queue_ids = []
-        for i in range(num_workers):
-            queue_id = get_queue_id(_uuid, i)
-            new_queue = self._manager.Queue()
-            self._result_queues[queue_id] = new_queue  # type: ignore
-            queue_ids.append(queue_id)
-        return queue_ids
+        queue_id = ResultQueueID(str(_uuid))
+        new_queue = self._manager.Queue()
+        self._result_queues[queue_id] = new_queue  # type: ignore
+        return queue_id
 
     def shutdown(self) -> bool:
         """Shut down all the workers, returning `True` if successful."""
@@ -208,13 +209,14 @@ class InferenceServer:
         shards = shard_seq(keywords, self.num_workers)
         # create a uuid to track what messages belong to what imap on different threads
         _id: UUID = uuid.uuid4()
-        queue_ids = self.create_result_queues(_uuid=_id, num_workers=self.num_workers)
+        queue_id: ResultQueueID = self.create_result_queue(_uuid=_id)
         for shard in shards:
-            message = TaskMessage(id=_id, func=func_pkl, data=shard)
+            message = TaskMessage(id=queue_id, func=func_pkl, data=shard)
             self._task_queue.put(message)
 
         yield from round_robin(
-            queue_ids=queue_ids,
+            queue_id=queue_id,
+            num_to_wait=len(shards),
             result_queue_dict=self._result_queues,
         )
 
@@ -224,12 +226,12 @@ class InferenceServer:
         # Pick the first available worker
         worker_idx = random.randint(0, self.num_workers - 1)
         _id: UUID = uuid.uuid4()
-        queue_id = get_queue_id(_id, worker_idx)
+        queue_id = get_queue_id(_id)
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
 
         # Send the task to the worker
-        message = TaskMessage(id=_id, func=None, data=[kwargs])
+        message = TaskMessage(id=queue_id, func=None, data=[kwargs])
         self._task_queue.put(message)
 
         # Wait for the result
@@ -255,7 +257,7 @@ def _worker(
     devices: list[str],
     model: PreTrainedModel,
     task_queue: TaskQueue,
-    out_qs: dict[QueueID, ResultQueue],
+    out_qs: dict[ResultQueueID, ResultQueue],
     cpu_offload: bool = False,
     fsdp_port: int | None = None,
     wrap_policy: partial[bool] | None = None,
@@ -307,7 +309,7 @@ def _worker(
             assert isinstance(msg, TaskMessage)
             data = msg.data
             func = dill.loads(msg.func) if msg.func is not None else identity
-            queue_id = get_queue_id(msg.id, rank=rank)
+            queue_id = msg.id
             # We need to send the results back to the correct queue
             result_queue = out_qs[queue_id]
             try:
@@ -384,30 +386,28 @@ def find_available_port() -> int:
 
 
 def round_robin(
-    queue_ids: list[QueueID],
-    result_queue_dict: dict[QueueID, ResultQueue],
+    queue_id: ResultQueueID,
+    num_to_wait: int,
+    result_queue_dict: dict[ResultQueueID, ResultQueue],
 ) -> Iterable[Any]:
-    """Yield items from the given queues in round-robin order."""
-    result_queue = [result_queue_dict[queue_id] for queue_id in queue_ids]
-    remaining_queues = len(result_queue)
+    result_queue = result_queue_dict[queue_id]
+    remaining_workers = num_to_wait
 
-    for idx, q in cycle(enumerate(result_queue)):
-        if remaining_queues == 0:
-            # We've exhausted all queues. Delete the queues and break
-            # TODO: Consider using thread_ids instead of UUIDs
-            # That way we can just use the queues?
-            for queue_id in queue_ids:
-                del result_queue_dict[queue_id]
-            break
+    while remaining_workers > 0:
         try:
-            item: ResultMessage | SingletonSentinel = q.get(timeout=0.01)
+            item: ResultMessage | SingletonSentinel = result_queue.get(
+                timeout=0.01
+            )
         except std_mp.queues.Empty:  # type: ignore[attr-defined]
             continue
         else:
             if item == sentinel:
-                remaining_queues -= 1
-            elif item.exception is not None:
+                remaining_workers -= 1
+            elif item.exception is not None:  # type: ignore
                 # We got an exception from the worker. Raise it here
-                raise item.exception
+                raise item.exception  # type: ignore
             else:
                 yield cast(ResultMessage, item).data
+
+    # Clean up the result queue
+    del result_queue_dict[queue_id]
