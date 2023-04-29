@@ -31,6 +31,7 @@ from ..utils import (
     float32_to_int16,
     instantiate_tokenizer,
     is_autoregressive,
+    pytree_map,
     select_train_val_splits,
 )
 from ..utils.concurrency_utils import map_threadpool
@@ -322,20 +323,27 @@ def extract_hiddens(
                 answer_len = answer.shape[-1] if has_lm_preds else None
                 tokens = answer[..., None] if has_lm_preds else None
 
-                def func_to_run(outputs: ModelOutput) -> SmallerOutput:
+                def func_to_run(model_output: ModelOutput) -> SmallerOutput:
                     if has_lm_preds:
-                        output_logits = outputs.logits[..., -answer_len:, :]
+                        output_logits = model_output.logits[..., -answer_len:, :]
                         log_p = output_logits.log_softmax(dim=-1)
-                        returned_logits = log_p.gather(-1, tokens).sum()
+                        logit_gathered = log_p.gather(-1, tokens).sum().to("cpu")
+                        returned_logits = pytree_map(
+                            lambda x: x.cpu().share_memory_(), logit_gathered
+                        )
                     else:
                         returned_logits = None
 
                     returned_hiddens = (
-                        outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                        model_output.get("decoder_hidden_states")
+                        or model_output["hidden_states"]
+                    )
+                    converted_hiddens = pytree_map(
+                        lambda x: x.cpu().share_memory_(), returned_hiddens
                     )
 
                     return SmallerOutput(
-                        lm_logits=returned_logits, hidden_states=returned_hiddens
+                        lm_logits=returned_logits, hidden_states=converted_hiddens
                     )
 
                 # Make sure we only pass the arguments that the model expects
@@ -444,6 +452,4 @@ def extract(
     write_extract_to_cache(
         extracted, cache_key=extract_cache_key(cfg=cfg, ds_name=ds_name)
     )
-    # need to explicitly shutdown the server to clean up processes
-    server.shutdown()
     return extracted

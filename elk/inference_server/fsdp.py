@@ -204,7 +204,6 @@ class InferenceServer:
                 self._task_queue.put_nowait(sentinel)
             except std_mp.queues.Empty:  # type: ignore[attr-defined]
                 pass
-
         self._manager.shutdown()
         return self._process_ctx.join()
 
@@ -339,7 +338,8 @@ def _worker(
             # workers
             model(input_ids=torch.Tensor([[0]]).long().to(device))
             print(
-                f"FSDP running on rank {rank} with {device} and cpu_offload {cpu_offload}"
+                f"FSDP running on rank {rank} with {device}"
+                f" and cpu_offload {cpu_offload}"
             )
         else:
             model.to(device)
@@ -371,14 +371,21 @@ def _worker(
                     # apply the func
                     output_applied = func(outputs) if func is not None else outputs
 
-                    outputs_cls = type(output_applied)
-                    # Move the outputs back to the CPU and share memory so we can
-                    # send it back to the main process
-                    outputs_dict = pytree_map(
-                        lambda x: x.cpu().share_memory_(), output_applied
-                    )
-
-                    converted_back_outputs = outputs_cls(**outputs_dict)
+                    # Convert the outputs back to the CPU if a func was not applied.
+                    # Otherwise we just let the func handle it
+                    if func is None:
+                        outputs_cls = type(output_applied)
+                        # Move the outputs back to the CPU if a func was not applied.
+                        outputs_dict = (
+                            pytree_map(
+                                lambda x: x.cpu().share_memory_(), output_applied
+                            )
+                            if func is None
+                            else output_applied
+                        )
+                        converted_back_outputs = outputs_cls(**outputs_dict)
+                    else:
+                        converted_back_outputs = output_applied
 
                     # Send the outputs back to the main process
                     result_queue.put(

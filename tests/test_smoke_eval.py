@@ -23,7 +23,7 @@ def setup_elicit(
     tmp_path: Path,
     dataset_name="imdb",
     model_path="sshleifer/tiny-gpt2",
-    min_mem=10 * 1024**2,
+    min_mem=10 * 1024 ** 2,
     is_ccs: bool = True,
 ) -> Elicit:
     """Setup elicit config for testing, execute elicit, and save output to tmp_path.
@@ -39,6 +39,7 @@ def setup_elicit(
         min_gpu_mem=min_mem,
         net=CcsReporterConfig() if is_ccs else EigenReporterConfig(),
         out_dir=tmp_path,
+        disable_cache=True,
     )
     elicit.execute()
     return elicit
