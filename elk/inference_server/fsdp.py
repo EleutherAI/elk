@@ -322,7 +322,9 @@ def _worker(
             # This can happen if the first batch is lesser than the number of
             # workers
             model(input_ids=torch.Tensor([[0]]).long().to(device))
-            print(f"FSDP running on rank {rank} with {device}")
+            print(
+                f"FSDP running on rank {rank} with {device} and cpu_offload {cpu_offload}"
+            )
         else:
             model.to(device)
 
