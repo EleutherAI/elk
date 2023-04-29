@@ -6,6 +6,7 @@ from .data_utils import (
     infer_label_column,
     infer_num_classes,
     select_train_val_splits,
+    temporary_dir_move,
 )
 from .gpu_utils import select_usable_devices
 from .hf_utils import instantiate_model, instantiate_tokenizer, is_autoregressive
@@ -34,4 +35,5 @@ __all__ = [
     "select_train_val_splits",
     "select_usable_devices",
     "stochastic_round_constrained",
+    "temporary_dir_move",
 ]

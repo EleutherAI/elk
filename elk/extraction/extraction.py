@@ -37,6 +37,7 @@ from ..utils import (
     is_autoregressive,
     select_train_val_splits,
     select_usable_devices,
+    temporary_dir_move,
 )
 from .dataset_name import (
     DatasetDictWithName,
@@ -306,7 +307,8 @@ def extract(
             dataset_name=available_splits.dataset_name,
         )
 
-    model_cfg = AutoConfig.from_pretrained(cfg.model)
+    with temporary_dir_move(cfg.model):
+        model_cfg = AutoConfig.from_pretrained(cfg.model)
 
     ds_name, config_name = extract_dataset_name_and_config(
         dataset_config_str=cfg.prompts.datasets[0]

@@ -1,6 +1,9 @@
 import copy
+from contextlib import contextmanager
 from functools import cache
+from pathlib import Path
 from random import Random
+from tempfile import TemporaryDirectory
 from typing import Any, Iterable
 
 from datasets import (
@@ -45,6 +48,28 @@ def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
     assert len(splits) >= 2, "Must have at least two of train, val, and test splits"
 
     return tuple(splits[:2])
+
+
+@contextmanager
+def temporary_dir_move(path: Path | str):
+    """Move a file or directory to a temporary directory, then move it back.
+
+    If the path does not exist, this is a no-op.
+    """
+    path = Path(path)
+
+    with TemporaryDirectory() as tmp:
+        if path.exists():
+            dest = Path(tmp) / path.name
+            path.rename(dest)
+        else:
+            dest = None
+
+        try:
+            yield dest
+        finally:
+            if dest is not None:
+                dest.rename(path)
 
 
 def infer_label_column(features: Features) -> str:
