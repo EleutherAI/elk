@@ -423,7 +423,6 @@ def extract(
         min_gpu_mem=min_gpu_mem,
         mp_sharing_strategy=fsdp.mp_sharing_strategy,
     ) as server:
-
         extracted: DatasetDictWithName = extract_hiddens_with_server(
             cfg=cfg,
             split_names=split_names,
