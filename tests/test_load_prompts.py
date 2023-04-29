@@ -14,7 +14,7 @@ def test_load_prompts():
             ds_string = cfg.datasets[0]
             prompt_ds = load_prompts(ds_string, split_type=split_type)
 
-            ds_name, _, config_name = ds_string.partition(" ")
+            ds_name, _, config_name = ds_string.partition(":")
             prompter = DatasetTemplates(ds_name, config_name or None)
 
             limit = cfg.max_examples[0 if split_type == "train" else 1]

@@ -1,6 +1,9 @@
 import copy
+import os
+from contextlib import contextmanager
 from functools import cache
 from random import Random
+from tempfile import TemporaryDirectory
 from typing import Any, Iterable
 
 from datasets import (
@@ -30,6 +33,18 @@ def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
 def has_multiple_configs(ds_name: str) -> bool:
     """Return whether a dataset has multiple configs."""
     return len(get_dataset_config_names(ds_name)) > 1
+
+
+@contextmanager
+def prevent_name_conflicts():
+    """Temporarily change cwd to a temporary directory, to prevent name conflicts."""
+    with TemporaryDirectory() as tmp:
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(tmp)
+            yield
+        finally:
+            os.chdir(old_cwd)
 
 
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
