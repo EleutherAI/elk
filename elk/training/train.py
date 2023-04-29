@@ -105,8 +105,7 @@ class Elicit(Run):
             raise ValueError(f"Unknown reporter config type: {type(self.net)}")
 
         # Save reporter checkpoint to disk
-        with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
-            torch.save(reporter, file)
+        reporter.save(reporter_dir / f"layer_{layer}.pt")
 
         # Fit supervised logistic regression model
         if self.supervised != "none":
