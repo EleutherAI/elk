@@ -4,7 +4,7 @@ import uuid
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import yaml
 from jinja2 import BaseLoader, Environment, meta
@@ -173,29 +173,6 @@ class Template(yaml.YAMLObject):
             Template._strip_spaces(self._unescape_pipe(part))
             for part in rendered_example.split("|||")
         ]
-
-    def contrast_set(
-        self, example: dict[str, Any], label_key: str, pseudo_labels: list
-    ) -> tuple[str, list[str]]:
-        # Record the RNG state so that any non-deterministic filters in the template
-        # will not affect the contrast set
-        rng_state = random.getstate()
-
-        answers = []
-        questions = set()
-
-        for pseudo_label in pseudo_labels:
-            pseudo_example = example.copy()
-            pseudo_example[label_key] = pseudo_label
-
-            random.setstate(rng_state)
-            q, a = self.apply(pseudo_example)
-            answers.append(a)
-            questions.add(q)
-
-        breakpoint()
-        assert len(questions) == 1, "Contrast set questions must be identical"
-        return questions.pop(), answers
 
     @staticmethod
     def _strip_spaces(string):

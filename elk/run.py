@@ -128,7 +128,6 @@ class Run(ABC, Serializable):
 
             split = ds[key].with_format("torch", device=device, dtype=torch.int16)
             labels = assert_type(Tensor, split["label"])
-            breakpoint()
             val_h = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
 
             with split.formatted_as("torch", device=device):
