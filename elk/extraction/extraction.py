@@ -412,4 +412,7 @@ def extract(
     write_extract_to_cache(
         extracted, cache_key=extract_cache_key(cfg=cfg, ds_name=ds_name)
     )
+    # need to explicitly shutdown the server to clean up processes
+    server.shutdown()
     return extracted
+

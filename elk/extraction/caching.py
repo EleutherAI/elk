@@ -54,3 +54,5 @@ def write_extract_to_cache(dataset_dict: DatasetDictWithName, cache_key: str) ->
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
         dill.dump(dataset_dict.dataset, f)
+
+    print(f"Cached {dataset_dict.name} extract to {path}")
