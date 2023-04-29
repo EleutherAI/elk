@@ -191,6 +191,8 @@ def func_to_run(
     has_lm_preds: bool,
     tokens_shared: torch.Tensor,
     answer_len: int,
+    layer_indices: list[int],
+    token_loc: Literal["first", "last", "mean"],
 ) -> SmallerOutput:
     if has_lm_preds:
         output_logits = model_output.logits[..., -answer_len:, :]
@@ -204,7 +206,19 @@ def func_to_run(
     returned_hiddens = (
         model_output.get("decoder_hidden_states") or model_output["hidden_states"]
     )
-    converted_hiddens = pytree_map(lambda x: x.cpu().share_memory_(), returned_hiddens)
+    # Throw out layers we don't care about
+    hiddens = [returned_hiddens[i] for i in layer_indices]
+
+    # Current shape of each element: (batch_size, seq_len, hidden_size)
+    if token_loc == "first":
+        hiddens = [h[..., 0, :] for h in hiddens]
+    elif token_loc == "last":
+        hiddens = [h[..., -1, :] for h in hiddens]
+    elif token_loc == "mean":
+        hiddens = [h.mean(dim=-2) for h in hiddens]
+    else:
+        raise ValueError(f"Invalid token_loc: {token_loc}")
+    converted_hiddens = pytree_map(lambda x: x.cpu().share_memory_(), hiddens)
 
     return SmallerOutput(lm_logits=returned_logits, hidden_states=converted_hiddens)
 
@@ -354,13 +368,15 @@ def extract_hiddens(
                     has_lm_preds=has_lm_preds,
                     tokens_shared=tokens_shared,
                     answer_len=answer_len,
+                    layer_indices=cfg.layers,
+                    token_loc=cfg.token_loc,
                 )
 
                 # Make sure we only pass the arguments that the model expects
                 outputs: SmallerOutput = (
                     server.infer(
                         kwargs=dict(input_ids=input_ids, labels=answer),
-                        func=func_to_run,
+                        func=partial_func,
                     )
                     if is_enc_dec
                     else server.infer(dict(input_ids=input_ids), func=partial_func)
@@ -368,19 +384,6 @@ def extract_hiddens(
                 # bring these tensors back to the device
                 lm_logits[i, j] = pytree_map(lambda x: x.to(device), outputs.lm_logits)
                 hiddens = pytree_map(lambda x: x.to(device), outputs.hidden_states)
-
-                # Throw out layers we don't care about
-                hiddens = [hiddens[i] for i in layer_indices]
-
-                # Current shape of each element: (batch_size, seq_len, hidden_size)
-                if cfg.token_loc == "first":
-                    hiddens = [h[..., 0, :] for h in hiddens]
-                elif cfg.token_loc == "last":
-                    hiddens = [h[..., -1, :] for h in hiddens]
-                elif cfg.token_loc == "mean":
-                    hiddens = [h.mean(dim=-2) for h in hiddens]
-                else:
-                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
