@@ -318,6 +318,8 @@ def _worker(
                 # Since we are inference only, we don't need to sync the nn.modules
                 sync_module_states=False,
                 forward_prefetch=True,
+                # For compile to work
+                use_orig_params=True,
             )
             # torch.compile() needs to be called after wrapping the model with FSDP
             wrapped_compiled = torch.compile(wrapped)
