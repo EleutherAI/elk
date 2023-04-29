@@ -46,22 +46,11 @@ ResultQueueID = NewType("QueueID", str)
 @dataclass(kw_only=True)
 class TaskMessage:
     id: ResultQueueID
-    data_dill: bytes
+    data: Sequence[dict]
     func_dill: bytes | None
-
-    def data(self) -> Sequence[dict]:
-        return dill.loads(self.data_dill)
 
     def func(self) -> Callable[[ModelOutput], Any] | None:
         return dill.loads(self.func_dill) if self.func_dill else None
-
-    def data_and_func(
-        self,
-    ) -> tuple[Sequence[dict], Callable[[ModelOutput], Any] | None]:
-        return (
-            dill.loads(self.data_dill),
-            dill.loads(self.func_dill) if self.func_dill else None,
-        )
 
 
 @dataclass(kw_only=True)
@@ -224,8 +213,11 @@ class InferenceServer:
         _id: UUID = uuid.uuid4()
         queue_id: ResultQueueID = self.create_result_queue(_uuid=_id)
         for shard in shards:
-            data_dill = dill.dumps(shard)
-            message = TaskMessage(id=queue_id, func_dill=func_dill, data_dill=data_dill)
+            # move the kwargs to the cpu device and share memory
+            new_data = [
+                share_dict_of_tensors_with_processes(kwargs) for kwargs in shard
+            ]
+            message = TaskMessage(id=queue_id, func_dill=func_dill, data=new_data)
             self._task_queue.put(message)
 
         yield from round_robin(
@@ -242,11 +234,10 @@ class InferenceServer:
         queue_id = get_queue_id(_id)
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
-        # todo: I think we can avoid pickling the kwargs here, we can shift the tensors to
-        # cpu and then share_memory it
-        data_dill = dill.dumps([kwargs])
+        # move the kwargs to the cpu device and share memory
+        shared_kwargs = share_dict_of_tensors_with_processes(kwargs)
         # Send the task to the worker
-        message = TaskMessage(id=queue_id, func_dill=None, data_dill=data_dill)
+        message = TaskMessage(id=queue_id, func_dill=None, data=[shared_kwargs])
         self._task_queue.put(message)
 
         # Wait for the result
@@ -264,6 +255,11 @@ class InferenceServer:
 
 def identity(x):
     return x
+
+
+def share_dict_of_tensors_with_processes(_dict: dict[str, torch.Tensor]):
+    """Share a dictionary of tensors with all the processes."""
+    return pytree_map(lambda x: x.cpu().share_memory_(), _dict)
 
 
 @torch.inference_mode()
@@ -321,8 +317,8 @@ def _worker(
                 return
             # Someone called map() giving us a new func and dataset to use
             assert isinstance(msg, TaskMessage)
-            data = msg.data()
-            func = msg.func() # type: ignore
+            data = msg.data
+            func = msg.func()  # type: ignore
             queue_id = msg.id
             # We need to send the results back to the correct queue
             result_queue = out_qs[queue_id]
