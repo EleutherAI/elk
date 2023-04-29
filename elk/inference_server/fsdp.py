@@ -124,6 +124,12 @@ class InferenceServer:
             else None
         )
 
+        if fdsp_min_mem is not None:
+            fdsp_min_mem_gb = fdsp_min_mem / 1e9
+            print(
+                f"Requiring at least {fdsp_min_mem_gb} gb of GPU memory per fdsp worker"
+            )
+
         min_gpu_mem = (
             min_gpu_mem
             if min_gpu_mem is not None
