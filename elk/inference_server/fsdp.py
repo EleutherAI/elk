@@ -117,29 +117,39 @@ class InferenceServer:
         # run out of RAM for large models
         print("Loading model...")
         model = self._model
-        model_size = sum(p.numel() * p.element_size() for p in model.parameters())
-        fdsp_min_mem = (
-            model_size / num_workers
-            if self.fsdp.fsdp_enabled and num_workers > 0
-            else None
+        # to fix: this model_size doesn't seem to work
+        # model_size = sum(p.numel() * p.element_size() for p in model.parameters())
+        # fdsp_min_mem = (
+        #     model_size / num_workers
+        #     if self.fsdp.fsdp_enabled and num_workers > 0
+        #     else None
+        # )
+        #
+
+        # min_gpu_mem = (
+        #     min_gpu_mem
+        #     if min_gpu_mem is not None
+        #     else fdsp_min_mem
+        #     if fdsp_min_mem is not None
+        #     else model_size
+        # )
+        # Divide the min_gpu_mem by the number of workers for fsdp
+        maybe_divided_min_gpu_mem: float | int | None = (
+            (min_gpu_mem * 1.1) / num_workers
+            if self.fsdp.fsdp_enabled and min_gpu_mem is not None
+            else min_gpu_mem
         )
 
-        if fdsp_min_mem is not None:
-            fdsp_min_mem_gb = fdsp_min_mem / 1e9
+        if maybe_divided_min_gpu_mem is not None:
             print(
-                f"Requiring at least {fdsp_min_mem_gb} gb of GPU memory per fdsp worker"
+                f"Requiring at least {maybe_divided_min_gpu_mem / 1e9}"
+                f" gb of GPU memory per worker for fsdp"
             )
 
-        min_gpu_mem = (
-            min_gpu_mem
-            if min_gpu_mem is not None
-            else fdsp_min_mem
-            if fdsp_min_mem is not None
-            else model_size
-        )
-
         # Determine which GPUs we can use
-        devices = select_usable_devices(num_workers, min_memory=min_gpu_mem)
+        devices = select_usable_devices(
+            num_workers, min_memory=maybe_divided_min_gpu_mem
+        )
         self.devices = devices
         self.num_workers = len(devices)  # This may have been -1 before
         fsdp_port, wrap_policy = None, None
