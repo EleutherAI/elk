@@ -64,11 +64,12 @@ def temporary_dir_move(path: Path | str):
             try:
                 path.rename(dest)
             except OSError as e:
-                print(
-                    f"You have a local directory '{dest.absolute()}' whose name "
+                raise RuntimeError(
+                    f"You have a local directory '{path.absolute()}' whose name "
                     f"conflicts with {path}. We tried to move it for you, but failed "
-                    f" with error '{e}'. Please rename the directory and try again."
-                )
+                    f"with error '{e}'. Please change the current working directory "
+                    f"and try again."
+                ) from e
         else:
             dest = None
 
