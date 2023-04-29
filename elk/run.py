@@ -1,4 +1,5 @@
 import os
+import pickle
 import random
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -165,10 +166,11 @@ class Run(ABC, Serializable):
         with ctx.Pool(num_devices) as pool:
             mapper = pool.imap_unordered if num_devices > 1 else map
             df_buffers = defaultdict(list)
-
+            vals_buffers = []
             try:
-                for df_dict in tqdm(mapper(func, layers), total=len(layers)):
-                    for k, v in df_dict.items():
+                for df_dict, vals in tqdm(mapper(func, layers), total=len(layers)):
+                    vals_buffers.append(vals)
+                    for k, v in df_dict.items(): # type: ignore
                         df_buffers[k].append(v)
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
@@ -177,3 +179,8 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
+                # save vals_buffers as pickle
+                with open(self.out_dir / f"vals.pkl", "wb") as f:
+                    pickle.dump(vals_buffers, f)
+                
+                print("Saved vals to ", self.out_dir / f"vals.pkl")
