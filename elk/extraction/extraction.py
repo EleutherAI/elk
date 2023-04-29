@@ -421,6 +421,7 @@ def extract(
         fsdp=fsdp,
         num_workers=num_gpus,
         min_gpu_mem=min_gpu_mem,
+        mp_sharing_strategy=fsdp.mp_sharing_strategy,
     )
 
     extracted: DatasetDictWithName = extract_hiddens_with_server(

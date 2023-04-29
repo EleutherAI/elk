@@ -95,6 +95,7 @@ class InferenceServer:
         fsdp: FSDPOptions,
         min_gpu_mem: Optional[float | int],
         num_workers: int,
+        mp_sharing_strategy: Literal["file_system", "file_descriptor"],
     ):
         self.model_str = model_str
         self.fsdp = fsdp
@@ -149,6 +150,7 @@ class InferenceServer:
 
             print(msg)
         cpu_offload: bool = fsdp.cpu_offload if fsdp else False
+        mp.set_sharing_strategy(mp_sharing_strategy)
         self._process_ctx: mp.ProcessContext = mp.spawn(  # type: ignore
             _worker,
             args=(
