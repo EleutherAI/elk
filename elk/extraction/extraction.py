@@ -152,7 +152,7 @@ def extract_hiddens_with_server(
             split_type=split_name,
             # Test out using the cpus for logits postprocessing
             # So theres not so much cpu -> gpu transfer
-            device="cpu",
+            device=["cpu"] * len(server.devices),
         )
         for i in range(world_size)
         for split_name in split_names
