@@ -313,9 +313,13 @@ def _worker(
                 auto_wrap_policy=wrap_policy,
                 cpu_offload=CPUOffload(offload_params=cpu_offload),
                 device_id=torch.device(device),
+                # Since we are inference only, we don't need to sync the nn.modules
+                sync_module_states=False,
                 forward_prefetch=True,
             )
-            model = cast(PreTrainedModel, wrapped)
+            # torch.compile() needs to be called after wrapping the model with FSDP
+            wrapped_compiled = torch.compile(wrapped)
+            model = cast(PreTrainedModel, wrapped_compiled)
             # This is dumb, but we need to run a forward pass to initialize the
             # FSDP. Otherwise, the first forward pass on all workers will not run
             # if one of the workers doesn't something to run on
