@@ -26,7 +26,6 @@ import dill
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from datasets import Dataset
 from torch.distributed.fsdp import CPUOffload
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy

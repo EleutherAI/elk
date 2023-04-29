@@ -17,6 +17,7 @@ def elk_reporter_dir() -> Path:
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 
+
 def elk_extract_cache_dir() -> Path:
     """Return the directory where extract cache dir is stored"""
     env_dir = os.environ.get("ELK_DIR", None)

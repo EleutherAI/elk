@@ -43,10 +43,24 @@ For big models that cannot fit on a single gpu, you'll need to use FSDP.
 ```
 elk elicit huggyllama/llama-{7b,13b,30b,65b} imdb --fsdp_enabled
 ```
-With an optional cpu loading
+With an optional cpu loading that you can use if you don't have enough vram
 ```
-elk elicit huggyllama/llama-{7b,13b,30b,65b} imdb --fsdp_enabled --cpu_offload
+elk elicit huggyllama/llama-65b imdb --fsdp_enabled --cpu_offload
 ```
+
+You may encounter an error like this:
+[Github issue](https://github.com/pytorch/pytorch/issues/37377)
+
+```
+Error: mkl-service + Intel(R) MKL: MKL_THREADING_LAYER=INTEL is incompatible with libgomp.so.1 library.
+Try to import numpy first or set the threading layer accordingly. Set MKL_SERVICE_FORCE_INTEL to force it.
+```
+
+To fix, run this before running. Still figuring out why this is happening.
+```bash
+export MKL_THREADING_LAYER=GNU
+```
+
 
 ## Caching
 

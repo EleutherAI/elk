@@ -143,7 +143,8 @@ def extract_hiddens_with_server(
     the results.
     But for now, we need to use a threadpool utilize all the InferenceServer workerss
     """
-    # 2 threads per device - This is so that the workers of the InferenceServer should be roughly fully utilized
+    # 2 threads per device - This is so that the workers of the
+    # InferenceServer should be roughly fully utilized
     world_size = len(server.devices) * 2
     ranks_and_splits: list[ExtractHiddenThreadParam] = [
         ExtractHiddenThreadParam(
