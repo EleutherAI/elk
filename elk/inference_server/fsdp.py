@@ -109,6 +109,8 @@ class InferenceServer:
             ResultQueueID, ResultQueue
         ] = self._manager.dict()  # type: ignore
         model = instantiate_model(model_str, torch_dtype="auto")
+        # print whether the model is fp16 or fp32
+        print(f"Loaded model with {model.dtype}")
         model.share_memory()
         self._model = model
         """Spin up the workers."""
