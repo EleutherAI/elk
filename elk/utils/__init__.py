@@ -4,6 +4,7 @@ from .data_utils import (
     has_multiple_configs,
     infer_label_column,
     infer_num_classes,
+    prevent_name_conflicts,
     select_split,
     select_train_val_splits,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "instantiate_tokenizer",
     "int16_to_float32",
     "is_autoregressive",
+    "prevent_name_conflicts",
     "pytree_map",
     "select_split",
     "select_train_val_splits",

@@ -1,4 +1,7 @@
+import os
+from contextlib import contextmanager
 from functools import cache
+from tempfile import TemporaryDirectory
 from typing import Any, Iterable, Literal
 
 from datasets import (
@@ -52,6 +55,18 @@ def select_split(raw_splits: Iterable[str], split_type: Literal["train", "val"])
         return sorted_splits[0]
     else:
         return sorted_splits[0] if split_type == "train" else sorted_splits[1]
+
+
+@contextmanager
+def prevent_name_conflicts():
+    """Temporarily change cwd to a temporary directory, to prevent name conflicts."""
+    with TemporaryDirectory() as tmp:
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(tmp)
+            yield
+        finally:
+            os.chdir(old_cwd)
 
 
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
