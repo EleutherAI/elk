@@ -20,7 +20,6 @@ from simple_parsing import Serializable, field
 from torch import Tensor
 from tqdm import tqdm
 from transformers import PreTrainedModel
-from transformers.modeling_outputs import Seq2SeqLMOutput
 from transformers.utils import ModelOutput
 
 from elk.inference_server.fsdp import InferenceServer

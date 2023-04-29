@@ -41,6 +41,7 @@ SingletonSentinel: TypeAlias = Literal["sentinel"]
 
 ResultQueueID = NewType("QueueID", str)
 
+
 def identity(x):
     return x
 
@@ -282,8 +283,6 @@ class InferenceServer:
         del self._result_queues[queue_id]
 
         return output
-
-
 
 
 def share_dict_of_tensors_with_processes(_dict: dict[str, torch.Tensor]):
