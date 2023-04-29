@@ -18,6 +18,7 @@ def test_inference_server_non_fsdp():
         num_workers=2,
         fsdp=FSDPOptions(fsdp_enabled=False),
         min_gpu_mem=0,
+        mp_sharing_strategy="file_system",
     )
     print("Started inference server")
     # encode this text into input ids
@@ -39,6 +40,7 @@ def test_inference_server_propagates_error():
         num_workers=2,
         fsdp=FSDPOptions(fsdp_enabled=False),
         min_gpu_mem=0,
+        mp_sharing_strategy="file_system",
     )
     with pytest.raises(TypeError, match="got an unexpected keyword argument"):
         server.map([{"wrongkeyword": torch.Tensor([1, 2, 3])}], func=lambda x: x)
@@ -53,6 +55,7 @@ def test_fsdp_same_result():
         num_workers=2,
         fsdp=FSDPOptions(fsdp_enabled=True),
         min_gpu_mem=0,
+        mp_sharing_strategy="file_system",
     )
     print("Started inference server")
     # encode this text into input ids
@@ -75,6 +78,7 @@ def test_fsdp_map():
         num_workers=4,
         fsdp=FSDPOptions(fsdp_enabled=False),
         min_gpu_mem=0,
+        mp_sharing_strategy="file_system",
     )
     # run the function map on the server
     outputs_server = server.map(keywords=_dicts, func=lambda x: x)
@@ -99,6 +103,7 @@ def test_fsdp_multithreading():
         num_workers=2,
         fsdp=FSDPOptions(fsdp_enabled=False),
         min_gpu_mem=0,
+        mp_sharing_strategy="file_system",
     )
     # run the function .one on the server
     outputs_server = map_threadpool(
