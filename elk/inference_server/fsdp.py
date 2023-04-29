@@ -52,7 +52,7 @@ class TaskMessage:
     data: Sequence[dict]
     func_dill: bytes | None
 
-    def func(self) -> Callable[[ModelOutput], Any] | None:
+    def func(self) -> Callable[[ModelOutput, torch.device], A] | None:
         return dill.loads(self.func_dill) if self.func_dill else None
 
 
@@ -197,15 +197,18 @@ class InferenceServer:
         return queue_id
 
     def shutdown(self) -> bool:
-        """Shut down all the workers, returning `True` if successful."""
-        # Let the workers know that they should shut down
-        for _ in range(self.num_workers):
-            try:
-                self._task_queue.put_nowait(sentinel)
-            except std_mp.queues.Empty:  # type: ignore[attr-defined]
-                pass
-        self._manager.shutdown()
-        return self._process_ctx.join()
+        try:
+            """Shut down all the workers, returning `True` if successful."""
+            # Let the workers know that they should shut down
+            for _ in range(self.num_workers):
+                try:
+                    self._task_queue.put_nowait(sentinel)
+                except std_mp.queues.Empty:  # type: ignore[attr-defined]
+                    pass
+            self._manager.shutdown()
+            return self._process_ctx.join()
+        except Exception:
+            return False
 
     # Support use as a context manager, just like mp.Pool
     def __enter__(self):
@@ -250,7 +253,9 @@ class InferenceServer:
         )
 
     def infer(
-        self, kwargs: dict[str, Any], func: Callable[[ModelOutput], A] = identity
+        self,
+        kwargs: dict[str, Any],
+        func: Callable[[ModelOutput, torch.device], A] = identity,
     ) -> A:
         """Run inference on the given input. These are passed directly to the model."""
         # Optimized version of map for one input. No need to create so many queues.
@@ -355,7 +360,7 @@ def _worker(
             # Someone called map() giving us a new func and dataset to use
             assert isinstance(msg, TaskMessage)
             data = msg.data
-            func = msg.func()  # type: ignore
+            func: Callable[[ModelOutput, torch.device], A] | None = msg.func()
             queue_id = msg.id
             # We need to send the results back to the correct queue
             result_queue = out_qs[queue_id]
@@ -370,7 +375,9 @@ def _worker(
                         outputs = model(**inputs_cuda, output_hidden_states=True)
 
                     # apply the func
-                    output_applied = func(outputs) if func is not None else outputs
+                    output_applied = (
+                        func(outputs, device) if func is not None else outputs
+                    )
 
                     # Convert the outputs back to the CPU if a func was not applied.
                     # Otherwise we just let the func handle it

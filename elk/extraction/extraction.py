@@ -322,12 +322,18 @@ def extract_hiddens(
 
                 answer_len = answer.shape[-1] if has_lm_preds else None
                 tokens = answer[..., None] if has_lm_preds else None
+                tokens_shared = tokens.cpu().share_memory_() if has_lm_preds else None
 
-                def func_to_run(model_output: ModelOutput) -> SmallerOutput:
+                def func_to_run(
+                    model_output: ModelOutput, worker_device: torch.device
+                ) -> SmallerOutput:
                     if has_lm_preds:
                         output_logits = model_output.logits[..., -answer_len:, :]
                         log_p = output_logits.log_softmax(dim=-1)
-                        logit_gathered = log_p.gather(-1, tokens).sum().to("cpu")
+                        tokens_on_device = tokens_shared.to(worker_device)
+                        logit_gathered = (
+                            log_p.gather(-1, tokens_on_device).sum().to("cpu")
+                        )
                         returned_logits = pytree_map(
                             lambda x: x.cpu().share_memory_(), logit_gathered
                         )
