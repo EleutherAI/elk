@@ -150,6 +150,7 @@ class InferenceServer:
         devices = select_usable_devices(
             num_workers, min_memory=maybe_divided_min_gpu_mem
         )
+        print(f"Using devices {devices}")
         self.devices = devices
         self.num_workers = len(devices)  # This may have been -1 before
         fsdp_port, wrap_policy = None, None

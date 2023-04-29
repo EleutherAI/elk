@@ -416,20 +416,20 @@ def extract(
     info = get_dataset_config_info(ds_name, config_name or None)
 
     split_names: list[Literal["train", "val"]] = list(get_splits().keys())
-    server = InferenceServer(
+    with InferenceServer(
         model_str=cfg.model,
         fsdp=fsdp,
         num_workers=num_gpus,
         min_gpu_mem=min_gpu_mem,
         mp_sharing_strategy=fsdp.mp_sharing_strategy,
-    )
+    ) as server:
 
-    extracted: DatasetDictWithName = extract_hiddens_with_server(
-        cfg=cfg,
-        split_names=split_names,
-        server=server,
-        ds_name=ds_name,
-    )
+        extracted: DatasetDictWithName = extract_hiddens_with_server(
+            cfg=cfg,
+            split_names=split_names,
+            server=server,
+            ds_name=ds_name,
+        )
     # write the extracted dataset to the cache
     write_extract_to_cache(
         extracted, cache_key=extract_cache_key(cfg=cfg, ds_name=ds_name)
