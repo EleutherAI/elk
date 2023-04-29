@@ -329,7 +329,8 @@ def _worker(
                 use_orig_params=True,
             )
             # torch.compile() needs to be called after wrapping the model with FSDP
-            wrapped_compiled = torch.compile(wrapped)
+            # wrapped_compiled = torch.compile(wrapped)
+            wrapped_compiled = wrapped
             model = cast(PreTrainedModel, wrapped_compiled)
             # This is dumb, but we need to run a forward pass to initialize the
             # FSDP. Otherwise, the first forward pass on all workers will not run

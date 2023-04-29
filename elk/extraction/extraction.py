@@ -355,9 +355,9 @@ def extract_hiddens(
                     if is_enc_dec
                     else server.infer(dict(input_ids=input_ids), func=func_to_run)
                 )
-
-                lm_logits[i, j] = outputs.lm_logits
-                hiddens = outputs.hidden_states
+                # bring these tensors back to the device
+                lm_logits[i, j] = pytree_map(lambda x: x.to(device), outputs.lm_logits)
+                hiddens = pytree_map(lambda x: x.to(device), outputs.hidden_states)
 
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
