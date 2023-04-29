@@ -247,7 +247,6 @@ class DatasetTemplates:
     helper functions necessary to read/write to the yaml file
     """
 
-    choices_column: str | None
     label_column: str | None
     label_choices: list[int | str]
     templates: dict[str, Template]
@@ -262,7 +261,6 @@ class DatasetTemplates:
             # Required field; contains all the templates keyed by ID
             self.templates = yaml_dict["templates"]
 
-            self.choices_column = yaml_dict.get("choices_column")
             self.label_column = yaml_dict.get("label_column")
             self.label_choices = yaml_dict.get("label_choices", [])
 

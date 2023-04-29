@@ -123,9 +123,7 @@ def infer_num_classes(label_feature: Any) -> int:
     """Return the number of classes in a `Dataset`.
 
     Returns:
-        The number of classes.
-    Raises:
-        ValueError: If the label column is not a `ClassLabel` or `Value('bool')`.
+        The number of classes, or -1 if it's unclear.
     """
     if isinstance(label_feature, ClassLabel):
         # We piggyback on the ClassLabel feature type to get the number of classes

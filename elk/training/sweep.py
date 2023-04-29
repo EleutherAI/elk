@@ -89,6 +89,7 @@ class Sweep:
                     if eval_dataset in train_datasets:
                         continue
 
+                    assert run.out_dir is not None
                     eval = Eval(
                         data=replace(run.data, model=model, datasets=(eval_dataset,)),
                         source=run.out_dir,
