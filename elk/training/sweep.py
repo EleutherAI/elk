@@ -104,7 +104,7 @@ class Sweep:
                             # Add hyperparameter values to output directory if needed
                             out_dir /= (
                                 f"var_weight={var_weight}"
-                                "_neg_cov_weight={neg_cov_weight}"
+                                f"_neg_cov_weight={neg_cov_weight}"
                             )
 
                         run.out_dir = out_dir
@@ -127,5 +127,6 @@ class Sweep:
                                 data=data,
                                 source=str(run.out_dir),
                                 out_dir=out_dir,
+                                skip_supervised=run.supervised == "none",
                             )
                             eval.execute(highlight_color="green")
