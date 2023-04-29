@@ -242,6 +242,8 @@ class InferenceServer:
         queue_id = get_queue_id(_id)
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
+        # todo: I think we can avoid pickling the kwargs here, we can shift the tensors to
+        # cpu and then share_memory it
         data_dill = dill.dumps([kwargs])
         # Send the task to the worker
         message = TaskMessage(id=queue_id, func_dill=None, data_dill=data_dill)
@@ -276,7 +278,6 @@ def _worker(
     wrap_policy: partial[bool] | None = None,
 ):
     """Worker process that maintains a copy of the model on a dedicated GPU."""
-    print("Starting model worker!")
     # Prevent duplicate logging messages
     if rank != 0:
         logging.disable(logging.CRITICAL)
@@ -321,7 +322,7 @@ def _worker(
             # Someone called map() giving us a new func and dataset to use
             assert isinstance(msg, TaskMessage)
             data = msg.data()
-            func = msg.func()
+            func = msg.func() # type: ignore
             queue_id = msg.id
             # We need to send the results back to the correct queue
             result_queue = out_qs[queue_id]

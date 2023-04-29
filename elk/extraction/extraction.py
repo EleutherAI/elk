@@ -18,6 +18,7 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
+from tqdm import tqdm
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 from transformers.utils import ModelOutput
@@ -94,7 +95,7 @@ class Extract(Serializable):
 
 @dataclass
 class ExtractedHidden:
-    split_type: str
+    split_type: Literal["train", "val"]
     data: dict[str, Any]
 
 
@@ -127,12 +128,12 @@ def extracted_hiddens_to_dataset_with_name(
 class ExtractHiddenThreadParam:
     rank: int
     device: str
-    split_type: str
+    split_type: Literal["train", "val"]
 
 
 def extract_hiddens_with_server(
     cfg: Extract,
-    split_names: list[str],
+    split_names: list[Literal["train", "val"]],
     server: InferenceServer,
     ds_name: str,
 ) -> DatasetDictWithName:
@@ -181,12 +182,16 @@ def extract_hiddens(
     *,
     server: InferenceServer,
     device: str | torch.device,
-    split_type: str,
+    split_type: Literal["train", "val"],
     rank: int = 0,
     world_size: int = 1,
 ) -> list[ExtractedHidden]:
     model = server._model
-    """Run inference on a model with a set of prompts, yielding the hidden states."""
+    """Run inference on a model with a set of prompts, yielding the hidden states,
+    Note on verbosity: We are running extract_hiddens for each split, so there
+    may be threads of rank 0 for both "train" and "val" running at the same time.
+    So you'll get logging messages from both "train" and "val" at the same time.
+    """
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     # Silence datasets logging messages from all but the first process
@@ -198,6 +203,7 @@ def extract_hiddens(
     ds_names = p_cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
+    # and the workers
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=rank == 0
     )
@@ -231,8 +237,20 @@ def extract_hiddens(
     # the last process gets the remainder (which is usually small)
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
+
+    # Add a progress bar if the current rank is 0 (the main process)
+    prompt_ds_tqdm = (
+        tqdm(
+            prompt_ds,
+            total=max_examples,
+            desc=f"Extracting prompts on {split_type} for rank 0",
+        )
+        if rank == 0
+        else prompt_ds
+    )
+
     output = []
-    for example in islice(prompt_ds, max_examples):
+    for example in islice(prompt_ds_tqdm, max_examples):
         num_variants = len(example["prompts"])
         num_choices = len(example["prompts"][0])
 
@@ -394,7 +412,7 @@ def extract(
 
     info = get_dataset_config_info(ds_name, config_name or None)
 
-    split_names = list(get_splits().keys())
+    split_names: list[Literal["train", "val"]] = list(get_splits().keys())
     server = InferenceServer(
         model_str=cfg.model,
         fsdp=fsdp,
@@ -415,4 +433,3 @@ def extract(
     # need to explicitly shutdown the server to clean up processes
     server.shutdown()
     return extracted
-
