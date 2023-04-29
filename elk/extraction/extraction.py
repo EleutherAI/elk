@@ -4,6 +4,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy
 from dataclasses import InitVar, dataclass
+from functools import partial
 from itertools import islice
 from typing import Any, Literal
 from warnings import filterwarnings
@@ -184,6 +185,30 @@ class SmallerOutput:
     lm_logits: torch.Tensor
 
 
+def func_to_run(
+    model_output: ModelOutput,
+    worker_device: torch.device,
+    has_lm_preds: bool,
+    tokens_shared: torch.Tensor,
+    answer_len: int,
+) -> SmallerOutput:
+    if has_lm_preds:
+        output_logits = model_output.logits[..., -answer_len:, :]
+        log_p = output_logits.log_softmax(dim=-1)
+        tokens_on_device = tokens_shared.to(worker_device)
+        logit_gathered = log_p.gather(-1, tokens_on_device).sum().to("cpu")
+        returned_logits = pytree_map(lambda x: x.cpu().share_memory_(), logit_gathered)
+    else:
+        returned_logits = None
+
+    returned_hiddens = (
+        model_output.get("decoder_hidden_states") or model_output["hidden_states"]
+    )
+    converted_hiddens = pytree_map(lambda x: x.cpu().share_memory_(), returned_hiddens)
+
+    return SmallerOutput(lm_logits=returned_logits, hidden_states=converted_hiddens)
+
+
 @torch.inference_mode()
 def extract_hiddens(
     cfg: "Extract",
@@ -324,33 +349,12 @@ def extract_hiddens(
                 tokens = answer[..., None] if has_lm_preds else None
                 tokens_shared = tokens.cpu().share_memory_() if has_lm_preds else None
 
-                def func_to_run(
-                    model_output: ModelOutput, worker_device: torch.device
-                ) -> SmallerOutput:
-                    if has_lm_preds:
-                        output_logits = model_output.logits[..., -answer_len:, :]
-                        log_p = output_logits.log_softmax(dim=-1)
-                        tokens_on_device = tokens_shared.to(worker_device)
-                        logit_gathered = (
-                            log_p.gather(-1, tokens_on_device).sum().to("cpu")
-                        )
-                        returned_logits = pytree_map(
-                            lambda x: x.cpu().share_memory_(), logit_gathered
-                        )
-                    else:
-                        returned_logits = None
-
-                    returned_hiddens = (
-                        model_output.get("decoder_hidden_states")
-                        or model_output["hidden_states"]
-                    )
-                    converted_hiddens = pytree_map(
-                        lambda x: x.cpu().share_memory_(), returned_hiddens
-                    )
-
-                    return SmallerOutput(
-                        lm_logits=returned_logits, hidden_states=converted_hiddens
-                    )
+                partial_func = partial(
+                    func_to_run,
+                    has_lm_preds=has_lm_preds,
+                    tokens_shared=tokens_shared,
+                    answer_len=answer_len,
+                )
 
                 # Make sure we only pass the arguments that the model expects
                 outputs: SmallerOutput = (
@@ -359,7 +363,7 @@ def extract_hiddens(
                         func=func_to_run,
                     )
                     if is_enc_dec
-                    else server.infer(dict(input_ids=input_ids), func=func_to_run)
+                    else server.infer(dict(input_ids=input_ids), func=partial_func)
                 )
                 # bring these tensors back to the device
                 lm_logits[i, j] = pytree_map(lambda x: x.to(device), outputs.lm_logits)
