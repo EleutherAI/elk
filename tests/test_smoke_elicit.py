@@ -8,7 +8,7 @@ from elk.training.train import Elicit
 
 def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
     # we need about 5 mb of gpu memory to run this test
-    model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024 ** 2
+    model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024**2
     dataset_name = "imdb"
     elicit = Elicit(
         data=Extract(
@@ -38,7 +38,7 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
 
 def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
     # we need about 5 mb of gpu memory to run this test
-    model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024 ** 2
+    model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024**2
     dataset_name = "imdb"
     elicit = Elicit(
         data=Extract(
