@@ -150,8 +150,9 @@ def extract_hiddens_with_server(
         ExtractHiddenThreadParam(
             rank=i,
             split_type=split_name,
-            # Evenly distribute the ranks across the devices
-            device=server.devices[i % len(server.devices)],
+            # Test out using the cpus for logits postprocessing
+            # So theres not so much cpu -> gpu transfer
+            device=["cpu"] * len(server.devices),
         )
         for i in range(world_size)
         for split_name in split_names
@@ -324,9 +325,11 @@ def extract_hiddens(
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
                     answer_len = answer.shape[-1]
-                    # If we are using fsdp, we'll get back cpu tensors
-                    # which we need to move to the device for fp16 compatibility
+                    # When using the inferenceserver, we'll get back cpu tensors
+                    # which we need to move to the device for compat
                     logits = outputs.logits[..., -answer_len:, :].to(device)
+                    # convert the logits to fp32 if we are cpu for compat
+                    logits = logits.float() if device == "cpu" else logits
                     log_p = logits.log_softmax(dim=-1)
                     tokens = answer[..., None]
                     lm_logits[i, j] = log_p.gather(-1, tokens).sum()
