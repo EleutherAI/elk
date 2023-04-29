@@ -1,9 +1,12 @@
 from copy import deepcopy
 from dataclasses import InitVar, dataclass
 
+import numpy as np
+
 from ..evaluation.evaluate import Eval
 from ..extraction import Extract, PromptConfig
 from ..files import elk_reporter_dir, memorably_named_dir
+from ..training.eigen_reporter import EigenReporterConfig
 from ..utils import colorize
 from .train import Elicit
 
@@ -18,6 +21,10 @@ class Sweep:
     pool SST-2 and IMDB together."""
     add_pooled: InitVar[bool] = False
     """Whether to add a dataset that pools all of the other datasets together."""
+    hparam_step: float = -1.0
+    """The step size for hyperparameter sweeps. Performs a 2D
+    sweep over a and b in (var_weight, inv_weight, neg_cov_weight) = (a, 1 - b, b)
+    If negative, no hyperparameter sweeps will be performed. Only valid for Eigen."""
 
     name: str | None = None
 
@@ -34,6 +41,13 @@ class Sweep:
             raise ValueError("No datasets specified")
         if not self.models:
             raise ValueError("No models specified")
+        # can only use hparam_step if we're using an eigen net
+        if self.hparam_step > 0 and not isinstance(
+            self.run_template.net, EigenReporterConfig
+        ):
+            raise ValueError("Can only use hparam_step with EigenReporterConfig")
+        elif self.hparam_step > 1:
+            raise ValueError("hparam_step must be in [0, 1]")
 
         # Add an additional dataset that pools all of the datasets together.
         if add_pooled:
@@ -62,40 +76,56 @@ class Sweep:
             }
         )
 
+        step = self.hparam_step
+        weights = np.arange(0.0, 1.0 + step, step) if step > 0 else [None]
+
         for i, model_str in enumerate(self.models):
             # Magenta color for the model name
             print(f"\n\033[35m===== {model_str} ({i + 1} of {M}) =====\033[0m")
 
             for dataset_str in self.datasets:
-                out_dir = sweep_dir / model_str / dataset_str
-
                 # Allow for multiple datasets to be specified in a single string with
                 # plus signs. This means we can pool datasets together inside of a
                 # single sweep.
                 train_datasets = [ds.strip() for ds in dataset_str.split("+")]
 
-                run = deepcopy(self.run_template)
-                run.data.model = model_str
-                run.data.prompts.datasets = train_datasets
-                run.out_dir = out_dir
-                run.execute()
+                for var_weight in weights:
+                    for neg_cov_weight in weights:
+                        out_dir = sweep_dir / model_str / dataset_str
 
-                if len(eval_datasets) > 1:
-                    print(colorize("== Transfer eval ==", "green"))
+                        run = deepcopy(self.run_template)
+                        run.data.model = model_str
+                        run.data.prompts.datasets = train_datasets
+                        if var_weight is not None and neg_cov_weight is not None:
+                            assert isinstance(run.net, EigenReporterConfig)
+                            run.net.var_weight = var_weight
+                            run.net.neg_cov_weight = neg_cov_weight
 
-                # Now evaluate the reporter on the other datasets
-                for eval_dataset in eval_datasets:
-                    # We already evaluated on this one during training
-                    if eval_dataset in train_datasets:
-                        continue
+                            # Add hyperparameter values to output directory if needed
+                            out_dir /= (
+                                f"var_weight={var_weight}"
+                                "_neg_cov_weight={neg_cov_weight}"
+                            )
 
-                    data = deepcopy(run.data)
-                    data.model = model_str
-                    data.prompts.datasets = [eval_dataset]
+                        run.out_dir = out_dir
+                        run.execute()
 
-                    eval = Eval(
-                        data=data,
-                        source=str(run.out_dir),
-                        out_dir=out_dir,
-                    )
-                    eval.execute(highlight_color="green")
+                        if len(eval_datasets) > 1:
+                            print(colorize("== Transfer eval ==", "green"))
+
+                        # Now evaluate the reporter on the other datasets
+                        for eval_dataset in eval_datasets:
+                            # We already evaluated on this one during training
+                            if eval_dataset in train_datasets:
+                                continue
+
+                            data = deepcopy(run.data)
+                            data.model = model_str
+                            data.prompts.datasets = [eval_dataset]
+
+                            eval = Eval(
+                                data=data,
+                                source=str(run.out_dir),
+                                out_dir=out_dir,
+                            )
+                            eval.execute(highlight_color="green")
