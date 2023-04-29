@@ -344,8 +344,11 @@ def _worker(
                 for record in data:
                     assert isinstance(record, dict)
                     inputs_cuda = pytree_map(lambda t: t.to(device), record)
-                    # We always want to return the hidden states
-                    outputs = model(**inputs_cuda, output_hidden_states=True)
+                    # testing this to make sure it's really inference mode
+                    # despite the decorator
+                    with torch.inference_mode():
+                        # We always want to return the hidden states
+                        outputs = model(**inputs_cuda, output_hidden_states=True)
 
                     outputs_cls = type(outputs)
                     outputs_dict = pytree_map(
