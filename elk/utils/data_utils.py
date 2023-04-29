@@ -1,7 +1,7 @@
 import copy
+import os
 from contextlib import contextmanager
 from functools import cache
-from pathlib import Path
 from random import Random
 from tempfile import TemporaryDirectory
 from typing import Any, Iterable
@@ -35,6 +35,18 @@ def has_multiple_configs(ds_name: str) -> bool:
     return len(get_dataset_config_names(ds_name)) > 1
 
 
+@contextmanager
+def prevent_name_conflicts():
+    """Temporarily change cwd to a temporary directory, to prevent name conflicts."""
+    with TemporaryDirectory() as tmp:
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(tmp)
+            yield
+        finally:
+            os.chdir(old_cwd)
+
+
 def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
     """Return splits to use for train and validation, given an Iterable of splits."""
 
@@ -48,36 +60,6 @@ def select_train_val_splits(raw_splits: Iterable[str]) -> tuple[str, str]:
     assert len(splits) >= 2, "Must have at least two of train, val, and test splits"
 
     return tuple(splits[:2])
-
-
-@contextmanager
-def temporary_dir_move(path: Path | str):
-    """Move a file or directory to a temporary directory, then move it back.
-
-    If the path does not exist, this is a no-op.
-    """
-    path = Path(path)
-
-    with TemporaryDirectory() as tmp:
-        if path.exists():
-            dest = Path(tmp) / path.name
-            try:
-                path.rename(dest)
-            except OSError as e:
-                raise RuntimeError(
-                    f"You have a local directory '{path.absolute()}' whose name "
-                    f"conflicts with {path}. We tried to move it for you, but failed "
-                    f"with error '{e}'. Please change the current working directory "
-                    f"and try again."
-                ) from e
-        else:
-            dest = None
-
-        try:
-            yield dest
-        finally:
-            if dest is not None:
-                dest.rename(path)
 
 
 def infer_label_column(features: Features) -> str:

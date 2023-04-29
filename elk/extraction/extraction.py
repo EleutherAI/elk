@@ -35,9 +35,9 @@ from ..utils import (
     instantiate_model,
     instantiate_tokenizer,
     is_autoregressive,
+    prevent_name_conflicts,
     select_train_val_splits,
     select_usable_devices,
-    temporary_dir_move,
 )
 from .dataset_name import (
     DatasetDictWithName,
@@ -307,7 +307,7 @@ def extract(
             dataset_name=available_splits.dataset_name,
         )
 
-    with temporary_dir_move(cfg.model):
+    with prevent_name_conflicts():
         model_cfg = AutoConfig.from_pretrained(cfg.model)
 
     ds_name, config_name = extract_dataset_name_and_config(
