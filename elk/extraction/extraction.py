@@ -178,6 +178,12 @@ def extract_hiddens_with_server(
     )
 
 
+@dataclass
+class SmallerOutput:
+    hidden_states: torch.Tensor | None
+    lm_logits: torch.Tensor
+
+
 @torch.inference_mode()
 def extract_hiddens(
     cfg: "Extract",
@@ -314,32 +320,38 @@ def extract_hiddens(
                         cur_len = input_ids.shape[-1]
                         input_ids = input_ids[..., -min(cur_len, max_len) :]
 
+                answer_len = answer.shape[-1] if has_lm_preds else None
+                tokens = answer[..., None] if has_lm_preds else None
+
+                def func_to_run(outputs: ModelOutput) -> SmallerOutput:
+                    if has_lm_preds:
+                        output_logits = outputs.logits[..., -answer_len:, :]
+                        log_p = output_logits.log_softmax(dim=-1)
+                        returned_logits = log_p.gather(-1, tokens).sum()
+                    else:
+                        returned_logits = None
+
+                    returned_hiddens = (
+                        outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                    )
+
+                    return SmallerOutput(
+                        lm_logits=returned_logits, hidden_states=returned_hiddens
+                    )
+
                 # Make sure we only pass the arguments that the model expects
-                outputs: ModelOutput = (
-                    server.infer(input_ids=input_ids, labels=answer)
+                outputs: SmallerOutput = (
+                    server.infer(
+                        kwargs=dict(input_ids=input_ids, labels=answer),
+                        func=func_to_run,
+                    )
                     if is_enc_dec
-                    else server.infer(input_ids=input_ids)
+                    else server.infer(dict(input_ids=input_ids), func=func_to_run)
                 )
 
-                # Compute the log probability of the answer tokens if available
-                if has_lm_preds:
-                    answer_len = answer.shape[-1]
-                    # If we are using fsdp, we'll get back cpu tensors
-                    # which we need to move to the device for fp16 compatibility
-                    logits = outputs.logits[..., -answer_len:, :].to(device)
-                    log_p = logits.log_softmax(dim=-1)
-                    tokens = answer[..., None]
-                    lm_logits[i, j] = log_p.gather(-1, tokens).sum()
+                lm_logits[i, j] = outputs.lm_logits
+                hiddens = outputs.hidden_states
 
-                elif isinstance(outputs, Seq2SeqLMOutput):
-                    # The cross entropy loss is averaged over tokens, so we need to
-                    # multiply by the length to get the total log probability.
-                    length = encoding.labels.shape[-1]
-                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss) * length
-
-                hiddens = (
-                    outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-                )
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
 

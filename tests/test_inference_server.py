@@ -26,7 +26,7 @@ def test_inference_server_non_fsdp():
     input_ids = AutoTokenizer.from_pretrained(model_str).encode(
         text, return_tensors="pt"
     )
-    outputs = server.infer(input_ids=input_ids)
+    outputs = server.infer(kwargs=dict(input_ids=input_ids))
     assert (
         type(outputs) == transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
     )
@@ -63,7 +63,7 @@ def test_fsdp_same_result():
     input_ids = AutoTokenizer.from_pretrained(model_str).encode(
         text, return_tensors="pt"
     )
-    outputs = server.infer(input_ids=input_ids)
+    outputs = server.infer(kwargs=dict(input_ids=input_ids))
     assert (
         type(outputs) == transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
     )
@@ -107,7 +107,7 @@ def test_fsdp_multithreading():
     )
     # run the function .one on the server
     outputs_server = map_threadpool(
-        items=_dicts, func=lambda x: server.infer(**x).logits, threadpool=threadpool
+        items=_dicts, func=lambda x: server.infer(x).logits, threadpool=threadpool
     )
     # the length of the 2nd dimension of the logits is equal to the number of repeats
     lengths = [len(output) for output in outputs_server]

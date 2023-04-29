@@ -41,6 +41,9 @@ SingletonSentinel: TypeAlias = Literal["sentinel"]
 
 ResultQueueID = NewType("QueueID", str)
 
+def identity(x):
+    return x
+
 
 @dataclass(kw_only=True)
 class TaskMessage:
@@ -246,7 +249,9 @@ class InferenceServer:
             result_queue_dict=self._result_queues,
         )
 
-    def infer(self, **kwargs) -> ModelOutput:
+    def infer(
+        self, kwargs: dict[str, Any], func: Callable[[ModelOutput], A] = identity
+    ) -> A:
         """Run inference on the given input. These are passed directly to the model."""
         # Optimized version of map for one input. No need to create so many queues.
         # Pick the first available worker
@@ -254,10 +259,16 @@ class InferenceServer:
         queue_id = get_queue_id(_id)
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
+        # Pickle the func and send it to the workers
+        func_dill = dill.dumps(func)
         # move the kwargs to the cpu device and share memory
         shared_kwargs = share_dict_of_tensors_with_processes(kwargs)
         # Send the task to the worker
-        message = TaskMessage(id=queue_id, func_dill=None, data=[shared_kwargs])
+        message = TaskMessage(
+            id=queue_id,
+            func_dill=func_dill if func is not identity else None,
+            data=[shared_kwargs],
+        )
         self._task_queue.put(message)
 
         # Wait for the result
@@ -273,8 +284,6 @@ class InferenceServer:
         return output
 
 
-def identity(x):
-    return x
 
 
 def share_dict_of_tensors_with_processes(_dict: dict[str, torch.Tensor]):
@@ -360,16 +369,22 @@ def _worker(
                         # We always want to return the hidden states
                         outputs = model(**inputs_cuda, output_hidden_states=True)
 
-                    outputs_cls = type(outputs)
-                    outputs_dict = pytree_map(
-                        lambda x: x.cpu().share_memory_(), outputs
-                    )
-                    outputs = outputs_cls(**outputs_dict)
                     # apply the func
                     output_applied = func(outputs) if func is not None else outputs
 
+                    outputs_cls = type(output_applied)
+                    # Move the outputs back to the CPU and share memory so we can
+                    # send it back to the main process
+                    outputs_dict = pytree_map(
+                        lambda x: x.cpu().share_memory_(), output_applied
+                    )
+
+                    converted_back_outputs = outputs_cls(**outputs_dict)
+
                     # Send the outputs back to the main process
-                    result_queue.put(ResultMessage(data=output_applied, id=msg.id))
+                    result_queue.put(
+                        ResultMessage(data=converted_back_outputs, id=msg.id)
+                    )
             except Exception as e:
                 # Send the exception back to the main process
                 result_queue.put(ResultMessage(exception=e, id=msg.id, data=None))
