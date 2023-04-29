@@ -187,15 +187,16 @@ def extract_hiddens(
     world_size: int = 1,
 ) -> list[ExtractedHidden]:
     model = server._model
-    """Run inference on a model with a set of prompts, yielding the hidden states,
-    Note on verbosity: We are running extract_hiddens for each split, so there
-    may be threads of rank 0 for both "train" and "val" running at the same time.
-    So you'll get logging messages from both "train" and "val" at the same time.
-    """
+    """Run inference on a model with a set of prompts, yielding the hidden states"""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+    """
+    We are running extract_hiddens for each split, so there
+    may be threads of rank 0 for both "train" and "val" running at the same time.
+    """
+    is_verbose = rank == 0 and split_type == "train"
     # Silence datasets logging messages from all but the first process
-    if rank != 0:
+    if not is_verbose:
         filterwarnings("ignore")
         logging.disable(logging.CRITICAL)
 
@@ -215,7 +216,7 @@ def extract_hiddens(
         is_enc_dec = False
 
     has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
-    if has_lm_preds and rank == 0:
+    if has_lm_preds and is_verbose:
         print("Model has language model head, will store predictions.")
 
     prompt_ds = load_prompts(
