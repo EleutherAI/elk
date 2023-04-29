@@ -2,6 +2,7 @@ from copy import deepcopy
 from dataclasses import InitVar, dataclass
 
 import numpy as np
+import torch
 
 from ..evaluation.evaluate import Eval
 from ..extraction import Extract, PromptConfig
@@ -25,6 +26,8 @@ class Sweep:
     """The step size for hyperparameter sweeps. Performs a 2D
     sweep over a and b in (var_weight, inv_weight, neg_cov_weight) = (a, 1 - b, b)
     If negative, no hyperparameter sweeps will be performed. Only valid for Eigen."""
+    skip_transfer_eval: bool = False
+    """Whether to perform transfer eval on every pair of datasets."""
 
     name: str | None = None
 
@@ -108,25 +111,30 @@ class Sweep:
                             )
 
                         run.out_dir = out_dir
-                        run.execute()
+                        try:
+                            run.execute()
+                        except torch._C._LinAlgError as e:  # type: ignore
+                            print(colorize(f"LinAlgError: {e}", "red"))
+                            continue
 
-                        if len(eval_datasets) > 1:
-                            print(colorize("== Transfer eval ==", "green"))
+                        if not self.skip_transfer_eval:
+                            if len(eval_datasets) > 1:
+                                print(colorize("== Transfer eval ==", "green"))
 
-                        # Now evaluate the reporter on the other datasets
-                        for eval_dataset in eval_datasets:
-                            # We already evaluated on this one during training
-                            if eval_dataset in train_datasets:
-                                continue
+                            # Now evaluate the reporter on the other datasets
+                            for eval_dataset in eval_datasets:
+                                # We already evaluated on this one during training
+                                if eval_dataset in train_datasets:
+                                    continue
 
-                            data = deepcopy(run.data)
-                            data.model = model_str
-                            data.prompts.datasets = [eval_dataset]
+                                data = deepcopy(run.data)
+                                data.model = model_str
+                                data.prompts.datasets = [eval_dataset]
 
-                            eval = Eval(
-                                data=data,
-                                source=str(run.out_dir),
-                                out_dir=out_dir,
-                                skip_supervised=run.supervised == "none",
-                            )
-                            eval.execute(highlight_color="green")
+                                eval = Eval(
+                                    data=data,
+                                    source=str(run.out_dir),
+                                    out_dir=out_dir,
+                                    skip_supervised=run.supervised == "none",
+                                )
+                                eval.execute(highlight_color="green")
