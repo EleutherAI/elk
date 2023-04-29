@@ -348,7 +348,7 @@ def _worker(
                 f" and cpu_offload {cpu_offload}"
             )
         else:
-            model.to(device)
+            model = model.to(device)
 
         # Breaks when x is None, the sentinel value indicating we should shut down
 
