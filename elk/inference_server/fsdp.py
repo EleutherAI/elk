@@ -34,7 +34,7 @@ from transformers.modeling_outputs import ModelOutput
 
 from elk.inference_server.fsdp_options import FSDPOptions
 from elk.utils import instantiate_model, pytree_map, select_usable_devices
-from elk.utils.multiprocessing_utils import A
+from elk.utils.typing import A
 
 sentinel: Literal["sentinel"] = "sentinel"
 SingletonSentinel: TypeAlias = Literal["sentinel"]

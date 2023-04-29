@@ -13,8 +13,7 @@ from datasets import (
 )
 
 from ..promptsource.templates import Template
-from .multiprocessing_utils import A
-from .typing import assert_type
+from .typing import A, assert_type
 
 
 def get_columns_all_equal(dataset: DatasetDict) -> list[str]:
