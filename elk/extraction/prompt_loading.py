@@ -28,7 +28,7 @@ class PromptConfig(Serializable):
     """
     Args:
         dataset: List of space-delimited names of the HuggingFace dataset to use, e.g.
-            `"super_glue boolq"` or `"imdb"`.
+            `"super_glue:boolq"` or `"imdb"`.
         data_dir: The directory to use for caching the dataset. Defaults to
             `~/.cache/huggingface/datasets`.
         label_column: The column containing the labels. By default, we infer this from
@@ -119,7 +119,7 @@ def load_prompts(
 
     Args:
         ds_string: Space-delimited name of the HuggingFace dataset to use,
-            e.g. `"super_glue boolq"` or `"imdb"`.
+            e.g. `"super_glue:boolq"` or `"imdb"`.
         label_column: The column containing the labels. By default, we infer this from
             the datatypes of the columns in the dataset.
         num_classes: The number of classes in the dataset. If zero, we infer this from
@@ -135,7 +135,7 @@ def load_prompts(
     Returns:
         An iterable of prompt dictionaries.
     """
-    ds_name, _, config_name = ds_string.partition(" ")
+    ds_name, _, config_name = ds_string.partition(":")
     prompter = DatasetTemplates(ds_name, config_name)
 
     ds_dict = assert_type(
