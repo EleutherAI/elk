@@ -105,10 +105,8 @@ class Sweep:
                             run.net.neg_cov_weight = neg_cov_weight
 
                             # Add hyperparameter values to output directory if needed
-                            out_dir /= (
-                                f"var_weight={var_weight}"
-                                f"_neg_cov_weight={neg_cov_weight}"
-                            )
+                            out_dir /= f"var_weight={var_weight}"
+                            out_dir /= f"neg_cov_weight={neg_cov_weight}"
 
                         run.out_dir = out_dir
                         try:
