@@ -1,6 +1,7 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
+from contextlib import nullcontext, redirect_stdout
 from dataclasses import InitVar, dataclass, replace
 from itertools import islice, zip_longest
 from typing import Any, Iterable, Literal
@@ -149,8 +150,6 @@ def extract_hiddens(
     world_size: int = 1,
 ) -> Iterable[dict]:
     """Run inference on a model with a set of prompts, yielding the hidden states."""
-    # Prevent the bitsandbytes welcome message from being printed multiple times
-    os.environ["BITSANDBYTES_NOWELCOME"] = "1" if rank != 0 else "0"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     # Silence datasets logging messages from all but the first process
@@ -161,20 +160,23 @@ def extract_hiddens(
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    if device == "cpu":
-        dtype = torch.float32
-    elif cfg.int8:
+    if cfg.int8:
         # Required by `bitsandbytes`
         dtype = torch.float16
+    elif device == "cpu":
+        dtype = torch.float32
     else:
         dtype = "auto"
 
-    model = instantiate_model(
-        cfg.model, device_map={"": device}, load_in_8bit=cfg.int8, torch_dtype=dtype
-    )
-    tokenizer = instantiate_tokenizer(
-        cfg.model, truncation_side="left", verbose=rank == 0
-    )
+    # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
+    # welcome message on every rank
+    with redirect_stdout(None) if rank != 0 else nullcontext():
+        model = instantiate_model(
+            cfg.model, device_map={"": device}, load_in_8bit=cfg.int8, torch_dtype=dtype
+        )
+        tokenizer = instantiate_tokenizer(
+            cfg.model, truncation_side="left", verbose=rank == 0
+        )
 
     is_enc_dec = model.config.is_encoder_decoder
     if is_enc_dec and cfg.use_encoder_states:
