@@ -4,7 +4,6 @@ import pandas as pd
 
 from elk import Extract
 from elk.evaluation import Eval
-from elk.extraction.dataset_name import extract_dataset_name_and_config
 from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
 
@@ -84,8 +83,7 @@ def eval_assert_files_created(elicit: Elicit, transfer_datasets: tuple[str, ...]
 
     for tfr_dataset in transfer_datasets:
         # assert that the dataset column contains the transfer dataset
-        ds_name, config_name = extract_dataset_name_and_config(tfr_dataset)
-        assert ds_name in dataset_col.values
+        assert tfr_dataset in dataset_col.values
 
 
 """TESTS"""
