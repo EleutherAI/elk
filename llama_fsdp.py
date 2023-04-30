@@ -32,15 +32,12 @@ def run_inference(rank, world_size, model, input_ids_list):
     if rank == 0:
         input_ids_list = tqdm(input_ids_list, desc="Inference")
 
-    results = []
     for input_id_args in input_ids_list:
         input_id_args = input_id_args.to(rank)
         with torch.no_grad():
             output = model(input_id_args)
-        results.append(output.cpu())
 
     cleanup()
-    return results
 
 
 def main(args):
@@ -52,8 +49,8 @@ def main(args):
     )
     print("Extracting input ids...")
     input_ids_list = temp_extract_input_ids(
-        cfg=cfg, device="cuda:0", split_type="train"
-    ) + temp_extract_input_ids(cfg=cfg, device="cuda:0", split_type="test")
+        cfg=cfg, device="cpu", split_type="train"
+    ) + temp_extract_input_ids(cfg=cfg, device="cpu", split_type="test")
     print("Instantiating model...")
     model = instantiate_model(model_str, torch_dtype="auto")
     model = FSDP(model)

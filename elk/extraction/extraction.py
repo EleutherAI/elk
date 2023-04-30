@@ -411,7 +411,7 @@ def temp_extract_input_ids(
     *,
     device: str | torch.device,
     split_type: Literal["train", "val"],
-) -> list[dict]:
+) -> list[Tensor]:
     rank = 0
     world_size: int = 1
     """Run inference on a model with a set of prompts, yielding the hidden states"""
