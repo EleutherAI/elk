@@ -190,7 +190,7 @@ def func_to_run(
     has_lm_preds: bool,
     tokens_shared: torch.Tensor,
     answer_len: int,
-    layer_indices: list[int],
+    layer_indices: tuple[int, ...],
     token_loc: Literal["first", "last", "mean"],
 ) -> SmallerOutput:
     if has_lm_preds:

@@ -2,9 +2,9 @@ import logging
 import multiprocessing as std_mp
 import os
 import socket
+import threading
 import time
 import traceback
-import uuid
 import warnings
 from dataclasses import dataclass
 from functools import partial
@@ -21,7 +21,6 @@ from typing import (
     TypeAlias,
     cast,
 )
-from uuid import UUID
 
 import dill
 import torch
@@ -74,12 +73,15 @@ else:
     TaskQueue = mp.Queue
 
 
-def get_queue_id(_uuid: UUID) -> ResultQueueID:
+def get_queue_id() -> ResultQueueID:
     """
-    _uuid: UUID of the task. E.g. for a map operation, this is the UUID of the map
-    rank: rank of the worker. Each worker will output to a different queue
+    We make one queue per thread, so that the server works with multi-threading.
+    Note that we don't clean up the queues, so this will leak memory if you keep
+    creating many new threads. This is fine for our use case, since we reuse our
+    threads.
     """
-    return ResultQueueID(str(_uuid))
+    thread_id = threading.get_ident()
+    return ResultQueueID(str(thread_id))
 
 
 def shard_seq(seq: Sequence[A], num_shards: int) -> Sequence[Sequence[A]]:
@@ -190,12 +192,11 @@ class InferenceServer:
             nprocs=self.num_workers,
         )
 
-    def create_result_queue(self, _uuid: UUID) -> ResultQueueID:
-        """Create a queue for the given task ID."""
-        queue_id = ResultQueueID(str(_uuid))
+    def create_result_queue(self, queue_id: str) -> ResultQueueID:
+        """Create a queue for the given id."""
         new_queue = self._manager.Queue()
         self._result_queues[queue_id] = new_queue  # type: ignore
-        return queue_id
+        return ResultQueueID(queue_id)
 
     def shutdown(self) -> bool:
         try:
@@ -226,6 +227,12 @@ class InferenceServer:
         """
         return list(self.imap(keywords=keywords, func=func))
 
+    def _create_result_queue_for_thread(self) -> ResultQueueID:
+        queue_id = get_queue_id()
+        result_queue = self._manager.Queue()
+        self._result_queues[queue_id] = result_queue  # type: ignore
+        return queue_id
+
     def imap(
         self,
         keywords: list[dict[str, Any]],
@@ -236,9 +243,7 @@ class InferenceServer:
         # Pickle the func and send it to the workers
         func_dill = dill.dumps(func)
         shards = shard_seq(keywords, self.num_workers)
-        # create a uuid to track what messages belong to what imap on different threads
-        _id: UUID = uuid.uuid4()
-        queue_id: ResultQueueID = self.create_result_queue(_uuid=_id)
+        queue_id = self._create_result_queue_for_thread()
         for shard in shards:
             # move the kwargs to the cpu device and share memory
             new_data = [
@@ -259,12 +264,7 @@ class InferenceServer:
         func: Callable[[ModelOutput, torch.device], A] | None = None,
     ) -> A:
         """Run inference on the given input. These are passed directly to the model."""
-        # Optimized version of map for one input. No need to create so many queues.
-        # Pick the first available worker
-        _id: UUID = uuid.uuid4()
-        queue_id = get_queue_id(_id)
-        result_queue = self._manager.Queue()
-        self._result_queues[queue_id] = result_queue  # type: ignore
+        queue_id = self._create_result_queue_for_thread()
         # Pickle the func and send it to the workers
         func_dill = dill.dumps(func) if func is not None else None
         # move the kwargs to the cpu device and share memory
@@ -478,6 +478,3 @@ def round_robin(
                 raise item.exception  # type: ignore
             else:
                 yield cast(ResultMessage, item).data
-
-    # Clean up the result queue
-    del result_queue_dict[queue_id]
