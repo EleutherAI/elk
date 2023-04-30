@@ -153,6 +153,7 @@ def extract_hiddens_with_server(
         for device_rank, device in enumerate(server.devices)
         for split_name in split_names
     ]
+    print("Rank and splits: ", ranks_and_splits)
     # 2 threads per device - This is so that the workers of the
     # InferenceServer should be fully saturated.
     tp_size = len(ranks_and_splits)
