@@ -120,12 +120,11 @@ def infer_num_classes(label_feature: Any) -> int:
         )
 
 
-def get_layers(ds: DatasetDict) -> list[int]:
-    """Get a list of indices of hidden layers given a `DatasetDict`."""
-    train, _ = select_train_val_splits(ds.keys())
-    layers = [
-        int(feat[len("hidden_") :])
-        for feat in ds[train].features
-        if feat.startswith("hidden_")
-    ]
-    return layers
+def get_layer_indices(ds: DatasetDict) -> list[int]:
+    """Return the indices of the layers from which the hiddens have been extracted."""
+    # Dataset has a bunch of columns of the form "hidden_0", "hidden_1", etc.
+    # str.removeprefix() is a no-op if the prefix isn't present
+    suffixes = (col.removeprefix("hidden_") for col in get_columns_all_equal(ds))
+
+    # Convert to the suffixes that are integral to ints, then sort them
+    return sorted(int(suffix) for suffix in suffixes if suffix.isdigit())

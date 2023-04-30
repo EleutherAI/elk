@@ -23,7 +23,7 @@ from .files import elk_reporter_dir, memorably_named_dir
 from .utils import (
     Color,
     assert_type,
-    get_layers,
+    get_layer_indices,
     int16_to_float32,
     select_train_val_splits,
     select_usable_devices,
@@ -161,7 +161,7 @@ class Run(ABC, Serializable):
         """
         self.out_dir = assert_type(Path, self.out_dir)
 
-        layers, *rest = [get_layers(ds) for _, ds in self.datasets]
+        layers, *rest = [get_layer_indices(ds) for _, ds in self.datasets]
         assert all(x == layers for x in rest), "All datasets must have the same layers"
 
         if self.concatenated_layer_offset > 0:

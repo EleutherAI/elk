@@ -1,6 +1,6 @@
 from .data_utils import (
     get_columns_all_equal,
-    get_layers,
+    get_layer_indices,
     has_multiple_configs,
     infer_label_column,
     infer_num_classes,
@@ -23,7 +23,7 @@ __all__ = [
     "cov_mean_fused",
     "float32_to_int16",
     "get_columns_all_equal",
-    "get_layers",
+    "get_layer_indices",
     "has_multiple_configs",
     "infer_label_column",
     "infer_num_classes",
