@@ -21,8 +21,10 @@ class Eval(Run):
     skip_supervised: bool = False
 
     def __post_init__(self):
+        # Set our output directory before super().execute() does
         if not self.out_dir:
-            self.out_dir = self.source / "transfer" / "+".join(self.data.datasets)
+            root = elk_reporter_dir() / self.source
+            self.out_dir = root / "transfer" / "+".join(self.data.datasets)
 
     def execute(self, highlight_color: Color = "cyan"):
         return super().execute(highlight_color, split_type="val")

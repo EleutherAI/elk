@@ -75,6 +75,8 @@ def load_prompts(
         # Which classes are actually present in this split of the dataset?
         # This is shockingly fast since it uses an optimized Apache Arrow primitive.
         label_choices = sorted(ds.unique(label_column))
+        if rank == 0:
+            print(f"Using the following pseudo-labels: {label_choices}")
 
     rng = Random(seed)
     if num_shots > 0:
