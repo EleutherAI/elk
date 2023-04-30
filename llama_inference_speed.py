@@ -7,7 +7,7 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
 # from https://github.com/huggingface/transformers/issues/22687
-# torchrun --nproc_per_node=2 --master_port=56718 llama_infernece_speed.py
+# torchrun --nproc_per_node=2 --master_port=56718 llama_inference_sp
 model_dir = "huggyllama/llama-13b"
 
 import os
@@ -48,5 +48,7 @@ t1_start = perf_counter()
 for _ in range(20):
     logits = model(**inputs).logits[:, -1, :]
 t1_stop = perf_counter()
-print("forward time:", t1_stop - t1_start)
+diff = t1_stop - t1_start
+av = diff / 20
+print("average forward time:", av)
 print(torch.cuda.max_memory_allocated() / 1e9)

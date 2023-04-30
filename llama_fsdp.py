@@ -11,7 +11,11 @@ from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from tqdm import tqdm
 
 from elk.extraction import PromptConfig
-from elk.extraction.extraction import Extract, temp_extract_input_ids
+from elk.extraction.extraction import (
+    Extract,
+    temp_extract_input_ids,
+    temp_extract_input_ids_cached,
+)
 from elk.inference_server.fsdp import (
     find_available_port,
     get_transformer_layer_cls,
@@ -68,9 +72,10 @@ def main(args):
         # run on all layers, tiny-gpt only has 2 layers
     )
     print("Extracting input ids...")
-    input_ids_list = temp_extract_input_ids(
+    input_ids_list = temp_extract_input_ids_cached(
         cfg=cfg, device="cpu", split_type="train"
-    ) + temp_extract_input_ids(cfg=cfg, device="cpu", split_type="val")
+    ) + temp_extract_input_ids_cached(cfg=cfg, device="cpu", split_type="val")
+    print("Number of input ids:", len(input_ids_list))
     WORLD_SIZE = num_gpus
 
     print("Instantiating model...")
@@ -94,11 +99,15 @@ def main(args):
 
 
 if __name__ == "__main__":
+    # e.g. python llama_fsdp.py --model huggyllama/llama-13b
     parser = argparse.ArgumentParser(
         description="Run FSDP inference with specified model"
     )
     parser.add_argument(
-        "--model", type=str, required=True, help='Model string, e.g., "llama_7b"'
+        "--model",
+        type=str,
+        required=True,
+        help='Model string, e.g., "huggyllama/llama-13b"',
     )
     # --num_gpus default 8
     parser.add_argument(
