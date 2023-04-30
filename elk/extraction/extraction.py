@@ -128,6 +128,7 @@ def extracted_hiddens_to_dataset_with_name(
 @dataclass
 class ExtractHiddenThreadParam:
     rank: int
+    world_size: int
     device: str
     split_type: Literal["train", "val"]
 
@@ -147,6 +148,7 @@ def extract_hiddens_with_server(
     ranks_and_splits: list[ExtractHiddenThreadParam] = [
         ExtractHiddenThreadParam(
             rank=device_rank,
+            world_size=len(server.devices),
             split_type=split_name,
             device=device,
         )
@@ -167,7 +169,7 @@ def extract_hiddens_with_server(
                 server=server,
                 device=param.device,
                 split_type=param.split_type,
-                world_size=len(server.devices),
+                world_size=param.world_size,
                 rank=param.rank,
             ),
             threadpool=executor,

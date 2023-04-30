@@ -463,11 +463,11 @@ def round_robin(
             item: ResultMessage | SingletonSentinel = result_queue.get(timeout=0.01)
             last_message_time = time.time()
         except std_mp.queues.Empty:  # type: ignore[attr-defined]
-            if time.time() - last_message_time > 300:
+            if time.time() - last_message_time > 1200:
                 print(
                     "WARNING: The InferenceServer did not receive any"
-                    " messages from the workers in the last5 minutes. This may"
-                    " indicate that the workers have died."
+                    " messages from the workers in the last 20 minutes."
+                    "This may indicate that the workers have died."
                 )
             continue
         else:
