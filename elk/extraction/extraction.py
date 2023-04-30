@@ -406,6 +406,117 @@ def extract_hiddens(
     return output
 
 
+def temp_extract_input_ids(
+    cfg: "Extract",
+    *,
+    device: str | torch.device,
+    split_type: Literal["train", "val"],
+) -> list[dict]:
+    rank = 0
+    world_size: int = 1
+    """Run inference on a model with a set of prompts, yielding the hidden states"""
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    """
+    We are running extract_hiddens for each split, so there
+    may be threads of rank 0 for both "train" and "val" running at the same time.
+    """
+    is_verbose = True
+    # Silence datasets logging messages from all but the first process
+    if not is_verbose:
+        filterwarnings("ignore")
+        logging.disable(logging.CRITICAL)
+
+    p_cfg = cfg.prompts
+    ds_names = p_cfg.datasets
+    assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
+
+    # and the workers
+    tokenizer = instantiate_tokenizer(
+        cfg.model, truncation_side="left", verbose=rank == 0
+    )
+
+    is_enc_dec = False
+
+    has_lm_preds = True
+    if has_lm_preds and is_verbose:
+        print("Model has language model head, will store predictions.")
+
+    prompt_ds = load_prompts(
+        ds_names[0],
+        label_column=p_cfg.label_columns[0] if p_cfg.label_columns else None,
+        num_classes=p_cfg.num_classes,
+        split_type=split_type,  # type: ignore
+        stream=p_cfg.stream,
+        rank=rank,
+        world_size=world_size,
+    )
+
+    # Add one to the number of layers to account for the embedding layer
+
+    global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
+    # break `max_examples` among the processes roughly equally
+    max_examples = global_max_examples // world_size
+    # the last process gets the remainder (which is usually small)
+    if rank == world_size - 1:
+        max_examples += global_max_examples % world_size
+
+    prompt_ds_tqdm = (
+        tqdm(
+            prompt_ds,
+            total=max_examples,
+            desc=f"Extracting prompts on {split_type} on rank {rank}",
+        )
+        if is_verbose
+        else prompt_ds
+    )
+
+    output_input_ids = []
+    for example in islice(prompt_ds_tqdm, max_examples):
+
+        # Iterate over variants
+        for i, record in enumerate(example["prompts"]):
+            variant_questions = []
+
+            # Iterate over answers
+            for j, choice in enumerate(record):
+                text = choice["question"]
+
+                # Only feed question, not the answer, to the encoder for enc-dec models
+                target = choice["answer"] if is_enc_dec else None
+
+                # Record the EXACT question we fed to the model
+                variant_questions.append(text)
+                encoding = tokenizer(
+                    text,
+                    # Keep [CLS] and [SEP] for BERT-style models
+                    add_special_tokens=True,
+                    return_tensors="pt",
+                    text_target=target,  # type: ignore[arg-type]
+                    truncation=True,
+                ).to(device)
+                input_ids = assert_type(Tensor, encoding.input_ids)
+
+                if is_enc_dec:
+                    answer = assert_type(Tensor, encoding.labels)
+                else:
+                    encoding2 = tokenizer(
+                        choice["answer"],
+                        # Don't include [CLS] and [SEP] in the answer
+                        add_special_tokens=False,
+                        return_tensors="pt",
+                    ).to(device)
+                    answer = assert_type(Tensor, encoding2.input_ids)
+
+                    input_ids = torch.cat([input_ids, answer], dim=-1)
+                    if max_len := tokenizer.model_max_length:
+                        cur_len = input_ids.shape[-1]
+                        input_ids = input_ids[..., -min(cur_len, max_len) :]
+                output_input_ids.append(input_ids)
+
+    return output_input_ids
+
+
 def extract(
     cfg: "Extract",
     *,
