@@ -1,21 +1,21 @@
-import os
 import argparse
+import os
 from functools import partial
 
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, CPUOffload
+from torch.distributed.fsdp import CPUOffload
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
-from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 
 from elk.extraction import PromptConfig
-from elk.extraction.extraction import temp_extract_input_ids, Extract
+from elk.extraction.extraction import Extract, temp_extract_input_ids
 from elk.inference_server.fsdp import (
-    shard_seq,
     find_available_port,
     get_transformer_layer_cls,
+    shard_seq,
 )
 from elk.utils import instantiate_model
 
@@ -54,7 +54,7 @@ def run_inference(rank, world_size, model, input_ids_list, wrap_policy):
         input_id_args = input_id_args.to(rank)
         with torch.no_grad():
             # do nothing
-            output = wrapped(input_id_args)
+            wrapped(input_id_args)
 
     cleanup()
 

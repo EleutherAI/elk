@@ -494,7 +494,6 @@ def temp_extract_input_ids(
 
     output_input_ids = []
     for example in islice(prompt_ds_tqdm, max_examples):
-
         # Iterate over variants
         for i, record in enumerate(example["prompts"]):
             variant_questions = []
