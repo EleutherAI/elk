@@ -61,6 +61,7 @@ def run_inference(rank, world_size, model, input_ids_list, wrap_policy):
 
 def main(args):
     model_str = args.model
+    num_gpus = args.num_gpus
     cfg = Extract(
         model=model_str,
         prompts=PromptConfig(datasets=["imdb"])
@@ -70,7 +71,7 @@ def main(args):
     input_ids_list = temp_extract_input_ids(
         cfg=cfg, device="cuda:0", split_type="train"
     ) + temp_extract_input_ids(cfg=cfg, device="cuda:0", split_type="val")
-    WORLD_SIZE = 8
+    WORLD_SIZE = num_gpus
 
     print("Instantiating model...")
     model = instantiate_model(model_str, torch_dtype="auto")
@@ -98,6 +99,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model", type=str, required=True, help='Model string, e.g., "llama_7b"'
+    )
+    # --num_gpus default 8
+    parser.add_argument(
+        "--num_gpus", type=int, default=8, help="Number of GPUs to run on"
     )
     args = parser.parse_args()
 
