@@ -21,6 +21,7 @@ from .extraction import Extract, extract
 from .extraction.dataset_name import DatasetDictWithName
 from .files import elk_reporter_dir, memorably_named_dir
 from .utils import (
+    Color,
     assert_type,
     get_layers,
     int16_to_float32,
@@ -46,7 +47,11 @@ class Run(ABC, Serializable):
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
 
-    def execute(self, highlight_color: str = "cyan"):
+    def execute(
+        self,
+        highlight_color: Color = "cyan",
+        split_type: Literal["train", "val", None] = None,
+    ):
         self.datasets = [
             extract(
                 cfg,
@@ -54,6 +59,7 @@ class Run(ABC, Serializable):
                 highlight_color=highlight_color,
                 num_gpus=self.num_gpus,
                 min_gpu_mem=self.min_gpu_mem,
+                split_type=split_type,
             )
             for cfg in self.data.explode()
         ]
@@ -61,7 +67,7 @@ class Run(ABC, Serializable):
         if self.out_dir is None:
             # Save in a memorably-named directory inside of
             # ELK_REPORTER_DIR/<model_name>/<dataset_name>
-            ds_name = ", ".join(self.data.prompts.datasets)
+            ds_name = ", ".join(self.data.datasets)
             root = elk_reporter_dir() / self.data.model / ds_name
 
             self.out_dir = memorably_named_dir(root)

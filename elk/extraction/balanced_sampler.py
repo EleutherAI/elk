@@ -1,8 +1,8 @@
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from itertools import cycle
 from random import Random
-from typing import Iterable, Iterator, Optional
+from typing import Hashable, Iterable, Iterator, Optional
 
 from datasets import Features, IterableDataset
 from torch.utils.data import IterableDataset as TorchIterableDataset
@@ -26,25 +26,29 @@ class BalancedSampler(TorchIterableDataset):
     """
 
     data: Iterable[dict]
-    num_classes: int
+    label_choices: InitVar[set[Hashable]]
     buffer_size: int = 1000
-    buffers: dict[int, deque[dict]] = field(default_factory=dict, init=False)
+    buffers: dict[Hashable, deque[dict]] = field(default_factory=dict, init=False)
     label_col: str = "label"
+    strict: bool = True
 
-    def __post_init__(self):
+    def __post_init__(self, label_choices: set[Hashable]):
         # Initialize empty buffers
         self.buffers = {
-            label: deque(maxlen=self.buffer_size) for label in range(self.num_classes)
+            label: deque(maxlen=self.buffer_size) for label in label_choices
         }
 
     def __iter__(self):
         for sample in self.data:
             label = sample[self.label_col]
-
-            # This whole class is a no-op if the label is not an integer
-            if not isinstance(label, int):
-                yield sample
-                continue
+            if label not in self.buffers:
+                if self.strict:
+                    raise ValueError(
+                        f"Expected label to be one of {self.buffers}, got {label}"
+                    )
+                else:
+                    # Just skip this sample
+                    continue
 
             # Add the sample to the buffer for its class label
             self.buffers[label].append(sample)
