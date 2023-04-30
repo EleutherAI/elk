@@ -3,7 +3,7 @@ from typing import NamedTuple
 from datasets import DatasetDict
 
 
-def extract_dataset_name_and_config(dataset_config_str: str) -> tuple[str, str]:
+def parse_dataset_string(dataset_config_str: str) -> tuple[str, str]:
     """Extract the dataset name and config name from the dataset prompt."""
     ds_name, _, config_name = dataset_config_str.partition(":")
     return ds_name, config_name

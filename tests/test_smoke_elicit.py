@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from elk import Extract
-from elk.extraction import PromptConfig
 from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
 
@@ -13,7 +12,8 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
     elicit = Elicit(
         data=Extract(
             model=model_path,
-            prompts=PromptConfig(datasets=[dataset_name], max_examples=[10]),
+            datasets=(dataset_name,),
+            max_examples=(10, 10),
             # run on all layers, tiny-gpt only has 2 layers
         ),
         num_gpus=2,
@@ -43,7 +43,8 @@ def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
     elicit = Elicit(
         data=Extract(
             model=model_path,
-            prompts=PromptConfig(datasets=[dataset_name], max_examples=[10]),
+            datasets=(dataset_name,),
+            max_examples=(10, 10),
             # run on all layers, tiny-gpt only has 2 layers
         ),
         num_gpus=2,
