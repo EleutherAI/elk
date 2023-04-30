@@ -27,7 +27,7 @@ class EigenReporterConfig(ReporterConfig):
     var_weight: float = 0.1
     neg_cov_weight: float = 0.5
 
-    num_heads: int = 5
+    num_heads: int = 1
 
     def __post_init__(self):
         if not (0 <= self.neg_cov_weight <= 1):
@@ -123,7 +123,7 @@ class EigenReporter(Reporter):
     def forward(self, hiddens: Tensor) -> Tensor:
         """Return the predicted log odds on input `x`."""
         raw_scores = hiddens @ self.weight.mT
-        return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)[..., -1]
+        return raw_scores.mul(self.scale).add(self.bias)
 
     @property
     def contrastive_xcov(self) -> Tensor:
