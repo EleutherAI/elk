@@ -16,21 +16,18 @@ from ..utils.typing import assert_type
 class BalancedSampler(TorchIterableDataset):
     """
     A sampler that approximately balances a multi-class classification dataset in a
-    streaming fashion.
-
-    Attributes:
-        data: The input dataset to balance.
-        num_classes: The total number of classes expected in the data.
-        buffer_size: The total buffer size to use for balancing the dataset. Each class
-            will have its own buffer with this size.
-    """
+    streaming fashion."""
 
     data: Iterable[dict]
+    """The input dataset to balance."""
     label_choices: InitVar[set[Hashable]]
+    """The set of all possible class labels."""
     buffer_size: int = 1000
+    """The per-class buffer size to use for balancing the dataset."""
     buffers: dict[Hashable, deque[dict]] = field(default_factory=dict, init=False)
+    """The buffers used for balancing the dataset."""
     label_col: str = "label"
-    strict: bool = True
+    """The name of the column containing the class labels."""
 
     def __post_init__(self, label_choices: set[Hashable]):
         # Initialize empty buffers
@@ -42,13 +39,9 @@ class BalancedSampler(TorchIterableDataset):
         for sample in self.data:
             label = sample[self.label_col]
             if label not in self.buffers:
-                if self.strict:
-                    raise ValueError(
-                        f"Expected label to be one of {self.buffers}, got {label}"
-                    )
-                else:
-                    # Just skip this sample
-                    continue
+                raise ValueError(
+                    f"Expected label to be one of {self.buffers}, got {label}"
+                )
 
             # Add the sample to the buffer for its class label
             self.buffers[label].append(sample)
