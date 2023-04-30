@@ -7,7 +7,7 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
 # from https://github.com/huggingface/transformers/issues/22687
-# torchrun --nproc_per_node=2 --master_port=56718 run_forward.py
+# torchrun --nproc_per_node=2 --master_port=56718 llama_infernece_speed.py
 model_dir = "huggyllama/llama-13b"
 
 import os
@@ -33,9 +33,7 @@ llama_auto_wrap_policy = partial(
 print(torch.cuda.current_device())
 
 tokenizer = LlamaTokenizer.from_pretrained(model_dir)
-model = LlamaForCausalLM.from_pretrained(
-    model_dir, torch_dtype=torch.float16, low_cpu_mem_usage=True
-)
+model = LlamaForCausalLM.from_pretrained(model_dir, torch_dtype=torch.float16)
 
 model = FSDP(
     model,
