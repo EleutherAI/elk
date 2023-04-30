@@ -149,6 +149,8 @@ def extract_hiddens(
     world_size: int = 1,
 ) -> Iterable[dict]:
     """Run inference on a model with a set of prompts, yielding the hidden states."""
+    # Prevent the bitsandbytes welcome message from being printed multiple times
+    os.environ["BITSANDBYTES_NOWELCOME"] = "1" if rank != 0 else "0"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     # Silence datasets logging messages from all but the first process
