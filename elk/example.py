@@ -49,6 +49,7 @@ for vals in vals_buffers:
 
     print("layer", vals[0]["layer"], "auroc", auroc)
 
+# only use to find pattern in data
 def get_best_aurocs_indices(aurocs, max=5):
     sorted_indices = sorted(range(len(aurocs)), key=lambda i: aurocs[i].estimate)
     # the best aurocs are at the end of the list
