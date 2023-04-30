@@ -144,20 +144,19 @@ def extract_hiddens_with_server(
     the results.
     But for now, we need to use a threadpool utilize all the InferenceServer workerss
     """
-    # 2 threads per device - This is so that the workers of the
-    # InferenceServer should be roughly fully utilized
-    world_size = len(server.devices) * 2
     ranks_and_splits: list[ExtractHiddenThreadParam] = [
         ExtractHiddenThreadParam(
-            rank=i,
+            rank=device_rank,
             split_type=split_name,
-            # Evenly distribute the ranks across the devices
-            device=server.devices[i % len(server.devices)],
+            device=device,
         )
-        for i in range(world_size)
+        for device_rank, device in enumerate(server.devices)
         for split_name in split_names
     ]
-    with ThreadPoolExecutor(max_workers=world_size) as executor:
+    # 2 threads per device - This is so that the workers of the
+    # InferenceServer should be fully saturated.
+    tp_size = len(ranks_and_splits)
+    with ThreadPoolExecutor(max_workers=tp_size) as executor:
         hiddens = map_threadpool(
             items=ranks_and_splits,
             # TODO: Probably can speed this up by loading the prompts first,
@@ -167,7 +166,7 @@ def extract_hiddens_with_server(
                 server=server,
                 device=param.device,
                 split_type=param.split_type,
-                world_size=world_size,
+                world_size=len(server.devices),
                 rank=param.rank,
             ),
             threadpool=executor,
