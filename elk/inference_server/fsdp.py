@@ -176,12 +176,6 @@ class InferenceServer:
             nprocs=self.num_workers,
         )
 
-    def create_result_queue(self, queue_id: str) -> ResultQueueID:
-        """Create a queue for the given id."""
-        new_queue = self._manager.Queue()
-        self._result_queues[queue_id] = new_queue  # type: ignore
-        return ResultQueueID(queue_id)
-
     def shutdown(self) -> bool:
         try:
             """Shut down all the workers, returning `True` if successful."""
@@ -214,7 +208,8 @@ class InferenceServer:
     def _create_result_queue_for_thread(self) -> ResultQueueID:
         queue_id = get_queue_id()
         result_queue = self._manager.Queue()
-        self._result_queues[queue_id] = result_queue  # type: ignore
+        if queue_id not in self._result_queues:
+            self._result_queues[queue_id] = result_queue  # type: ignore
         return queue_id
 
     def imap(
