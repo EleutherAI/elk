@@ -289,6 +289,7 @@ class CcsReporter(Reporter):
         # Fit normalizers
         self.pos_norm.fit(x_pos)
         self.neg_norm.fit(x_neg)
+        x_pos, x_neg = self.pos_norm(x_pos), self.neg_norm(x_neg)
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf
