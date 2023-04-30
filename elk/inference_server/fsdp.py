@@ -306,6 +306,7 @@ def _worker(
                 device_id=torch.device(device),
                 # Since we are inference only, we don't need to sync the nn.modules
                 sync_module_states=False,
+                limit_all_gathers=False,
                 forward_prefetch=True,
             )
             model = cast(PreTrainedModel, wrapped)
@@ -394,7 +395,9 @@ def get_transformer_layer_cls(model: torch.nn.Module) -> Type[torch.nn.Module] |
         if isinstance(module, torch.nn.ModuleList):
             module_params = sum(p.numel() for p in module.parameters())
             if module_params > total_params / 2:
-                return type(module[0])
+                type_of_cls = type(module[0])
+                print(f"Found transformer layer of type {type_of_cls}")
+                return type_of_cls
 
     return None
 
