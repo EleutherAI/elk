@@ -67,7 +67,7 @@ class Run(ABC, Serializable):
         if self.out_dir is None:
             # Save in a memorably-named directory inside of
             # ELK_REPORTER_DIR/<model_name>/<dataset_name>
-            ds_name = ", ".join(self.data.datasets)
+            ds_name = "+".join(self.data.datasets)
             root = elk_reporter_dir() / self.data.model / ds_name
 
             self.out_dir = memorably_named_dir(root)
