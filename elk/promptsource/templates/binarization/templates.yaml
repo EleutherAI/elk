@@ -1,0 +1,133 @@
+# Meta-template for binarizing a multiple choice dataset
+dataset: binarization
+templates:
+  a1: !Template
+    answer_choices: 'yes|||no'
+    id: a1
+    jinja: "You will see a question followed by a response which may be incorrect.
+      You will be asked to figure out whether the answer is correct or not.
+
+
+      \"Q: {{question}}
+
+      {% for letter, t in zip(['A', 'B', 'C', 'D'], choices) %}
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+      Response: {{['A', 'B', 'C', 'D'][response]}}, {{choices[response]}}\"
+
+
+      Is the response correct, yes or no?|||{{answer_choices[label]}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: yes_no
+    reference: ''
+  a2: !Template
+    answer_choices: 'correct|||incorrect'
+    id: a2
+    jinja: "The following quote contains a question followed by a response which may be
+      incorrect. Your task is to determine whether the answer is correct or incorrect.
+
+
+      \"Q: {{question}}
+
+      {% for letter, t in zip(['A', 'B', 'C', 'D'], choices) %}
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+      Response: {{['A', 'B', 'C', 'D'][response]}}, {{choices[response]}}\"
+
+
+      Was the response correct or incorrect?|||{{answer_choices[label]}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: correct_incorrect
+    reference: ''
+  a3: !Template
+    answer_choices: 'yes|||no'
+    id: a3
+    jinja: "The following quote is an exam question followed by a student's response.
+      You will determine whether student chose the right answer.
+
+
+      \"Q: {{question}}
+
+      {% for letter, t in zip(['A', 'B', 'C', 'D'], choices) %}
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+      Student's response: {{['A', 'B', 'C', 'D'][response]}}, {{choices[response]}}\"
+
+
+      Did the student choose the right answer, yes or no?|||{{answer_choices[label]}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: student_yes_no
+    reference: ''
+  a4: !Template
+    answer_choices: 'correct|||incorrect'
+    id: a4
+    jinja: "The paragraph below is a quiz question followed by a student's response.
+      You will determine if the response was right or wrong.
+
+
+      \"Q: {{question}}
+
+      {% for letter, t in zip(['A', 'B', 'C', 'D'], choices) %}
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+      Student's response: {{['A', 'B', 'C', 'D'][response]}}, {{choices[response]}}\"
+
+
+      Was the response right or wrong?|||{{answer_choices[label]}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: student_correct_incorrect
+    reference: ''
+  a5: !Template
+    answer_choices: 'true|||false'
+    id: a5
+    jinja: "The following is an exam question followed by a student's response.
+      You will guess if they received full credit for the answer.
+
+
+      \"Q: {{question}}
+
+      {% for letter, t in zip(['A', 'B', 'C', 'D'], choices) %}
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+      Student's response: {{['A', 'B', 'C', 'D'][response]}}, {{choices[response]}}\"
+
+
+      Did the student get full credit for this answer (yes or no)?|||{{answer_choices[label]}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: student_full_credit
+    reference: ''

@@ -1,0 +1,125 @@
+# Adapted from the ARC-Easy templates
+dataset: EleutherAI/truthful_qa_binary
+templates:
+  a1: !Template
+    answer_choices: 'A|||B'
+    id: a1
+    jinja: 'Pick the most correct option to answer the following question.
+
+
+      {{question}}
+
+
+      Options:
+
+      {% for letter, t in zip(answer_choices, choices) %}
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+
+      |||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: pick_the_most_correct_option
+    reference: ''
+  a2: !Template
+    answer_choices: 'A|||B'
+    id: a2
+    jinja: '{{question}}
+
+
+      Options:
+
+      {% for letter, t in zip(answer_choices, choices) %}
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+
+      Answer:|||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: qa_options
+    reference: ''
+  a3: !Template
+    answer_choices: 'A|||B'
+    id: a3
+    jinja: 'I am hesitating between 2 options to answer the following question, which
+      option should I choose?
+
+
+      Question: {{question}}
+
+
+      Possibilities:
+
+      {% for letter, t in zip(answer_choices, choices) %}
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+
+      Answer:|||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: i_am_hesitating
+    reference: ''
+  a4: !Template
+    answer_choices: 'A|||B'
+    id: a4
+    jinja: 'I gave my students this multiple choice question: {{question}}
+
+
+      Only one answer is correct among these 2 choices:
+
+      {% for letter, t in zip(answer_choices, choices) %}
+      - {{letter}}: {{t}}
+
+      {% endfor %}
+
+      Answer:|||{{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: multiple_choice
+    reference: ''
+  a5: !Template
+    answer_choices: 'A|||B'
+    id: a6
+    jinja: "Here's a problem to solve: {{question}}
+
+
+    Among the 2 following options, which is the correct answer?
+
+    {% for letter, t in zip(answer_choices, choices) %}
+    {{letter}}: {{t}}
+
+    {% endfor %}
+
+    Answer:|||{{answer_choices[label]}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: heres_a_problem
+    reference: ''
