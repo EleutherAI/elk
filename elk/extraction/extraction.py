@@ -1,6 +1,7 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
+from contextlib import nullcontext, redirect_stdout
 from dataclasses import InitVar, dataclass, replace
 from itertools import islice, zip_longest
 from typing import Any, Iterable, Literal
@@ -64,6 +65,9 @@ class Extract(Serializable):
 
     binarize: bool = False
     """Whether to binarize the dataset labels for multi-class datasets."""
+
+    int8: bool = False
+    """Whether to perform inference in mixed int8 precision with `bitsandbytes`."""
 
     max_examples: tuple[int, int] = (1000, 1000)
     """Maximum number of examples to use from each split of the dataset."""
@@ -156,12 +160,23 @@ def extract_hiddens(
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    model = instantiate_model(
-        cfg.model, torch_dtype="auto" if device != "cpu" else torch.float32
-    ).to(device)
-    tokenizer = instantiate_tokenizer(
-        cfg.model, truncation_side="left", verbose=rank == 0
-    )
+    if cfg.int8:
+        # Required by `bitsandbytes`
+        dtype = torch.float16
+    elif device == "cpu":
+        dtype = torch.float32
+    else:
+        dtype = "auto"
+
+    # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
+    # welcome message on every rank
+    with redirect_stdout(None) if rank != 0 else nullcontext():
+        model = instantiate_model(
+            cfg.model, device_map={"": device}, load_in_8bit=cfg.int8, torch_dtype=dtype
+        )
+        tokenizer = instantiate_tokenizer(
+            cfg.model, truncation_side="left", verbose=rank == 0
+        )
 
     is_enc_dec = model.config.is_encoder_decoder
     if is_enc_dec and cfg.use_encoder_states:
