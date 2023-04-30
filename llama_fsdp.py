@@ -13,7 +13,6 @@ from tqdm import tqdm
 from elk.extraction import PromptConfig
 from elk.extraction.extraction import (
     Extract,
-    temp_extract_input_ids,
     temp_extract_input_ids_cached,
 )
 from elk.inference_server.fsdp import (
