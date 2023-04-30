@@ -1,6 +1,7 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy
 from dataclasses import InitVar, dataclass
@@ -288,14 +289,13 @@ def extract_hiddens(
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
 
-    # Add a progress bar if the current rank is 0 (the main process)
     prompt_ds_tqdm = (
         tqdm(
             prompt_ds,
             total=max_examples,
-            desc=f"Extracting prompts on {split_type} for rank 0",
+            desc=f"Extracting prompts on {split_type} on rank {rank}",
         )
-        if rank == 0
+        if is_verbose
         else prompt_ds
     )
 
@@ -373,15 +373,16 @@ def extract_hiddens(
                     layer_indices=cfg.layers,
                     token_loc=cfg.token_loc,
                 )
-
                 # Make sure we only pass the arguments that the model expects
-                outputs: SmallerOutput = (
-                    server.infer(
-                        kwargs=dict(input_ids=input_ids, labels=answer),
-                        func=partial_func,
-                    )
+                server_kwargs = (
+                    dict(input_ids=input_ids, labels=answer)
                     if is_enc_dec
-                    else server.infer(dict(input_ids=input_ids), func=partial_func)
+                    else dict(input_ids=input_ids)
+                )
+
+                outputs: SmallerOutput = server.infer(
+                    kwargs=server_kwargs,
+                    func=partial_func,
                 )
                 # bring these tensors back to the device
                 lm_logits[i, j] = pytree_map(lambda x: x.to(device), outputs.lm_logits)
@@ -457,14 +458,19 @@ def extract(
         min_gpu_mem=min_gpu_mem,
         mp_sharing_strategy=fsdp.mp_sharing_strategy,
     ) as server:
+        time_start = time.time()
         extracted: DatasetDictWithName = extract_hiddens_with_server(
             cfg=cfg,
             split_names=split_names,
             server=server,
             ds_name=ds_name,
         )
-    # write the extracted dataset to the cache
-    write_extract_to_cache(
-        extracted, cache_key=extract_cache_key(cfg=cfg, ds_name=ds_name)
-    )
+        time_end = time.time()
+        # In minutes
+        time_taken = (time_end - time_start) / 60
+        print(f"Extraction took {time_taken:.2f} minutes")
+        # write the extracted dataset to the cache
+        write_extract_to_cache(
+            extracted, cache_key=extract_cache_key(cfg=cfg, ds_name=ds_name)
+        )
     return extracted
