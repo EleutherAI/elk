@@ -106,6 +106,6 @@ def test_smoke_eval_run_tiny_gpt2_eigen(tmp_path: Path):
 
 def test_smoke_multi_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     elicit = setup_elicit(tmp_path)
-    transfer_datasets = ["christykoh/imdb_pt", "super_glue boolq"]
+    transfer_datasets = ["christykoh/imdb_pt", "super_glue:boolq"]
     eval_run(elicit, transfer_datasets=transfer_datasets)
     eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)
