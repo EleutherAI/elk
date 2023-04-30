@@ -69,8 +69,8 @@ def main(args):
     )
     print("Extracting input ids...")
     input_ids_list = temp_extract_input_ids(
-        cfg=cfg, device="cuda:0", split_type="train"
-    ) + temp_extract_input_ids(cfg=cfg, device="cuda:0", split_type="val")
+        cfg=cfg, device="cpu", split_type="train"
+    ) + temp_extract_input_ids(cfg=cfg, device="cpu", split_type="val")
     WORLD_SIZE = num_gpus
 
     print("Instantiating model...")
