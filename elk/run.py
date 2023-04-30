@@ -25,7 +25,7 @@ from .utils import (
     assert_type,
     get_layer_indices,
     int16_to_float32,
-    select_train_val_splits,
+    select_split,
     select_usable_devices,
 )
 
@@ -124,8 +124,7 @@ class Run(ABC, Serializable):
         out = {}
 
         for ds_name, ds in self.datasets:
-            train_name, val_name = select_train_val_splits(ds)
-            key = train_name if split_type == "train" else val_name
+            key = select_split(ds, split_type)
 
             split = ds[key].with_format("torch", device=device, dtype=torch.int16)
             labels = assert_type(Tensor, split["label"])
