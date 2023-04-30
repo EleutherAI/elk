@@ -2,6 +2,7 @@ import logging
 import multiprocessing as std_mp
 import os
 import socket
+import time
 import traceback
 import uuid
 import warnings
@@ -42,8 +43,8 @@ SingletonSentinel: TypeAlias = Literal["sentinel"]
 ResultQueueID = NewType("QueueID", str)
 
 
-def identity(x):
-    return x
+def identity2(x, y):
+    return x, y
 
 
 @dataclass(kw_only=True)
@@ -52,7 +53,7 @@ class TaskMessage:
     data: Sequence[dict]
     func_dill: bytes | None
 
-    def func(self) -> Callable[[ModelOutput, torch.device], A] | None:
+    def func(self) -> Callable[[ModelOutput, torch.device], Any] | None:
         return dill.loads(self.func_dill) if self.func_dill else None
 
 
@@ -255,7 +256,7 @@ class InferenceServer:
     def infer(
         self,
         kwargs: dict[str, Any],
-        func: Callable[[ModelOutput, torch.device], A] = identity,
+        func: Callable[[ModelOutput, torch.device], A] | None = None,
     ) -> A:
         """Run inference on the given input. These are passed directly to the model."""
         # Optimized version of map for one input. No need to create so many queues.
@@ -265,28 +266,26 @@ class InferenceServer:
         result_queue = self._manager.Queue()
         self._result_queues[queue_id] = result_queue  # type: ignore
         # Pickle the func and send it to the workers
-        func_dill = dill.dumps(func)
+        func_dill = dill.dumps(func) if func is not None else None
         # move the kwargs to the cpu device and share memory
         shared_kwargs = share_dict_of_tensors_with_processes(kwargs)
         # Send the task to the worker
         message = TaskMessage(
             id=queue_id,
-            func_dill=func_dill if func is not identity else None,
+            func_dill=func_dill if func_dill is not None else None,
             data=[shared_kwargs],
         )
         self._task_queue.put(message)
 
-        # Wait for the result
-        result_msg: ResultMessage = result_queue.get()
-        if result_msg.exception is not None:
-            raise result_msg.exception
-        else:
-            output = result_msg.data
-
-        # Clean up the result queue
-        del self._result_queues[queue_id]
-
-        return output
+        # Use round robin to get the result
+        result = list(
+            round_robin(
+                queue_id=queue_id,
+                num_to_wait=1,
+                result_queue_dict=self._result_queues,
+            )
+        )
+        return result[0]
 
 
 def share_dict_of_tensors_with_processes(_dict: dict[str, torch.Tensor]):
@@ -311,7 +310,6 @@ def _worker(
         logging.disable(logging.CRITICAL)
         warnings.filterwarnings("ignore")
 
-    func: Callable[[ModelOutput], Any]
     device = devices[rank]
 
     try:
@@ -360,7 +358,7 @@ def _worker(
             # Someone called map() giving us a new func and dataset to use
             assert isinstance(msg, TaskMessage)
             data = msg.data
-            func: Callable[[ModelOutput, torch.device], A] | None = msg.func()
+            func: Callable[[ModelOutput, torch.device], Any] | None = msg.func()
             queue_id = msg.id
             # We need to send the results back to the correct queue
             result_queue = out_qs[queue_id]
@@ -459,11 +457,18 @@ def round_robin(
 ) -> Iterable[Any]:
     result_queue = result_queue_dict[queue_id]
     remaining_workers = num_to_wait
-
+    last_message_time = time.time()
     while remaining_workers > 0:
         try:
             item: ResultMessage | SingletonSentinel = result_queue.get(timeout=0.01)
+            last_message_time = time.time()
         except std_mp.queues.Empty:  # type: ignore[attr-defined]
+            if time.time() - last_message_time > 300:
+                print(
+                    "WARNING: The InferenceServer did not receive any"
+                    " messages from the workers in the last5 minutes. This may"
+                    " indicate that the workers have died."
+                )
             continue
         else:
             if item == sentinel:
