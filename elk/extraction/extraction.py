@@ -7,9 +7,11 @@ from copy import copy
 from dataclasses import InitVar, dataclass
 from functools import partial
 from itertools import islice
+from pathlib import Path
 from typing import Any, Literal
 from warnings import filterwarnings
 
+import dill
 import torch
 from datasets import (
     Dataset,
@@ -403,6 +405,25 @@ def extract_hiddens(
             out_record["model_logits"] = lm_logits
 
         output.append(ExtractedHidden(split_type=split_type, data=out_record))
+    return output
+
+
+def temp_extract_input_ids_cached(
+    cfg: "Extract",
+    *,
+    device: str | torch.device,
+    split_type: Literal["train", "val"],
+) -> list[Tensor]:
+    cache_path = Path(extract_cache_key(cfg, split_type))
+    if cache_path.exists():
+        print(f"Read input_ids from cache {cache_path}")
+        with cache_path.open("rb") as f:
+            return dill.load(f)
+
+    output = temp_extract_input_ids(cfg, device=device, split_type=split_type)
+    with cache_path.open("wb") as f:
+        print(f"Writing input_ids to cache {cache_path}")
+        dill.dump(output, f)
     return output
 
 
