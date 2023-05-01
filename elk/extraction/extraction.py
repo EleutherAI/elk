@@ -172,7 +172,7 @@ def extract_hiddens(
     # welcome message on every rank
     with redirect_stdout(None) if rank != 0 else nullcontext():
         model = instantiate_model(
-            cfg.model, device_map={"": device}, load_in_8bit=cfg.int8, torch_dtype=dtype
+            cfg.model, device=device, load_in_8bit=cfg.int8, torch_dtype=dtype
         )
         tokenizer = instantiate_tokenizer(
             cfg.model, truncation_side="left", verbose=rank == 0
