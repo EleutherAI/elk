@@ -16,7 +16,7 @@ from elk.inference_server.fsdp import (
     get_transformer_layer_cls,
 )
 from elk.utils import instantiate_model
-from llama_overwrite import overwrite_30b
+from llama_overwrite import overwrite_30b, overwrite_65b
 
 
 def inference_worker(model, input_ids_queue, use_tqdm=False):
@@ -69,16 +69,21 @@ def main(args):
     )
     print("Auto device map:", autodevice_map)
 
-    device_map_override = overwrite_30b
+    device_map_override = (
+        overwrite_30b
+        if "30b" in model_str
+        else overwrite_65b
+        if "65b" in model_str
+        else {}
+    )
 
     autodevice_map["lm_head"] = 0
-    device_map_override["lm_head"] = 0
     print("Device map overwrite:", device_map_override)
     # Then instantiate on the GPU
     model = instantiate_model(
         model_str,
         torch_dtype=used_dtype,
-        device_map=device_map_override,
+        device_map=device_map_override or autodevice_map,
         load_in_8bit=use_8bit,
     )
 
