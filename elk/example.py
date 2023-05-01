@@ -15,12 +15,7 @@ root = Path('/home/wombat_share/laurito/elk_reporters/huggyllama/llama-13b/imdb/
 
 # boolq
 # root = Path('/home/laurito/elk-reporters/microsoft/deberta-large-mnli/imdb/quizzical-allen/transfer_eval')
-# elk eval "microsoft/
-# deberta-large-mnli/i
-# mdb/quizzical-allen"
-#  microsoft/deberta-l
-# arge-mnli imdb --num
-# _gpus 1             
+# elk eval "microsoft/deberta-large-mnli/imdb/quizzical-allen" microsoft/deberta-large-mnli imdb --num_gpus 1             
 
 # load pickle file
 with open(root / 'vals.pkl', 'rb') as f:
