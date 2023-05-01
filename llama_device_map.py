@@ -5,6 +5,7 @@ from threading import Thread
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
 from tqdm import tqdm
+from transformers.models.llama.modeling_llama import LlamaAttention
 
 from elk.extraction import PromptConfig
 from elk.extraction.extraction import (
@@ -53,7 +54,7 @@ def main(args):
         model = instantiate_model(model_str, torch_dtype=used_dtype)
 
     layer_cls = get_transformer_layer_cls(model)
-    no_split_module_classes = {layer_cls.__name__}
+    no_split_module_classes = {layer_cls.__name__, LlamaAttention.__name__}
     print("Not splitting for layer classes:", no_split_module_classes)
     # Hack to take into account that its 8bit
     min_gpu_mem_when_8bit = min_gpu_mem * 2 if use_8bit else min_gpu_mem
@@ -65,6 +66,58 @@ def main(args):
             for rank in range(WORLD_SIZE)
         },
     )
+    device_map = {
+        "model.embed_tokens": 0,
+        "model.layers.0": 0,
+        "model.layers.1": 0,
+        "model.layers.2": 0,
+        "model.layers.3": 0,
+        "model.layers.4": 0,
+        "model.layers.5": 0,
+        "model.layers.6": 0,
+        "model.layers.7": 0,
+        "model.layers.8": 0,
+        "model.layers.9": 0,
+        "model.layers.10": 0,
+        "model.layers.11": 0,
+        "model.layers.12": 0,
+        "model.layers.13": 0,
+        "model.layers.14": 0,
+        "model.layers.15": 0,
+        "model.layers.16": 0,
+        "model.layers.17": 0,
+        "model.layers.18": 0,
+        "model.layers.19": 0,
+        "model.layers.20": 0,
+        "model.layers.21": 0,
+        "model.layers.22": 0,
+        "model.layers.23": 0,
+        "model.layers.24.self_attn.q_proj": 0,
+        "model.layers.24.self_attn.k_proj": 0,
+        "model.layers.24.self_attn.v_proj": 0,
+        "model.layers.24.self_attn.o_proj": 0,
+        "model.layers.24.self_attn.rotary_emb": 0,
+        "model.layers.24.mlp": 0,
+        "model.layers.24.input_layernorm": 0,
+        "model.layers.24.post_attention_layernorm": 0,
+        "model.layers.25": 1,
+        "model.layers.26": 1,
+        "model.layers.27": 1,
+        "model.layers.28": 1,
+        "model.layers.29": 1,
+        "model.layers.30": 1,
+        "model.layers.31": 1,
+        "model.layers.32": 1,
+        "model.layers.33": 1,
+        "model.layers.34": 1,
+        "model.layers.35": 1,
+        "model.layers.36": 1,
+        "model.layers.37": 1,
+        "model.layers.38": 1,
+        "model.layers.39": 1,
+        "model.norm": 1,
+        "lm_head": 0,
+    }
 
     device_map["lm_head"] = 0
     print("Device map:", device_map)
