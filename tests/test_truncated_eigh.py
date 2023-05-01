@@ -11,7 +11,7 @@ def random_symmetric_matrix(n: int, k: int) -> torch.Tensor:
     assert k <= n, "Rank k should be less than or equal to the matrix size n."
 
     # Generate random n x k matrix A with elements drawn from a uniform distribution
-    A = torch.rand(n, k) / k**0.5
+    A = torch.rand(n, k) / k ** 0.5
 
     # Create a diagonal matrix D with k eigenvalues evenly distributed around zero
     eigenvalues = torch.linspace(-1, 1, k)

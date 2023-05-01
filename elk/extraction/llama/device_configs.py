@@ -63,7 +63,14 @@ def instantiate_model_or_llama(
         dtype = torch.float32
     else:
         dtype = "auto"
-    if is_llama_65b:
+    if not is_llama_65b:
+        model = instantiate_model(
+            cfg.model,
+            device_map={"": first_device},
+            load_in_8bit=cfg.int8,
+            torch_dtype=dtype,
+        )
+    else:
         model = instantiate_model(
             cfg.model,
             device_map=get_llama_65b_8bit_device_map(
@@ -71,14 +78,8 @@ def instantiate_model_or_llama(
             ),
             load_in_8bit=True,
             torch_dtype=dtype,
-            **kwargs,
-        )
-    else:
-        model = instantiate_model(
-            cfg.model,
-            device_map={"": first_device},
-            load_in_8bit=cfg.int8,
-            torch_dtype=dtype,
-            **kwargs,
+            # Testing to see if this fixes increased memory usage
+            # over time
+            use_cache=False,
         )
     return model
