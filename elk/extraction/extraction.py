@@ -193,6 +193,7 @@ def extract_hiddens(
         binarize=cfg.binarize,
         split_type=split_type,
         template_path=cfg.template_path,
+        num_variants=cfg.num_variants,
         rank=rank,
         world_size=world_size,
     )
