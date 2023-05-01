@@ -13,7 +13,7 @@ from tqdm import tqdm
 from elk.extraction import PromptConfig
 from elk.extraction.extraction import (
     Extract,
-    temp_extract_input_ids_cached,
+    temp_extract_input_ids,
 )
 from elk.inference_server.fsdp import (
     find_available_port,
@@ -62,6 +62,19 @@ def run_inference(rank, world_size, model, input_ids_list, wrap_policy):
     cleanup()
 
 
+#
+# def test_this():
+#     cfg = Extract(
+#         model="sshleifer/tiny-gpt2",
+#         prompts=PromptConfig(datasets=["imdb"])
+#         # run on all layers, tiny-gpt only has 2 layers
+#     )
+#     print("Extracting input ids...")
+#     input_ids_list = temp_extract_input_ids(
+#         cfg=cfg, device="cpu", split_type="train"
+#     )
+
+
 def main(args):
     model_str = args.model
     num_gpus = args.num_gpus
@@ -71,9 +84,9 @@ def main(args):
         # run on all layers, tiny-gpt only has 2 layers
     )
     print("Extracting input ids...")
-    input_ids_list = temp_extract_input_ids_cached(
+    input_ids_list = temp_extract_input_ids(
         cfg=cfg, device="cpu", split_type="train"
-    ) + temp_extract_input_ids_cached(cfg=cfg, device="cpu", split_type="val")
+    ) + temp_extract_input_ids(cfg=cfg, device="cpu", split_type="val")
     print("Number of input ids:", len(input_ids_list))
     WORLD_SIZE = num_gpus
 

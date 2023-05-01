@@ -1,5 +1,7 @@
 from functools import partial
 
+import os
+
 import torch
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
@@ -10,7 +12,6 @@ from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 # torchrun --nproc_per_node=2 --master_port=56718 llama_inference_sp
 model_dir = "huggyllama/llama-13b"
 
-import os
 from time import perf_counter
 
 local_rank = int(os.environ["LOCAL_RANK"])
