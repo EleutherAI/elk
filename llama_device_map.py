@@ -70,6 +70,7 @@ def main(args):
     num_threads = args.threads
     use_8bit = args.use_8bit
     batch_size = args.batch_size
+    print("Batch size:", batch_size)
 
     cfg = Extract(model=model_str, prompts=PromptConfig(datasets=["imdb"]))
 
