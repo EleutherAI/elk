@@ -26,6 +26,11 @@ from torch import Tensor
 from transformers import AutoConfig, PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
+from .llama.device_configs import (
+    Llama65bDeviceConfig,
+    select_devices_or_llama_65b_configs,
+    instantiate_model_or_llama,
+)
 from ..promptsource import DatasetTemplates
 from ..utils import (
     Color,
@@ -40,7 +45,6 @@ from ..utils import (
     prevent_name_conflicts,
     select_split,
     select_train_val_splits,
-    select_usable_devices,
 )
 from .dataset_name import (
     DatasetDictWithName,
@@ -144,11 +148,16 @@ class Extract(Serializable):
 def extract_hiddens(
     cfg: "Extract",
     *,
-    device: str | torch.device = "cpu",
+    device_config: str | Llama65bDeviceConfig = "cpu",
     split_type: Literal["train", "val"] = "train",
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterable[dict]:
+    device = (
+        device_config
+        if not isinstance(device_config, Llama65bDeviceConfig)
+        else device_config.first_device
+    )
     """Run inference on a model with a set of prompts, yielding the hidden states."""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -160,20 +169,10 @@ def extract_hiddens(
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    if cfg.int8:
-        # Required by `bitsandbytes`
-        dtype = torch.float16
-    elif device == "cpu":
-        dtype = torch.float32
-    else:
-        dtype = "auto"
-
     # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
     # welcome message on every rank
     with redirect_stdout(None) if rank != 0 else nullcontext():
-        model = instantiate_model(
-            cfg.model, device_map={"": device}, load_in_8bit=cfg.int8, torch_dtype=dtype
-        )
+        model = instantiate_model_or_llama(cfg=cfg, device_config=device_config)
         tokenizer = instantiate_tokenizer(
             cfg.model, truncation_side="left", verbose=rank == 0
         )
@@ -395,7 +394,9 @@ def extract(
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
     info, features = hidden_features(cfg)
 
-    devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
+    devices: Sequence[str | Llama65bDeviceConfig] = select_devices_or_llama_65b_configs(
+        model_name=cfg.model, num_gpus=num_gpus, min_memory=min_gpu_mem
+    )
     limits = cfg.max_examples
     splits = assert_type(SplitDict, info.splits)
 
@@ -431,7 +432,7 @@ def extract(
             ),
             gen_kwargs=dict(
                 cfg=[cfg] * len(devices),
-                device=devices,
+                device_config=devices,
                 rank=list(range(len(devices))),
                 split_type=[ty] * len(devices),
                 world_size=[len(devices)] * len(devices),
