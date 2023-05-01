@@ -45,7 +45,6 @@ def pad_tensors(tensors, device, pad_value=0):
 def batch_ids(
     input_ids_unbatched: list[torch.Tensor], batch_size: int
 ) -> list[tuple[torch.Tensor, torch.Tensor]]:
-
     output = []
     input_buffer = []
     for input_id_args in input_ids_unbatched:
@@ -65,9 +64,9 @@ def inference_worker(
     batched_input_ids: list[tuple[torch.Tensor, torch.Tensor]],
     use_tqdm=False,
 ):
-    batched_input_ids_use_tqdm: list[tuple[torch.Tensor, torch.Tensor]] = tqdm(
-        batched_input_ids, desc="Inference"
-    ) if use_tqdm else batched_input_ids
+    batched_input_ids_use_tqdm: list[tuple[torch.Tensor, torch.Tensor]] = (
+        tqdm(batched_input_ids, desc="Inference") if use_tqdm else batched_input_ids
+    )
 
     for input_ids, attention_mask in batched_input_ids_use_tqdm:
         with torch.no_grad():
