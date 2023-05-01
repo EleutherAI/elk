@@ -19,14 +19,48 @@ from elk.utils import instantiate_model
 from llama_overwrite import overwrite_30b, overwrite_65b
 
 
-def inference_worker(model, input_ids_queue, use_tqdm=False):
+def pad_tensors(tensors, pad_value=0):
+    max_len = max([t.size(-1) for t in tensors])
+    padded_tensors = []
+    attention_masks = []
+    for t in tensors:
+        pad_len = max_len - t.size(-1)
+        padded_tensor = torch.cat(
+            [torch.full((1, pad_len), pad_value, dtype=t.dtype, device=t.device), t],
+            dim=-1,
+        )
+        attention_mask = torch.cat(
+            [
+                torch.zeros((1, pad_len), dtype=torch.bool, device=t.device),
+                torch.ones_like(t),
+            ],
+            dim=-1,
+        )
+        padded_tensors.append(padded_tensor)
+        attention_masks.append(attention_mask)
+    return torch.cat(padded_tensors, dim=0), torch.cat(attention_masks, dim=0)
+
+
+def inference_worker(model, input_ids_queue, batch_size, use_tqdm=False):
     if use_tqdm:
         input_ids_queue = tqdm(input_ids_queue, desc="Inference")
 
+    input_buffer = []
     for input_id_args in input_ids_queue:
-        input_id_args = input_id_args.to(0)
+        input_buffer.append(input_id_args)
+        if len(input_buffer) == batch_size:
+            batch_input_ids, attention_mask = pad_tensors(input_buffer)
+            batch_input_ids = batch_input_ids.to(0)
+            attention_mask = attention_mask.to(0)
+            with torch.no_grad():
+                model(batch_input_ids, attention_mask=attention_mask)
+            input_buffer = []
+    if input_buffer:  # Process remaining input_ids in the buffer
+        batch_input_ids, attention_mask = pad_tensors(input_buffer)
+        batch_input_ids = batch_input_ids.to(0)
+        attention_mask = attention_mask.to(0)
         with torch.no_grad():
-            model(input_id_args)
+            model(batch_input_ids, attention_mask=attention_mask)
 
 
 def main(args):
@@ -35,6 +69,7 @@ def main(args):
     min_gpu_mem = args.min_gpu_mem
     num_threads = args.threads
     use_8bit = args.use_8bit
+    batch_size = args.batch_size
 
     cfg = Extract(model=model_str, prompts=PromptConfig(datasets=["imdb"]))
 
@@ -86,14 +121,15 @@ def main(args):
         device_map=device_map_override or autodevice_map,
         load_in_8bit=use_8bit,
     )
-
     input_ids_chunks = [input_ids_list[i::num_threads] for i in range(num_threads)]
 
     threads = []
     for i in range(num_threads):
         input_ids_queue = input_ids_chunks[i]
         use_tqdm = i == 0
-        t = Thread(target=inference_worker, args=(model, input_ids_queue, use_tqdm))
+        t = Thread(
+            target=inference_worker, args=(model, input_ids_queue, batch_size, use_tqdm)
+        )
         threads.append(t)
         t.start()
 
@@ -119,9 +155,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--threads", type=int, default=2, help="Number of threads to run"
     )
-    # option of use_8bit with default True
     parser.add_argument(
         "--use_8bit", type=bool, default=True, help="Whether to use 8bit"
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=8, help="Batch size for inference"
     )
     args = parser.parse_args()
 
