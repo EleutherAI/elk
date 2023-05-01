@@ -1,162 +1,61 @@
 from collections import Counter
-from copy import deepcopy
-from dataclasses import dataclass
-from itertools import zip_longest
 from random import Random
-from typing import Any, Iterator, Literal, Optional
+from typing import Any, Iterator, Literal
 
-from datasets import (
-    Dataset,
-    Features,
-    load_dataset,
-)
-from datasets.distributed import split_dataset_by_node
-from simple_parsing.helpers import Serializable, field
+from datasets import ClassLabel, Dataset, Value, load_dataset
 
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
     infer_label_column,
-    infer_num_classes,
-    select_train_val_splits,
+    select_split,
 )
 from .balanced_sampler import BalancedSampler, FewShotSampler
-
-
-@dataclass
-class PromptConfig(Serializable):
-    """
-    Args:
-        dataset: List of space-delimited names of the HuggingFace dataset to use, e.g.
-            `"super_glue boolq"` or `"imdb"`.
-        data_dir: The directory to use for caching the dataset. Defaults to
-            `~/.cache/huggingface/datasets`.
-        label_column: The column containing the labels. By default, we infer this from
-            the datatypes of the columns in the dataset; if there is only one column
-            with a `ClassLabel` datatype, we use that.
-        max_examples: The maximum number of examples to use from the val dataset.
-            If a single number, use at most that many examples for each split. If a list
-            of length 2, use the first element for the train split and the second for
-            the val split. If empty, use all examples. Defaults to empty.
-        num_shots: The number of examples to use in few-shot prompts. If zero, prompts
-            are zero-shot. Defaults to 0.
-        num_variants: The number of prompt templates to apply to each predicate upon
-            call to __getitem__. Use -1 to apply all available templates. Defaults to 1.
-        seed: The seed to use for prompt randomization. Defaults to 42.
-        stream: Whether to stream the dataset from the Internet. Defaults to False.
-    """
-
-    datasets: list[str] = field(positional=True)
-    data_dirs: list[str] = field(default_factory=list)
-    label_columns: list[str] = field(default_factory=list)
-    max_examples: list[int] = field(default_factory=lambda: [1000, 1000])
-    num_classes: int = 0
-    num_shots: int = 0
-    num_variants: int = -1
-    seed: int = 42
-    stream: bool = False
-
-    def __post_init__(self):
-        if len(self.max_examples) > 2:
-            raise ValueError(
-                "max_examples should be a list of length 0, 1, or 2,"
-                f"but got {len(self.max_examples)}"
-            )
-        if not self.max_examples:
-            self.max_examples = [int(1e100)]
-
-        # Broadcast the limit to all splits
-        if len(self.max_examples) == 1:
-            self.max_examples *= 2
-
-        # Broadcast the dataset name to all data_dirs and label_columns
-        if len(self.data_dirs) == 1:
-            self.data_dirs *= len(self.datasets)
-        elif self.data_dirs and len(self.data_dirs) != len(self.datasets):
-            raise ValueError(
-                "data_dirs should be a list of length 0, 1, or len(datasets),"
-                f" but got {len(self.data_dirs)}"
-            )
-
-        if len(self.label_columns) == 1:
-            self.label_columns *= len(self.datasets)
-        elif self.label_columns and len(self.label_columns) != len(self.datasets):
-            raise ValueError(
-                "label_columns should be a list of length 0, 1, or len(datasets),"
-                f" but got {len(self.label_columns)}"
-            )
-
-    def explode(self) -> list["PromptConfig"]:
-        """Explode the config into a list of configs, one for each dataset."""
-        copies = []
-
-        for ds, data_dir, col in zip_longest(
-            self.datasets, self.data_dirs, self.label_columns
-        ):
-            copy = deepcopy(self)
-            copy.datasets = [ds]
-            copy.data_dirs = [data_dir] if data_dir else []
-            copy.label_columns = [col] if col else []
-            copies.append(copy)
-
-        return copies
 
 
 def load_prompts(
     ds_string: str,
     *,
-    label_column: Optional[str] = None,
-    num_classes: int = 0,
+    binarize: bool = False,
     num_shots: int = 0,
     num_variants: int = -1,
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
-    stream: bool = False,
+    template_path: str | None = None,
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified dataset.
 
     Args:
-        ds_string: Space-delimited name of the HuggingFace dataset to use,
-            e.g. `"super_glue boolq"` or `"imdb"`.
-        label_column: The column containing the labels. By default, we infer this from
-            the datatypes of the columns in the dataset.
-        num_classes: The number of classes in the dataset. If zero, we infer this from
-            the datatypes of the columns in the dataset.
+        ds_string: Name of HF dataset to use, e.g. `"super_glue:boolq"` or `"imdb"`.
+        binarize: Whether to binarize the dataset labels for multi-class datasets.
         num_shots: The number of examples to use in few-shot prompts. If zero, prompts
             are zero-shot.
         seed: The seed to use for prompt randomization.
         split_type: Whether to use the train or val split of the dataset.
-        stream: Whether to stream the dataset from the Internet. Defaults to False.
+        template_path: Path to feed into `DatasetTemplates` for loading templates.
         rank: The rank of the current process. Defaults to 0.
         world_size: The number of processes. Defaults to 1.
 
     Returns:
         An iterable of prompt dictionaries.
     """
-    ds_name, _, config_name = ds_string.partition(" ")
-    prompter = DatasetTemplates(ds_name, config_name)
+    ds_name, _, config_name = ds_string.partition(":")
 
-    ds_dict = assert_type(
-        dict, load_dataset(ds_name, config_name or None, streaming=stream)
-    )
-    train_name, val_name = select_train_val_splits(ds_dict)
-    split_name = val_name if split_type == "val" else train_name
+    ds_dict = assert_type(dict, load_dataset(ds_name, config_name or None))
+    split_name = select_split(ds_dict, split_type)
 
-    ds = ds_dict[split_name].shuffle(seed=seed)
-    train_ds = ds_dict[train_name].shuffle(seed=seed)
-    if not stream:
-        ds = assert_type(Dataset, ds)
-        if world_size > 1:
-            ds = ds.shard(world_size, rank)
+    ds = assert_type(Dataset, ds_dict[split_name].shuffle(seed=seed))
+    if world_size > 1:
+        ds = ds.shard(world_size, rank)
 
-        ds = ds.to_iterable_dataset().cast(ds.features)
+    if template_path is None:
+        prompter = DatasetTemplates(ds_name, config_name)
+    else:
+        prompter = DatasetTemplates(template_path)
 
-    elif world_size > 1:
-        # This prints to stdout which is slightly annoying
-        ds = split_dataset_by_node(dataset=ds, rank=rank, world_size=world_size)
-
+    prompter.drop_non_mc_templates()
     num_templates = len(prompter.templates)
     num_variants = (
         num_templates if num_variants == -1 else min(num_variants, num_templates)
@@ -165,13 +64,25 @@ def load_prompts(
     if rank == 0:
         print(f"Using {num_variants} variants of each prompt")
 
-    label_column = label_column or infer_label_column(ds.features)
-    num_classes = num_classes or infer_num_classes(ds.features[label_column])
-    rng = Random(seed)
+    label_column = prompter.label_column or infer_label_column(ds.features)
 
+    label_feature = ds.features[label_column]
+    if isinstance(label_feature, ClassLabel):
+        label_choices = [label_feature.str2int(label) for label in label_feature.names]
+    elif isinstance(label_feature, Value) and label_feature.dtype == "bool":
+        label_choices = [False, True]
+    else:
+        # Which classes are actually present in this split of the dataset?
+        # This is shockingly fast since it uses an optimized Apache Arrow primitive.
+        label_choices = sorted(ds.unique(label_column))
+        if rank == 0:
+            print(f"Using the following pseudo-labels: {label_choices}")
+
+    rng = Random(seed)
     if num_shots > 0:
+        train_name = select_split(ds_dict, "train")
         fewshot = FewShotSampler(
-            train_ds,  # TODO: not iterator
+            ds_dict[train_name].shuffle(seed=seed),  # TODO: not iterator
             num_shots=num_shots,
             rng=rng,
         )
@@ -179,15 +90,23 @@ def load_prompts(
     else:
         fewshot_iter = None
 
-    # Remove everything except the label column
-    extra_cols = list(assert_type(Features, ds.features))
-    extra_cols.remove(label_column)
+    if label_column in ds.features:
+        ds = BalancedSampler(
+            ds.to_iterable_dataset(),
+            set(label_choices),
+            label_col=label_column,
+        )
+    else:
+        if rank == 0:
+            print("No label column found, not balancing")
+        ds = ds.to_iterable_dataset()
 
-    for example in BalancedSampler(ds, num_classes, label_col=label_column):
+    for example in ds:
         yield _convert_to_prompts(
             example,
+            binarize=binarize,
             label_column=label_column,
-            num_classes=num_classes,
+            label_choices=label_choices,  # type: ignore[arg-type]
             num_variants=num_variants,
             prompter=prompter,
             rng=rng,
@@ -198,14 +117,14 @@ def load_prompts(
 def _convert_to_prompts(
     example: dict[str, Any],
     prompter: DatasetTemplates,
+    binarize: bool,
     label_column: str,
-    num_classes: int,
+    label_choices: list[bool | int | str],
     num_variants: int,
     rng: Random,
-    fewshot_iter: Optional[Iterator[list[dict]]] = None,
+    fewshot_iter: Iterator[list[dict]] | None = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
-    labels_are_strings = isinstance(example[label_column], str)
     prompts = []
     templates = list(prompter.templates.values())
     if num_variants < len(templates):
@@ -218,21 +137,24 @@ def _convert_to_prompts(
 
     # For sanity checking that prompts are unique
     prompt_counter = Counter()
-    label_indices = set()
+    label = example[label_column]
+
+    if binarize:
+        # Replace the full list of possibilities with a randomly sampled false label
+        # and the correct label, as done in the DLK paper. Note that this does add some
+        # "supervision" by stacking the deck in favor of the correct answer.
+        label_choices = [
+            rng.choice([c for c in label_choices if c != label]),
+            label,
+        ]
+        rng.shuffle(label_choices)
 
     for template in templates:
         choices = []
-        string_choices = template.get_answer_choices_list(example)
 
-        label = example[label_column]
-        label_indices.add(string_choices.index(label) if labels_are_strings else label)
-
-        for answer_idx in range(num_classes):
+        for pseudo_label in label_choices:
             fake_example = example.copy()
-            if labels_are_strings:
-                fake_example[label_column] = string_choices[answer_idx]
-            else:
-                fake_example[label_column] = answer_idx
+            fake_example[label_column] = pseudo_label
 
             q, a = template.apply(fake_example)
             prompt_counter[(q, a)] += 1
@@ -261,14 +183,11 @@ def _convert_to_prompts(
     if dup_count > 1:
         raise ValueError(f'Prompt duplicated {dup_count} times! "{maybe_dup}"')
 
-    # Sanity check: label should be the same across all variants
-    if len(label_indices) > 1:
-        raise ValueError(
-            f"Label index should be the same all variants, but got {label_indices}"
-        )
-
+    # Our reporter training and evaluation code assumes that the labels are integers.
+    # If they're not, we need to convert them with index(). label_choices is guaranteed
+    # to be sorted (see above).
     return dict(
-        label=label_indices.pop(),
+        label=label_choices.index(label),
         prompts=prompts,
         template_names=[template.name for template in templates],
     )

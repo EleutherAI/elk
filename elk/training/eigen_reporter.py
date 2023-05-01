@@ -25,7 +25,7 @@ class EigenReporterConfig(ReporterConfig):
             of eigenvectors to compute from the VINC matrix.
     """
 
-    var_weight: float = 0.1
+    var_weight: float = 0.0
     neg_cov_weight: float = 0.5
 
     num_heads: int = 1

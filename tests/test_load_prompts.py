@@ -3,19 +3,20 @@ from typing import Literal
 
 import pytest
 
-from elk.extraction import PromptConfig, load_prompts
+from elk.extraction import Extract, load_prompts
 from elk.promptsource.templates import DatasetTemplates
 
 
 @pytest.mark.filterwarnings("ignore:Unable to find a decoding function")
 def test_load_prompts():
-    def test_single_split(cfg: PromptConfig, split_type: Literal["train", "val"]):
+    def test_single_split(cfg: Extract, split_type: Literal["train", "val"]):
         for cfg in cfg.explode():
             ds_string = cfg.datasets[0]
             prompt_ds = load_prompts(ds_string, split_type=split_type)
 
-            ds_name, _, config_name = ds_string.partition(" ")
+            ds_name, _, config_name = ds_string.partition(":")
             prompter = DatasetTemplates(ds_name, config_name or None)
+            prompter.drop_non_mc_templates()
 
             limit = cfg.max_examples[0 if split_type == "train" else 1]
             for record in islice(prompt_ds, limit):
@@ -29,11 +30,11 @@ def test_load_prompts():
 
     # the case where the dataset has 2 classes
     # this dataset is small
-    cfg = PromptConfig.load_yaml("tests/super_glue_prompts.yaml")
+    cfg = Extract.load_yaml("tests/super_glue_prompts.yaml")
     test_single_split(cfg, "train")
     test_single_split(cfg, "val")
 
     # the case where the dataset has more than 2 classes
-    cfg = PromptConfig.load_yaml("tests/dbpedia_prompts.yaml")
+    cfg = Extract.load_yaml("tests/dbpedia_prompts.yaml")
     test_single_split(cfg, "train")
     test_single_split(cfg, "val")
