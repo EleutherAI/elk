@@ -95,6 +95,7 @@ def main(args):
     print("Number of input ids:", len(input_ids_list))
     device_tensors = [t.to(0) for t in input_ids_list]
     device_tensors_batched = batch_ids(device_tensors, batch_size=batch_size)
+    print("Number of batches:", len(device_tensors_batched))
     WORLD_SIZE = num_gpus
 
     print("Instantiating model...")
