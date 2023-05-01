@@ -39,8 +39,16 @@ def main(args):
     device_map = infer_auto_device_map(
         model,
         no_split_module_classes={layer_cls},
-        max_memory={rank: min_gpu_mem for rank in range(WORLD_SIZE)},
+        max_memory={
+            # lesser mem for device 0 so we can run larger batch sizes
+            # and because we are going to assign lm_head to it
+            rank: min_gpu_mem if rank != 0 else min_gpu_mem / 2
+            for rank in range(WORLD_SIZE)
+        },
     )
+    # explicitly set the lm head to be device 0 so
+    # see https://github.com/huggingface/accelerate/issues/362
+    device_map["lm_head"] = 0
     print("Device map:", device_map)
     model = instantiate_model(model_str, torch_dtype="auto", device_map=device_map)
     input_ids_to_run = tqdm(input_ids_list, desc="Inference")
