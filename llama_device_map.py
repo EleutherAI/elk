@@ -2,6 +2,7 @@ import argparse
 
 import torch
 from accelerate import infer_auto_device_map
+from tqdm import tqdm
 
 from elk.extraction import PromptConfig
 from elk.extraction.extraction import (
@@ -17,6 +18,7 @@ from elk.utils import instantiate_model
 def main(args):
     model_str = args.model
     num_gpus = args.num_gpus
+    min_gpu_mem = args.min_gpu_mem
     cfg = Extract(
         model=model_str,
         prompts=PromptConfig(datasets=["imdb"])
@@ -37,12 +39,12 @@ def main(args):
     device_map = infer_auto_device_map(
         model,
         no_split_module_classes={layer_cls},
-        max_memory={rank: "30GiB" for rank in range(WORLD_SIZE)},
+        max_memory={rank: min_gpu_mem for rank in range(WORLD_SIZE)},
     )
     print("Device map:", device_map)
     model = instantiate_model(model_str, torch_dtype="auto", device_map=device_map)
-
-    for input_id_args in input_ids_list:
+    input_ids_to_run = tqdm(input_ids_list, desc="Inference")
+    for input_id_args in input_ids_to_run:
         # GPU 0 is the input guy.. i guess?
         input_id_args = input_id_args.to(0)
         with torch.no_grad():
@@ -62,6 +64,9 @@ if __name__ == "__main__":
     # --num_gpus default 8
     parser.add_argument(
         "--num_gpus", type=int, default=8, help="Number of GPUs to run on"
+    )
+    parser.add_argument(
+        "--min_gpu_mem", type=str, default="20GiB", help="Min GPU memory per GPU"
     )
     args = parser.parse_args()
 
