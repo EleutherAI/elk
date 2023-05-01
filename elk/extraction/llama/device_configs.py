@@ -34,7 +34,6 @@ def select_devices_or_llama_65b_configs(
         num_pairs = num_gpus // 2
         print(f"Will create {num_pairs} llama workers ")
         forty_gb = 42_949_672_960
-        llama_workers_config = []
         devices = select_usable_devices(num_gpus, min_memory=forty_gb)
         # split the devices into pairs
         configs = []
@@ -48,7 +47,7 @@ def select_devices_or_llama_65b_configs(
             )
         print(f"Created {len(configs)} llama workers")
 
-        return llama_workers_config
+        return configs
 
 
 def instantiate_model_or_llama(
