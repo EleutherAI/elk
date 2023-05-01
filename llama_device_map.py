@@ -145,7 +145,7 @@ def main(args):
         input_ids_queue = input_ids_chunks[i]
         use_tqdm = i == 0
         t = Thread(
-            target=inference_worker, args=(model, input_ids_queue, batch_size, use_tqdm)
+            target=inference_worker, args=(model, input_ids_queue, use_tqdm)
         )
         threads.append(t)
         t.start()
