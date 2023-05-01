@@ -69,6 +69,7 @@ def instantiate_model_or_llama(
             device_map={"": first_device},
             load_in_8bit=cfg.int8,
             torch_dtype=dtype,
+            **kwargs,
         )
     else:
         model = instantiate_model(
@@ -78,8 +79,6 @@ def instantiate_model_or_llama(
             ),
             load_in_8bit=True,
             torch_dtype=dtype,
-            # Testing to see if this fixes increased memory usage
-            # over time
-            use_cache=False,
+            **kwargs,
         )
     return model
