@@ -45,9 +45,10 @@ def pad_tensors(tensors, device, pad_value=0):
 def batch_ids(
     input_ids_unbatched: list[torch.Tensor], batch_size: int
 ) -> list[tuple[torch.Tensor, torch.Tensor]]:
+    input_ids_unbatched_sorted = sorted(input_ids_unbatched, key=lambda x: x.size(-1))
     output = []
     input_buffer = []
-    for input_id_args in input_ids_unbatched:
+    for input_id_args in input_ids_unbatched_sorted:
         input_buffer.append(input_id_args)
         if len(input_buffer) == batch_size:
             batch_input_ids, attention_mask = pad_tensors(input_buffer, device=0)
@@ -90,10 +91,13 @@ def main(args):
     ) + temp_extract_input_ids_cached(cfg=cfg, device="cpu", split_type="val")
     # bring all the tensors to device 0
 
-    input_ids_list = random.sample(input_ids_list, len(input_ids_list))
     print("Number of input ids:", len(input_ids_list))
     device_tensors = [t.to(0) for t in input_ids_list]
     device_tensors_batched = batch_ids(device_tensors, batch_size=batch_size)
+    # shuffle so we can tqdm more accurately
+    device_tensors_batched = random.sample(
+        device_tensors_batched, len(device_tensors_batched)
+    )
     print("Number of batches:", len(device_tensors_batched))
     WORLD_SIZE = num_gpus
 
@@ -144,9 +148,7 @@ def main(args):
     for i in range(num_threads):
         input_ids_queue = input_ids_chunks[i]
         use_tqdm = i == 0
-        t = Thread(
-            target=inference_worker, args=(model, input_ids_queue, use_tqdm)
-        )
+        t = Thread(target=inference_worker, args=(model, input_ids_queue, use_tqdm))
         threads.append(t)
         t.start()
 
