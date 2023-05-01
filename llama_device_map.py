@@ -6,15 +6,11 @@ from threading import Thread
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
 from tqdm import tqdm
-from transformers.models.llama.modeling_llama import LlamaAttention
 
 from elk.extraction import PromptConfig
 from elk.extraction.extraction import (
     Extract,
     temp_extract_input_ids_cached,
-)
-from elk.inference_server.fsdp import (
-    get_transformer_layer_cls,
 )
 from elk.utils import instantiate_model
 from llama_overwrite import overwrite_30b, overwrite_65b
