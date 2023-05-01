@@ -5,7 +5,7 @@ from functools import partial
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from torch.distributed.fsdp import CPUOffload
+from torch.distributed.fsdp import CPUOffload, ShardingStrategy
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from tqdm import tqdm
@@ -33,7 +33,9 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def run_inference(rank, world_size, model, input_ids_list, wrap_policy):
+def run_inference(
+    rank, world_size, model, input_ids_list, wrap_policy, strategy: ShardingStrategy
+):
     setup(rank, world_size)
     torch.cuda.set_device(rank)
     inputs_sharded = shard_seq(input_ids_list, world_size)
@@ -48,6 +50,7 @@ def run_inference(rank, world_size, model, input_ids_list, wrap_policy):
         sync_module_states=False,
         limit_all_gathers=False,
         forward_prefetch=True,
+        strategy=strategy,
     )
 
     if rank == 0:
@@ -62,22 +65,11 @@ def run_inference(rank, world_size, model, input_ids_list, wrap_policy):
     cleanup()
 
 
-#
-# def test_this():
-#     cfg = Extract(
-#         model="sshleifer/tiny-gpt2",
-#         prompts=PromptConfig(datasets=["imdb"])
-#         # run on all layers, tiny-gpt only has 2 layers
-#     )
-#     print("Extracting input ids...")
-#     input_ids_list = temp_extract_input_ids(
-#         cfg=cfg, device="cpu", split_type="train"
-#     )
-
-
 def main(args):
     model_str = args.model
     num_gpus = args.num_gpus
+    # e.g. _HYBRID_SHARD_ZERO2
+    strategy: ShardingStrategy = ShardingStrategy[args.strategy]
     cfg = Extract(
         model=model_str,
         prompts=PromptConfig(datasets=["imdb"])
@@ -104,14 +96,14 @@ def main(args):
 
     mp.spawn(
         run_inference,
-        args=(WORLD_SIZE, model, input_ids_list, wrap_policy),
+        args=(WORLD_SIZE, model, input_ids_list, wrap_policy, strategy),
         nprocs=WORLD_SIZE,
         join=True,
     )
 
 
 if __name__ == "__main__":
-    # e.g. python llama_fsdp.py --model huggyllama/llama-13b
+    # e.g. python llama_fsdp.py --model huggyllama/llama-13b --strategy _HYBRID_SHARD_ZERO2
     parser = argparse.ArgumentParser(
         description="Run FSDP inference with specified model"
     )
@@ -124,6 +116,9 @@ if __name__ == "__main__":
     # --num_gpus default 8
     parser.add_argument(
         "--num_gpus", type=int, default=8, help="Number of GPUs to run on"
+    )
+    parser.add_argument(
+        "--strategy", type=str, default="FULL_SHARD", help="Sharding strategy"
     )
     args = parser.parse_args()
 
