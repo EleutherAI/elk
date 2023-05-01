@@ -5,7 +5,6 @@ from threading import Thread
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
 from tqdm import tqdm
-from transformers.models.llama.modeling_llama import LlamaAttention
 
 from elk.extraction import PromptConfig
 from elk.extraction.extraction import (
@@ -48,7 +47,6 @@ def main(args):
 
     print("Instantiating model...")
     used_dtype = torch.float16 if use_8bit else "auto"
-
 
     with init_empty_weights():
         # Kinda dumb but you need to first insantiate on the CPU to get the layer class
