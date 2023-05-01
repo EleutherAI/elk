@@ -46,6 +46,7 @@ def select_devices_or_llama_65b_configs(
                     first_device=first_device, second_device=second_device
                 )
             )
+        print(f"Created {len(configs)} llama workers")
 
         return llama_workers_config
 
