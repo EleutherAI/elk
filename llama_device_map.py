@@ -49,9 +49,9 @@ def main(args):
     print("Instantiating model...")
     used_dtype = torch.float16 if use_8bit else "auto"
 
-    with init_empty_weights():
+    # with init_empty_weights():
         # Kinda dumb but you need to first insantiate on the CPU to get the layer class
-        model = instantiate_model(model_str, torch_dtype=used_dtype)
+    model = instantiate_model(model_str, torch_dtype=used_dtype)
 
     layer_cls = get_transformer_layer_cls(model)
     # Hack to take into account that its 8bit
