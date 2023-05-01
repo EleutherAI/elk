@@ -73,8 +73,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_gpus", type=int, default=8, help="Number of GPUs to run on"
     )
+    # 20GiB in bytes
+    default_bytes = 20 * 1024 * 1024 * 1024
     parser.add_argument(
-        "--min_gpu_mem", type=str, default="20GiB", help="Min GPU memory per GPU"
+        "--min_gpu_mem", type=int, default=default_bytes, help="Min GPU memory per GPU"
     )
     args = parser.parse_args()
 
