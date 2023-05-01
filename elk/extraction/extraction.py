@@ -31,7 +31,7 @@ from ..utils import (
     Color,
     assert_type,
     colorize,
-    float32_to_int16,
+    float_to_int16,
     infer_label_column,
     infer_num_classes,
     instantiate_model,
@@ -160,20 +160,10 @@ def extract_hiddens(
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    if cfg.int8:
-        # Required by `bitsandbytes`
-        dtype = torch.float16
-    elif device == "cpu":
-        dtype = torch.float32
-    else:
-        dtype = "auto"
-
     # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
     # welcome message on every rank
     with redirect_stdout(None) if rank != 0 else nullcontext():
-        model = instantiate_model(
-            cfg.model, device=device, load_in_8bit=cfg.int8, torch_dtype=dtype
-        )
+        model = instantiate_model(cfg.model, device=device, load_in_8bit=cfg.int8)
         tokenizer = instantiate_tokenizer(
             cfg.model, truncation_side="left", verbose=rank == 0
         )
@@ -308,7 +298,7 @@ def extract_hiddens(
                     raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
-                    hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
+                    hidden_dict[f"hidden_{layer_idx}"][i, j] = float_to_int16(hidden)
 
             text_questions.append(variant_questions)
 
