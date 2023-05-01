@@ -27,6 +27,11 @@ class _GeneratorConfig(BuilderConfig):
         # to erase the world_size dimension so that the config id is the same no matter
         # how many processes are used. We also remove the explicit device, rank, and
         # world_size keys.
+        new = {}
+        for k, v in config_kwargs.get("gen_kwargs", {}).items():
+            if k not in ("device_config", "rank", "world_size"):
+                new[k] = v[0]
+        print("new", new)
         config_kwargs["gen_kwargs"] = {
             k: v[0]
             for k, v in config_kwargs.get("gen_kwargs", {}).items()
