@@ -42,22 +42,36 @@ def pad_tensors(tensors, device, pad_value=0):
     return torch.cat(padded_tensors, dim=0), torch.cat(attention_masks, dim=0)
 
 
-def inference_worker(model, input_ids_queue, batch_size, use_tqdm=False):
-    if use_tqdm:
-        input_ids_queue = tqdm(input_ids_queue, desc="Inference")
+def batch_ids(
+    input_ids_unbatched: list[torch.Tensor], batch_size: int
+) -> list[tuple[torch.Tensor, torch.Tensor]]:
 
+    output = []
     input_buffer = []
-    for input_id_args in input_ids_queue:
+    for input_id_args in input_ids_unbatched:
         input_buffer.append(input_id_args)
         if len(input_buffer) == batch_size:
             batch_input_ids, attention_mask = pad_tensors(input_buffer, device=0)
-            with torch.no_grad():
-                model(batch_input_ids, attention_mask=attention_mask)
+            output.append((batch_input_ids, attention_mask))
             input_buffer = []
     if input_buffer:  # Process remaining input_ids in the buffer
         batch_input_ids, attention_mask = pad_tensors(input_buffer, device=0)
+        output.append((batch_input_ids, attention_mask))
+    return output
+
+
+def inference_worker(
+    model,
+    batched_input_ids: list[tuple[torch.Tensor, torch.Tensor]],
+    use_tqdm=False,
+):
+    batched_input_ids_use_tqdm: list[tuple[torch.Tensor, torch.Tensor]] = tqdm(
+        batched_input_ids, desc="Inference"
+    ) if use_tqdm else batched_input_ids
+
+    for input_ids, attention_mask in batched_input_ids_use_tqdm:
         with torch.no_grad():
-            model(batch_input_ids, attention_mask=attention_mask)
+            model(input_ids, attention_mask=attention_mask)
 
 
 def main(args):
@@ -80,6 +94,7 @@ def main(args):
     input_ids_list = random.sample(input_ids_list, len(input_ids_list))
     print("Number of input ids:", len(input_ids_list))
     device_tensors = [t.to(0) for t in input_ids_list]
+    device_tensors_batched = batch_ids(device_tensors, batch_size=batch_size)
     WORLD_SIZE = num_gpus
 
     print("Instantiating model...")
@@ -121,7 +136,9 @@ def main(args):
         device_map=device_map_override or autodevice_map,
         load_in_8bit=use_8bit,
     )
-    input_ids_chunks = [device_tensors[i::num_threads] for i in range(num_threads)]
+    input_ids_chunks = [
+        device_tensors_batched[i::num_threads] for i in range(num_threads)
+    ]
 
     threads = []
     for i in range(num_threads):
