@@ -16,6 +16,7 @@ from elk.inference_server.fsdp import (
     get_transformer_layer_cls,
 )
 from elk.utils import instantiate_model
+from llama_overwrite import overwrite_30b
 
 
 def inference_worker(model, input_ids_queue, use_tqdm=False):
@@ -68,78 +69,7 @@ def main(args):
     )
     print("Auto device map:", autodevice_map)
 
-    device_map_override = {
-        "model.embed_tokens": 0,
-        "model.layers.0": 0,
-        "model.layers.1": 0,
-        "model.layers.2": 0,
-        "model.layers.3": 0,
-        "model.layers.4": 0,
-        "model.layers.5": 0,
-        "model.layers.6": 0,
-        "model.layers.7": 0,
-        "model.layers.8": 0,
-        "model.layers.9": 0,
-        "model.layers.10": 0,
-        "model.layers.11": 0,
-        "model.layers.12": 0,
-        "model.layers.13": 0,
-        "model.layers.14": 0,
-        "model.layers.15": 0,
-        "model.layers.16": 0,
-        "model.layers.17": 0,
-        "model.layers.18": 0,
-        "model.layers.19": 0,
-        "model.layers.20": 0,
-        "model.layers.21": 0,
-        "model.layers.22": 0,
-        "model.layers.23": 0,
-        "model.layers.24": 0,
-        "model.layers.25": 0,
-        "model.layers.26": 0,
-        "model.layers.27": 0,
-        "model.layers.28": 0,
-        "model.layers.29": 0,
-        "model.layers.30": 0,
-        "model.layers.31": 0,
-        "model.layers.32": 0,
-        "model.layers.33": 0,
-        "model.layers.34": 0,
-        "model.layers.35": 0,
-        "model.layers.36": 0,
-        "model.layers.37": 0,
-        "model.layers.38": 0,
-        "model.layers.39": 0,
-        "model.layers.40": 0,
-        "model.layers.41": 0,
-        "model.layers.42.self_attn.q_proj": 0,
-        "model.layers.42.self_attn.k_proj": 0,
-        "model.layers.42.self_attn.v_proj": 0,
-        "model.layers.42.self_attn.o_proj": 0,
-        "model.layers.42.self_attn.rotary_emb": 0,
-        "model.layers.42.mlp": 0,
-        "model.layers.42.input_layernorm": 0,
-        "model.layers.42.post_attention_layernorm": 0,
-        "model.layers.43": 1,
-        "model.layers.44": 1,
-        "model.layers.45": 1,
-        "model.layers.46": 1,
-        "model.layers.47": 1,
-        "model.layers.48": 1,
-        "model.layers.49": 1,
-        "model.layers.50": 1,
-        "model.layers.51": 1,
-        "model.layers.52": 1,
-        "model.layers.53": 1,
-        "model.layers.54": 1,
-        "model.layers.55": 1,
-        "model.layers.56": 1,
-        "model.layers.57": 1,
-        "model.layers.58": 1,
-        "model.layers.59": 1,
-        "model.norm": 1,
-        "lm_head": 0,
-    }
+    device_map_override = overwrite_30b
 
     autodevice_map["lm_head"] = 0
     device_map_override["lm_head"] = 0
