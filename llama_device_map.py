@@ -75,9 +75,11 @@ def main(args):
     input_ids_list = temp_extract_input_ids_cached(
         cfg=cfg, device="cpu", split_type="train"
     ) + temp_extract_input_ids_cached(cfg=cfg, device="cpu", split_type="val")
+    # bring all the tensors to device 0
 
     input_ids_list = random.sample(input_ids_list, len(input_ids_list))
     print("Number of input ids:", len(input_ids_list))
+    device_tensors = [t.to(0) for t in input_ids_list]
     WORLD_SIZE = num_gpus
 
     print("Instantiating model...")
@@ -119,7 +121,7 @@ def main(args):
         device_map=device_map_override or autodevice_map,
         load_in_8bit=use_8bit,
     )
-    input_ids_chunks = [input_ids_list[i::num_threads] for i in range(num_threads)]
+    input_ids_chunks = [device_tensors[i::num_threads] for i in range(num_threads)]
 
     threads = []
     for i in range(num_threads):
