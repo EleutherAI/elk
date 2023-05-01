@@ -191,9 +191,10 @@ def extract_hiddens(
     prompt_ds = load_prompts(
         ds_names[0],
         binarize=cfg.binarize,
+        num_shots=cfg.num_shots,
+        num_variants=cfg.num_variants,
         split_type=split_type,
         template_path=cfg.template_path,
-        num_variants=cfg.num_variants,
         rank=rank,
         world_size=world_size,
     )
