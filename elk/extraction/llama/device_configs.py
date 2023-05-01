@@ -1,13 +1,13 @@
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Sequence, TYPE_CHECKING
 
 import torch
 from transformers import PreTrainedModel
-
-from elk import Extract
 from elk.extraction.llama.device_map import get_llama_65b_8bit_device_map
 from elk.utils import select_usable_devices, instantiate_model
 
+if TYPE_CHECKING:
+    from elk import Extract
 
 @dataclass
 class Llama65bDeviceConfig:
@@ -43,7 +43,7 @@ def select_devices_or_llama_65b_configs(
 
 
 def instantiate_model_or_llama(
-    cfg: Extract, device_config: str | Llama65bDeviceConfig, **kwargs
+    cfg: "Extract", device_config: str | Llama65bDeviceConfig, **kwargs
 ) -> PreTrainedModel:
     is_llama_65b = isinstance(device_config, Llama65bDeviceConfig)
     first_device = device_config.first_device if is_llama_65b else device_config
