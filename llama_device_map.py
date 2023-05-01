@@ -1,5 +1,6 @@
 import argparse
 import random
+import time
 from threading import Thread
 
 import torch
@@ -81,6 +82,7 @@ def main(args):
     num_threads = args.threads
     use_8bit = args.use_8bit
     batch_size = args.batch_size
+    use_torch_compile: bool = args.torch_compile
     print("Batch size:", batch_size)
 
     cfg = Extract(model=model_str, prompts=PromptConfig(datasets=["imdb"]))
@@ -99,7 +101,6 @@ def main(args):
         device_tensors_batched, len(device_tensors_batched)
     )
     print("Number of batches:", len(device_tensors_batched))
-    WORLD_SIZE = num_gpus
 
     print("Instantiating model...")
     used_dtype = torch.float16 if use_8bit else "auto"
@@ -108,17 +109,13 @@ def main(args):
         # Kinda dumb but you need to first insantiate on the CPU to get the layer class
         model = instantiate_model(model_str, torch_dtype=used_dtype)
 
-    layer_cls = get_transformer_layer_cls(model)
-    no_split_module_classes = {layer_cls.__name__, LlamaAttention.__name__}
-    print("Not splitting for layer classes:", no_split_module_classes)
     # Hack to take into account that its 8bit
     min_gpu_mem_when_8bit = min_gpu_mem * 2 if use_8bit else min_gpu_mem
     autodevice_map = infer_auto_device_map(
         model,
-        no_split_module_classes=no_split_module_classes,
         max_memory={
             rank: min_gpu_mem_when_8bit if rank != 0 else min_gpu_mem_when_8bit / 2
-            for rank in range(WORLD_SIZE)
+            for rank in range(num_gpus)
         },
     )
     print("Auto device map:", autodevice_map)
@@ -140,6 +137,12 @@ def main(args):
         device_map=device_map_override or autodevice_map,
         load_in_8bit=use_8bit,
     )
+    time_start = time.time()
+    compiled = torch.compile(model) if use_torch_compile else model
+    time_end = time.time()
+    # in minutes
+    print("Compilation time:", (time_end - time_start) / 60)
+
     input_ids_chunks = [
         device_tensors_batched[i::num_threads] for i in range(num_threads)
     ]
@@ -148,7 +151,7 @@ def main(args):
     for i in range(num_threads):
         input_ids_queue = input_ids_chunks[i]
         use_tqdm = i == 0
-        t = Thread(target=inference_worker, args=(model, input_ids_queue, use_tqdm))
+        t = Thread(target=inference_worker, args=(compiled, input_ids_queue, use_tqdm))
         threads.append(t)
         t.start()
 
@@ -179,6 +182,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--batch_size", type=int, default=8, help="Batch size for inference"
+    )
+    # torch compile
+    parser.add_argument(
+        "--torch_compile", type=bool, default=False, help="Whether to torch compile"
     )
     args = parser.parse_args()
 
