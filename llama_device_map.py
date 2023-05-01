@@ -3,7 +3,7 @@ import random
 from threading import Thread
 
 import torch
-from accelerate import infer_auto_device_map, init_empty_weights
+from accelerate import infer_auto_device_map
 from tqdm import tqdm
 from transformers.models.llama.modeling_llama import LlamaAttention
 
@@ -50,7 +50,7 @@ def main(args):
     used_dtype = torch.float16 if use_8bit else "auto"
 
     # with init_empty_weights():
-        # Kinda dumb but you need to first insantiate on the CPU to get the layer class
+    # Kinda dumb but you need to first insantiate on the CPU to get the layer class
     model = instantiate_model(model_str, torch_dtype=used_dtype)
 
     layer_cls = get_transformer_layer_cls(model)
