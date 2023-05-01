@@ -5,6 +5,7 @@ from threading import Thread
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
 from tqdm import tqdm
+from transformers.models.llama.modeling_llama import LlamaAttention
 
 from elk.extraction import PromptConfig
 from elk.extraction.extraction import (
@@ -54,10 +55,10 @@ def main(args):
 
     layer_cls = get_transformer_layer_cls(model)
     # Hack to take into account that its 8bit
-    min_gpu_mem_when_8bit = min_gpu_mem * 2
+    min_gpu_mem_when_8bit = min_gpu_mem * 2 if use_8bit else min_gpu_mem
     device_map = infer_auto_device_map(
         model,
-        no_split_module_classes={layer_cls},
+        no_split_module_classes={layer_cls, LlamaAttention},
         max_memory={
             rank: min_gpu_mem_when_8bit if rank != 0 else min_gpu_mem_when_8bit / 2
             for rank in range(WORLD_SIZE)
