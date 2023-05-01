@@ -26,11 +26,6 @@ from torch import Tensor
 from transformers import AutoConfig, PreTrainedModel
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
-from .llama.device_configs import (
-    Llama65bDeviceConfig,
-    select_devices_or_llama_65b_configs,
-    instantiate_model_or_llama,
-)
 from ..promptsource import DatasetTemplates
 from ..utils import (
     Color,
@@ -39,7 +34,6 @@ from ..utils import (
     float32_to_int16,
     infer_label_column,
     infer_num_classes,
-    instantiate_model,
     instantiate_tokenizer,
     is_autoregressive,
     prevent_name_conflicts,
@@ -51,6 +45,11 @@ from .dataset_name import (
     parse_dataset_string,
 )
 from .generator import _GeneratorBuilder
+from .llama.device_configs import (
+    Llama65bDeviceConfig,
+    instantiate_model_or_llama,
+    select_devices_or_llama_65b_configs,
+)
 from .prompt_loading import load_prompts
 
 

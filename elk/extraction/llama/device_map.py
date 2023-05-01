@@ -1,5 +1,5 @@
 import torch
-from accelerate import init_empty_weights, infer_auto_device_map
+from accelerate import infer_auto_device_map, init_empty_weights
 
 from elk.utils import instantiate_model
 

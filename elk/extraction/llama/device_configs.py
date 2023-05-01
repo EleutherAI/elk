@@ -1,10 +1,11 @@
 from dataclasses import dataclass
-from typing import Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 import torch
 from transformers import PreTrainedModel
+
 from elk.extraction.llama.device_map import get_llama_65b_8bit_device_map
-from elk.utils import select_usable_devices, instantiate_model
+from elk.utils import instantiate_model, select_usable_devices
 
 if TYPE_CHECKING:
     from elk import Extract
@@ -25,8 +26,8 @@ def select_devices_or_llama_65b_configs(
         return select_usable_devices(num_gpus, min_memory=min_memory)
     else:
         print(
-            f"You've selected a llama-65b model, which requires at least two GPUs."
-            f"Each GPU must have at least 40 GiB of memory."
+            "You've selected a llama-65b model, which requires at least two GPUs."
+            "Each GPU must have at least 40 GiB of memory."
         )
         print("Note that we will force the model to use 8-bit")
         assert num_gpus >= 2, "llama-65b models require at least two GPUs"
