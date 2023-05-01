@@ -3,7 +3,7 @@ import random
 from threading import Thread
 
 import torch
-from accelerate import infer_auto_device_map
+from accelerate import infer_auto_device_map, init_empty_weights
 from tqdm import tqdm
 from transformers.models.llama.modeling_llama import LlamaAttention
 
@@ -49,16 +49,19 @@ def main(args):
     print("Instantiating model...")
     used_dtype = torch.float16 if use_8bit else "auto"
 
-    # with init_empty_weights():
-    # Kinda dumb but you need to first insantiate on the CPU to get the layer class
-    model = instantiate_model(model_str, torch_dtype=used_dtype)
+
+    with init_empty_weights():
+        # Kinda dumb but you need to first insantiate on the CPU to get the layer class
+        model = instantiate_model(model_str, torch_dtype=used_dtype)
 
     layer_cls = get_transformer_layer_cls(model)
+    no_split_module_classes = {layer_cls.__name__}
+    print("Not splitting for layer classes:", no_split_module_classes)
     # Hack to take into account that its 8bit
     min_gpu_mem_when_8bit = min_gpu_mem * 2 if use_8bit else min_gpu_mem
     device_map = infer_auto_device_map(
         model,
-        no_split_module_classes={layer_cls, LlamaAttention},
+        no_split_module_classes=no_split_module_classes,
         max_memory={
             rank: min_gpu_mem_when_8bit if rank != 0 else min_gpu_mem_when_8bit / 2
             for rank in range(WORLD_SIZE)
