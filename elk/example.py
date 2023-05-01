@@ -9,7 +9,9 @@ from elk.metrics.eval import to_one_hot
 from elk.metrics.roc_auc import roc_auc_ci
 
 # imdb
-root = Path('/home/laurito/elk-reporters/microsoft/deberta-large-mnli/imdb/quizzical-allen/transfer_eval')
+# root = Path('/home/laurito/elk-reporters/microsoft/deberta-large-mnli/imdb/quizzical-allen/transfer_eval')
+# root = Path('/home/wombat_share/laurito/elk_reporters/microsoft/deberta-v2-xxlarge-mnli/super_glue:boolq/nervous-mclean/transfer_eval')
+root = Path('/home/wombat_share/laurito/elk_reporters/huggyllama/llama-13b/imdb/silly-hoover/transfer_eval')
 
 # boolq
 # root = Path('/home/laurito/elk-reporters/microsoft/deberta-large-mnli/imdb/quizzical-allen/transfer_eval')
@@ -50,7 +52,7 @@ for vals in vals_buffers:
     print("layer", vals[0]["layer"], "auroc", auroc)
 
 # only use to find pattern in data
-def get_best_aurocs_indices(aurocs, max=5):
+def get_best_aurocs_indices(aurocs, max=3):
     sorted_indices = sorted(range(len(aurocs)), key=lambda i: aurocs[i].estimate)
     # the best aurocs are at the end of the list
     return sorted_indices[-max:]
@@ -68,3 +70,4 @@ auroc = roc_auc_ci(y_trues[2], y_layer_logits_means[..., 1] - y_layer_logits_mea
 print(auroc)
 
 
+# elk eval "microsoft/deberta-large-mnli/super_glue:boolq/nervous-mclean" microsoft/deberta-large-mnli "super_glue:boolq" --num_gpus 1
