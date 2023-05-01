@@ -83,9 +83,6 @@ class Sweep:
         step = self.hparam_step
         weights = np.arange(0.0, 1.0 + step, step) if step > 0 else [None]
 
-        step = self.hparam_step
-        weights = np.arange(0.0, 1.0 + step, step) if step > 0 else [None]
-
         for i, model in enumerate(self.models):
             print(colorize(f"===== {model} ({i + 1} of {M}) =====", "magenta"))
 
