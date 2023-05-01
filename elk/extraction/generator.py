@@ -30,6 +30,7 @@ class _GeneratorConfig(BuilderConfig):
         new = {}
         for k, v in config_kwargs.get("gen_kwargs", {}).items():
             if k not in ("device_config", "rank", "world_size"):
+                print(f"key {k}: {v}")
                 new[k] = v[0]
         print("new", new)
         config_kwargs["gen_kwargs"] = {
