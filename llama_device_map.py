@@ -32,6 +32,7 @@ def main(args):
     num_gpus = args.num_gpus
     min_gpu_mem = args.min_gpu_mem
     num_threads = args.threads
+    use_8bit = args.use_8bit
 
     cfg = Extract(model=model_str, prompts=PromptConfig(datasets=["imdb"]))
 
@@ -45,7 +46,8 @@ def main(args):
     WORLD_SIZE = num_gpus
 
     print("Instantiating model...")
-    model = instantiate_model(model_str, torch_dtype="auto")
+    used_dtype = torch.float16 if use_8bit else "auto"
+    model = instantiate_model(model_str, torch_dtype=used_dtype, load_in_8bit=use_8bit)
 
     layer_cls = get_transformer_layer_cls(model)
 
@@ -87,12 +89,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_gpus", type=int, default=8, help="Number of GPUs to run on"
     )
-    default_bytes = 20 * 1024 * 1024 * 1024
+    default_bytes = 40 * 1024 * 1024 * 1024
     parser.add_argument(
         "--min_gpu_mem", type=int, default=default_bytes, help="Min GPU memory per GPU"
     )
     parser.add_argument(
         "--threads", type=int, default=2, help="Number of threads to run"
+    )
+    # option of use_8bit with default True
+    parser.add_argument(
+        "--use_8bit", type=bool, default=True, help="Whether to use 8bit"
     )
     args = parser.parse_args()
 
