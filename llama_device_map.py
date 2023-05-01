@@ -3,7 +3,7 @@ import argparse
 import torch
 from accelerate import infer_auto_device_map
 from tqdm import tqdm
-
+import random
 from elk.extraction import PromptConfig
 from elk.extraction.extraction import (
     Extract,
@@ -28,6 +28,8 @@ def main(args):
     input_ids_list = temp_extract_input_ids_cached(
         cfg=cfg, device="cpu", split_type="train"
     ) + temp_extract_input_ids_cached(cfg=cfg, device="cpu", split_type="val")
+    # shuffle to evenly distribute the input ids
+    input_ids_list = random.sample(input_ids_list, len(input_ids_list))
     print("Number of input ids:", len(input_ids_list))
     WORLD_SIZE = num_gpus
 
