@@ -1,4 +1,5 @@
 dataset: ag_news
+binarize: true
 templates:
   24e44a81-a18a-42dd-a71c-5b31b2d2cb39: !Template
     answer_choices: World politics ||| Sports ||| Business ||| Science and technology
