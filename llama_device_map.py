@@ -6,6 +6,7 @@ from threading import Thread
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
 from tqdm import tqdm
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
 from elk.extraction import PromptConfig
 from elk.extraction.extraction import (
@@ -105,8 +106,10 @@ def main(args):
         model = instantiate_model(model_str, torch_dtype=used_dtype)
 
     # Hack to take into account that its 8bit
-    min_gpu_mem * 2 if use_8bit else min_gpu_mem
-    autodevice_map = infer_auto_device_map(model)
+    # min_gpu_mem * 2 if use_8bit else min_gpu_mem
+    dont_split = [LlamaDecoderLayer.__name__]
+    print("Dont split:", dont_split)
+    autodevice_map = infer_auto_device_map(model, no_split_module_classes=dont_split)
     print("Auto device map:", autodevice_map)
 
     device_map_override = (
