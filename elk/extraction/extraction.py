@@ -170,15 +170,13 @@ def extract_hiddens(
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
-    # welcome message on every rank
-    with redirect_stdout(None) if rank != 0 else nullcontext():
-        model = instantiate_model_with_devices(
-            cfg=cfg, device_config=device_config, is_verbose=is_verbose
-        )
-        tokenizer = instantiate_tokenizer(
-            cfg.model, truncation_side="left", verbose=rank == 0
-        )
+
+    model = instantiate_model_with_devices(
+        cfg=cfg, device_config=device_config, is_verbose=is_verbose
+    )
+    tokenizer = instantiate_tokenizer(
+        cfg.model, truncation_side="left", verbose=is_verbose
+    )
 
     is_enc_dec = model.config.is_encoder_decoder
     if is_enc_dec and cfg.use_encoder_states:

@@ -1,3 +1,4 @@
+from contextlib import redirect_stdout, nullcontext
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Type
 
@@ -42,13 +43,16 @@ def instantiate_model_with_devices(
     else:
         torch_dtype = "auto"
     if device_config.is_single_gpu:
-        model = instantiate_model(
-            cfg.model,
-            device_map={"": first_device},
-            load_in_8bit=cfg.int8,
-            torch_dtype=torch_dtype,
-            **kwargs,
-        )
+        # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
+        # welcome message on every rank
+        with redirect_stdout(None) if not is_verbose else nullcontext():
+            model = instantiate_model(
+                cfg.model,
+                device_map={"": first_device},
+                load_in_8bit=cfg.int8,
+                torch_dtype=torch_dtype,
+                **kwargs,
+            )
     else:
         device_map = create_device_map(
             model_str=cfg.model,
@@ -57,13 +61,14 @@ def instantiate_model_with_devices(
             model_devices=device_config,
             verbose=is_verbose,
         )
-        model = instantiate_model(
-            cfg.model,
-            device_map=device_map,
-            load_in_8bit=cfg.int8,
-            torch_dtype=torch_dtype,
-            **kwargs,
-        )
+        with redirect_stdout(None) if not is_verbose else nullcontext():
+            model = instantiate_model(
+                cfg.model,
+                device_map=device_map,
+                load_in_8bit=cfg.int8,
+                torch_dtype=torch_dtype,
+                **kwargs,
+            )
     return model
 
 
