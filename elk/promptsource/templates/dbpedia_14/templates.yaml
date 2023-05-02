@@ -1,4 +1,5 @@
 dataset: dbpedia_14
+binarize: true
 templates:
   00fa401f-3329-48fa-be4a-1b6725292ee6: !Template
     answer_choices: Company ||| Educational Institution ||| Artist ||| Athlete |||
