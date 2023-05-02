@@ -170,9 +170,7 @@ if __name__ == "__main__":
         "--threads", type=int, default=2, help="Number of threads to run"
     )
     # store_true means that if you pass in --use_8bit, it will be True, otherwise False
-    parser.add_argument(
-        "--use_8bit", action="store_true", help="Whether to use 8bit"
-    )
+    parser.add_argument("--use_8bit", action="store_true", help="Whether to use 8bit")
     parser.add_argument(
         "--batch_size", type=int, default=8, help="Batch size for inference"
     )
