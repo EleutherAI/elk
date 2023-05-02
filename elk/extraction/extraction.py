@@ -146,15 +146,15 @@ class Extract(Serializable):
 def extract_hiddens(
     cfg: "Extract",
     *,
-    device_config: ModelDevices,
+    devices: ModelDevices,
     split_type: Literal["train", "val"] = "train",
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterable[dict]:
     first_device = (
-        device_config
-        if not isinstance(device_config, ModelDevices)
-        else device_config.first_device
+        devices
+        if not isinstance(devices, ModelDevices)
+        else devices.first_device
     )
     """Run inference on a model with a set of prompts, yielding the hidden states."""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -171,7 +171,7 @@ def extract_hiddens(
 
 
     model = instantiate_model_with_devices(
-        cfg=cfg, device_config=device_config, is_verbose=is_verbose
+        cfg=cfg, device_config=devices, is_verbose=is_verbose
     )
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=is_verbose
