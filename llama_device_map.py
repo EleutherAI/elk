@@ -5,7 +5,6 @@ from threading import Thread
 
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
-from llama_overwrite import overwrite_30b, overwrite_65b
 from tqdm import tqdm
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
@@ -15,6 +14,7 @@ from elk.extraction.extraction import (
     temp_extract_input_ids_cached,
 )
 from elk.utils import instantiate_model
+from llama_overwrite import overwrite_30b, overwrite_65b
 
 
 def pad_tensors(tensors, device, pad_value=0):
