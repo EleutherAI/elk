@@ -100,6 +100,11 @@ class Extract(Serializable):
     case of encoder-decoder models."""
 
     def __post_init__(self, layer_stride: int):
+        if len(self.datasets) == 0:
+            raise ValueError(
+                "Must specify at least one dataset to extract hiddens from."
+            )
+
         if len(self.max_examples) > 2:
             raise ValueError(
                 "max_examples should be a list of length 0, 1, or 2,"
