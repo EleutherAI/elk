@@ -78,7 +78,6 @@ def main(args):
     use_8bit = args.use_8bit
     batch_size = args.batch_size
     use_llama_override: bool = args.use_llama_override
-    use_torch_compile: bool = args.torch_compile
     print("Batch size:", batch_size)
 
     cfg = Extract(model=model_str, prompts=PromptConfig(datasets=["imdb"]))
@@ -132,7 +131,6 @@ def main(args):
         load_in_8bit=use_8bit,
     )
     time_start = time.time()
-    compiled = torch.compile(model) if use_torch_compile else model
     time_end = time.time()
     # in minutes
     print("Compilation time:", (time_end - time_start) / 60)
@@ -145,7 +143,7 @@ def main(args):
     for i in range(num_threads):
         input_ids_queue = input_ids_chunks[i]
         use_tqdm = i == 0
-        t = Thread(target=inference_worker, args=(compiled, input_ids_queue, use_tqdm))
+        t = Thread(target=inference_worker, args=(model, input_ids_queue, use_tqdm))
         threads.append(t)
         t.start()
 
@@ -176,10 +174,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--batch_size", type=int, default=8, help="Batch size for inference"
-    )
-    # torch compile
-    parser.add_argument(
-        "--torch_compile", type=bool, default=False, help="Whether to torch compile"
     )
     parser.add_argument(
         "--use_llama_override",
