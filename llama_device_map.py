@@ -73,7 +73,6 @@ def inference_worker(
 
 def main(args):
     model_str = args.model
-    num_gpus = args.num_gpus
     min_gpu_mem = args.min_gpu_mem
     num_threads = args.threads
     use_8bit = args.use_8bit
@@ -107,7 +106,7 @@ def main(args):
         model = instantiate_model(model_str, torch_dtype=used_dtype)
 
     # Hack to take into account that its 8bit
-    min_gpu_mem_when_8bit = min_gpu_mem * 2 if use_8bit else min_gpu_mem
+    min_gpu_mem * 2 if use_8bit else min_gpu_mem
     autodevice_map = infer_auto_device_map(model)
     print("Auto device map:", autodevice_map)
 
