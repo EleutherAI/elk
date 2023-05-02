@@ -108,7 +108,10 @@ def main(args):
     # min_gpu_mem * 2 if use_8bit else min_gpu_mem
     dont_split = [LlamaDecoderLayer.__name__]
     print("Dont split:", dont_split)
-    autodevice_map = infer_auto_device_map(model, no_split_module_classes=dont_split)
+    forty_gb = 40 * 1024 * 1024 * 1024
+    autodevice_map = infer_auto_device_map(
+        model, no_split_module_classes=dont_split, max_memory={0: forty_gb, 1: forty_gb}
+    )
     print("Auto device map:", autodevice_map)
 
     device_map_override = (
