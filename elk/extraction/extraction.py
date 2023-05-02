@@ -344,7 +344,11 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
 
     ds_features = assert_type(Features, info.features)
     label_col = prompter.label_column or infer_label_column(ds_features)
-    num_classes = 2 if cfg.binarize else infer_num_classes(ds_features[label_col])
+    num_classes = (
+        2
+        if cfg.binarize or prompter.binarize
+        else infer_num_classes(ds_features[label_col])
+    )
 
     num_variants = cfg.num_variants
     if num_variants < 0:
