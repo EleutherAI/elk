@@ -45,10 +45,10 @@ from .dataset_name import (
     parse_dataset_string,
 )
 from .generator import _GeneratorBuilder
-from .llama.device_configs import (
-    ModelDevices,
+from ..utils.multi_gpu import (
     instantiate_model_with_devices,
     select_devices_multi_gpus,
+    ModelDevices,
 )
 from .prompt_loading import load_prompts
 

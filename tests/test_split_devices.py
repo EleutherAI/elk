@@ -1,17 +1,4 @@
-from elk.extraction.llama.device_configs import ModelDevices
-
-
-def split_devices_into_model_devices(
-    devices: list[str], gpus_per_model: int, models_to_create: int
-) -> list[ModelDevices]:
-    assert len(devices) >= gpus_per_model * models_to_create
-    configs = []
-    while len(configs) < models_to_create:
-        first_device = devices.pop(0)
-        other_devices = devices[: gpus_per_model - 1]
-        devices = devices[gpus_per_model - 1 :]
-        configs.append(ModelDevices(first_device, other_devices))
-    return configs
+from elk.utils.multi_gpu import ModelDevices, split_devices_into_model_devices
 
 
 def test_split_2_devices_1_gpu_per_model():

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Type, Dict
+from typing import Type, TYPE_CHECKING
 
 import torch
 from accelerate import init_empty_weights, infer_auto_device_map
@@ -9,7 +9,6 @@ from transformers import PreTrainedModel
 
 from elk.utils import instantiate_model, select_usable_devices
 from elk.utils.gpu_utils import get_available_memory_for_devices
-from tests.test_split_devices import split_devices_into_model_devices
 
 if TYPE_CHECKING:
     from elk import Extract
@@ -30,44 +29,42 @@ class ModelDevices:
         return [self.first_device] + self.other_devices
 
 
-def select_devices_multi_gpus(
-    gpus_per_model: int,
-    num_gpus: int,
-    min_memory: int | None = None,
-) -> list[ModelDevices]:
-    if gpus_per_model == 1:
-        devices = select_usable_devices(num_gpus, min_memory=min_memory)
-        return [
-            ModelDevices(first_device=devices, other_devices=[]) for devices in devices
-        ]
+def instantiate_model_with_devices(
+    cfg: "Extract", device_config: ModelDevices, is_verbose: bool, **kwargs
+) -> PreTrainedModel:
+    is_llama_65b = isinstance(device_config, ModelDevices)
+    first_device = device_config.first_device if is_llama_65b else device_config
+    if cfg.int8:
+        # Required by `bitsandbytes`
+        torch_dtype = torch.float16
+    elif device_config == "cpu":
+        torch_dtype = torch.float32
     else:
-        # how many models can we create?
-        models_to_create = num_gpus // gpus_per_model
-        print(
-            f"Will instantiate {models_to_create} models with {gpus_per_model} GPUs each"
+        torch_dtype = "auto"
+    if device_config.is_single_gpu:
+        model = instantiate_model(
+            cfg.model,
+            device_map={"": first_device},
+            load_in_8bit=cfg.int8,
+            torch_dtype=torch_dtype,
+            **kwargs,
         )
-        devices = select_usable_devices(num_gpus, min_memory=min_memory)
-        configs = split_devices_into_model_devices(
-            devices=devices,
-            gpus_per_model=gpus_per_model,
-            models_to_create=models_to_create,
+    else:
+        device_map = create_device_map(
+            model_str=cfg.model,
+            use_8bit=cfg.int8,
+            torch_dtype=torch_dtype,
+            model_devices=device_config,
+            verbose=is_verbose,
         )
-        print(f"Models will be instantiated on {configs}")
-        return configs
-
-
-def get_transformer_layer_cls(model: torch.nn.Module) -> Type[torch.nn.Module] | None:
-    """Get the class of the transformer layer used by the given model."""
-    total_params = sum(p.numel() for p in model.parameters())
-    for module in model.modules():
-        if isinstance(module, torch.nn.ModuleList):
-            module_params = sum(p.numel() for p in module.parameters())
-            if module_params > total_params / 2:
-                type_of_cls = type(module[0])
-                print(f"Found transformer layer of type {type_of_cls}")
-                return type_of_cls
-
-    return None
+        model = instantiate_model(
+            cfg.model,
+            device_map=device_map,
+            load_in_8bit=cfg.int8,
+            torch_dtype=torch_dtype,
+            **kwargs,
+        )
+    return model
 
 
 def create_device_map(
@@ -128,39 +125,54 @@ def create_device_map(
     return autodevice_map
 
 
-def instantiate_model_with_devices(
-    cfg: "Extract", device_config: ModelDevices, is_verbose: bool, **kwargs
-) -> PreTrainedModel:
-    is_llama_65b = isinstance(device_config, ModelDevices)
-    first_device = device_config.first_device if is_llama_65b else device_config
-    if cfg.int8:
-        # Required by `bitsandbytes`
-        torch_dtype = torch.float16
-    elif device_config == "cpu":
-        torch_dtype = torch.float32
+def select_devices_multi_gpus(
+    gpus_per_model: int,
+    num_gpus: int,
+    min_memory: int | None = None,
+) -> list[ModelDevices]:
+    if gpus_per_model == 1:
+        devices = select_usable_devices(num_gpus, min_memory=min_memory)
+        return [
+            ModelDevices(first_device=devices, other_devices=[]) for devices in devices
+        ]
     else:
-        torch_dtype = "auto"
-    if device_config.is_single_gpu:
-        model = instantiate_model(
-            cfg.model,
-            device_map={"": first_device},
-            load_in_8bit=cfg.int8,
-            torch_dtype=torch_dtype,
-            **kwargs,
+        # how many models can we create?
+        models_to_create = num_gpus // gpus_per_model
+        print(
+            f"Will instantiate {models_to_create} models with {gpus_per_model} GPUs each"
         )
-    else:
-        device_map = create_device_map(
-            model_str=cfg.model,
-            use_8bit=cfg.int8,
-            torch_dtype=torch_dtype,
-            model_devices=device_config,
-            verbose=is_verbose,
+        devices = select_usable_devices(num_gpus, min_memory=min_memory)
+        configs = split_devices_into_model_devices(
+            devices=devices,
+            gpus_per_model=gpus_per_model,
+            models_to_create=models_to_create,
         )
-        model = instantiate_model(
-            cfg.model,
-            device_map=device_map,
-            load_in_8bit=cfg.int8,
-            torch_dtype=torch_dtype,
-            **kwargs,
-        )
-    return model
+        print(f"Models will be instantiated on {configs}")
+        return configs
+
+
+def get_transformer_layer_cls(model: torch.nn.Module) -> Type[torch.nn.Module] | None:
+    """Get the class of the transformer layer used by the given model."""
+    total_params = sum(p.numel() for p in model.parameters())
+    for module in model.modules():
+        if isinstance(module, torch.nn.ModuleList):
+            module_params = sum(p.numel() for p in module.parameters())
+            if module_params > total_params / 2:
+                type_of_cls = type(module[0])
+                print(f"Found transformer layer of type {type_of_cls}")
+                return type_of_cls
+
+    return None
+
+
+def split_devices_into_model_devices(
+    devices: list[str], gpus_per_model: int, models_to_create: int
+) -> list[ModelDevices]:
+    assert len(devices) >= gpus_per_model * models_to_create
+    configs = []
+    while len(configs) < models_to_create:
+        first_device = devices.pop(0)
+        other_devices = devices[: gpus_per_model - 1]
+        devices = devices[gpus_per_model - 1 :]
+        configs.append(ModelDevices(first_device, other_devices))
+    return configs
