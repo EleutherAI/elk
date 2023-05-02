@@ -3,6 +3,7 @@
 import os
 import time
 import warnings
+from functools import cache
 
 import pynvml
 import torch
@@ -10,6 +11,13 @@ import torch
 from .typing import assert_type
 
 
+# We cache the results primarily so that we don't display "Using N of M GPUs..."
+# multiple times during the same run. This does sort of assume that once we identify
+# a GPU as being available, it will remain available for the duration of the run.
+# This seems to be a reasonable assumption because PyTorch tends to hold onto VRAM
+# for later use once it's been allocated. Calling torch.cuda.empty_cache() might break
+# this assumption, but we never do that.
+@cache
 def select_usable_devices(
     num_gpus: int = -1, *, min_memory: int | None = None
 ) -> list[str]:

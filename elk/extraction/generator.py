@@ -58,8 +58,6 @@ class _GeneratorBuilder(GeneratorBasedBuilder):
 
     def __init__(
         self,
-        builder_name: str | None,
-        config_name: str | None,
         split_name: str,
         split_info: SplitInfo,
         **kwargs,
@@ -68,11 +66,6 @@ class _GeneratorBuilder(GeneratorBasedBuilder):
         self.split_info = split_info
 
         super().__init__(**kwargs)
-
-        # Weirdly we need to set DatasetInfo.builder_name and DatasetInfo.config_name
-        # here, not in _info, because super().__init__ modifies them
-        self.info.builder_name = builder_name
-        self.info.config_name = config_name
 
     def _info(self):
         # Use the same builder and config name as the original builder

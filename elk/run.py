@@ -22,10 +22,11 @@ from .extraction import Extract, extract
 from .extraction.dataset_name import DatasetDictWithName
 from .files import elk_reporter_dir, memorably_named_dir
 from .utils import (
+    Color,
     assert_type,
-    get_layers,
+    get_layer_indices,
     int16_to_float32,
-    select_train_val_splits,
+    select_split,
     select_usable_devices,
 )
 
@@ -49,7 +50,11 @@ class Run(ABC, Serializable):
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
 
-    def execute(self, highlight_color: str = "cyan"):
+    def execute(
+        self,
+        highlight_color: Color = "cyan",
+        split_type: Literal["train", "val", None] = None,
+    ):
         self.datasets = [
             extract(
                 cfg,
@@ -57,6 +62,7 @@ class Run(ABC, Serializable):
                 highlight_color=highlight_color,
                 num_gpus=self.num_gpus,
                 min_gpu_mem=self.min_gpu_mem,
+                split_type=split_type,
             )
             for cfg in self.data.explode()
         ]
@@ -64,7 +70,7 @@ class Run(ABC, Serializable):
         if self.out_dir is None:
             # Save in a memorably-named directory inside of
             # ELK_REPORTER_DIR/<model_name>/<dataset_name>
-            ds_name = ", ".join(self.data.prompts.datasets)
+            ds_name = "+".join(self.data.datasets)
             root = elk_reporter_dir() / self.data.model / ds_name
 
             self.out_dir = memorably_named_dir(root)
@@ -121,8 +127,7 @@ class Run(ABC, Serializable):
         out = {}
 
         for ds_name, ds in self.datasets:
-            train_name, val_name = select_train_val_splits(ds)
-            key = train_name if split_type == "train" else val_name
+            key = select_split(ds, split_type)
 
             split = ds[key].with_format("torch", device=device, dtype=torch.int16)
             labels = assert_type(Tensor, split["label"])
@@ -158,7 +163,7 @@ class Run(ABC, Serializable):
         """
         self.out_dir = assert_type(Path, self.out_dir)
 
-        layers, *rest = [get_layers(ds) for _, ds in self.datasets]
+        layers, *rest = [get_layer_indices(ds) for _, ds in self.datasets]
         assert all(x == layers for x in rest), "All datasets must have the same layers"
 
         if self.concatenated_layer_offset > 0:
@@ -176,7 +181,7 @@ class Run(ABC, Serializable):
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
-                    df = pd.concat(dfs).sort_values(by="layer")
+                    df = pd.concat(dfs).sort_values(by=["layer", "ensembling"])
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)

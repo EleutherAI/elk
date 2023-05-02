@@ -10,19 +10,17 @@ requires-python = ">=3.10"
 keywords = ["nlp", "interpretability", "language-models", "explainable-ai"]
 license = {text = "MIT License"}
 dependencies = [
+    # Allows us to use device_map in from_pretrained. Also needed for 8bit
+    "accelerate",
     # Added distributed.split_dataset_by_node for IterableDatasets
     "datasets>=2.9.0",
     "einops",
     # Introduced numpy.typing module
     "numpy>=1.20.0",
-    # This version is old, but it's needed for certain HF tokenizers to work.
-    "protobuf==3.20.*",
     # For logging. Indirectly required by datasets, but just to be safe we specify it here.
     "pandas",
     # Basically any version should work as long as it supports the user's CUDA version
     "pynvml",
-    # Needed for certain HF tokenizers
-    "sentencepiece==0.1.97",
     # We upstreamed bugfixes for Literal types in 0.1.1
     "simple-parsing>=0.1.1",
     # Version 1.11 introduced Fully Sharded Data Parallel, which we plan to use soon
@@ -41,8 +39,11 @@ dev = [
     "hypothesis",
     "pre-commit",
     "pytest",
-    "pyright",
+    "pyright==1.1.304",
     "scikit-learn",
+]
+8bit = [
+    "bitsandbytes",
 ]
 
 [project.scripts]

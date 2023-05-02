@@ -80,7 +80,7 @@ class CcsReporterConfig(ReporterConfig):
 
 
 class CcsReporter(Reporter):
-    """An ELK reporter network.
+    """CCS reporter network.
 
     Args:
         in_features: The number of input features.
@@ -106,8 +106,16 @@ class CcsReporter(Reporter):
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
-        self.neg_norm = Normalizer((in_features,), device=device, dtype=dtype)
-        self.pos_norm = Normalizer((in_features,), device=device, dtype=dtype)
+        self.neg_norm = Normalizer(
+            (in_features,),
+            device=device,
+            dtype=dtype,
+        )
+        self.pos_norm = Normalizer(
+            (in_features,),
+            device=device,
+            dtype=dtype,
+        )
 
         self.probe = nn.Sequential(
             nn.Linear(
@@ -229,6 +237,17 @@ class CcsReporter(Reporter):
 
     def forward(self, x: Tensor) -> Tensor:
         """Return the raw score output of the probe on `x`."""
+        assert x.shape[-2] == 2, "Probe input must be a contrast pair"
+
+        # Apply normalization
+        x0, x1 = x.unbind(-2)
+        x0, x1 = self.neg_norm(x0), self.pos_norm(x1)
+        x = torch.stack([x0, x1], dim=-2)
+
+        return self.raw_forward(x)
+
+    def raw_forward(self, x: Tensor) -> Tensor:
+        """Apply the probe to the provided input, without normalization."""
         return self.probe(x).mul(self.scale).add(self.bias).squeeze(-1)
 
     def loss(
@@ -294,10 +313,11 @@ class CcsReporter(Reporter):
             ValueError: If `optimizer` is not "adam" or "lbfgs".
             RuntimeError: If the best loss is not finite.
         """
-        x_pos, x_neg = hiddens.unbind(2)
+        x_neg, x_pos = hiddens.unbind(2)
         # Fit normalizers
-        self.pos_norm.fit(x_pos)
         self.neg_norm.fit(x_neg)
+        self.pos_norm.fit(x_pos)
+        x_neg, x_pos = self.neg_norm(x_neg), self.pos_norm(x_pos)
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf
@@ -313,9 +333,9 @@ class CcsReporter(Reporter):
                 self.probe[0].weight.data = V[:, -1, None].T
 
             if self.config.optimizer == "lbfgs":
-                loss = self.train_loop_lbfgs(x_pos, x_neg, labels)
+                loss = self.train_loop_lbfgs(x_neg, x_pos, labels)
             elif self.config.optimizer == "adam":
-                loss = self.train_loop_adam(x_pos, x_neg, labels)
+                loss = self.train_loop_adam(x_neg, x_pos, labels)
             else:
                 raise ValueError(f"Optimizer {self.config.optimizer} is not supported")
 
@@ -345,7 +365,8 @@ class CcsReporter(Reporter):
         for _ in range(self.config.num_epochs):
             optimizer.zero_grad()
 
-            loss = self.loss(self(x_pos), self(x_neg), labels)
+            # We already normalized in fit()
+            loss = self.loss(self.raw_forward(x_neg), self.raw_forward(x_pos), labels)
             loss.backward()
             optimizer.step()
 
@@ -373,7 +394,8 @@ class CcsReporter(Reporter):
             nonlocal loss
             optimizer.zero_grad()
 
-            loss = self.loss(self(x_pos), self(x_neg), labels)
+            # We already normalized in fit()
+            loss = self.loss(self.raw_forward(x_neg), self.raw_forward(x_pos), labels)
             regularizer = 0.0
 
             # We explicitly add L2 regularization to the loss, since LBFGS

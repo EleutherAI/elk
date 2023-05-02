@@ -78,8 +78,8 @@ class Elicit(Run):
             x0, x1 = first_train_h.unbind(2)
             val_x0, val_x1 = val_h.unbind(2)
             pseudo_auroc = reporter.check_separability(
-                train_pair=(reporter.neg_norm(x0), reporter.pos_norm(x1)),
-                val_pair=(reporter.neg_norm(val_x0), reporter.pos_norm(val_x1)),
+                train_pair=(x0, x1),
+                val_pair=(val_x0, val_x1),
             )
 
             (_, v, k, _) = first_train_h.shape
@@ -134,24 +134,35 @@ class Elicit(Run):
         for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
             meta = {"dataset": ds_name, "layer": layer}
 
-            val_result = evaluate_preds(val_gt, reporter(val_h))
-            row_bufs["eval"].append(
-                {
-                    **meta,
-                    "pseudo_auroc": pseudo_auroc,
-                    "train_loss": train_loss,
-                    **val_result.to_dict(),
-                }
-            )
-
-            if val_lm_preds is not None:
-                lm_result = evaluate_preds(val_gt, val_lm_preds)
-                row_bufs["lm_eval"].append({**meta, **lm_result.to_dict()})
-
-            for i, model in enumerate(lr_models):
-                lr_result = evaluate_preds(val_gt, model(val_h))
-                row_bufs["lr_eval"].append(
-                    {"inlp_iter": i, **meta, **lr_result.to_dict()}
+            val_credences = reporter(val_h)
+            for mode in ("none", "partial", "full"):
+                row_bufs["eval"].append(
+                    {
+                        **meta,
+                        "ensembling": mode,
+                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        "pseudo_auroc": pseudo_auroc,
+                        "train_loss": train_loss,
+                    }
                 )
+
+                if val_lm_preds is not None:
+                    row_bufs["lm_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                        }
+                    )
+
+                for i, model in enumerate(lr_models):
+                    row_bufs["lr_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            "inlp_iter": i,
+                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                        }
+                    )
 
         return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
