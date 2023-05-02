@@ -54,7 +54,10 @@ class Sweep:
                     "super_glue:rte",
                 ]
             )
-            print("Interpreting `burns` as all datasets used in Burns et al. (2022)")
+            print(
+                "Interpreting `burns` as all datasets used in Burns et al. (2022) "
+                "available on the HuggingFace Hub"
+            )
 
         # Remove duplicates just in case
         self.datasets = sorted(set(self.datasets))
