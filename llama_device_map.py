@@ -5,6 +5,7 @@ from threading import Thread
 
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
+from llama_overwrite import overwrite_30b, overwrite_65b
 from tqdm import tqdm
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
@@ -14,7 +15,6 @@ from elk.extraction.extraction import (
     temp_extract_input_ids_cached,
 )
 from elk.utils import instantiate_model
-from llama_overwrite import overwrite_30b, overwrite_65b
 
 
 def pad_tensors(tensors, device, pad_value=0):
@@ -100,17 +100,30 @@ def main(args):
     print("Instantiating model...")
     used_dtype = torch.float16 if use_8bit else "auto"
 
+    if use_8bit:
+        print("Using 8bit")
+    else:
+        print("Using 16bit")
     with init_empty_weights():
         # Kinda dumb but you need to first insantiate on the CPU to get the layer class
-        model = instantiate_model(model_str, torch_dtype=used_dtype)
+        model = instantiate_model(model_str, torch_dtype=used_dtype, device_map={"": 0})
 
     # Hack to take into account that its 8bit
     # min_gpu_mem * 2 if use_8bit else min_gpu_mem
     dont_split = [LlamaDecoderLayer.__name__]
     print("Dont split:", dont_split)
     forty_gb = 40 * 1024 * 1024 * 1024
+
+    max_memory = (
+        {0: forty_gb, 1: forty_gb}
+        if not use_8bit
+        # this is a hack since infer_auto_device_map doesn't detect 8bit
+        # even if we load it in 8bit
+        # for big models, it'll start allocating to disk
+        else {0: forty_gb * 2, 1: forty_gb * 2}
+    )
     autodevice_map = infer_auto_device_map(
-        model, no_split_module_classes=dont_split, max_memory={0: forty_gb, 1: forty_gb}
+        model, no_split_module_classes=dont_split, max_memory=max_memory
     )
     print("Auto device map:", autodevice_map)
 
