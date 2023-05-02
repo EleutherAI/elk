@@ -117,9 +117,9 @@ def main(args):
     max_memory = (
         {0: forty_gb, 1: forty_gb}
         if not use_8bit
-        # this is a hack since infer_auto_device_map doesn't detect 8bit
-        # even if we load it in 8bit
-        # for big models, it'll start allocating to disk
+        # this is a hack since infer_auto_device_map can't detect
+        # that we're using 8bit, since we inited an empty model
+        # to analyse.
         else {0: forty_gb * 2, 1: forty_gb * 2}
     )
     autodevice_map = infer_auto_device_map(

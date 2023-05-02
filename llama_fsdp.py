@@ -50,7 +50,7 @@ def run_inference(
         sync_module_states=False,
         limit_all_gathers=False,
         forward_prefetch=True,
-        strategy=strategy,
+        sharding_strategy=strategy,
     )
 
     if rank == 0:
