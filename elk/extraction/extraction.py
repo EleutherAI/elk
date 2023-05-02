@@ -40,16 +40,16 @@ from ..utils import (
     select_split,
     select_train_val_splits,
 )
+from ..utils.multi_gpu import (
+    ModelDevices,
+    instantiate_model_with_devices,
+    select_devices_multi_gpus,
+)
 from .dataset_name import (
     DatasetDictWithName,
     parse_dataset_string,
 )
 from .generator import _GeneratorBuilder
-from ..utils.multi_gpu import (
-    instantiate_model_with_devices,
-    select_devices_multi_gpus,
-    ModelDevices,
-)
 from .prompt_loading import load_prompts
 
 

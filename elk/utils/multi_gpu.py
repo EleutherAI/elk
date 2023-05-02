@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from typing import Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Type
 
 import torch
-from accelerate import init_empty_weights, infer_auto_device_map
+from accelerate import infer_auto_device_map, init_empty_weights
 from torch import dtype
 from torch.nn import Module
 from transformers import PreTrainedModel
@@ -139,7 +139,8 @@ def select_devices_multi_gpus(
         # how many models can we create?
         models_to_create = num_gpus // gpus_per_model
         print(
-            f"Will instantiate {models_to_create} models with {gpus_per_model} GPUs each"
+            f"Allocating devices for {models_to_create} models with {gpus_per_model}"
+            f" GPUs each"
         )
         devices = select_usable_devices(num_gpus, min_memory=min_memory)
         configs = split_devices_into_model_devices(

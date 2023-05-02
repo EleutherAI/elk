@@ -4,7 +4,6 @@ import os
 import time
 import warnings
 from functools import cache
-from typing import TypeVar, Mapping
 
 import pynvml
 import torch

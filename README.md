@@ -38,6 +38,17 @@ The following runs `elicit` on the Cartesian product of the listed models and da
 elk sweep --models gpt2-{medium,large,xl} --datasets imdb amazon_polarity --add_pooled
 ```
 
+## Running big models
+For big models that cannot fit on a single gpu, you'll need to use multiple
+gpus per model.
+
+This is an example to run a single 8bit llama-65b model on 2 A40s that have
+~50 GB of memory each.
+ 
+```
+elk elicit huggyllama/llama-65b imdb --num_gpus 2 --gpus_per_model 2
+```
+
 ## Caching
 
 The hidden states resulting from `elk elicit` are cached as a HuggingFace dataset to avoid having to recompute them every time we want to train a probe. The cache is stored in the same place as all other HuggingFace datasets, which is usually `~/.cache/huggingface/datasets`.
