@@ -1,4 +1,4 @@
-from contextlib import redirect_stdout, nullcontext
+from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Type
 
@@ -33,8 +33,7 @@ class ModelDevices:
 def instantiate_model_with_devices(
     cfg: "Extract", device_config: ModelDevices, is_verbose: bool, **kwargs
 ) -> PreTrainedModel:
-    is_llama_65b = isinstance(device_config, ModelDevices)
-    first_device = device_config.first_device if is_llama_65b else device_config
+    first_device = device_config.first_device
     if cfg.int8:
         # Required by `bitsandbytes`
         torch_dtype = torch.float16
@@ -54,6 +53,8 @@ def instantiate_model_with_devices(
                 **kwargs,
             )
     else:
+        if is_verbose:
+            print(f"Instantiating the model on multiple GPUs: {device_config.used_devices}")
         device_map = create_device_map(
             model_str=cfg.model,
             use_8bit=cfg.int8,

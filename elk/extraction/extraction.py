@@ -1,7 +1,6 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
-from contextlib import nullcontext, redirect_stdout
 from dataclasses import InitVar, dataclass, replace
 from itertools import islice, zip_longest
 from typing import Any, Iterable, Literal
