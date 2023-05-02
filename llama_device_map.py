@@ -78,6 +78,7 @@ def main(args):
     num_threads = args.threads
     use_8bit = args.use_8bit
     batch_size = args.batch_size
+    use_llama_override: bool = args.use_llama_override
     use_torch_compile: bool = args.torch_compile
     print("Batch size:", batch_size)
 
@@ -107,20 +108,18 @@ def main(args):
 
     # Hack to take into account that its 8bit
     min_gpu_mem_when_8bit = min_gpu_mem * 2 if use_8bit else min_gpu_mem
-    autodevice_map = infer_auto_device_map(
-        model,
-        max_memory={
-            rank: min_gpu_mem_when_8bit if rank != 0 else min_gpu_mem_when_8bit / 2
-            for rank in range(num_gpus)
-        },
-    )
+    autodevice_map = infer_auto_device_map(model)
     print("Auto device map:", autodevice_map)
 
     device_map_override = (
-        overwrite_30b
-        if "30b" in model_str
-        else overwrite_65b
-        if "65b" in model_str
+        (
+            overwrite_30b
+            if "30b" in model_str
+            else overwrite_65b
+            if "65b" in model_str
+            else {}
+        )
+        if use_llama_override
         else {}
     )
 
@@ -182,6 +181,12 @@ if __name__ == "__main__":
     # torch compile
     parser.add_argument(
         "--torch_compile", type=bool, default=False, help="Whether to torch compile"
+    )
+    parser.add_argument(
+        "--use_llama_override",
+        type=bool,
+        default=False,
+        help="Whether to torch compile",
     )
     args = parser.parse_args()
 
