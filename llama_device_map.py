@@ -122,7 +122,7 @@ def main(args):
         else {}
     )
 
-    autodevice_map["lm_head"] = 0
+    # autodevice_map["lm_head"] = 0
     print("Device map overwrite:", device_map_override)
     # Then instantiate on the GPU
     model = instantiate_model(
