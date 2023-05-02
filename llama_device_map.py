@@ -169,17 +169,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--threads", type=int, default=2, help="Number of threads to run"
     )
+    # store_true means that if you pass in --use_8bit, it will be True, otherwise False
     parser.add_argument(
-        "--use_8bit", type=bool, default=True, help="Whether to use 8bit"
+        "--use_8bit", action="store_true", help="Whether to use 8bit"
     )
     parser.add_argument(
         "--batch_size", type=int, default=8, help="Batch size for inference"
     )
+    # store_true means that if you pass in --use_llama_override, it will be True, otherwise False
     parser.add_argument(
         "--use_llama_override",
-        type=bool,
-        default=False,
-        help="Whether to torch compile",
+        action="store_true",
+        help="Whether to use llama override",
     )
     args = parser.parse_args()
 
