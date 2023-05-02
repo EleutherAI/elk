@@ -61,5 +61,5 @@ def test_projection():
 
     # But it should learn something before the projection
     real_lr = LogisticRegression().fit(X, Y)
-    beta = torch.from_numpy(real_lr.coef_).float()
+    beta = torch.from_numpy(real_lr.coef_)
     assert not torch.allclose(beta, torch.zeros_like(beta))
