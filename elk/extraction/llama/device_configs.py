@@ -1,84 +1,166 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Type, Dict
 
 import torch
+from accelerate import init_empty_weights, infer_auto_device_map
+from torch import dtype
+from torch.nn import Module
 from transformers import PreTrainedModel
 
-from elk.extraction.llama.device_map import get_llama_65b_8bit_device_map
 from elk.utils import instantiate_model, select_usable_devices
+from elk.utils.gpu_utils import get_available_memory_for_devices
+from tests.test_split_devices import split_devices_into_model_devices
 
 if TYPE_CHECKING:
     from elk import Extract
 
 
 @dataclass
-class Llama65bDeviceConfig:
+class ModelDevices:
+    # The devices to instantiate a single model on
     first_device: str
-    second_device: str
+    other_devices: list[str]
+
+    @property
+    def is_single_gpu(self) -> bool:
+        return len(self.other_devices) == 0
+
+    @property
+    def used_devices(self) -> list[str]:
+        return [self.first_device] + self.other_devices
 
 
-def select_devices_or_llama_65b_configs(
-    model_name: str,
+def select_devices_multi_gpus(
+    gpus_per_model: int,
     num_gpus: int,
     min_memory: int | None = None,
-) -> Sequence[str | Llama65bDeviceConfig]:
-    if "llama-65b" not in model_name:
-        return select_usable_devices(num_gpus, min_memory=min_memory)
+) -> list[ModelDevices]:
+    if gpus_per_model == 1:
+        devices = select_usable_devices(num_gpus, min_memory=min_memory)
+        return [
+            ModelDevices(first_device=devices, other_devices=[]) for devices in devices
+        ]
     else:
+        # how many models can we create?
+        models_to_create = num_gpus // gpus_per_model
         print(
-            "You've selected a llama-65b model, which requires at least two GPUs."
-            "Each GPU must have at least 40 GiB of memory."
+            f"Will instantiate {models_to_create} models with {gpus_per_model} GPUs each"
         )
-        print("Note that we will force the model to use 8-bit")
-        assert num_gpus >= 2, "llama-65b models require at least two GPUs"
-        # how many pairs of 2 gpus are specified?
-        num_pairs = num_gpus // 2
-        print(f"Will create {num_pairs} llama workers ")
-        forty_gb = 42_949_672_960
-        devices = select_usable_devices(num_gpus, min_memory=forty_gb)
-        # split the devices into pairs
-        configs = []
-        while len(configs) < num_pairs:
-            first_device = devices.pop()
-            second_device = devices.pop()
-            configs.append(
-                Llama65bDeviceConfig(
-                    first_device=first_device, second_device=second_device
-                )
-            )
-        print(f"Created {len(configs)} llama workers")
-
+        devices = select_usable_devices(num_gpus, min_memory=min_memory)
+        configs = split_devices_into_model_devices(
+            devices=devices,
+            gpus_per_model=gpus_per_model,
+            models_to_create=models_to_create,
+        )
+        print(f"Models will be instantiated on {configs}")
         return configs
 
 
-def instantiate_model_or_llama(
-    cfg: "Extract", device_config: str | Llama65bDeviceConfig, **kwargs
+def get_transformer_layer_cls(model: torch.nn.Module) -> Type[torch.nn.Module] | None:
+    """Get the class of the transformer layer used by the given model."""
+    total_params = sum(p.numel() for p in model.parameters())
+    for module in model.modules():
+        if isinstance(module, torch.nn.ModuleList):
+            module_params = sum(p.numel() for p in module.parameters())
+            if module_params > total_params / 2:
+                type_of_cls = type(module[0])
+                print(f"Found transformer layer of type {type_of_cls}")
+                return type_of_cls
+
+    return None
+
+
+def create_device_map(
+    model_str: str,
+    use_8bit: float,
+    torch_dtype: dtype | str,
+    model_devices: ModelDevices,
+    verbose: bool,
+) -> dict[str, str]:
+    """Creates a device map for a model running on multiple GPUs."""
+    with init_empty_weights():
+        # Need to first instantiate an empty model to get the layer class
+        model = instantiate_model(model_str=model_str, torch_dtype=torch_dtype)
+
+    # e.g. {"cuda:0": 16000, "cuda:1": 16000}
+    max_memory_all_devices: dict[str, int] = get_available_memory_for_devices()
+    # now let's get the available memory for the devices we want to use
+    used_devices = model_devices.used_devices
+    max_memory_used_devices: dict[str, int | float] = {
+        device: max_memory_all_devices[device] for device in used_devices
+    }
+    # Decrease the memory potentially used by the first device
+    # because we're going to create additional tensors on it
+    max_memory_used_devices[model_devices.first_device] = (
+        max_memory_used_devices[model_devices.first_device] * 0.9
+    )
+    # If 8bit, multiply the memory by 2
+    # This is because we instantiated our empty model in (probably) float16
+    # We aren't able to instantiate an empty model in 8bit currently
+    max_memory_used_devices = (
+        {
+            device: max_memory_used_devices[device] * 2
+            for device in max_memory_used_devices
+        }
+        if use_8bit
+        else max_memory_used_devices
+    )
+
+    """
+    Make sure that the transformer layer is not split
+    because that contains residual connections
+    See https://huggingface.co/docs/accelerate/usage_guides/big_modeling
+    Otherwise we get an error like this:
+    RuntimeError: Expected all tensors to be on the same device,
+    but found at least two devices, cuda:0 and cuda1
+    """
+    maybe_transformer_class: Type[Module] | None = get_transformer_layer_cls(model)
+    dont_split = [maybe_transformer_class.__name__] if maybe_transformer_class else []
+    autodevice_map = infer_auto_device_map(
+        model, no_split_module_classes=dont_split, max_memory=max_memory_used_devices
+    )
+    if verbose:
+        print(f"Autodevice map: {autodevice_map}")
+    assert "disk" not in autodevice_map.values(), (
+        f"Unable to fit the model {model} into the given memory for {used_devices}."
+        f" Try increasing gpus_per_model?"
+    )
+    return autodevice_map
+
+
+def instantiate_model_with_devices(
+    cfg: "Extract", device_config: ModelDevices, is_verbose: bool, **kwargs
 ) -> PreTrainedModel:
-    is_llama_65b = isinstance(device_config, Llama65bDeviceConfig)
+    is_llama_65b = isinstance(device_config, ModelDevices)
     first_device = device_config.first_device if is_llama_65b else device_config
-    if cfg.int8 or is_llama_65b:
+    if cfg.int8:
         # Required by `bitsandbytes`
-        dtype = torch.float16
+        torch_dtype = torch.float16
     elif device_config == "cpu":
-        dtype = torch.float32
+        torch_dtype = torch.float32
     else:
-        dtype = "auto"
-    if not is_llama_65b:
+        torch_dtype = "auto"
+    if device_config.is_single_gpu:
         model = instantiate_model(
             cfg.model,
             device_map={"": first_device},
             load_in_8bit=cfg.int8,
-            torch_dtype=dtype,
+            torch_dtype=torch_dtype,
             **kwargs,
         )
     else:
+        device_map = create_device_map(
+            model_str=cfg.model,
+            use_8bit=cfg.int8,
+            torch_dtype=torch_dtype,
+            model_devices=device_config,
+            verbose=is_verbose,
+        )
         model = instantiate_model(
             cfg.model,
-            device_map=get_llama_65b_8bit_device_map(
-                first_device=first_device, second_device=device_config.second_device
-            ),
-            load_in_8bit=True,
-            torch_dtype=dtype,
+            device_map=device_map,
+            load_in_8bit=cfg.int8,
+            torch_dtype=torch_dtype,
             **kwargs,
         )
     return model

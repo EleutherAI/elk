@@ -46,9 +46,9 @@ from .dataset_name import (
 )
 from .generator import _GeneratorBuilder
 from .llama.device_configs import (
-    Llama65bDeviceConfig,
-    instantiate_model_or_llama,
-    select_devices_or_llama_65b_configs,
+    ModelDevices,
+    instantiate_model_with_devices,
+    select_devices_multi_gpus,
 )
 from .prompt_loading import load_prompts
 
@@ -147,21 +147,23 @@ class Extract(Serializable):
 def extract_hiddens(
     cfg: "Extract",
     *,
-    device_config: str | Llama65bDeviceConfig = "cpu",
+    device_config: ModelDevices,
     split_type: Literal["train", "val"] = "train",
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterable[dict]:
-    device = (
+    first_device = (
         device_config
-        if not isinstance(device_config, Llama65bDeviceConfig)
+        if not isinstance(device_config, ModelDevices)
         else device_config.first_device
     )
     """Run inference on a model with a set of prompts, yielding the hidden states."""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+    is_verbose = rank == 0
+
     # Silence datasets logging messages from all but the first process
-    if rank != 0:
+    if not is_verbose:
         filterwarnings("ignore")
         logging.disable(logging.CRITICAL)
 
@@ -171,7 +173,9 @@ def extract_hiddens(
     # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
     # welcome message on every rank
     with redirect_stdout(None) if rank != 0 else nullcontext():
-        model = instantiate_model_or_llama(cfg=cfg, device_config=device_config)
+        model = instantiate_model_with_devices(
+            cfg=cfg, device_config=device_config, is_verbose=is_verbose
+        )
         tokenizer = instantiate_tokenizer(
             cfg.model, truncation_side="left", verbose=rank == 0
         )
@@ -216,7 +220,7 @@ def extract_hiddens(
                 num_variants,
                 num_choices,
                 model.config.hidden_size,
-                device=device,
+                device=first_device,
                 dtype=torch.int16,
             )
             for layer_idx in layer_indices
@@ -224,7 +228,7 @@ def extract_hiddens(
         lm_logits = torch.empty(
             num_variants,
             num_choices,
-            device=device,
+            device=first_device,
             dtype=torch.float32,
         )
         text_questions = []
@@ -249,7 +253,7 @@ def extract_hiddens(
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
-                ).to(device)
+                ).to(first_device)
                 input_ids = assert_type(Tensor, encoding.input_ids)
 
                 if is_enc_dec:
@@ -260,7 +264,7 @@ def extract_hiddens(
                         # Don't include [CLS] and [SEP] in the answer
                         add_special_tokens=False,
                         return_tensors="pt",
-                    ).to(device)
+                    ).to(first_device)
                     answer = assert_type(Tensor, encoding2.input_ids)
 
                     input_ids = torch.cat([input_ids, answer], dim=-1)
@@ -389,14 +393,15 @@ def extract(
     disable_cache: bool = False,
     highlight_color: Color = "cyan",
     num_gpus: int = -1,
+    gpus_per_model: int = 1,
     min_gpu_mem: int | None = None,
     split_type: Literal["train", "val", None] = None,
 ) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
     info, features = hidden_features(cfg)
 
-    devices: Sequence[str | Llama65bDeviceConfig] = select_devices_or_llama_65b_configs(
-        model_name=cfg.model, num_gpus=num_gpus, min_memory=min_gpu_mem
+    devices: list[ModelDevices] = select_devices_multi_gpus(
+        gpus_per_model=gpus_per_model, num_gpus=num_gpus, min_memory=min_gpu_mem
     )
     limits = cfg.max_examples
     splits = assert_type(SplitDict, info.splits)
@@ -433,7 +438,7 @@ def extract(
             ),
             gen_kwargs=dict(
                 cfg=[cfg] * len(devices),
-                device_config=devices,
+                devices=devices,
                 rank=list(range(len(devices))),
                 split_type=[ty] * len(devices),
                 world_size=[len(devices)] * len(devices),

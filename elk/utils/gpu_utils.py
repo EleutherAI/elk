@@ -4,6 +4,7 @@ import os
 import time
 import warnings
 from functools import cache
+from typing import TypeVar, Mapping
 
 import pynvml
 import torch
@@ -164,3 +165,14 @@ def select_usable_devices(
     print(f"Using {len(selection)} of {num_visible} GPUs: {selection}")
 
     return [f"cuda:{i}" for i in selection]
+
+
+def get_available_memory_for_devices() -> dict[str, int]:
+    # Edited from get_max_memory of the accelerate library
+    for i in range(torch.cuda.device_count()):
+        _ = torch.tensor([0], device=i)
+    max_memory = {
+        f"cuda:{i}": torch.cuda.mem_get_info(i)[0]
+        for i in range(torch.cuda.device_count())
+    }
+    return max_memory
