@@ -15,8 +15,8 @@ from ..parsing import parse_loss
 from ..utils.typing import assert_type
 from .classifier import Classifier
 from .losses import LOSSES
-from .normalizer import Normalizer
 from .reporter import Reporter, ReporterConfig
+from .spectral_norm import SpectralNorm
 
 
 @dataclass
@@ -97,17 +97,7 @@ class CcsReporter(Reporter):
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
-        self.neg_norm = Normalizer(
-            (in_features,),
-            device=device,
-            dtype=dtype,
-        )
-        self.pos_norm = Normalizer(
-            (in_features,),
-            device=device,
-            dtype=dtype,
-        )
-
+        self.norm = SpectralNorm(in_features, 1, device=device, dtype=dtype)
         self.probe = nn.Sequential(
             nn.Linear(
                 in_features,
@@ -136,6 +126,7 @@ class CcsReporter(Reporter):
                 )
             )
 
+    @torch.no_grad()
     def check_separability(
         self,
         train_pair: tuple[Tensor, Tensor],
@@ -152,39 +143,35 @@ class CcsReporter(Reporter):
         Returns:
             The AUROC of a linear classifier fit on the pseudo-labels.
         """
-        _x0, _x1 = train_pair
-        _val_x0, _val_x1 = val_pair
-
-        x0, x1 = self.neg_norm(_x0), self.pos_norm(_x1)
-        val_x0, val_x1 = self.neg_norm(_val_x0), self.pos_norm(_val_x1)
+        x0, x1 = map(self.norm, train_pair)
+        val_x0, val_x1 = map(self.norm, val_pair)
 
         pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
-        pseudo_train_labels = torch.cat(
+        pseudo_train = torch.cat(
             [
-                x0.new_zeros(x0.shape[0]),
-                x0.new_ones(x0.shape[0]),
+                torch.zeros_like(x0[..., 0]),
+                torch.ones_like(x1[..., 0]),
             ]
-        ).repeat_interleave(
-            x0.shape[1]
-        )  # make num_variants copies of each pseudo-label
-        pseudo_val_labels = torch.cat(
+        ).flatten()
+        pseudo_val = torch.cat(
             [
-                val_x0.new_zeros(val_x0.shape[0]),
-                val_x0.new_ones(val_x0.shape[0]),
+                torch.zeros_like(val_x0[..., 0]),
+                torch.ones_like(val_x1[..., 0]),
             ]
-        ).repeat_interleave(val_x0.shape[1])
+        ).flatten()
 
         pseudo_clf.fit(
             # b v d -> (b v) d
             torch.cat([x0, x1]).flatten(0, 1),
-            pseudo_train_labels,
+            pseudo_train,
+            # Use the same weight decay as the reporter
+            l2_penalty=self.config.weight_decay,
         )
-        with torch.no_grad():
-            pseudo_preds = pseudo_clf(
-                # b v d -> (b v) d
-                torch.cat([val_x0, val_x1]).flatten(0, 1)
-            ).squeeze(-1)
-            return roc_auc(pseudo_val_labels, pseudo_preds).item()
+        pseudo_preds = pseudo_clf(
+            # b v d -> (b v) d
+            torch.cat([val_x0, val_x1]).flatten(0, 1)
+        ).squeeze(-1)
+        return roc_auc(pseudo_val, pseudo_preds).item()
 
     def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         loss = sum(
@@ -228,13 +215,7 @@ class CcsReporter(Reporter):
 
     def forward(self, x: Tensor) -> Tensor:
         """Return the raw score output of the probe on `x`."""
-        assert x.shape[-2] == 2, "Probe input must be a contrast pair"
-
-        # Apply normalization
-        x0, x1 = x.unbind(-2)
-        x0, x1 = self.neg_norm(x0), self.pos_norm(x1)
-        x = torch.stack([x0, x1], dim=-2)
-
+        x = self.norm(x)
         return self.raw_forward(x)
 
     def raw_forward(self, x: Tensor) -> Tensor:
@@ -305,10 +286,10 @@ class CcsReporter(Reporter):
             RuntimeError: If the best loss is not finite.
         """
         x_neg, x_pos = hiddens.unbind(2)
-        # Fit normalizers
-        self.neg_norm.fit(x_neg)
-        self.pos_norm.fit(x_pos)
-        x_neg, x_pos = self.neg_norm(x_neg), self.pos_norm(x_pos)
+
+        self.norm.update(x=x_neg, y=torch.zeros_like(x_neg[..., 0]))
+        self.norm.update(x=x_pos, y=torch.ones_like(x_pos[..., 0]))
+        x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf
