@@ -106,7 +106,7 @@ def main(args):
         print("Using 16bit")
     with init_empty_weights():
         # Kinda dumb but you need to first insantiate on the CPU to get the layer class
-        model = instantiate_model(model_str, torch_dtype=used_dtype, device_map={"": 0})
+        model = instantiate_model(model_str, torch_dtype=used_dtype, device_map={"": 7})
 
     # Hack to take into account that its 8bit
     # min_gpu_mem * 2 if use_8bit else min_gpu_mem
