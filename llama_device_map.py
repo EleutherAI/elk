@@ -74,7 +74,6 @@ def inference_worker(
 
 def main(args):
     model_str = args.model
-    min_gpu_mem = args.min_gpu_mem
     num_threads = args.threads
     use_8bit = args.use_8bit
     batch_size = args.batch_size
