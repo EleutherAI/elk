@@ -1,0 +1,219 @@
+dataset: imdb_ar
+templates:
+  02ff2949-0f45-4d97-941e-6fa4c0afbc2d: !Template
+    answer_choices: سلبي ||| إيجابي
+    id: 02ff2949-0f45-4d97-941e-6fa4c0afbc2d
+    jinja: 'استعراض الفيلم التالي يعبر عن أي عاطفة؟ {{text}}
+
+
+      ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Movie Expressed Sentiment 2
+    reference: ''
+  2351d12a-e630-4d19-8b41-e199266e38f7: !Template
+    answer_choices: سيء ||| جيد
+    id: 2351d12a-e630-4d19-8b41-e199266e38f7
+    jinja: '{{text}}
+
+
+      هل وجد المراجع هذا الفيلم {{"جيد أو سيء"}}؟ ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Opinion bad good choices
+    reference: ''
+  5f372fb1-795a-47b6-8ddf-c4fd1579e76a: !Template
+    answer_choices: سلبي ||| إيجابي
+    id: 5f372fb1-795a-47b6-8ddf-c4fd1579e76a
+    jinja: "{{text}} \nهل هذه المراجعة {{\" إيجابية أم سلبية \ "}}؟ ||| \n{{answer_choices[label]}}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: 'Sentiment with choices '
+    reference: ''
+  866474a5-1498-46b7-bfee-ac0c5160707f: !Template
+    answer_choices: سلبي ||| إيجابي
+    id: 866474a5-1498-46b7-bfee-ac0c5160707f
+    jinja: '{{text}}
+
+
+      كيف يشعر المشاهد تجاه الفيلم؟
+
+
+      ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Sentiment Feeling
+    reference: ''
+  96538f30-f2c1-430e-8fc6-936a16966d9c: !Template
+    answer_choices: سلبي ||| إيجابي
+    id: 96538f30-f2c1-430e-8fc6-936a16966d9c
+    jinja: '{{text}} ما هو الشعور الذي يعبر عنه الكاتب للفيلم؟ ||| {{
+      answer_choices [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Writer Expressed Sentiment
+    reference: ''
+  af51297c-38a3-4d6c-a8b5-04b1243d7443: !Template
+    answer_choices: سلبي ||| إيجابي
+    id: af51297c-38a3-4d6c-a8b5-04b1243d7443
+    jinja: '{{text}}
+
+      المشاعر المعبر عنها للفيلم ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Movie Expressed Sentiment
+    reference: ''
+  b93b74ac-fe95-40b4-9610-318b46ab820f: !Template
+    answer_choices: سلبي ||| إيجابي
+    id: b93b74ac-fe95-40b4-9610-318b46ab820f
+    jinja: '{{text}}
+
+
+      ما هو الشعور الذي يعبر عنه هذا النص؟
+
+
+      ||| {{ answer_choices
+      [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Text Expressed Sentiment
+    reference: ''
+  b9b5d79d-f0b3-4bec-a724-f585db3e93ff: !Template
+    answer_choices: سلبي ||| إيجابي
+    id: b9b5d79d-f0b3-4bec-a724-f585db3e93ff
+    jinja: '{{text}}
+
+
+    ما هو الشعور الذي يعبر عنه هذا النص؟ ||| {{ answer_choices [1-label]}} review.'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: false
+    name: Negation template for positive and negative
+    reference: ''
+  bd82ba0f-01d4-4fa1-bf8d-07e392c00cd9: !Template
+    answer_choices: No ||| Yes
+    id: bd82ba0f-01d4-4fa1-bf8d-07e392c00cd9
+    jinja: '{{text}}
+
+      هل استمتع المراجع بالفيلم؟ ||| {{ answer_choices [label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Enjoyment Yes No
+    reference: ''
+  c70d1687-2421-49a2-9553-91b8bac4cfbe: !Template
+    answer_choices: سلبي ||| إيجابي
+    id: c70d1687-2421-49a2-9553-91b8bac4cfbe
+    jinja: '{{text}}
+
+      ما هي المشاعر التي عبر عنها المراجع للفيلم؟
+
+      ||| {{ answer_choices [label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Expressed Sentiment
+    reference: ''
+  dacb5f03-dc80-428c-b707-8574436675c9: !Template
+    answer_choices: 0 ||| 1
+    id: dacb5f03-dc80-428c-b707-8574436675c9
+    jinja: 'ضع في اعتبارك المثال التالي:  '''''' {{text}} ''''''
+
+
+      بين {{answer_choices [0]}} و {{answer_choices [1]}} ، وهو الشعور
+       من هذا المثال؟
+
+      ||| {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: burns_2
+    reference: ''
+  e01970ab-42c0-4e6e-a08f-4940d889ef37: !Template
+    answer_choices: لم يعجبهم! ||| هؤلاء احبوا هذا
+    id: e01970ab-42c0-4e6e-a08f-4940d889ef37
+    jinja: '{{text}}
+
+      كيف يشعر المراجع تجاه الفيلم؟ |||
+
+      {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: false
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: Reviewer Enjoyment
+    reference: ''
+  eb791ab2-d2b4-4be6-a569-64086983abee: !Template
+    answer_choices: 0 ||| 1
+    id: eb791ab2-d2b4-4be6-a569-64086983abee
+    jinja: 'ضع في اعتبارك المثال التالي:  '''''' {{text}} ''''''
+
+      بين {{answer_choices [0]}} و {{answer_choices [1]}} ، شعور
+       هذا المثال هو ||| {{answer_choices [label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - ar
+      metrics:
+      - Accuracy
+      original_task: true
+    name: burns_1
+    reference: ''
