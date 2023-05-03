@@ -10,8 +10,7 @@ from transformers import PreTrainedModel
 
 from elk.utils import instantiate_model, select_usable_devices
 from elk.utils.gpu_utils import get_available_memory_for_devices
-from elk.utils.llama_utils import get_llama_65b_8bit_device_map
-
+=
 if TYPE_CHECKING:
     from elk import Extract
 
