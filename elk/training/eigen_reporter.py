@@ -29,6 +29,9 @@ class EigenReporterConfig(ReporterConfig):
     """Whether to save the reporter statistics to disk in EigenReporter.save(). This
     is useful for debugging and analysis, but can take up a lot of disk space."""
 
+    use_centroids: bool = True
+    """Whether to average hiddens within each cluster before computing covariance."""
+
     def __post_init__(self):
         if not (0 <= self.neg_cov_weight <= 1):
             raise ValueError("neg_cov_weight must be in [0, 1]")
@@ -179,8 +182,13 @@ class EigenReporter(Reporter):
         intra_cov = cov_mean_fused(rearrange(hiddens, "n v k d -> (n k) v d"))
         self.intracluster_cov += (n / self.n) * (intra_cov - self.intracluster_cov)
 
-        # [n, v, k, d] -> [n, k, d]
-        centroids = hiddens.mean(1)
+        if self.config.use_centroids:
+            # VINC style
+            centroids = hiddens.mean(1)
+        else:
+            # CRC-TPC style
+            centroids = rearrange(hiddens, "n v k d -> (n v) k d")
+
         deltas, deltas2 = [], []
 
         # Iterating over classes
