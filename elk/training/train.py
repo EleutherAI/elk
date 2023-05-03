@@ -82,11 +82,12 @@ class Elicit(Run):
                 val_pair=(val_x0, val_x1),
             )
 
-            (_, v, k, _) = first_train_h.shape
-            reporter.platt_scale(
-                to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
-                rearrange(first_train_h, "n v k d -> (n v k) d"),
-            )
+            # TODO: Enable Platt scaling for CCS once normalization is fixed
+            # (_, v, k, _) = first_train_h.shape
+            # reporter.platt_scale(
+            #     to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
+            #     rearrange(first_train_h, "n v k d -> (n v k) d"),
+            # )
 
         elif isinstance(self.net, EigenReporterConfig):
             # We set num_classes to None to enable training on datasets with different
