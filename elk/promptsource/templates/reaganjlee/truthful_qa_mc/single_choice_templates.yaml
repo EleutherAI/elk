@@ -116,14 +116,10 @@ templates:
     reference: Burns et al.
   824ecb55-ecad-40c2-8033-f2fa0add2ddf: !Template
     answer_choices: A ||| B ||| C ||| D
-    id: 824ecb55-ecad-40c2-8033-f2fa0add2ddf 
+    id: 824ecb55-ecad-40c2-8033-f2fa0add2ddf
     jinja: '{{ question }} Given a list of choices: 
-      {% for k in range(choices | length) %}  
-
-      {{''. ''.join([answer_choices[k], choices[k]])}}
-
-      {% endfor %}
-
+      {{''. ''.join([answer_choices[label], choices[label]])}}
+      {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}, 
       what choice best answers the question? ||| {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -138,11 +134,8 @@ templates:
     answer_choices: A ||| B ||| C ||| D
     id: 8eda7e71-6734-486f-b883-e99d3f14c0bf
     jinja: 'Pick one answer for the following question. The options are - 
-      {% for k in range(choices | length) %}  
-
-      {{''. ''.join([answer_choices[k], choices[k]])}}
-
-      {% endfor %}.
+      {{''. ''.join([answer_choices[label], choices[label]])}}, 
+      {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}.
       {{ question }} |||
 
       {{ answer_choices[label] }}'
@@ -159,11 +152,8 @@ templates:
     answer_choices: A ||| B ||| C ||| D
     id: 9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67
     jinja: '{{ question }} Given a choice of answers 
-      {% for k in range(choices | length) %}  
-
-      {{''. ''.join([answer_choices[k], choices[k]])}}
-
-      {% endfor %}, the question
+      {{''. ''.join([answer_choices[label], choices[label]])}}, 
+      {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}, the question
       is best answered by which one? ||| {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -177,12 +167,8 @@ templates:
   f72fa410-3278-4f62-91f0-f9edf4a4e792: !Template
     answer_choices: A ||| B ||| C ||| D
     id: f72fa410-3278-4f62-91f0-f9edf4a4e792
-    jinja: '"{{ question }}", given a list of choices: 
-      {% for k in range(choices | length) %}  
-
-      {{''. ''.join([answer_choices[k], choices[k]])}}
-
-      {% endfor %}, what answer belongs
+    jinja: '"{{ question }}", given a list of choices: {{''. ''.join([answer_choices[label], choices[label]])}}, 
+      {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}, what answer belongs
       to the question? ||| {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
