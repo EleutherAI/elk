@@ -74,7 +74,8 @@ def instantiate_model(
             model_str=model_str, is_cpu=is_cpu, load_in_8bit=load_in_8bit
         )
         # Add load_in_8bit to kwargs
-        kwargs["load_in_8bit"] = load_in_8bit
+        if load_in_8bit:
+            kwargs["load_in_8bit"] = load_in_8bit
 
         archs = model_cfg.architectures
         if not isinstance(archs, list):
