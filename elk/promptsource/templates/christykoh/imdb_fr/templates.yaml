@@ -70,8 +70,8 @@ templates:
   96538f30-f2c1-430e-8fc6-936a16966d9c: !Template
     answer_choices: négatif ||| positif
     id: 96538f30-f2c1-430e-8fc6-936a16966d9c
-    jinja: '{{text}} Quel sentiment l'écrivain exprime-t-il pour le film ? ||| {{
-      answer_choices [label] }}'
+    jinja: "{{text}} Quel sentiment l'écrivain exprime-t-il pour le film ? ||| {{
+      answer_choices [label] }}"
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
@@ -120,10 +120,10 @@ templates:
   b9b5d79d-f0b3-4bec-a724-f585db3e93ff: !Template
     answer_choices: négatif ||| positif
     id: b9b5d79d-f0b3-4bec-a724-f585db3e93ff
-    jinja: '{{text}}
+    jinja: "{{text}}
 
 
-    Ce n'est certainement pas un ||| {{ answer_choices [1-label]}} avis.'
+    Ce n'est certainement pas un ||| {{ answer_choices [1-label]}} avis."
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
