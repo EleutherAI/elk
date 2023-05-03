@@ -53,6 +53,32 @@ class Sweep:
         elif self.hparam_step > 1:
             raise ValueError("hparam_step must be in [0, 1]")
 
+        # Check for the magic dataset "burns" which is a shortcut for all of the
+        # datasets used in Burns et al., except Story Cloze, which is not available
+        # on the Huggingface Hub.
+        if "burns" in self.datasets:
+            self.datasets.remove("burns")
+            self.datasets.extend(
+                [
+                    "ag_news",
+                    "amazon_polarity",
+                    "dbpedia_14",
+                    "glue:qnli",
+                    "imdb",
+                    "piqa",
+                    "super_glue:boolq",
+                    "super_glue:copa",
+                    "super_glue:rte",
+                ]
+            )
+            print(
+                "Interpreting `burns` as all datasets used in Burns et al. (2022) "
+                "available on the HuggingFace Hub"
+            )
+
+        # Remove duplicates just in case
+        self.datasets = sorted(set(self.datasets))
+
         # Add an additional dataset that pools all of the datasets together.
         if add_pooled:
             self.datasets.append("+".join(self.datasets))
