@@ -10,7 +10,7 @@ from transformers import PreTrainedModel
 
 from elk.utils import instantiate_model, select_usable_devices
 from elk.utils.gpu_utils import get_available_memory_for_devices
-=
+
 if TYPE_CHECKING:
     from elk import Extract
 
@@ -55,7 +55,8 @@ def instantiate_model_with_devices(
     else:
         if is_verbose:
             print(
-                f"Instantiating the model on multiple GPUs: {device_config.used_devices}"
+                f"Instantiating the model on multiple GPUs"
+                f": {device_config.used_devices}"
             )
         device_map = create_device_map(
             model_str=cfg.model,
