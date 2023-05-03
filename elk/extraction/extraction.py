@@ -3,7 +3,7 @@ import logging
 import os
 from contextlib import nullcontext, redirect_stdout
 from dataclasses import InitVar, dataclass, replace
-from itertools import islice, zip_longest
+from itertools import zip_longest
 from typing import Any, Iterable, Literal
 from warnings import filterwarnings
 
@@ -208,13 +208,25 @@ def extract_hiddens(
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
 
     global_max_examples = cfg.max_examples[0 if split_type == "train" else 1]
+
     # break `max_examples` among the processes roughly equally
     max_examples = global_max_examples // world_size
+    max_length = assert_type(int, tokenizer.model_max_length)
+
+    # Keep track of the number of examples we've yielded so far. We can't do something
+    # clean like `islice` the dataset, because we skip examples that are too long, and
+    # we can't predict how many of those there will be.
+    num_yielded = 0
+
     # the last process gets the remainder (which is usually small)
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
 
-    for example in islice(prompt_ds, max_examples):
+    for example in prompt_ds:
+        # Check if we've yielded enough examples
+        if num_yielded >= max_examples:
+            break
+
         num_variants = len(example["prompts"])
         num_choices = len(example["prompts"][0])
 
@@ -246,19 +258,15 @@ def extract_hiddens(
 
                 # Only feed question, not the answer, to the encoder for enc-dec models
                 target = choice["answer"] if is_enc_dec else None
-
-                # Record the EXACT question we fed to the model
-                variant_questions.append(text)
                 encoding = tokenizer(
                     text,
                     # Keep [CLS] and [SEP] for BERT-style models
                     add_special_tokens=True,
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
-                    truncation=True,
                 ).to(device)
-                input_ids = assert_type(Tensor, encoding.input_ids)
 
+                input_ids = assert_type(Tensor, encoding.input_ids)
                 if is_enc_dec:
                     answer = assert_type(Tensor, encoding.labels)
                 else:
@@ -268,12 +276,16 @@ def extract_hiddens(
                         add_special_tokens=False,
                         return_tensors="pt",
                     ).to(device)
-                    answer = assert_type(Tensor, encoding2.input_ids)
 
+                    answer = assert_type(Tensor, encoding2.input_ids)
                     input_ids = torch.cat([input_ids, answer], dim=-1)
-                    if max_len := tokenizer.model_max_length:
-                        cur_len = input_ids.shape[-1]
-                        input_ids = input_ids[..., -min(cur_len, max_len) :]
+
+                # If this input is too long, skip it
+                if input_ids.shape[-1] > max_length:
+                    break
+                else:
+                    # Record the EXACT question we fed to the model
+                    variant_questions.append(text)
 
                 # Make sure we only pass the arguments that the model expects
                 inputs = dict(input_ids=input_ids.long())
@@ -315,7 +327,17 @@ def extract_hiddens(
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
 
+            # We skipped a pseudolabel because it was too long; break out of this whole
+            # example and move on to the next one
+            if len(variant_questions) != num_choices:
+                break
+
+            # Usual case: we have the expected number of pseudolabels
             text_questions.append(variant_questions)
+
+        # We skipped a variant because it was too long; move on to the next example
+        if len(text_questions) != num_variants:
+            continue
 
         out_record: dict[str, Any] = dict(
             label=example["label"],
@@ -326,6 +348,7 @@ def extract_hiddens(
         if has_lm_preds:
             out_record["model_logits"] = lm_logits
 
+        num_yielded += 1
         yield out_record
 
 
