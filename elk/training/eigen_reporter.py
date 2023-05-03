@@ -91,7 +91,7 @@ class EigenReporter(Reporter):
         self,
         cfg: EigenReporterConfig,
         in_features: int,
-        num_classes: int | None = None,
+        num_classes: int = 2,
         *,
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -105,7 +105,14 @@ class EigenReporter(Reporter):
         self.bias = nn.Parameter(torch.zeros(cfg.num_heads, device=device, dtype=dtype))
         self.scale = nn.Parameter(torch.ones(cfg.num_heads, device=device, dtype=dtype))
         self.norm = SpectralNorm(
-            in_features, 1, device=device, dtype=dtype, standardize=cfg.standardize
+            in_features,
+            # We're assuming that in the binary case we use 1D one-hot vectors instead
+            # of 2D just to save space. Not sure if we should make this configurable
+            # in the future.
+            1 if num_classes == 2 else num_classes,
+            device=device,
+            dtype=dtype,
+            standardize=cfg.standardize,
         )
 
         # Running statistics
