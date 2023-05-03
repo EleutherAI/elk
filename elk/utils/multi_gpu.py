@@ -42,6 +42,10 @@ def instantiate_model_with_devices(
     else:
         torch_dtype = "auto"
 
+    # TODO: Maybe we should ensure the device map is the same
+    # for all the extract processes? This is because the device map
+    # can affect performance highly and its annoying if one process
+    # is using a different device map than the others.
     device_map = (
         {"": first_device}
         if device_config.is_single_gpu
