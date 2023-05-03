@@ -44,7 +44,7 @@ gpus per model.
 
 This is an example to run a single 8bit llama-65b model on 2 A40s that have
 ~50 GB of memory each.
- 
+
 ```
 elk elicit huggyllama/llama-65b imdb --num_gpus 2 --gpus_per_model 2 --int8
 ```
