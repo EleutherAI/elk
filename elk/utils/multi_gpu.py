@@ -10,7 +10,6 @@ from transformers import PreTrainedModel
 
 from elk.utils import instantiate_model, select_usable_devices
 from elk.utils.gpu_utils import get_available_memory_for_devices
-from elk.utils.llama import get_llama_65b_8bit_device_map
 
 if TYPE_CHECKING:
     from elk import Extract
@@ -121,12 +120,8 @@ def create_device_map(
     # but found at least two devices, cuda:0 and cuda1
     maybe_transformer_class: Type[Module] | None = get_transformer_layer_cls(model)
     dont_split = [maybe_transformer_class.__name__] if maybe_transformer_class else []
-    # autodevice_map = infer_auto_device_map(
-    #     model, no_split_module_classes=dont_split, max_memory=max_memory_used_devices
-    # )
-    autodevice_map = get_llama_65b_8bit_device_map(
-        first_device=model_devices.first_device,
-        second_device=model_devices.other_devices[0],
+    autodevice_map = infer_auto_device_map(
+        model, no_split_module_classes=dont_split, max_memory=max_memory_used_devices
     )
 
     if verbose:
