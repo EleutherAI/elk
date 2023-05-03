@@ -84,7 +84,6 @@ def create_device_map(
             model_str=model_str,
             load_in_8bit=False,
             is_cpu=False,
-            torch_dtype=torch.float16,
         )
 
     # e.g. {"cuda:0": 16000, "cuda:1": 16000}
