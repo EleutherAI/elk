@@ -3,6 +3,7 @@
 import math
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, Optional, cast
 
 import torch
@@ -59,7 +60,6 @@ class CcsReporterConfig(ReporterConfig):
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
     num_layers: int = 1
     pre_ln: bool = False
-    seed: int = 42
     supervised_weight: float = 0.0
 
     lr: float = 1e-2
@@ -67,6 +67,10 @@ class CcsReporterConfig(ReporterConfig):
     num_tries: int = 10
     optimizer: Literal["adam", "lbfgs"] = "lbfgs"
     weight_decay: float = 0.01
+
+    @classmethod
+    def reporter_class(cls) -> type[Reporter]:
+        return CcsReporter
 
     def __post_init__(self):
         self.loss_dict = parse_loss(self.loss)
@@ -94,6 +98,11 @@ class CcsReporter(Reporter):
     ):
         super().__init__()
         self.config = cfg
+        self.in_features = in_features
+
+        # Learnable Platt scaling parameters
+        self.bias = nn.Parameter(torch.zeros(1, device=device, dtype=dtype))
+        self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
@@ -239,7 +248,7 @@ class CcsReporter(Reporter):
 
     def raw_forward(self, x: Tensor) -> Tensor:
         """Apply the probe to the provided input, without normalization."""
-        return self.probe(x).squeeze(-1)
+        return self.probe(x).mul(self.scale).add(self.bias).squeeze(-1)
 
     def loss(
         self,
@@ -401,3 +410,9 @@ class CcsReporter(Reporter):
 
         optimizer.step(closure)
         return float(loss)
+
+    def save(self, path: Path | str) -> None:
+        """Save the reporter to a file."""
+        state = {k: v.cpu() for k, v in self.state_dict().items()}
+        state.update(in_features=self.in_features)
+        torch.save(state, path)
