@@ -167,9 +167,13 @@ def select_usable_devices(
 
 
 def get_available_memory_for_devices() -> dict[str, int]:
-    # Edited from get_max_memory of the accelerate library
-    max_memory = {
-        f"cuda:{i}": torch.cuda.mem_get_info(i)[0]
-        for i in range(torch.cuda.device_count())
-    }
+    # Edited from get_max_memory of the accelerate library to
+    # catch out of memory errors
+    max_memory = {}
+    for i in range(torch.cuda.device_count()):
+        try:
+            max_memory[f"cuda:{i}"]: torch.cuda.mem_get_info(i)[0]
+        except RuntimeError:
+            max_memory[f"cuda:{i}"]: 0
+
     return max_memory
