@@ -79,7 +79,7 @@ class SpectralNorm(nn.Module):
     @torch.no_grad()
     def update(self, x: Tensor, y: Tensor) -> "SpectralNorm":
         """Update the running statistics with a new batch of data."""
-        x = x.flatten(0, -2)
+        x = x.flatten(0, -2).type_as(self.mean_x)
 
         n, d = x.shape
         d2, c = self.xcov_M2.shape
