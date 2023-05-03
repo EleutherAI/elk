@@ -87,7 +87,6 @@ def instantiate_model(
                 if arch_str.endswith(suffix):
                     model_cls = getattr(transformers, arch_str)
                     return model_cls.from_pretrained(model_str, **kwargs)
-        print(f"Loading model with {kwargs}")
         return AutoModel.from_pretrained(model_str, **kwargs)
 
 

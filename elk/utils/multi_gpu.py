@@ -98,8 +98,6 @@ def create_device_map(
     max_memory_used_devices[model_devices.first_device] = (
         max_memory_used_devices[model_devices.first_device] * 0.6
     )
-    if load_in_8bit:
-        print("Using 8bit")
     # If 8bit, multiply the memory by 2
     # This is because we instantiated our empty model in (probably) float16
     # We aren't able to instantiate an empty model in 8bit currently
