@@ -79,9 +79,9 @@ def create_device_map(
     """Creates a device map for a model running on multiple GPUs."""
     with init_empty_weights():
         # Need to first instantiate an empty model to get the layer class
-        model = instantiate_model(
-            model_str=model_str, load_in_8bit=load_in_8bit, is_cpu=False
-        )
+        # We need to specify load_in_8bit False because its incompatible with
+        # init_empty_weights
+        model = instantiate_model(model_str=model_str, load_in_8bit=False, is_cpu=False)
 
     # e.g. {"cuda:0": 16000, "cuda:1": 16000}
     max_memory_all_devices: dict[str, int] = get_available_memory_for_devices()
