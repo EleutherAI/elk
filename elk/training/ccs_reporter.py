@@ -171,7 +171,14 @@ class CcsReporter(Reporter):
             # b v d -> (b v) d
             torch.cat([val_x0, val_x1]).flatten(0, 1)
         ).squeeze(-1)
-        return roc_auc(pseudo_val, pseudo_preds).item()
+
+        # Edge case where the classifier learns to set its weights to zero
+        # Technically AUROC is not defined here but we "fill in" the value of 0.5
+        # since this is the limit as the weights approach zero
+        if not pseudo_preds.any():
+            return 0.5
+        else:
+            return roc_auc(pseudo_val, pseudo_preds).item()
 
     def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         loss = sum(
@@ -214,13 +221,8 @@ class CcsReporter(Reporter):
             raise ValueError(f"Unknown init: {self.config.init}")
 
     def forward(self, x: Tensor) -> Tensor:
-        """Return the raw score output of the probe on `x`."""
-        x = self.norm(x)
-        return self.raw_forward(x)
-
-    def raw_forward(self, x: Tensor) -> Tensor:
-        """Apply the probe to the provided input, without normalization."""
-        return self.probe(x).squeeze(-1)
+        """Return the credence assigned to the hidden state `x`."""
+        return self.probe(self.norm(x)).squeeze(-1)
 
     def loss(
         self,
@@ -338,7 +340,7 @@ class CcsReporter(Reporter):
             optimizer.zero_grad()
 
             # We already normalized in fit()
-            loss = self.loss(self.raw_forward(x_neg), self.raw_forward(x_pos), labels)
+            loss = self.loss(self(x_neg), self(x_pos), labels)
             loss.backward()
             optimizer.step()
 
@@ -367,7 +369,7 @@ class CcsReporter(Reporter):
             optimizer.zero_grad()
 
             # We already normalized in fit()
-            loss = self.loss(self.raw_forward(x_neg), self.raw_forward(x_pos), labels)
+            loss = self.loss(self(x_neg), self(x_pos), labels)
             regularizer = 0.0
 
             # We explicitly add L2 regularization to the loss, since LBFGS

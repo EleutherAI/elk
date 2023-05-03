@@ -1,13 +1,11 @@
 """An ELK reporter network."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from torch import Tensor, nn, optim
 
-from ..metrics import to_one_hot
 from ..truncated_eigh import truncated_eigh
 from ..utils.math_util import cov_mean_fused
 from .reporter import Reporter, ReporterConfig
@@ -227,6 +225,9 @@ class EigenReporter(Reporter):
             - self.config.neg_cov_weight * self.contrastive_xcov
         ) * scale
 
+        # Remove the subspace responsible for pseudolabel correlations
+        A = self.norm.P @ A @ self.norm.P.mT
+
         if truncated:
             L, Q = truncated_eigh(A, k=self.config.num_heads, seed=self.config.seed)
         else:
@@ -248,31 +249,17 @@ class EigenReporter(Reporter):
         self.weight.data = Q.T
         return -float(L[-1])
 
-    def fit(
-        self,
-        hiddens: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> float:
+    def fit(self, hiddens: Tensor) -> float:
         """Fit the probe to the contrast set `hiddens`.
 
         Args:
             hiddens: The contrast set of shape [batch, variants, choices, dim].
-            labels: The ground truth labels if available.
 
         Returns:
             loss: Negative eigenvalue associated with the VINC direction.
         """
         self.update(hiddens)
-        loss = self.fit_streaming()
-
-        if labels is not None:
-            (_, v, k, _) = hiddens.shape
-            hiddens = rearrange(hiddens, "n v k d -> (n v k) d")
-            labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k).flatten()
-
-            self.platt_scale(labels, hiddens)
-
-        return loss
+        return self.fit_streaming()
 
     def platt_scale(self, labels: Tensor, hiddens: Tensor, max_iter: int = 100):
         """Fit the scale and bias terms to data with LBFGS.

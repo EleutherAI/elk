@@ -122,6 +122,13 @@ class SpectralNorm(nn.Module):
         return self.u
 
     @property
+    def P(self) -> Tensor:
+        """Projection matrix for removing the subspace."""
+        u = self.subspace()
+        eye = torch.eye(u.shape[0], device=u.device, dtype=u.dtype)
+        return eye - u @ u.mT
+
+    @property
     def var_x(self) -> Tensor:
         """The variance of X."""
         return self.x_M2 / self.n
