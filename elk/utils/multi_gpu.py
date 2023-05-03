@@ -29,18 +29,16 @@ class ModelDevices:
     def used_devices(self) -> list[str]:
         return [self.first_device] + self.other_devices
 
+    @property
+    def has_cpu_device(self) -> bool:
+        devices = [torch.device(device) for device in self.used_devices]
+        return any(device.type == "cpu" for device in devices)
+
 
 def instantiate_model_with_devices(
     cfg: "Extract", device_config: ModelDevices, is_verbose: bool, **kwargs
 ) -> PreTrainedModel:
     first_device = device_config.first_device
-    if cfg.int8:
-        # Required by `bitsandbytes`
-        torch_dtype = torch.float16
-    elif device_config == "cpu":
-        torch_dtype = torch.float32
-    else:
-        torch_dtype = "auto"
 
     # TODO: Maybe we should ensure the device map is the same
     # for all the extract processes? This is because the device map
@@ -51,8 +49,7 @@ def instantiate_model_with_devices(
         if device_config.is_single_gpu
         else create_device_map(
             model_str=cfg.model,
-            use_8bit=cfg.int8,
-            torch_dtype=torch_dtype,
+            load_in_8bit=cfg.int8,
             model_devices=device_config,
             verbose=is_verbose,
         )
@@ -67,7 +64,7 @@ def instantiate_model_with_devices(
             cfg.model,
             device_map=device_map,
             load_in_8bit=cfg.int8,
-            torch_dtype=torch_dtype,
+            is_cpu=device_config.has_cpu_device,
             **kwargs,
         )
     return model
@@ -75,15 +72,16 @@ def instantiate_model_with_devices(
 
 def create_device_map(
     model_str: str,
-    use_8bit: float,
-    torch_dtype: dtype | str,
+    load_in_8bit: bool,
     model_devices: ModelDevices,
     verbose: bool,
 ) -> dict[str, str]:
     """Creates a device map for a model running on multiple GPUs."""
     with init_empty_weights():
         # Need to first instantiate an empty model to get the layer class
-        model = instantiate_model(model_str=model_str, torch_dtype=torch_dtype)
+        model = instantiate_model(
+            model_str=model_str, load_in_8bit=load_in_8bit, is_cpu=False
+        )
 
     # e.g. {"cuda:0": 16000, "cuda:1": 16000}
     max_memory_all_devices: dict[str, int] = get_available_memory_for_devices()
@@ -97,7 +95,7 @@ def create_device_map(
     max_memory_used_devices[model_devices.first_device] = (
         max_memory_used_devices[model_devices.first_device] * 0.6
     )
-    if use_8bit:
+    if load_in_8bit:
         print("Using 8bit")
     # If 8bit, multiply the memory by 2
     # This is because we instantiated our empty model in (probably) float16
@@ -107,7 +105,7 @@ def create_device_map(
             device: max_memory_used_devices[device] * 2
             for device in max_memory_used_devices
         }
-        if use_8bit
+        if load_in_8bit
         else max_memory_used_devices
     )
 

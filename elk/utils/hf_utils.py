@@ -20,15 +20,11 @@ _DECODER_ONLY_SUFFIXES = [
 _AUTOREGRESSIVE_SUFFIXES = ["ConditionalGeneration"] + _DECODER_ONLY_SUFFIXES
 
 
-def instantiate_model(
+def determine_dtypes(
     model_str: str,
-    device: str | torch.device = "cpu",
-    **kwargs,
-) -> PreTrainedModel:
-    """Instantiate a model string with the appropriate `Auto` class."""
-    device = torch.device(device)
-    kwargs["device_map"] = {"": device}
-
+    is_cpu: bool,
+    load_in_8bit: bool,
+) -> torch.dtype | str:
     with prevent_name_conflicts():
         model_cfg = AutoConfig.from_pretrained(model_str)
 
@@ -37,27 +33,47 @@ def instantiate_model(
         fp32_weights = model_cfg.torch_dtype in (None, torch.float32)
 
         # Required by `bitsandbytes` to load in 8-bit.
-        if kwargs.get("load_in_8bit"):
+        if load_in_8bit:
             # Sanity check: we probably shouldn't be loading in 8-bit if the checkpoint
             # is in fp32. `bitsandbytes` only supports mixed fp16/int8 inference, and
             # we can't guarantee that there won't be overflow if we downcast to fp16.
             if fp32_weights:
                 raise ValueError("Cannot load in 8-bit if weights are fp32")
 
-            kwargs["torch_dtype"] = torch.float16
+            torch_dtype = torch.float16
 
         # CPUs generally don't support anything other than fp32.
-        elif device.type == "cpu":
-            kwargs["torch_dtype"] = torch.float32
+        elif is_cpu:
+            torch_dtype = torch.float32
 
         # If the model is fp32 but bf16 is available, convert to bf16.
         # Usually models with fp32 weights were actually trained in bf16, and
         # converting them doesn't hurt performance.
         elif fp32_weights and torch.cuda.is_bf16_supported():
-            kwargs["torch_dtype"] = torch.bfloat16
+            torch_dtype = torch.bfloat16
             print("Weights seem to be fp32, but bf16 is available. Loading in bf16.")
         else:
-            kwargs["torch_dtype"] = "auto"
+            torch_dtype = "auto"
+        return torch_dtype
+
+
+def instantiate_model(
+    model_str: str,
+    load_in_8bit: bool,
+    is_cpu: bool,
+    **kwargs,
+) -> PreTrainedModel:
+    """Instantiate a model string with the appropriate `Auto` class."""
+
+    with prevent_name_conflicts():
+        model_cfg = AutoConfig.from_pretrained(model_str)
+        # If a torch_dtype was not specified, try to infer it.
+        if "torch_dtype" not in kwargs:
+            kwargs["torch_dtype"] = determine_dtypes(
+                model_str=model_str, is_cpu=is_cpu, load_in_8bit=load_in_8bit
+            )
+        # Add load_in_8bit to kwargs
+        kwargs["load_in_8bit"] = load_in_8bit
 
         archs = model_cfg.architectures
         if not isinstance(archs, list):
