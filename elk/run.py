@@ -49,6 +49,7 @@ class Run(ABC, Serializable):
     num_gpus: int = -1
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
+    gpus_per_model: int = 1
 
     def execute(
         self,
@@ -61,6 +62,7 @@ class Run(ABC, Serializable):
                 disable_cache=self.disable_cache,
                 highlight_color=highlight_color,
                 num_gpus=self.num_gpus,
+                gpus_per_model=self.gpus_per_model,
                 min_gpu_mem=self.min_gpu_mem,
                 split_type=split_type,
             )

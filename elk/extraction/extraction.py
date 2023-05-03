@@ -1,7 +1,6 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
-from contextlib import nullcontext, redirect_stdout
 from dataclasses import InitVar, dataclass, replace
 from itertools import zip_longest
 from typing import Any, Iterable, Literal
@@ -34,13 +33,16 @@ from ..utils import (
     float_to_int16,
     infer_label_column,
     infer_num_classes,
-    instantiate_model,
     instantiate_tokenizer,
     is_autoregressive,
     prevent_name_conflicts,
     select_split,
     select_train_val_splits,
-    select_usable_devices,
+)
+from ..utils.multi_gpu import (
+    ModelDevices,
+    instantiate_model_with_devices,
+    select_devices_multi_gpus,
 )
 from .dataset_name import (
     DatasetDictWithName,
@@ -149,29 +151,33 @@ class Extract(Serializable):
 def extract_hiddens(
     cfg: "Extract",
     *,
-    device: str | torch.device = "cpu",
+    devices: ModelDevices,
     split_type: Literal["train", "val"] = "train",
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterable[dict]:
+    first_device = (
+        devices if not isinstance(devices, ModelDevices) else devices.first_device
+    )
     """Run inference on a model with a set of prompts, yielding the hidden states."""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+    is_verbose = rank == 0
+
     # Silence datasets logging messages from all but the first process
-    if rank != 0:
+    if not is_verbose:
         filterwarnings("ignore")
         logging.disable(logging.CRITICAL)
 
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
-    # welcome message on every rank
-    with redirect_stdout(None) if rank != 0 else nullcontext():
-        model = instantiate_model(cfg.model, device=device, load_in_8bit=cfg.int8)
-        tokenizer = instantiate_tokenizer(
-            cfg.model, truncation_side="left", verbose=rank == 0
-        )
+    model = instantiate_model_with_devices(
+        cfg=cfg, device_config=devices, is_verbose=is_verbose
+    )
+    tokenizer = instantiate_tokenizer(
+        cfg.model, truncation_side="left", verbose=is_verbose
+    )
 
     is_enc_dec = model.config.is_encoder_decoder
     if is_enc_dec and cfg.use_encoder_states:
@@ -225,7 +231,7 @@ def extract_hiddens(
                 num_variants,
                 num_choices,
                 model.config.hidden_size,
-                device=device,
+                device=first_device,
                 dtype=torch.int16,
             )
             for layer_idx in layer_indices
@@ -233,7 +239,7 @@ def extract_hiddens(
         lm_logits = torch.empty(
             num_variants,
             num_choices,
-            device=device,
+            device=first_device,
             dtype=torch.float32,
         )
         text_questions = []
@@ -254,8 +260,7 @@ def extract_hiddens(
                     add_special_tokens=True,
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
-                ).to(device)
-
+                ).to(first_device)
                 input_ids = assert_type(Tensor, encoding.input_ids)
                 if is_enc_dec:
                     answer = assert_type(Tensor, encoding.labels)
@@ -265,8 +270,7 @@ def extract_hiddens(
                         # Don't include [CLS] and [SEP] in the answer
                         add_special_tokens=False,
                         return_tensors="pt",
-                    ).to(device)
-
+                    ).to(first_device)
                     answer = assert_type(Tensor, encoding2.input_ids)
                     input_ids = torch.cat([input_ids, answer], dim=-1)
 
@@ -413,13 +417,16 @@ def extract(
     disable_cache: bool = False,
     highlight_color: Color = "cyan",
     num_gpus: int = -1,
+    gpus_per_model: int = 1,
     min_gpu_mem: int | None = None,
     split_type: Literal["train", "val", None] = None,
 ) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
     info, features = hidden_features(cfg)
 
-    devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
+    devices: list[ModelDevices] = select_devices_multi_gpus(
+        gpus_per_model=gpus_per_model, num_gpus=num_gpus, min_memory=min_gpu_mem
+    )
     limits = cfg.max_examples
     splits = assert_type(SplitDict, info.splits)
 
@@ -455,7 +462,7 @@ def extract(
             ),
             gen_kwargs=dict(
                 cfg=[cfg] * len(devices),
-                device=devices,
+                devices=devices,
                 rank=list(range(len(devices))),
                 split_type=[ty] * len(devices),
                 world_size=[len(devices)] * len(devices),
