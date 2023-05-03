@@ -83,7 +83,6 @@ def create_device_map(
     model_devices: ModelDevices,
     verbose: bool,
 ) -> dict[str, str]:
-    # TODO: Run this before allocating workers
     """Creates a device map for a model running on multiple GPUs."""
     with init_empty_weights():
         # Need to first instantiate an empty model to get the layer class
@@ -99,7 +98,7 @@ def create_device_map(
     # Decrease the memory potentially used by the first device
     # because we're going to create additional tensors on it
     max_memory_used_devices[model_devices.first_device] = (
-        max_memory_used_devices[model_devices.first_device] * 0.8
+        max_memory_used_devices[model_devices.first_device] * 0.6
     )
     # If 8bit, multiply the memory by 2
     # This is because we instantiated our empty model in (probably) float16
@@ -113,26 +112,17 @@ def create_device_map(
         else max_memory_used_devices
     )
 
-    """
-    Make sure that the transformer layer is not split
-    because that contains residual connections
-    See https://huggingface.co/docs/accelerate/usage_guides/big_modeling
-    Otherwise we get an error like this:
-    RuntimeError: Expected all tensors to be on the same device,
-    but found at least two devices, cuda:0 and cuda1
-    """
+    # Make sure that the transformer layer is not split
+    # because that contains residual connections
+    # See https://huggingface.co/docs/accelerate/usage_guides/big_modeling
+    # Otherwise we get an error like this:
+    # RuntimeError: Expected all tensors to be on the same device,
+    # but found at least two devices, cuda:0 and cuda1
     maybe_transformer_class: Type[Module] | None = get_transformer_layer_cls(model)
     dont_split = [maybe_transformer_class.__name__] if maybe_transformer_class else []
-    # autodevice_map = infer_auto_device_map(
-    #     model, no_split_module_classes=dont_split, max_memory=max_memory_used_devices
-    # )
-    autodevice_map = get_llama_65b_8bit_device_map(
-        first_device=model_devices.first_device,
-        second_device=model_devices.other_devices[0],
+    autodevice_map = infer_auto_device_map(
+        model, no_split_module_classes=dont_split, max_memory=max_memory_used_devices
     )
-    # TODO: remove this which we just testing out
-    # explicitly set the lm head of autodevice_map to the first device
-    autodevice_map["lm_head"] = model_devices.first_device
 
     if verbose:
         print(f"Autodevice map: {autodevice_map}")
