@@ -54,7 +54,9 @@ def instantiate_model_with_devices(
             )
     else:
         if is_verbose:
-            print(f"Instantiating the model on multiple GPUs: {device_config.used_devices}")
+            print(
+                f"Instantiating the model on multiple GPUs: {device_config.used_devices}"
+            )
         device_map = create_device_map(
             model_str=cfg.model,
             use_8bit=cfg.int8,
@@ -80,6 +82,7 @@ def create_device_map(
     model_devices: ModelDevices,
     verbose: bool,
 ) -> dict[str, str]:
+    # TODO: Run this before allocating workers
     """Creates a device map for a model running on multiple GPUs."""
     with init_empty_weights():
         # Need to first instantiate an empty model to get the layer class
@@ -122,6 +125,10 @@ def create_device_map(
     autodevice_map = infer_auto_device_map(
         model, no_split_module_classes=dont_split, max_memory=max_memory_used_devices
     )
+    # TODO: remove this which we just testing out
+    # explicitly set the lm head of autodevice_map to the first device
+    autodevice_map["lm_head"] = model_devices.first_device
+
     if verbose:
         print(f"Autodevice map: {autodevice_map}")
     assert "disk" not in autodevice_map.values(), (
