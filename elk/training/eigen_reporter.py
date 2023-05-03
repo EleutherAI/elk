@@ -28,6 +28,7 @@ class EigenReporterConfig(ReporterConfig):
     neg_cov_weight: float = 0.5
 
     num_heads: int = 1
+    use_centroids: bool = True
 
     def __post_init__(self):
         if not (0 <= self.neg_cov_weight <= 1):
@@ -168,8 +169,13 @@ class EigenReporter(Reporter):
         intra_cov = cov_mean_fused(rearrange(hiddens, "n v k d -> (n k) v d"))
         self.intracluster_cov += (n / self.n) * (intra_cov - self.intracluster_cov)
 
-        # [n, v, k, d] -> [n, k, d]
-        centroids = hiddens.mean(1)
+        if self.config.use_centroids:
+            # VINC style
+            centroids = hiddens.mean(1)
+        else:
+            # CRC-TPC style
+            centroids = rearrange(hiddens, "n v k d -> (n v) k d")
+
         deltas, deltas2 = [], []
 
         # Iterating over classes
