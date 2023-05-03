@@ -12,7 +12,7 @@ class SpectralNorm(nn.Module):
     mean_y: Tensor
     """Running mean of Y."""
 
-    u: Tensor | None
+    u: Tensor
     """Orthonormal basis of the subspace to remove."""
 
     x_M2: Tensor
@@ -44,7 +44,9 @@ class SpectralNorm(nn.Module):
         self.register_buffer(
             "mean_y", torch.zeros(num_classes, device=device, dtype=dtype)
         )
-        self.register_buffer("u", None)
+        self.register_buffer(
+            "u", torch.zeros(num_features, num_classes, device=device, dtype=dtype)
+        )
         self.register_buffer(
             "x_M2", torch.zeros(num_features, device=device, dtype=dtype)
         )
@@ -69,8 +71,7 @@ class SpectralNorm(nn.Module):
             x_ /= torch.sqrt(self.var_x + 1e-5)
 
         # Remove the subspace
-        u = self.subspace()
-        x_ -= (x_ @ u) @ u.mT
+        x_ -= (x_ @ self.u) @ self.u.mT
 
         return x_
 
@@ -88,7 +89,14 @@ class SpectralNorm(nn.Module):
         assert y.shape[-1] == c, "Unexpected number of classes"
 
         self.n += n
-        self.u = None  # Invalidate the subspace
+
+        # If we're using one-hot encoded binary labels, we can compute the
+        # projection matrix without SVD
+        mat = self.xcorr if self.standardize else self.xcov
+        if c == 1:
+            self.u = F.normalize(mat, dim=0)
+        else:
+            self.u, _, __ = torch.svd_lowrank(mat, q=c)
 
         # Welford's online algorithm
         delta_x = x - self.mean_x
@@ -105,28 +113,11 @@ class SpectralNorm(nn.Module):
 
         return self
 
-    def subspace(self) -> Tensor:
-        """Orthonormal basis of the subspace to remove."""
-        # Lazily compute the subspace
-        if self.u is None:
-            _, c = self.xcov_M2.shape
-
-            # If we're using one-hot encoded binary labels, we can compute the
-            # projection matrix without SVD
-            mat = self.xcorr if self.standardize else self.xcov
-            if c == 1:
-                self.u = F.normalize(mat, dim=0)
-            else:
-                self.u, _, __ = torch.svd_lowrank(mat, q=c)
-
-        return self.u
-
     @property
     def P(self) -> Tensor:
         """Projection matrix for removing the subspace."""
-        u = self.subspace()
-        eye = torch.eye(u.shape[0], device=u.device, dtype=u.dtype)
-        return eye - u @ u.mT
+        eye = torch.eye(self.u.shape[0], device=self.u.device, dtype=self.u.dtype)
+        return eye - self.u @ self.u.mT
 
     @property
     def var_x(self) -> Tensor:

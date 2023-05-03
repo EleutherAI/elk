@@ -1,7 +1,9 @@
+import pytest
 import torch
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
 
+from elk.metrics import to_one_hot
 from elk.training import SpectralNorm
 
 
@@ -41,14 +43,26 @@ def test_stats():
     torch.testing.assert_close(norm.xcov, expected_xcov)
 
 
-def test_projection():
-    n, d = 1000, 20
+# Both `1` and `2` are binary classification problems, but `1` means the labels are
+# encoded in a 1D one-hot vector, while `2` means the labels are encoded in an
+# n x 2 one-hot matrix.
+@pytest.mark.parametrize("num_classes", [1, 2, 3, 4])
+def test_projection(num_classes: int):
+    n, d = 2048, 128
 
-    X, Y = make_classification(n_samples=n, n_features=d, random_state=42)
+    X, Y = make_classification(
+        n_samples=n,
+        n_features=d,
+        n_classes=max(num_classes, 2),
+        n_informative=max(num_classes, 2),
+        random_state=42,
+    )
     X_t = torch.from_numpy(X).float()
     Y_t = torch.from_numpy(Y).float()
+    if num_classes > 1:
+        Y_t = to_one_hot(Y_t, num_classes)
 
-    norm = SpectralNorm(d, 1).update(X_t, Y_t)
+    norm = SpectralNorm(d, num_classes).update(X_t, Y_t)
     X_ = norm(X_t)
 
     # Means should be equal before and after the projection
@@ -62,4 +76,4 @@ def test_projection():
     # But it should learn something before the projection
     real_lr = LogisticRegression().fit(X, Y)
     beta = torch.from_numpy(real_lr.coef_)
-    assert beta.norm(p=torch.inf) > 5e-5
+    assert beta.norm(p=torch.inf) > 0.1
