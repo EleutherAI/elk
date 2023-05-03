@@ -167,13 +167,15 @@ def select_usable_devices(
 
 
 def get_available_memory_for_devices() -> dict[str, int]:
-    # Edited from get_max_memory of the accelerate library to
-    # catch out of memory errors
-    max_memory = {}
-    for i in range(torch.cuda.device_count()):
-        try:
-            max_memory[f"cuda:{i}"]: torch.cuda.mem_get_info(i)[0]
-        except RuntimeError:
-            max_memory[f"cuda:{i}"]: 0
-
-    return max_memory
+    # PyNVML and PyTorch device indices should agree when CUDA_VISIBLE_DEVICES is
+    # not set. We need them to agree so that the PyNVML indices match the PyTorch
+    # indices, and we don't have to do any complex error-prone conversions.
+    num_visible = torch.cuda.device_count()
+    num_installed = pynvml.nvmlDeviceGetCount()
+    assert num_installed == num_visible, "PyNVML and PyTorch disagree on GPU count"
+    output = {}
+    # Get free memory for each GPU
+    for i in range(num_installed):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+        output[f"cuda:{i}"] = int(pynvml.nvmlDeviceGetMemoryInfo(handle).free)
+    return output
