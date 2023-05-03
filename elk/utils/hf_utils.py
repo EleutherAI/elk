@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import transformers
 from transformers import (
@@ -61,6 +63,7 @@ def instantiate_model(
     model_str: str,
     load_in_8bit: bool,
     is_cpu: bool,
+    torch_dtype: Optional[torch.dtype] = None,
     **kwargs,
 ) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class."""
@@ -68,10 +71,9 @@ def instantiate_model(
     with prevent_name_conflicts():
         model_cfg = AutoConfig.from_pretrained(model_str)
         # If a torch_dtype was not specified, try to infer it.
-        if "torch_dtype" not in kwargs:
-            kwargs["torch_dtype"] = determine_dtypes(
-                model_str=model_str, is_cpu=is_cpu, load_in_8bit=load_in_8bit
-            )
+        kwargs["torch_dtype"] = torch_dtype or determine_dtypes(
+            model_str=model_str, is_cpu=is_cpu, load_in_8bit=load_in_8bit
+        )
         # Add load_in_8bit to kwargs
         kwargs["load_in_8bit"] = load_in_8bit
 

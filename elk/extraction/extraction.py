@@ -157,9 +157,7 @@ def extract_hiddens(
     world_size: int = 1,
 ) -> Iterable[dict]:
     first_device = (
-        devices
-        if not isinstance(devices, ModelDevices)
-        else devices.first_device
+        devices if not isinstance(devices, ModelDevices) else devices.first_device
     )
     """Run inference on a model with a set of prompts, yielding the hidden states."""
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -174,14 +172,12 @@ def extract_hiddens(
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-
     model = instantiate_model_with_devices(
         cfg=cfg, device_config=devices, is_verbose=is_verbose
     )
     tokenizer = instantiate_tokenizer(
         cfg.model, truncation_side="left", verbose=is_verbose
     )
-
 
     is_enc_dec = model.config.is_encoder_decoder
     if is_enc_dec and cfg.use_encoder_states:

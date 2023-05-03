@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Type
 
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
-from torch import dtype
 from torch.nn import Module
 from transformers import PreTrainedModel
 
@@ -81,7 +80,12 @@ def create_device_map(
         # Need to first instantiate an empty model to get the layer class
         # We need to specify load_in_8bit False because its incompatible with
         # init_empty_weights
-        model = instantiate_model(model_str=model_str, load_in_8bit=False, is_cpu=False)
+        model = instantiate_model(
+            model_str=model_str,
+            load_in_8bit=False,
+            is_cpu=False,
+            torch_dtype=torch.float16,
+        )
 
     # e.g. {"cuda:0": 16000, "cuda:1": 16000}
     max_memory_all_devices: dict[str, int] = get_available_memory_for_devices()
