@@ -98,7 +98,7 @@ def create_device_map(
     # Decrease the memory potentially used by the first device
     # because we're going to create additional tensors on it
     max_memory_used_devices[model_devices.first_device] = (
-        max_memory_used_devices[model_devices.first_device] * 0.9
+        max_memory_used_devices[model_devices.first_device] * 0.8
     )
     # If 8bit, multiply the memory by 2
     # This is because we instantiated our empty model in (probably) float16
