@@ -57,9 +57,9 @@ def test_projection():
     # Logistic regression should not be able to learn anything
     null_lr = LogisticRegression().fit(X_.numpy(), Y)
     beta = torch.from_numpy(null_lr.coef_).float()
-    torch.testing.assert_close(beta, torch.zeros_like(beta))
+    assert beta.norm(p=torch.inf) < 1e-5
 
     # But it should learn something before the projection
     real_lr = LogisticRegression().fit(X, Y)
     beta = torch.from_numpy(real_lr.coef_)
-    assert not torch.allclose(beta, torch.zeros_like(beta))
+    assert beta.norm(p=torch.inf) > 1e-5
