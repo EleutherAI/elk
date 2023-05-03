@@ -63,6 +63,7 @@ class SpectralNorm(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         """Remove the subspace responsible for correlations between x and y."""
         d, _ = self.xcov_M2.shape
+        assert self.n > 0, "Call update() before forward()"
         assert x.shape[-1] == d
 
         # First center the input
@@ -90,14 +91,6 @@ class SpectralNorm(nn.Module):
 
         self.n += n
 
-        # If we're using one-hot encoded binary labels, we can compute the
-        # projection matrix without SVD
-        mat = self.xcorr if self.standardize else self.xcov
-        if c == 1:
-            self.u = F.normalize(mat, dim=0)
-        else:
-            self.u, _, __ = torch.svd_lowrank(mat, q=c)
-
         # Welford's online algorithm
         delta_x = x - self.mean_x
         self.mean_x += delta_x.sum(dim=0) / self.n
@@ -110,6 +103,14 @@ class SpectralNorm(nn.Module):
         self.x_M2 += torch.sum(delta_x * delta_x2, dim=0)
         self.y_M2 += torch.sum(delta_y * delta_y2, dim=0)
         self.xcov_M2.addmm_(delta_x.mT, delta_y2)
+
+        # If we're using one-hot encoded binary labels, we can compute the
+        # projection matrix without SVD
+        mat = self.xcorr if self.standardize else self.xcov
+        if c == 1:
+            self.u = F.normalize(mat, dim=0)
+        else:
+            self.u, _, __ = torch.svd_lowrank(mat, q=c)
 
         return self
 

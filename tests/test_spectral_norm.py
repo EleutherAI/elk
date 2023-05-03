@@ -46,7 +46,7 @@ def test_stats():
 # Both `1` and `2` are binary classification problems, but `1` means the labels are
 # encoded in a 1D one-hot vector, while `2` means the labels are encoded in an
 # n x 2 one-hot matrix.
-@pytest.mark.parametrize("num_classes", [1, 2, 3, 4])
+@pytest.mark.parametrize("num_classes", [1, 2, 3, 5, 10])
 def test_projection(num_classes: int):
     n, d = 2048, 128
 
@@ -69,11 +69,11 @@ def test_projection(num_classes: int):
     torch.testing.assert_close(X_t.mean(dim=0), X_.mean(dim=0) + norm.mean_x)
 
     # Logistic regression should not be able to learn anything
-    null_lr = LogisticRegression().fit(X_.numpy(), Y)
+    null_lr = LogisticRegression(max_iter=1000).fit(X_.numpy(), Y)
     beta = torch.from_numpy(null_lr.coef_)
     assert beta.norm(p=torch.inf) < 5e-5
 
     # But it should learn something before the projection
-    real_lr = LogisticRegression().fit(X, Y)
+    real_lr = LogisticRegression(max_iter=1000).fit(X, Y)
     beta = torch.from_numpy(real_lr.coef_)
     assert beta.norm(p=torch.inf) > 0.1
