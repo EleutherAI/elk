@@ -97,10 +97,12 @@ def create_device_map(
     max_memory_used_devices[model_devices.first_device] = (
         max_memory_used_devices[model_devices.first_device] * 0.6
     )
+    if use_8bit:
+        print("Using 8bit")
     # If 8bit, multiply the memory by 2
     # This is because we instantiated our empty model in (probably) float16
     # We aren't able to instantiate an empty model in 8bit currently
-    max_memory_used_devices = (
+    devices_accounted_8bit = (
         {
             device: max_memory_used_devices[device] * 2
             for device in max_memory_used_devices
@@ -118,7 +120,7 @@ def create_device_map(
     maybe_transformer_class: Type[Module] | None = get_transformer_layer_cls(model)
     dont_split = [maybe_transformer_class.__name__] if maybe_transformer_class else []
     autodevice_map = infer_auto_device_map(
-        model, no_split_module_classes=dont_split, max_memory=max_memory_used_devices
+        model, no_split_module_classes=dont_split, max_memory=devices_accounted_8bit
     )
 
     if verbose:
