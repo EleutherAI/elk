@@ -40,7 +40,7 @@ class Eval(Run):
         experiment_dir = elk_reporter_dir() / self.source
 
         reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
-        reporter: Reporter = torch.load(reporter_path, map_location=device)
+        reporter = Reporter.load(reporter_path, map_location=device)
         reporter.eval()
 
         row_bufs = defaultdict(list)

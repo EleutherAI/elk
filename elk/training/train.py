@@ -9,6 +9,7 @@ import pandas as pd
 import torch
 from einops import rearrange, repeat
 from simple_parsing import subgroups
+from simple_parsing.helpers.serialization import save
 
 from ..metrics import evaluate_preds, to_one_hot
 from ..run import Run
@@ -41,6 +42,10 @@ class Elicit(Run):
         lr_dir.mkdir(parents=True, exist_ok=True)
         reporter_dir.mkdir(parents=True, exist_ok=True)
 
+        # Save the reporter config separately in the reporter directory
+        # for convenient loading of reporters later.
+        save(self.net, reporter_dir / "cfg.yaml", save_dc_types=True)
+
         return reporter_dir, lr_dir
 
     def apply_to_layer(
@@ -57,7 +62,7 @@ class Elicit(Run):
         train_dict = self.prepare_data(device, layer, "train")
         val_dict = self.prepare_data(device, layer, "val")
 
-        (first_train_h, train_labels, _), *rest = train_dict.values()
+        (first_train_h, train_gt, _), *rest = train_dict.values()
         d = first_train_h.shape[-1]
         if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same hidden state size")
@@ -67,7 +72,7 @@ class Elicit(Run):
             assert len(train_dict) == 1, "CCS only supports single-task training"
 
             reporter = CcsReporter(self.net, d, device=device)
-            train_loss = reporter.fit(first_train_h, train_labels)
+            train_loss = reporter.fit(first_train_h, train_gt)
 
             (val_h, val_gt, _) = next(iter(val_dict.values()))
             x0, x1 = first_train_h.unbind(2)
@@ -77,6 +82,13 @@ class Elicit(Run):
                 val_pair=(val_x0, val_x1),
             )
 
+            # TODO: Enable Platt scaling for CCS once normalization is fixed
+            # (_, v, k, _) = first_train_h.shape
+            # reporter.platt_scale(
+            #     to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
+            #     rearrange(first_train_h, "n v k d -> (n v k) d"),
+            # )
+
         elif isinstance(self.net, EigenReporterConfig):
             # We set num_classes to None to enable training on datasets with different
             # numbers of classes. Under the hood, this causes the covariance statistics
@@ -84,14 +96,14 @@ class Elicit(Run):
             reporter = EigenReporter(self.net, d, num_classes=None, device=device)
 
             hidden_list, label_list = [], []
-            for ds_name, (train_h, train_labels, _) in train_dict.items():
+            for ds_name, (train_h, train_gt, _) in train_dict.items():
                 (_, v, k, _) = train_h.shape
 
                 # Datasets can have different numbers of variants and different numbers
                 # of classes, so we need to flatten them here before concatenating
                 hidden_list.append(rearrange(train_h, "n v k d -> (n v k) d"))
                 label_list.append(
-                    to_one_hot(repeat(train_labels, "n -> (n v)", v=v), k).flatten()
+                    to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten()
                 )
                 reporter.update(train_h)
 
@@ -105,8 +117,7 @@ class Elicit(Run):
             raise ValueError(f"Unknown reporter config type: {type(self.net)}")
 
         # Save reporter checkpoint to disk
-        with open(reporter_dir / f"layer_{layer}.pt", "wb") as file:
-            torch.save(reporter, file)
+        reporter.save(reporter_dir / f"layer_{layer}.pt")
 
         # Fit supervised logistic regression model
         if self.supervised != "none":

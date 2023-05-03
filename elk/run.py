@@ -13,6 +13,7 @@ import torch
 import torch.multiprocessing as mp
 import yaml
 from simple_parsing.helpers import Serializable, field
+from simple_parsing.helpers.serialization import save
 from torch import Tensor
 from tqdm import tqdm
 
@@ -37,12 +38,14 @@ class Run(ABC, Serializable):
     """Directory to save results to. If None, a directory will be created
     automatically."""
 
-    datasets: list[DatasetDictWithName] = field(default_factory=list, init=False)
+    datasets: list[DatasetDictWithName] = field(
+        default_factory=list, init=False, to_dict=False
+    )
     """Datasets containing hidden states and labels for each layer."""
 
     concatenated_layer_offset: int = 0
     debug: bool = False
-    min_gpu_mem: int | None = None
+    min_gpu_mem: int | None = None  # in bytes
     num_gpus: int = -1
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
@@ -76,9 +79,9 @@ class Run(ABC, Serializable):
         print(f"Output directory at \033[1m{self.out_dir}\033[0m")
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
-        path = self.out_dir / "cfg.yaml"
-        with open(path, "w") as f:
-            self.dump_yaml(f)
+        # save_dc_types really ought to be the default... We simply can't load
+        # properly without this flag enabled.
+        save(self, self.out_dir / "cfg.yaml", save_dc_types=True)
 
         path = self.out_dir / "fingerprints.yaml"
         with open(path, "w") as meta_f:
