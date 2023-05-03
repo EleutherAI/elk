@@ -41,38 +41,31 @@ def instantiate_model_with_devices(
         torch_dtype = torch.float32
     else:
         torch_dtype = "auto"
-    if device_config.is_single_gpu:
-        # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
-        # welcome message on every rank
-        with redirect_stdout(None) if not is_verbose else nullcontext():
-            model = instantiate_model(
-                cfg.model,
-                device_map={"": first_device},
-                load_in_8bit=cfg.int8,
-                torch_dtype=torch_dtype,
-                **kwargs,
-            )
-    else:
-        if is_verbose:
-            print(
-                f"Instantiating the model on multiple GPUs"
-                f": {device_config.used_devices}"
-            )
-        device_map = create_device_map(
+
+    device_map = (
+        {"": first_device}
+        if device_config.is_single_gpu
+        else create_device_map(
             model_str=cfg.model,
             use_8bit=cfg.int8,
             torch_dtype=torch_dtype,
             model_devices=device_config,
             verbose=is_verbose,
         )
-        with redirect_stdout(None) if not is_verbose else nullcontext():
-            model = instantiate_model(
-                cfg.model,
-                device_map=device_map,
-                load_in_8bit=cfg.int8,
-                torch_dtype=torch_dtype,
-                **kwargs,
-            )
+    )
+    if is_verbose:
+        print(
+            f"Using {len(device_config.used_devices)} gpu(s) to"
+            f" instantiate a single model."
+        )
+    with redirect_stdout(None) if not is_verbose else nullcontext():
+        model = instantiate_model(
+            cfg.model,
+            device_map=device_map,
+            load_in_8bit=cfg.int8,
+            torch_dtype=torch_dtype,
+            **kwargs,
+        )
     return model
 
 
