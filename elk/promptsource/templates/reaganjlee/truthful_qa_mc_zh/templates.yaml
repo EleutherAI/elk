@@ -1,17 +1,17 @@
-dataset: truthful_qa_mc
+dataset: truthful_qa_mc_zh
 binarize: true
 templates:
   00fa401f-3329-48fa-be4a-1b6725292ee6: !Template
     answer_choices: A ||| B ||| C ||| D
     id: 00fa401f-3329-48fa-be4a-1b6725292ee6
-    jinja: 'Answer the following question: {{ question }}
+    jinja: '回答以下问题: {{ question }}
 
-      Choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}. Choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. Between choice 1 and choice 2,
-      the answer of this question is ||| {{answer_choices[label]}}'
+      选择 1: {{''. ''.join([answer_choices[label], choices[label]])}}. 选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. 在选项1和选项2之间, 这道题的答案是 
+      ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics: []
       original_task: true
     name: burns_1
@@ -19,14 +19,14 @@ templates:
   01fa401f-3329-48fa-be4a-1b6725292ee6: !Template
     answer_choices: A ||| B ||| C ||| D
     id: 01fa401f-3329-48fa-be4a-1b6725292ee6
-    jinja: 'Answer the following question: {{ question }}
+    jinja: '回答以下问题: {{ question }}
 
-      Choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}. Choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. Between choice 1 and choice 2,
-      what is the answer to this question? |||  {{answer_choices[label]}}'
+      选择 1: {{''. ''.join([answer_choices[label], choices[label]])}}. 选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. 在选项 1 和选项 2 之间，这个问题的答案是什么?
+      |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics: []
       original_task: true
     name: burns_2
@@ -34,16 +34,16 @@ templates:
   02fa401f-3329-48fa-be4a-1b6725292ee6: !Template
     answer_choices: A ||| B ||| C ||| D
     id: 02fa401f-3329-48fa-be4a-1b6725292ee6
-    jinja: 'Answer the following question: {{ question }}
+    jinja: '回答以下问题: {{ question }}
 
-      Which is the answer of this question, choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}, or
-      choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
+      哪个是这道题的答案, 选项一: {{''. ''.join([answer_choices[label], choices[label]])}},
+      或选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
 
       {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics: []
       original_task: true
     name: burns_3
@@ -53,12 +53,12 @@ templates:
     id: 04fa401f-3329-48fa-be4a-1b6725292ee6
     jinja: '{{ question }}
 
-      Choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}. Choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}.Between choice 1 and choice 2,
-      the topic of this example is |||  {{answer_choices[label]}}'
+      选择 1: {{''. ''.join([answer_choices[label], choices[label]])}}. 选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. 
+      在选项1和选项2之间, 这个例子的主题是 |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics: []
       original_task: true
     name: burns_5
@@ -68,14 +68,14 @@ templates:
     id: 05fa401f-3329-48fa-be4a-1b6725292ee6
     jinja: '{{ question }}
 
-      Which is the answer to this question, choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}, or
-      choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
+      这道题的答案是哪个, 选项1: {{''. ''.join([answer_choices[label], choices[label]])}},
+      或者选项 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
 
       {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics: []
       original_task: true
     name: burns_6
@@ -85,14 +85,14 @@ templates:
     id: 06fa401f-3329-48fa-be4a-1b6725292ee6
     jinja: '{{ question }}
 
-      What is the answer to the question, choice 1: {{''. ''.join([answer_choices[label], choices[label]])}},
-      or choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
+      问题的答案是什么, 或选择 1: {{''. ''.join([answer_choices[label], choices[label]])}},
+      或选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
 
       {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics: []
       original_task: true
     name: burns_7
@@ -102,14 +102,14 @@ templates:
     id: 07fa401f-3329-48fa-be4a-1b6725292ee6
     jinja: '{{ question }}
 
-      What choice best answers this question, choice 1: {{''. ''.join([answer_choices[label], choices[label]])}},
-      or choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
+      什么选择最能回答这个问题，选择 1: {{''. ''.join([answer_choices[label], choices[label]])}},
+      或选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
 
       {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics: []
       original_task: true
     name: burns_8
@@ -117,18 +117,18 @@ templates:
   824ecb55-ecad-40c2-8033-f2fa0add2ddf: !Template
     answer_choices: A ||| B ||| C ||| D
     id: 824ecb55-ecad-40c2-8033-f2fa0add2ddf 
-    jinja: '{{ question }} Given a list of choices: 
+    jinja: '{{ question }} 给定一个选择列表: 
       {% for k in range(choices | length) %}  
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 
       {% endfor %}
 
-      what choice best answers the question? ||| {{ answer_choices[label] }}'
+      什么选择最能回答这个问题？ ||| {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics:
       - Accuracy
       original_task: true
@@ -137,7 +137,7 @@ templates:
   8eda7e71-6734-486f-b883-e99d3f14c0bf: !Template
     answer_choices: A ||| B ||| C ||| D
     id: 8eda7e71-6734-486f-b883-e99d3f14c0bf
-    jinja: 'Pick one answer for the following question. The options are - 
+    jinja: '为下列问题选择一个答案. 选项是 -
       {% for k in range(choices | length) %}  
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
@@ -149,7 +149,7 @@ templates:
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics:
       - Accuracy
       original_task: true
@@ -158,17 +158,16 @@ templates:
   9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67: !Template
     answer_choices: A ||| B ||| C ||| D
     id: 9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67
-    jinja: '{{ question }} Given a choice of answers 
+    jinja: '{{ question }} 给定答案选择
       {% for k in range(choices | length) %}  
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 
-      {% endfor %}, the question
-      is best answered by which one? ||| {{ answer_choices[label] }}'
+      {% endfor %}, 这个问题最好由哪一个回答? ||| {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics:
       - Accuracy
       original_task: true
@@ -177,17 +176,16 @@ templates:
   f72fa410-3278-4f62-91f0-f9edf4a4e792: !Template
     answer_choices: A ||| B ||| C ||| D
     id: f72fa410-3278-4f62-91f0-f9edf4a4e792
-    jinja: '"{{ question }}", given a list of choices: 
+    jinja: '"{{ question }}", 给定一个选择列表:
       {% for k in range(choices | length) %}  
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 
-      {% endfor %}, what answer belongs
-      to the question? ||| {{ answer_choices[label] }}'
+      {% endfor %}, 问题的答案是什么? ||| {{ answer_choices[label] }}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
-      - en
+      - zh
       metrics:
       - Accuracy
       original_task: true
