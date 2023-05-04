@@ -1,7 +1,7 @@
 """Main training loop."""
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -33,6 +33,8 @@ class Elicit(Run):
     """Whether to train a supervised classifier, and if so, whether to use
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
+    num_trains: list[int] = field(default_factory=lambda: [-1])
+    num_samples: int = 100
 
     def create_models_dir(self, out_dir: Path):
         lr_dir = None
@@ -62,7 +64,7 @@ class Elicit(Run):
         train_dict = self.prepare_data(device, layer, "train")
         val_dict = self.prepare_data(device, layer, "val")
 
-        (first_train_h, train_gt, _), *rest = train_dict.values()
+        (first_train_h, _, _), *rest = train_dict.values()
         (_, _, k, d) = first_train_h.shape
         if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same hidden state size")
@@ -75,53 +77,74 @@ class Elicit(Run):
             raise ValueError("All datasets must have the same number of classes")
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        if isinstance(self.net, CcsReporterConfig):
-            assert len(train_dict) == 1, "CCS only supports single-task training"
+        train_subs = defaultdict(list)
+        reporters = defaultdict(list)
+        for num_train in self.num_trains:
+            for i in range(self.num_samples):
+                # get a random subset of the training data
+                train_sub = dict()
+                for ds_name, (train_h, train_gt, train_lm_preds) in train_dict.items():
+                    train_idx = torch.randperm(train_h.shape[0])[:num_train]
+                    train_h_sub = train_h[train_idx]
+                    train_gt_sub = train_gt[train_idx]
+                    train_lm_preds_sub = (
+                        train_lm_preds[train_idx]
+                        if train_lm_preds is not None
+                        else None
+                    )
+                    train_sub[ds_name] = (train_h_sub, train_gt_sub, train_lm_preds_sub)
+                train_subs[num_train].append(train_sub)
 
-            reporter = CcsReporter(self.net, d, device=device)
-            train_loss = reporter.fit(first_train_h, train_gt)
+                if isinstance(self.net, CcsReporterConfig):
+                    assert (
+                        len(train_dict) == 1
+                    ), "CCS only supports single-task training"
 
-            (val_h, val_gt, _) = next(iter(val_dict.values()))
-            x0, x1 = first_train_h.unbind(2)
-            val_x0, val_x1 = val_h.unbind(2)
-            pseudo_auroc = reporter.check_separability(
-                train_pair=(x0, x1),
-                val_pair=(val_x0, val_x1),
-            )
+                    train_h_sub, train_gt_sub, train_lm_preds_sub = train_sub.popitem()[
+                        1
+                    ]
+                    reporter = CcsReporter(self.net, d, device=device)
 
-            # TODO: Enable Platt scaling for CCS once normalization is fixed
-            # (_, v, k, _) = first_train_h.shape
-            # reporter.platt_scale(
-            #     to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
-            #     rearrange(first_train_h, "n v k d -> (n v k) d"),
-            # )
+                    (val_h, val_gt, _) = next(iter(val_dict.values()))
 
-        elif isinstance(self.net, EigenReporterConfig):
-            reporter = EigenReporter(self.net, d, num_classes=k, device=device)
+                    # TODO: Enable Platt scaling for CCS once normalization is fixed
+                    # (_, v, k, _) = first_train_h.shape
+                    # reporter.platt_scale(
+                    #     to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
+                    #     rearrange(first_train_h, "n v k d -> (n v k) d"),
+                    # )
 
-            hidden_list, label_list = [], []
-            for ds_name, (train_h, train_gt, _) in train_dict.items():
-                (_, v, _, _) = train_h.shape
+                elif isinstance(self.net, EigenReporterConfig):
+                    reporter = EigenReporter(self.net, d, num_classes=k, device=device)
 
-                # Datasets can have different numbers of variants, so we need to
-                # flatten them here before concatenating
-                hidden_list.append(rearrange(train_h, "n v k d -> (n v k) d"))
-                label_list.append(
-                    to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten()
+                    hidden_list, label_list = [], []
+                    for ds_name, (train_h_sub, train_gt_sub, _) in train_sub.items():
+                        (_, v, _, _) = train_h_sub.shape
+
+                        # Datasets can have different numbers of variants, so we need to
+                        # flatten them here before concatenating
+                        hidden_list.append(
+                            rearrange(train_h_sub, "n v k d -> (n v k) d")
+                        )
+                        label_list.append(
+                            to_one_hot(
+                                repeat(train_gt_sub, "n -> (n v)", v=v), k
+                            ).flatten()
+                        )
+                        reporter.update(train_h_sub)
+
+                    reporter.platt_scale(
+                        torch.cat(label_list),
+                        torch.cat(hidden_list),
+                    )
+                else:
+                    raise ValueError(f"Unknown reporter config type: {type(self.net)}")
+
+                reporters[num_train].append(reporter)
+                # Save reporter checkpoint to disk
+                reporter.save(
+                    reporter_dir / f"layer_{layer}_num_train_{num_train}_sample_{i}.pt"
                 )
-                reporter.update(train_h)
-
-            pseudo_auroc = None
-            train_loss = reporter.fit_streaming()
-            reporter.platt_scale(
-                torch.cat(label_list),
-                torch.cat(hidden_list),
-            )
-        else:
-            raise ValueError(f"Unknown reporter config type: {type(self.net)}")
-
-        # Save reporter checkpoint to disk
-        reporter.save(reporter_dir / f"layer_{layer}.pt")
 
         # Fit supervised logistic regression model
         if self.supervised != "none":
@@ -138,30 +161,73 @@ class Elicit(Run):
         row_bufs = defaultdict(list)
         for ds_name in val_dict:
             val_h, val_gt, val_lm_preds = val_dict[ds_name]
-            train_h, train_gt, train_lm_preds = train_dict[ds_name]
-            meta = {"dataset": ds_name, "layer": layer}
+            _, train_gt, train_lm_preds = train_dict[ds_name]
 
-            val_credences = reporter(val_h)
-            train_credences = reporter(train_h)
             for mode in ("none", "partial", "full"):
-                row_bufs["eval"].append(
-                    {
-                        **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                        "pseudo_auroc": pseudo_auroc,
-                        "train_loss": train_loss,
-                    }
-                )
+                meta = {"dataset": ds_name, "layer": layer, "ensembling": mode}
 
-                row_bufs["train_eval"].append(
-                    {
-                        **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
-                        "train_loss": train_loss,
+                # Log stats for each num_train
+                for num_train in self.num_trains:
+                    num_train_buf = defaultdict(list)
+
+                    for i in range(self.num_samples):
+                        train_h_sub, train_gt_sub, train_lm_preds_sub = train_subs[
+                            num_train
+                        ][i][ds_name]
+                        reporter = reporters[num_train][i]
+                        num_train_buf["train_eval"].append(
+                            evaluate_preds(
+                                train_gt_sub,
+                                reporter(train_h_sub),
+                                mode,
+                            ).to_dict()
+                        )
+                        num_train_buf["eval"].append(
+                            evaluate_preds(
+                                val_gt,
+                                reporter(val_h),
+                                mode,
+                            ).to_dict()
+                        )
+
+                    num_train_dfs = {
+                        k: pd.DataFrame(v) for k, v in num_train_buf.items()
                     }
-                )
+                    # get mean, std, min, max, and 95% CI of each of
+                    # auroc_estimate, acc_estimate, cal_acc_estimate, and ece
+
+                    for key in num_train_dfs:
+                        stats = dict()
+                        for metric in (
+                            "auroc_estimate",
+                            "acc_estimate",
+                            "cal_acc_estimate",
+                            "ece",
+                        ):
+                            short_metric = metric.replace("_estimate", "")
+                            stats.update(
+                                {
+                                    f"{short_metric}_min": num_train_dfs[key][
+                                        metric
+                                    ].min(),
+                                    f"{short_metric}_lower": num_train_dfs[key][
+                                        metric
+                                    ].quantile(0.025),
+                                    f"{short_metric}_estimate": num_train_dfs[key][
+                                        metric
+                                    ].mean(),
+                                    f"{short_metric}_upper": num_train_dfs[key][
+                                        metric
+                                    ].quantile(0.975),
+                                    f"{short_metric}_max": num_train_dfs[key][
+                                        metric
+                                    ].max(),
+                                    f"{short_metric}_std": num_train_dfs[key][
+                                        metric
+                                    ].std(),
+                                }
+                            )
+                        row_bufs[key].append({"num_train": num_train, **meta, **stats})
 
                 if val_lm_preds is not None:
                     row_bufs["lm_eval"].append(
