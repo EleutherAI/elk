@@ -1,8 +1,8 @@
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .classifier import Classifier
 from .eigen_reporter import EigenReporter, EigenReporterConfig
-from .normalizer import Normalizer
 from .reporter import Reporter, ReporterConfig
+from .spectral_norm import SpectralNorm
 
 __all__ = [
     "CcsReporter",
@@ -10,7 +10,7 @@ __all__ = [
     "Classifier",
     "EigenReporter",
     "EigenReporterConfig",
-    "Normalizer",
     "Reporter",
     "ReporterConfig",
+    "SpectralNorm",
 ]

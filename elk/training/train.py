@@ -63,9 +63,16 @@ class Elicit(Run):
         val_dict = self.prepare_data(device, layer, "val")
 
         (first_train_h, train_gt, _), *rest = train_dict.values()
-        d = first_train_h.shape[-1]
+        (_, _, k, d) = first_train_h.shape
         if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same hidden state size")
+
+        # For a while we did support datasets with different numbers of classes, but
+        # we reverted this once we switched to SpectralNorm. There are a few options
+        # for re-enabling it in the future but they are somewhat complex and it's not
+        # clear that it's worth it.
+        if not all(other_h.shape[-2] == k for other_h, _, _ in rest):
+            raise ValueError("All datasets must have the same number of classes")
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         if isinstance(self.net, CcsReporterConfig):
@@ -90,17 +97,14 @@ class Elicit(Run):
             # )
 
         elif isinstance(self.net, EigenReporterConfig):
-            # We set num_classes to None to enable training on datasets with different
-            # numbers of classes. Under the hood, this causes the covariance statistics
-            # to be simply averaged across all batches passed to update().
-            reporter = EigenReporter(self.net, d, num_classes=None, device=device)
+            reporter = EigenReporter(self.net, d, num_classes=k, device=device)
 
             hidden_list, label_list = [], []
             for ds_name, (train_h, train_gt, _) in train_dict.items():
-                (_, v, k, _) = train_h.shape
+                (_, v, _, _) = train_h.shape
 
-                # Datasets can have different numbers of variants and different numbers
-                # of classes, so we need to flatten them here before concatenating
+                # Datasets can have different numbers of variants, so we need to
+                # flatten them here before concatenating
                 hidden_list.append(rearrange(train_h, "n v k d -> (n v k) d"))
                 label_list.append(
                     to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten()

@@ -10,6 +10,7 @@ from torch import Tensor, nn
 from ..truncated_eigh import truncated_eigh
 from ..utils.math_util import cov_mean_fused
 from .reporter import Reporter, ReporterConfig
+from .spectral_norm import SpectralNorm
 
 
 @dataclass
@@ -23,6 +24,10 @@ class EigenReporterConfig(ReporterConfig):
     """The weight of the negative covariance term in the loss."""
 
     num_heads: int = 1
+    """The number of eigenvectors to compute from the VINC matrix."""
+
+    standardize: bool = False
+    """Whether to scale the input to have unit variance."""
     """The number of reporter heads to fit."""
 
     save_reporter_stats: bool = False
@@ -86,19 +91,31 @@ class EigenReporter(Reporter):
         self,
         cfg: EigenReporterConfig,
         in_features: int,
-        num_classes: int | None = None,
+        num_classes: int = 2,
         *,
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
+        track_class_means: bool = True,
     ):
         super().__init__()
         self.config = cfg
         self.in_features = in_features
         self.num_classes = num_classes
+        self.track_class_means = track_class_means
 
         # Learnable Platt scaling parameters
         self.bias = nn.Parameter(torch.zeros(cfg.num_heads, device=device, dtype=dtype))
         self.scale = nn.Parameter(torch.ones(cfg.num_heads, device=device, dtype=dtype))
+        self.norm = SpectralNorm(
+            in_features,
+            # We're assuming that in the binary case we use 1D one-hot vectors instead
+            # of 2D just to save space. Not sure if we should make this configurable
+            # in the future.
+            1 if num_classes == 2 else num_classes,
+            device=device,
+            dtype=dtype,
+            standardize=cfg.standardize,
+        )
 
         # Running statistics
         self.register_buffer(
@@ -140,7 +157,7 @@ class EigenReporter(Reporter):
 
     def forward(self, hiddens: Tensor) -> Tensor:
         """Return the predicted log odds on input `x`."""
-        raw_scores = hiddens @ self.weight.mT
+        raw_scores = self.norm(hiddens) @ self.weight.mT
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
     @property
@@ -175,6 +192,8 @@ class EigenReporter(Reporter):
         assert hiddens.ndim == 4, "Must be of shape [batch, variants, choices, dim]"
 
         self.n += n
+        for i, x in enumerate(hiddens.unbind(2)):
+            self.norm.update(x=x, y=torch.full_like(x[..., 0], i))
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
@@ -224,12 +243,24 @@ class EigenReporter(Reporter):
 
     def fit_streaming(self, truncated: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
+        # Convert the VINC matrix into "correlation matrix" form by dividing by
+        # the standard deviations of the variables.
+        if self.config.standardize:
+            scale = torch.rsqrt(
+                self.norm.var_x[:, None] * self.norm.var_x[None, :] + 1e-5
+            )
+        else:
+            scale = 1.0
+
         inv_weight = 1 - self.config.neg_cov_weight
         A = (
             self.config.var_weight * self.intercluster_cov
             - inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
-        )
+        ) * scale
+
+        # Remove the subspace responsible for pseudolabel correlations
+        A = self.norm.P @ A @ self.norm.P.mT
 
         if truncated:
             L, Q = truncated_eigh(A, k=self.config.num_heads, seed=self.config.seed)
