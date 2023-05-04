@@ -1,4 +1,4 @@
-dataset: imdb
+dataset: imdb_zh
 templates:
   02ff2949-0f45-4d97-941e-6fa4c0afbc2d: !Template
     answer_choices: 消极的 ||| 积极的
