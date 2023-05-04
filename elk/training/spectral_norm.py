@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 
 
@@ -32,37 +31,36 @@ class SpectralNorm(nn.Module):
         num_features: int,
         num_classes: int,
         *,
+        batch_dims: tuple[int, ...] = (),
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
         standardize: bool = False,
     ):
         super().__init__()
 
+        self.batch_dims = batch_dims
+        self.num_classes = num_classes
+        self.num_features = num_features
+        self.standardize = standardize
+
         self.register_buffer(
-            "mean_x", torch.zeros(num_features, device=device, dtype=dtype)
+            "mean_x", torch.zeros(*batch_dims, num_features, device=device, dtype=dtype)
         )
+        self.register_buffer("mean_y", self.mean_x.new_zeros(*batch_dims, num_classes))
         self.register_buffer(
-            "mean_y", torch.zeros(num_classes, device=device, dtype=dtype)
+            "u", self.mean_x.new_zeros(*batch_dims, num_features, num_classes)
         )
-        self.register_buffer(
-            "u", torch.zeros(num_features, num_classes, device=device, dtype=dtype)
-        )
-        self.register_buffer(
-            "x_M2", torch.zeros(num_features, device=device, dtype=dtype)
-        )
+        self.register_buffer("x_M2", self.mean_x.new_zeros(*batch_dims, num_features))
         self.register_buffer(
             "xcov_M2",
-            torch.zeros(num_features, num_classes, device=device, dtype=dtype),
+            self.mean_x.new_zeros(*batch_dims, num_features, num_classes),
         )
-        self.register_buffer(
-            "y_M2", torch.zeros(num_classes, device=device, dtype=dtype)
-        )
+        self.register_buffer("y_M2", self.mean_x.new_zeros(*batch_dims, num_classes))
         self.register_buffer("n", torch.tensor(0, device=device, dtype=dtype))
-        self.standardize = standardize
 
     def forward(self, x: Tensor) -> Tensor:
         """Remove the subspace responsible for correlations between x and y."""
-        d, _ = self.xcov_M2.shape
+        *_, d, _ = self.xcov_M2.shape
         assert self.n > 0, "Call update() before forward()"
         assert x.shape[-1] == d
 
@@ -79,15 +77,17 @@ class SpectralNorm(nn.Module):
     @torch.no_grad()
     def update(self, x: Tensor, y: Tensor) -> "SpectralNorm":
         """Update the running statistics with a new batch of data."""
-        x = x.flatten(0, -2).type_as(self.mean_x)
+        *_, d, c = self.xcov_M2.shape
 
-        n, d = x.shape
-        d2, c = self.xcov_M2.shape
-        assert d == d2, "Unexpected number of features"
+        # Flatten everything before the batch_dims
+        x = x.reshape(-1, *self.batch_dims, d).type_as(self.mean_x)
+
+        n, *_, d2 = x.shape
+        assert d == d2, f"Unexpected number of features {d2}"
 
         # y might start out 1D, but we want to treat it as 2D
-        y = y.reshape(n, -1).type_as(x)
-        assert y.shape[-1] == c, "Unexpected number of classes"
+        y = y.reshape(n, *self.batch_dims, -1).type_as(x)
+        assert y.shape[-1] == c, f"Unexpected number of classes {y.shape[-1]}"
 
         self.n += n
 
@@ -102,22 +102,16 @@ class SpectralNorm(nn.Module):
 
         self.x_M2 += torch.sum(delta_x * delta_x2, dim=0)
         self.y_M2 += torch.sum(delta_y * delta_y2, dim=0)
-        self.xcov_M2.addmm_(delta_x.mT, delta_y2)
+        self.xcov_M2 += torch.einsum("b...m,b...n->...mn", delta_x, delta_y2)
 
-        # If we're using one-hot encoded binary labels, we can compute the
-        # projection matrix without SVD
-        mat = self.xcorr if self.standardize else self.xcov
-        if c == 1:
-            self.u = F.normalize(mat, dim=0)
-        else:
-            self.u, _, __ = torch.svd_lowrank(mat, q=c)
-
+        # Get orthonormal basis for the column space of the cross-covariance matrix
+        self.u, _ = torch.linalg.qr(self.xcorr if self.standardize else self.xcov)
         return self
 
     @property
     def P(self) -> Tensor:
         """Projection matrix for removing the subspace."""
-        eye = torch.eye(self.u.shape[0], device=self.u.device, dtype=self.u.dtype)
+        eye = torch.eye(self.num_features, device=self.u.device, dtype=self.u.dtype)
         return eye - self.u @ self.u.mT
 
     @property
@@ -138,4 +132,5 @@ class SpectralNorm(nn.Module):
     @property
     def xcorr(self) -> Tensor:
         """The cross-correlation matrix."""
-        return self.xcov / torch.sqrt(self.var_x[:, None] * self.var_y[None, :] + 1e-5)
+        var_prods = self.var_x[..., None] * self.var_y[..., None, :]
+        return self.xcov / torch.sqrt(var_prods + 1e-5)

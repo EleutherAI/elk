@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import torch
 from sklearn.datasets import make_classification
@@ -7,20 +8,23 @@ from elk.metrics import to_one_hot
 from elk.training import SpectralNorm
 
 
-def test_stats():
+@pytest.mark.parametrize("batch_dims", [(), (2,), (3, 4)])
+def test_stats(batch_dims: tuple[int, ...]):
     num_features = 3
     num_classes = 2
     batch_size = 10
     num_batches = 5
 
     # Initialize the SpectralNorm
-    norm = SpectralNorm(num_features, num_classes)
+    norm = SpectralNorm(num_features, num_classes, batch_dims=batch_dims)
 
     # Generate random data
     torch.manual_seed(42)
-    x_data = [torch.randn(batch_size, num_features) for _ in range(num_batches)]
+    x_data = [
+        torch.randn(batch_size, *batch_dims, num_features) for _ in range(num_batches)
+    ]
     y_data = [
-        torch.randint(0, num_classes, (batch_size, num_classes))
+        torch.randint(0, num_classes, (batch_size, *batch_dims, num_classes))
         for _ in range(num_batches)
     ]
 
@@ -36,7 +40,8 @@ def test_stats():
     x_centered = x_all - mean_x
     y_centered = y_all - mean_y
     expected_var = x_all.var(dim=0, unbiased=False)
-    expected_xcov = x_centered.t().mm(y_centered) / (batch_size * num_batches)
+    expected_xcov = torch.einsum("b...m,b...n->...mn", x_centered, y_centered)
+    expected_xcov /= batch_size * num_batches
 
     # Compare the computed cross-covariance matrix with the expected one
     torch.testing.assert_close(norm.var_x, expected_var)
@@ -46,34 +51,48 @@ def test_stats():
 # Both `1` and `2` are binary classification problems, but `1` means the labels are
 # encoded in a 1D one-hot vector, while `2` means the labels are encoded in an
 # n x 2 one-hot matrix.
-@pytest.mark.parametrize("num_classes", [1, 2, 3, 5, 10])
+@pytest.mark.parametrize("num_classes", [1, 2, 3, 5, 10, 20])
 def test_projection(num_classes: int):
     n, d = 2048, 128
+    num_distinct = max(num_classes, 2)
 
     X, Y = make_classification(
         n_samples=n,
         n_features=d,
-        n_classes=max(num_classes, 2),
-        n_informative=max(num_classes, 2),
+        n_classes=num_distinct,
+        n_informative=num_distinct,
         random_state=42,
     )
-    X_t = torch.from_numpy(X).float()
-    Y_t = torch.from_numpy(Y).float()
+    X_t = torch.from_numpy(X)
+    Y_t = torch.from_numpy(Y)
     if num_classes > 1:
         Y_t = to_one_hot(Y_t, num_classes)
 
-    norm = SpectralNorm(d, num_classes).update(X_t, Y_t)
+    norm = SpectralNorm(d, num_classes, dtype=torch.float64).update(X_t, Y_t)
     X_ = norm(X_t)
 
-    # Means should be equal before and after the projection
-    torch.testing.assert_close(X_t.mean(dim=0), X_.mean(dim=0) + norm.mean_x)
+    # Heuristic threshold for singular values taken from torch.linalg.pinv
+    eps = max(n, d) * torch.finfo(X_.dtype).eps
+
+    # Check that the rank of the update is num_classes + 1
+    # The +1 comes from subtracting the mean before projection
+    rank = torch.linalg.svdvals(X_t - X_).gt(eps).sum().float()
+    torch.testing.assert_close(rank, torch.tensor(num_classes + 1.0))
+
+    # Compute class means and check that they are equal after the projection
+    class_means_ = [X_.numpy()[Y == c].mean(axis=0) for c in range(num_distinct)]
+    np.testing.assert_almost_equal(class_means_[1:], class_means_[:-1])
+
+    # Sanity check that class means are NOT equal before the projection
+    class_means = [X[Y == c].mean(axis=0) for c in range(num_distinct)]
+    assert not np.allclose(class_means[1:], class_means[:-1])
 
     # Logistic regression should not be able to learn anything
-    null_lr = LogisticRegression(max_iter=1000).fit(X_.numpy(), Y)
+    null_lr = LogisticRegression(max_iter=1000, tol=0.0).fit(X_.numpy(), Y)
     beta = torch.from_numpy(null_lr.coef_)
-    assert beta.norm(p=torch.inf) < 5e-5
+    assert beta.norm(p=torch.inf) < eps
 
-    # But it should learn something before the projection
+    # Sanity check that it DOES learn something before the projection
     real_lr = LogisticRegression(max_iter=1000).fit(X, Y)
     beta = torch.from_numpy(real_lr.coef_)
     assert beta.norm(p=torch.inf) > 0.1
