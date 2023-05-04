@@ -1,39 +1,51 @@
 """An ELK reporter network."""
 
 from dataclasses import dataclass
-from typing import Optional
+from pathlib import Path
 
 import torch
-from einops import rearrange, repeat
-from torch import Tensor, nn, optim
+from einops import rearrange
+from torch import Tensor, nn
 
-from ..metrics import to_one_hot
 from ..truncated_eigh import truncated_eigh
 from ..utils.math_util import cov_mean_fused
 from .reporter import Reporter, ReporterConfig
+from .spectral_norm import SpectralNorm
 
 
 @dataclass
 class EigenReporterConfig(ReporterConfig):
-    """Configuration for an EigenReporter.
-
-    Args:
-        var_weight: The weight of the variance term in the loss.
-        neg_cov_weight: The weight of the negative covariance term in the loss.
-        num_heads: The number of reporter heads to fit. In other words, the number
-            of eigenvectors to compute from the VINC matrix.
-    """
+    """Configuration for an EigenReporter."""
 
     var_weight: float = 0.0
+    """The weight of the variance term in the loss."""
+
     neg_cov_weight: float = 0.5
+    """The weight of the negative covariance term in the loss."""
 
     num_heads: int = 1
+    """The number of eigenvectors to compute from the VINC matrix."""
+
+    standardize: bool = False
+    """Whether to scale the input to have unit variance."""
+    """The number of reporter heads to fit."""
+
+    save_reporter_stats: bool = False
+    """Whether to save the reporter statistics to disk in EigenReporter.save(). This
+    is useful for debugging and analysis, but can take up a lot of disk space."""
+
+    use_centroids: bool = True
+    """Whether to average hiddens within each cluster before computing covariance."""
 
     def __post_init__(self):
         if not (0 <= self.neg_cov_weight <= 1):
             raise ValueError("neg_cov_weight must be in [0, 1]")
         if self.num_heads <= 0:
             raise ValueError("num_heads must be positive")
+
+    @classmethod
+    def reporter_class(cls) -> type[Reporter]:
+        return EigenReporter
 
 
 class EigenReporter(Reporter):
@@ -70,6 +82,7 @@ class EigenReporter(Reporter):
     intercluster_cov_M2: Tensor  # variance
     intracluster_cov: Tensor  # invariance
     contrastive_xcov_M2: Tensor  # negative covariance
+
     n: Tensor
     class_means: Tensor | None
     weight: Tensor
@@ -78,20 +91,38 @@ class EigenReporter(Reporter):
         self,
         cfg: EigenReporterConfig,
         in_features: int,
-        num_classes: int | None = 2,
+        num_classes: int = 2,
         *,
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
+        track_class_means: bool = True,
     ):
         super().__init__()
         self.config = cfg
+        self.in_features = in_features
+        self.num_classes = num_classes
+        self.track_class_means = track_class_means
 
         # Learnable Platt scaling parameters
         self.bias = nn.Parameter(torch.zeros(cfg.num_heads, device=device, dtype=dtype))
         self.scale = nn.Parameter(torch.ones(cfg.num_heads, device=device, dtype=dtype))
+        self.norm = SpectralNorm(
+            in_features,
+            # We're assuming that in the binary case we use 1D one-hot vectors instead
+            # of 2D just to save space. Not sure if we should make this configurable
+            # in the future.
+            1 if num_classes == 2 else num_classes,
+            device=device,
+            dtype=dtype,
+            standardize=cfg.standardize,
+        )
 
         # Running statistics
-        self.register_buffer("n", torch.zeros((), device=device, dtype=torch.long))
+        self.register_buffer(
+            "n",
+            torch.zeros((), device=device, dtype=torch.long),
+            persistent=cfg.save_reporter_stats,
+        )
         self.register_buffer(
             "class_means",
             (
@@ -99,19 +130,23 @@ class EigenReporter(Reporter):
                 if num_classes is not None
                 else None
             ),
+            persistent=cfg.save_reporter_stats,
         )
 
         self.register_buffer(
             "contrastive_xcov_M2",
             torch.zeros(in_features, in_features, device=device, dtype=dtype),
+            persistent=cfg.save_reporter_stats,
         )
         self.register_buffer(
             "intercluster_cov_M2",
             torch.zeros(in_features, in_features, device=device, dtype=dtype),
+            persistent=cfg.save_reporter_stats,
         )
         self.register_buffer(
             "intracluster_cov",
             torch.zeros(in_features, in_features, device=device, dtype=dtype),
+            persistent=cfg.save_reporter_stats,
         )
 
         # Reporter weights
@@ -122,15 +157,17 @@ class EigenReporter(Reporter):
 
     def forward(self, hiddens: Tensor) -> Tensor:
         """Return the predicted log odds on input `x`."""
-        raw_scores = hiddens @ self.weight.mT
+        raw_scores = self.norm(hiddens) @ self.weight.mT
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
     @property
     def contrastive_xcov(self) -> Tensor:
+        assert self.n > 0, "Stats not initialized; did you set save_reporter_stats?"
         return self.contrastive_xcov_M2 / self.n
 
     @property
     def intercluster_cov(self) -> Tensor:
+        assert self.n > 0, "Stats not initialized; did you set save_reporter_stats?"
         return self.intercluster_cov_M2 / self.n
 
     @property
@@ -139,18 +176,12 @@ class EigenReporter(Reporter):
 
     @property
     def invariance(self) -> Tensor:
+        assert self.n > 0, "Stats not initialized; did you set save_reporter_stats?"
         return -self.weight @ self.intracluster_cov @ self.weight.mT
 
     @property
     def consistency(self) -> Tensor:
         return -self.weight @ self.contrastive_xcov @ self.weight.mT
-
-    def clear(self) -> None:
-        """Clear the running statistics of the reporter."""
-        self.contrastive_xcov_M2.zero_()
-        self.intracluster_cov.zero_()
-        self.intercluster_cov_M2.zero_()
-        self.n.zero_()
 
     @torch.no_grad()
     def update(self, hiddens: Tensor) -> None:
@@ -161,6 +192,8 @@ class EigenReporter(Reporter):
         assert hiddens.ndim == 4, "Must be of shape [batch, variants, choices, dim]"
 
         self.n += n
+        for i, x in enumerate(hiddens.unbind(2)):
+            self.norm.update(x=x, y=torch.full_like(x[..., 0], i))
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
@@ -168,8 +201,13 @@ class EigenReporter(Reporter):
         intra_cov = cov_mean_fused(rearrange(hiddens, "n v k d -> (n k) v d"))
         self.intracluster_cov += (n / self.n) * (intra_cov - self.intracluster_cov)
 
-        # [n, v, k, d] -> [n, k, d]
-        centroids = hiddens.mean(1)
+        if self.config.use_centroids:
+            # VINC style
+            centroids = hiddens.mean(1)
+        else:
+            # CRC-TPC style
+            centroids = rearrange(hiddens, "n v k d -> (n v) k d")
+
         deltas, deltas2 = [], []
 
         # Iterating over classes
@@ -205,12 +243,24 @@ class EigenReporter(Reporter):
 
     def fit_streaming(self, truncated: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
+        # Convert the VINC matrix into "correlation matrix" form by dividing by
+        # the standard deviations of the variables.
+        if self.config.standardize:
+            scale = torch.rsqrt(
+                self.norm.var_x[:, None] * self.norm.var_x[None, :] + 1e-5
+            )
+        else:
+            scale = 1.0
+
         inv_weight = 1 - self.config.neg_cov_weight
         A = (
             self.config.var_weight * self.intercluster_cov
             - inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
-        )
+        ) * scale
+
+        # Remove the subspace responsible for pseudolabel correlations
+        A = self.norm.P @ A @ self.norm.P.mT
 
         if truncated:
             L, Q = truncated_eigh(A, k=self.config.num_heads, seed=self.config.seed)
@@ -233,55 +283,26 @@ class EigenReporter(Reporter):
         self.weight.data = Q.T
         return -float(L[-1])
 
-    def fit(
-        self,
-        hiddens: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> float:
+    def fit(self, hiddens: Tensor) -> float:
         """Fit the probe to the contrast set `hiddens`.
 
         Args:
             hiddens: The contrast set of shape [batch, variants, choices, dim].
-            labels: The ground truth labels if available.
 
         Returns:
             loss: Negative eigenvalue associated with the VINC direction.
         """
         self.update(hiddens)
-        loss = self.fit_streaming()
+        return self.fit_streaming()
 
-        if labels is not None:
-            (_, v, k, _) = hiddens.shape
-            hiddens = rearrange(hiddens, "n v k d -> (n v k) d")
-            labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k).flatten()
-
-            self.platt_scale(labels, hiddens)
-
-        return loss
-
-    def platt_scale(self, labels: Tensor, hiddens: Tensor, max_iter: int = 100):
-        """Fit the scale and bias terms to data with LBFGS.
-
-        Args:
-            labels: Binary labels of shape [batch].
-            hiddens: Hidden states of shape [batch, dim].
-            max_iter: Maximum number of iterations for LBFGS.
-        """
-        opt = optim.LBFGS(
-            [self.bias, self.scale],
-            line_search_fn="strong_wolfe",
-            max_iter=max_iter,
-            tolerance_change=torch.finfo(hiddens.dtype).eps,
-            tolerance_grad=torch.finfo(hiddens.dtype).eps,
+    def save(self, path: Path | str) -> None:
+        """Save the reporter to a file."""
+        # We basically never want to instantiate the reporter on the same device
+        # it happened to be trained on, so we save the state dict as CPU tensors.
+        # Bizarrely, this also seems to save a LOT of disk space in some cases.
+        state = {k: v.cpu() for k, v in self.state_dict().items()}
+        state.update(
+            in_features=self.in_features,
+            num_classes=self.num_classes,
         )
-
-        def closure():
-            opt.zero_grad()
-            loss = nn.functional.binary_cross_entropy_with_logits(
-                self(hiddens), labels.float()
-            )
-
-            loss.backward()
-            return float(loss)
-
-        opt.step(closure)
+        torch.save(state, path)

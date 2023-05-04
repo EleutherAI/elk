@@ -3,7 +3,7 @@ import logging
 import os
 from contextlib import nullcontext, redirect_stdout
 from dataclasses import InitVar, dataclass, replace
-from itertools import islice, zip_longest
+from itertools import zip_longest
 from typing import Any, Iterable, Literal
 from warnings import filterwarnings
 
@@ -24,14 +24,13 @@ from datasets import (
 from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import AutoConfig, PreTrainedModel
-from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
 from ..utils import (
     Color,
     assert_type,
     colorize,
-    float32_to_int16,
+    float_to_int16,
     infer_label_column,
     infer_num_classes,
     instantiate_model,
@@ -165,20 +164,10 @@ def extract_hiddens(
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    if cfg.int8:
-        # Required by `bitsandbytes`
-        dtype = torch.float16
-    elif device == "cpu":
-        dtype = torch.float32
-    else:
-        dtype = "auto"
-
     # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
     # welcome message on every rank
     with redirect_stdout(None) if rank != 0 else nullcontext():
-        model = instantiate_model(
-            cfg.model, device_map={"": device}, load_in_8bit=cfg.int8, torch_dtype=dtype
-        )
+        model = instantiate_model(cfg.model, device=device, load_in_8bit=cfg.int8)
         tokenizer = instantiate_tokenizer(
             cfg.model, truncation_side="left", verbose=rank == 0
         )
@@ -208,13 +197,25 @@ def extract_hiddens(
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
 
     global_max_examples = cfg.max_examples[0 if split_type == "train" else 1]
+
     # break `max_examples` among the processes roughly equally
     max_examples = global_max_examples // world_size
+    max_length = assert_type(int, tokenizer.model_max_length)
+
+    # Keep track of the number of examples we've yielded so far. We can't do something
+    # clean like `islice` the dataset, because we skip examples that are too long, and
+    # we can't predict how many of those there will be.
+    num_yielded = 0
+
     # the last process gets the remainder (which is usually small)
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
 
-    for example in islice(prompt_ds, max_examples):
+    for example in prompt_ds:
+        # Check if we've yielded enough examples
+        if num_yielded >= max_examples:
+            break
+
         num_variants = len(example["prompts"])
         num_choices = len(example["prompts"][0])
 
@@ -246,21 +247,17 @@ def extract_hiddens(
 
                 # Only feed question, not the answer, to the encoder for enc-dec models
                 target = choice["answer"] if is_enc_dec else None
-
-                # Record the EXACT question we fed to the model
-                variant_questions.append(text)
                 encoding = tokenizer(
                     text,
                     # Keep [CLS] and [SEP] for BERT-style models
                     add_special_tokens=True,
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
-                    truncation=True,
                 ).to(device)
-                input_ids = assert_type(Tensor, encoding.input_ids)
 
+                ids = assert_type(Tensor, encoding.input_ids)
                 if is_enc_dec:
-                    answer = assert_type(Tensor, encoding.labels)
+                    answer = labels = assert_type(Tensor, encoding.labels)
                 else:
                     encoding2 = tokenizer(
                         choice["answer"],
@@ -268,33 +265,29 @@ def extract_hiddens(
                         add_special_tokens=False,
                         return_tensors="pt",
                     ).to(device)
+
                     answer = assert_type(Tensor, encoding2.input_ids)
+                    labels = (
+                        # -100 is the mask token
+                        torch.cat([torch.full_like(ids, -100), answer], dim=-1)
+                        if has_lm_preds
+                        else None
+                    )
+                    ids = torch.cat([ids, answer], -1)
 
-                    input_ids = torch.cat([input_ids, answer], dim=-1)
-                    if max_len := tokenizer.model_max_length:
-                        cur_len = input_ids.shape[-1]
-                        input_ids = input_ids[..., -min(cur_len, max_len) :]
+                # If this input is too long, skip it
+                if ids.shape[-1] > max_length:
+                    break
+                else:
+                    # Record the EXACT question we fed to the model
+                    variant_questions.append(text)
 
-                # Make sure we only pass the arguments that the model expects
-                inputs = dict(input_ids=input_ids.long())
-                if is_enc_dec:
-                    inputs["labels"] = answer
-
+                inputs = dict(input_ids=ids.long(), labels=labels)
                 outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
-                    answer_len = answer.shape[-1]
-
-                    log_p = outputs.logits[..., -answer_len:, :].log_softmax(dim=-1)
-                    tokens = answer[..., None]
-                    lm_logits[i, j] = log_p.gather(-1, tokens).mean()
-
-                elif isinstance(outputs, Seq2SeqLMOutput):
-                    # The cross entropy loss is averaged over tokens, so we need to
-                    # multiply by the length to get the total log probability.
-                    # length = encoding.labels.shape[-1]
-                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss)  #  * length
+                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss)
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
@@ -313,9 +306,19 @@ def extract_hiddens(
                     raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
-                    hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)
+                    hidden_dict[f"hidden_{layer_idx}"][i, j] = float_to_int16(hidden)
 
+            # We skipped a pseudolabel because it was too long; break out of this whole
+            # example and move on to the next one
+            if len(variant_questions) != num_choices:
+                break
+
+            # Usual case: we have the expected number of pseudolabels
             text_questions.append(variant_questions)
+
+        # We skipped a variant because it was too long; move on to the next example
+        if len(text_questions) != num_variants:
+            continue
 
         out_record: dict[str, Any] = dict(
             label=example["label"],
@@ -326,6 +329,7 @@ def extract_hiddens(
         if has_lm_preds:
             out_record["model_logits"] = lm_logits
 
+        num_yielded += 1
         yield out_record
 
 
