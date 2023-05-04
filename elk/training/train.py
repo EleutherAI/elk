@@ -132,10 +132,13 @@ class Elicit(Run):
             lr_models = []
 
         row_bufs = defaultdict(list)
-        for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
+        for ds_name in val_dict:
+            val_h, val_gt, val_lm_preds = val_dict[ds_name]
+            train_h, train_gt, train_lm_preds = train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
+            train_credences = reporter(train_h)
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
                     {
@@ -147,12 +150,30 @@ class Elicit(Run):
                     }
                 )
 
+                row_bufs["train_eval"].append(
+                    {
+                        **meta,
+                        "ensembling": mode,
+                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                        "train_loss": train_loss,
+                    }
+                )
+
                 if val_lm_preds is not None:
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
                             "ensembling": mode,
                             **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                        }
+                    )
+
+                if train_lm_preds is not None:
+                    row_bufs["train_lm_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
                         }
                     )
 
