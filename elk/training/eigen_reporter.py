@@ -185,6 +185,12 @@ class EigenReporter(Reporter):
 
     @torch.no_grad()
     def update(self, hiddens: Tensor) -> None:
+        assert (
+            self.contrastive_xcov_M2 is not None
+            and self.intercluster_cov_M2 is not None
+            and self.intracluster_cov is not None
+        ), "Covariance matrices have been deleted"
+
         (n, _, k, d) = hiddens.shape
 
         # Sanity checks
@@ -253,6 +259,11 @@ class EigenReporter(Reporter):
             scale = 1.0
 
         inv_weight = 1 - self.config.neg_cov_weight
+        assert (
+            self.contrastive_xcov_M2 is not None
+            and self.intercluster_cov_M2 is not None
+            and self.intracluster_cov is not None
+        ), "Covariance matrices have been deleted"
         A = (
             self.config.var_weight * self.intercluster_cov
             - inv_weight * self.intracluster_cov
@@ -267,16 +278,20 @@ class EigenReporter(Reporter):
         else:
             try:
                 L, Q = torch.linalg.eigh(A)
-            except torch.linalg.LinAlgError as e:
-                # Check if the matrix has non-finite values
-                if not A.isfinite().all():
-                    raise ValueError(
-                        "Fitting the reporter failed because the VINC matrix has "
-                        "non-finite entries. Usually this means the hidden states "
-                        "themselves had non-finite values."
-                    ) from e
-                else:
-                    raise e
+            except torch.linalg.LinAlgError:
+                try:
+                    L, Q = torch.linalg.eig(A)
+                    L, Q = L.real, Q.real
+                except torch.linalg.LinAlgError as e:
+                    # Check if the matrix has non-finite values
+                    if not A.isfinite().all():
+                        raise ValueError(
+                            "Fitting the reporter failed because the VINC matrix has "
+                            "non-finite entries. Usually this means the hidden states "
+                            "themselves had non-finite values."
+                        ) from e
+                    else:
+                        raise e
 
             L, Q = L[-self.config.num_heads :], Q[:, -self.config.num_heads :]
 
