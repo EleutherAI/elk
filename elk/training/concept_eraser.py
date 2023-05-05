@@ -83,16 +83,12 @@ class ConceptEraser(nn.Module):
         # Welford's online algorithm
         delta_x = x - self.mean_x
         self.mean_x += delta_x.sum(dim=0) / self.n
-        delta_x2 = x - self.mean_x
 
         delta_y = y - self.mean_y
         self.mean_y += delta_y.sum(dim=0) / self.n
         delta_y2 = y - self.mean_y
 
-        self.x_M2 += torch.sum(delta_x * delta_x2, dim=0)
-        self.y_M2 += torch.sum(delta_y * delta_y2, dim=0)
         self.xcov_M2 += torch.einsum("b...m,b...n->...mn", delta_x, delta_y2)
-
         if self.y_dim == self.rank:
             # When we're entirely erasing the subspace, we can use QR instead of SVD to
             # get an orthonormal basis for the column space of the xcov matrix

@@ -23,12 +23,11 @@ class Sweep:
 
     add_pooled: InitVar[bool] = False
     """Whether to add a dataset that pools all of the other datasets together."""
+
     hparam_step: float = -1.0
     """The step size for hyperparameter sweeps. Performs a 2D
     sweep over a and b in (var_weight, inv_weight, neg_cov_weight) = (a, 1 - b, b)
     If negative, no hyperparameter sweeps will be performed. Only valid for Eigen."""
-    skip_transfer_eval: bool = False
-    """Whether to perform transfer eval on every pair of datasets."""
 
     skip_transfer_eval: bool = False
     """Whether to perform transfer eval on every pair of datasets."""
@@ -140,7 +139,7 @@ class Sweep:
 
                         try:
                             run.execute()
-                        except torch._C._LinAlgError as e:  # type: ignore
+                        except torch.linalg.LinAlgError as e:
                             print(colorize(f"LinAlgError: {e}", "red"))
                             continue
 
