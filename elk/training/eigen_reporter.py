@@ -168,12 +168,6 @@ class EigenReporter(Reporter):
 
     @torch.no_grad()
     def update(self, hiddens: Tensor) -> None:
-        assert (
-            self.contrastive_xcov_M2 is not None
-            and self.intercluster_cov_M2 is not None
-            and self.intracluster_cov is not None
-        ), "Covariance matrices have been deleted"
-
         (n, _, k, d) = hiddens.shape
 
         # Sanity checks
@@ -231,11 +225,6 @@ class EigenReporter(Reporter):
     def fit_streaming(self, truncated: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
         inv_weight = 1 - self.config.neg_cov_weight
-        assert (
-            self.contrastive_xcov_M2 is not None
-            and self.intercluster_cov_M2 is not None
-            and self.intracluster_cov is not None
-        ), "Covariance matrices have been deleted"
         A = (
             self.config.var_weight * self.intercluster_cov
             - inv_weight * self.intracluster_cov
