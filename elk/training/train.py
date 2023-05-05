@@ -63,9 +63,16 @@ class Elicit(Run):
         val_dict = self.prepare_data(device, layer, "val")
 
         (first_train_h, train_gt, _), *rest = train_dict.values()
-        d = first_train_h.shape[-1]
+        (_, _, k, d) = first_train_h.shape
         if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same hidden state size")
+
+        # For a while we did support datasets with different numbers of classes, but
+        # we reverted this once we switched to SpectralNorm. There are a few options
+        # for re-enabling it in the future but they are somewhat complex and it's not
+        # clear that it's worth it.
+        if not all(other_h.shape[-2] == k for other_h, _, _ in rest):
+            raise ValueError("All datasets must have the same number of classes")
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         if isinstance(self.net, CcsReporterConfig):
@@ -90,17 +97,14 @@ class Elicit(Run):
             # )
 
         elif isinstance(self.net, EigenReporterConfig):
-            # We set num_classes to None to enable training on datasets with different
-            # numbers of classes. Under the hood, this causes the covariance statistics
-            # to be simply averaged across all batches passed to update().
-            reporter = EigenReporter(self.net, d, num_classes=None, device=device)
+            reporter = EigenReporter(self.net, d, num_classes=k, device=device)
 
             hidden_list, label_list = [], []
             for ds_name, (train_h, train_gt, _) in train_dict.items():
-                (_, v, k, _) = train_h.shape
+                (_, v, _, _) = train_h.shape
 
-                # Datasets can have different numbers of variants and different numbers
-                # of classes, so we need to flatten them here before concatenating
+                # Datasets can have different numbers of variants, so we need to
+                # flatten them here before concatenating
                 hidden_list.append(rearrange(train_h, "n v k d -> (n v k) d"))
                 label_list.append(
                     to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten()
@@ -132,10 +136,13 @@ class Elicit(Run):
             lr_models = []
 
         row_bufs = defaultdict(list)
-        for ds_name, (val_h, val_gt, val_lm_preds) in val_dict.items():
+        for ds_name in val_dict:
+            val_h, val_gt, val_lm_preds = val_dict[ds_name]
+            train_h, train_gt, train_lm_preds = train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
+            train_credences = reporter(train_h)
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
                     {
@@ -147,12 +154,30 @@ class Elicit(Run):
                     }
                 )
 
+                row_bufs["train_eval"].append(
+                    {
+                        **meta,
+                        "ensembling": mode,
+                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                        "train_loss": train_loss,
+                    }
+                )
+
                 if val_lm_preds is not None:
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
                             "ensembling": mode,
                             **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                        }
+                    )
+
+                if train_lm_preds is not None:
+                    row_bufs["train_lm_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
                         }
                     )
 

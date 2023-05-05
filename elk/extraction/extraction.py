@@ -24,7 +24,6 @@ from datasets import (
 from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import AutoConfig, PreTrainedModel
-from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from ..promptsource import DatasetTemplates
 from ..utils import (
@@ -256,9 +255,9 @@ def extract_hiddens(
                     text_target=target,  # type: ignore[arg-type]
                 ).to(device)
 
-                input_ids = assert_type(Tensor, encoding.input_ids)
+                ids = assert_type(Tensor, encoding.input_ids)
                 if is_enc_dec:
-                    answer = assert_type(Tensor, encoding.labels)
+                    answer = labels = assert_type(Tensor, encoding.labels)
                 else:
                     encoding2 = tokenizer(
                         choice["answer"],
@@ -268,35 +267,27 @@ def extract_hiddens(
                     ).to(device)
 
                     answer = assert_type(Tensor, encoding2.input_ids)
-                    input_ids = torch.cat([input_ids, answer], dim=-1)
+                    labels = (
+                        # -100 is the mask token
+                        torch.cat([torch.full_like(ids, -100), answer], dim=-1)
+                        if has_lm_preds
+                        else None
+                    )
+                    ids = torch.cat([ids, answer], -1)
 
                 # If this input is too long, skip it
-                if input_ids.shape[-1] > max_length:
+                if ids.shape[-1] > max_length:
                     break
                 else:
                     # Record the EXACT question we fed to the model
                     variant_questions.append(text)
 
-                # Make sure we only pass the arguments that the model expects
-                inputs = dict(input_ids=input_ids.long())
-                if is_enc_dec:
-                    inputs["labels"] = answer
-
+                inputs = dict(input_ids=ids.long(), labels=labels)
                 outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
-                    answer_len = answer.shape[-1]
-
-                    log_p = outputs.logits[..., -answer_len:, :].log_softmax(dim=-1)
-                    tokens = answer[..., None]
-                    lm_logits[i, j] = log_p.gather(-1, tokens).mean()
-
-                elif isinstance(outputs, Seq2SeqLMOutput):
-                    # The cross entropy loss is averaged over tokens, so we need to
-                    # multiply by the length to get the total log probability.
-                    # length = encoding.labels.shape[-1]
-                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss)  #  * length
+                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss)
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
