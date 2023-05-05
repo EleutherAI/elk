@@ -261,16 +261,20 @@ class EigenReporter(Reporter):
         else:
             try:
                 L, Q = torch.linalg.eigh(A)
-            except torch.linalg.LinAlgError as e:
-                # Check if the matrix has non-finite values
-                if not A.isfinite().all():
-                    raise ValueError(
-                        "Fitting the reporter failed because the VINC matrix has "
-                        "non-finite entries. Usually this means the hidden states "
-                        "themselves had non-finite values."
-                    ) from e
-                else:
-                    raise e
+            except torch.linalg.LinAlgError:
+                try:
+                    L, Q = torch.linalg.eig(A)
+                    L, Q = L.real, Q.real
+                except torch.linalg.LinAlgError as e:
+                    # Check if the matrix has non-finite values
+                    if not A.isfinite().all():
+                        raise ValueError(
+                            "Fitting the reporter failed because the VINC matrix has "
+                            "non-finite entries. Usually this means the hidden states "
+                            "themselves had non-finite values."
+                        ) from e
+                    else:
+                        raise e
 
             L, Q = L[-self.config.num_heads :], Q[:, -self.config.num_heads :]
 
