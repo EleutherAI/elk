@@ -282,7 +282,9 @@ def extract_hiddens(
                     # Record the EXACT question we fed to the model
                     variant_questions.append(text)
 
-                inputs = dict(input_ids=ids.long(), labels=labels)
+                inputs = dict(input_ids=ids.long())
+                if labels is not None:
+                    inputs["labels"] = labels
                 outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available

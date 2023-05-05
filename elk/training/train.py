@@ -25,7 +25,8 @@ class Elicit(Run):
     """Full specification of a reporter training run."""
 
     net: ReporterConfig = subgroups(
-        {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
+        {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig},
+        default="eigen",  # type: ignore
     )
     """Config for building the reporter network."""
 
@@ -55,6 +56,7 @@ class Elicit(Run):
         layer: int,
         devices: list[str],
         world_size: int,
+        num_platt: int = 100,
     ) -> dict[str, pd.DataFrame]:
         """Train a single reporter on a single layer."""
 
@@ -76,22 +78,52 @@ class Elicit(Run):
         if not all(other_h.shape[-2] == k for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same number of classes")
 
+        # carve out a subset of the training data for Platt scaling
+        original_train_dict = train_dict
+        train_dict = dict()
+        platt_set_h = []
+        platt_set_gt = []
+        for ds_name, (
+            o_train_h,
+            o_train_gt,
+            o_train_lm_preds,
+        ) in original_train_dict.items():
+            perm = torch.randperm(o_train_h.shape[0])
+            (_, v, _, _) = o_train_h.shape
+            sub_idx = perm[num_platt:]
+            platt_set_idx = perm[:num_platt]
+            platt_set_h.append(
+                rearrange(o_train_h[platt_set_idx], "n v k d -> (n v k) d")
+            )
+            platt_set_gt.append(
+                to_one_hot(
+                    repeat(o_train_gt[platt_set_idx], "n -> (n v)", v=v), k
+                ).flatten()
+            )
+            train_dict[ds_name] = (
+                o_train_h[sub_idx],
+                o_train_gt[sub_idx],
+                o_train_lm_preds[sub_idx] if o_train_lm_preds is not None else None,
+            )
+        platt_set_h = torch.cat(platt_set_h)
+        platt_set_gt = torch.cat(platt_set_gt)
+
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         train_subs = defaultdict(list)
         train_sub_credences = defaultdict(list)
         val_credences = defaultdict(list)
+        train_rand_credences = defaultdict(list)
+        val_rand_credences = defaultdict(list)
         for num_train in self.num_trains:
             for i in range(self.num_samples):
                 # get a random subset of the training data
                 train_sub = dict()
                 for ds_name, (train_h, train_gt, train_lm_preds) in train_dict.items():
-                    train_idx = torch.randperm(train_h.shape[0])[:num_train]
-                    train_h_sub = train_h[train_idx]
-                    train_gt_sub = train_gt[train_idx]
+                    sub_idx = torch.randperm(train_h.shape[0])[:num_platt]
+                    train_h_sub = train_h[sub_idx]
+                    train_gt_sub = train_gt[sub_idx]
                     train_lm_preds_sub = (
-                        train_lm_preds[train_idx]
-                        if train_lm_preds is not None
-                        else None
+                        train_lm_preds[sub_idx] if train_lm_preds is not None else None
                     )
                     train_sub[ds_name] = (train_h_sub, train_gt_sub, train_lm_preds_sub)
                 train_subs[num_train].append(train_sub)
@@ -108,10 +140,11 @@ class Elicit(Run):
                     (val_h, val_gt, _) = next(iter(val_dict.values()))
 
                     # TODO: Enable Platt scaling for CCS once normalization is fixed
+                    # And add random reporter
                     # (_, v, k, _) = first_train_h.shape
                     # reporter.platt_scale(
-                    #     to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
-                    #     rearrange(first_train_h, "n v k d -> (n v k) d"),
+                    #     to_one_hot(repeat(platt_gt, "n -> (n v)", v=v), k).flatten(),
+                    #     rearrange(platt_h, "n v k d -> (n v k) d"),
                     # )
 
                 elif isinstance(self.net, EigenReporterConfig):
@@ -135,9 +168,33 @@ class Elicit(Run):
 
                     reporter.fit_streaming()
                     reporter.platt_scale(
-                        torch.cat(label_list),
-                        torch.cat(hidden_list),
+                        platt_set_gt,
+                        platt_set_h,
                     )
+
+                    rand_reporter = EigenReporter(
+                        self.net, d, num_classes=k, device=device
+                    )
+                    rand_reporter.weight = torch.randn_like(rand_reporter.weight)
+                    rand_reporter.norm = reporter.norm
+                    rand_reporter.platt_scale(
+                        platt_set_gt,
+                        platt_set_h,
+                    )
+
+                    train_rand_credences[num_train].append(
+                        {
+                            ds_name: rand_reporter(train_h)
+                            for ds_name, (train_h, _, _) in train_dict.items()
+                        }
+                    )
+                    val_rand_credences[num_train].append(
+                        {
+                            ds_name: rand_reporter(val_h)
+                            for ds_name, (val_h, _, _) in val_dict.items()
+                        }
+                    )
+
                 else:
                     raise ValueError(f"Unknown reporter config type: {type(self.net)}")
 
@@ -197,6 +254,20 @@ class Elicit(Run):
                             evaluate_preds(
                                 val_gt,
                                 val_credences[num_train][i][ds_name],
+                                mode,
+                            ).to_dict()
+                        )
+                        num_train_buf["train_rand_eval"].append(
+                            evaluate_preds(
+                                train_gt,
+                                train_rand_credences[num_train][i][ds_name],
+                                mode,
+                            ).to_dict()
+                        )
+                        num_train_buf["rand_eval"].append(
+                            evaluate_preds(
+                                val_gt,
+                                val_rand_credences[num_train][i][ds_name],
                                 mode,
                             ).to_dict()
                         )
