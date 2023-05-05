@@ -9,8 +9,8 @@ from torch import Tensor, nn
 
 from ..truncated_eigh import truncated_eigh
 from ..utils.math_util import cov_mean_fused
+from .concept_eraser import ConceptEraser
 from .reporter import Reporter, ReporterConfig
-from .spectral_norm import SpectralNorm
 
 
 @dataclass
@@ -25,10 +25,6 @@ class EigenReporterConfig(ReporterConfig):
 
     num_heads: int = 1
     """The number of eigenvectors to compute from the VINC matrix."""
-
-    standardize: bool = False
-    """Whether to scale the input to have unit variance."""
-    """The number of reporter heads to fit."""
 
     save_reporter_stats: bool = False
     """Whether to save the reporter statistics to disk in EigenReporter.save(). This
@@ -54,14 +50,7 @@ class EigenReporter(Reporter):
     Args:
         cfg: The reporter configuration.
         in_features: The number of input features.
-        num_classes: The number of classes for tracking the running means. If `None`,
-            we don't track the running means at all, and the semantics of `update()`
-            are a bit different. In particular, each call to `update()` is treated as a
-            new dataset, with a potentially different number of classes. The covariance
-            matrices are simply averaged over each batch of data passed to `update()`,
-            instead of being updated with Welford's algorithm. This is useful for
-            training a single reporter on multiple datasets, where the number of
-            classes may vary.
+        num_classes: The number of classes for tracking the running means.
 
     Attributes:
         config: The reporter configuration.
@@ -95,6 +84,7 @@ class EigenReporter(Reporter):
         *,
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
+        num_variants: int = 1,
         track_class_means: bool = True,
     ):
         super().__init__()
@@ -106,15 +96,11 @@ class EigenReporter(Reporter):
         # Learnable Platt scaling parameters
         self.bias = nn.Parameter(torch.zeros(cfg.num_heads, device=device, dtype=dtype))
         self.scale = nn.Parameter(torch.ones(cfg.num_heads, device=device, dtype=dtype))
-        self.norm = SpectralNorm(
+        self.norm = ConceptEraser(
             in_features,
-            # We're assuming that in the binary case we use 1D one-hot vectors instead
-            # of 2D just to save space. Not sure if we should make this configurable
-            # in the future.
-            1 if num_classes == 2 else num_classes,
+            num_classes * num_variants,
             device=device,
             dtype=dtype,
-            standardize=cfg.standardize,
         )
 
         # Running statistics
@@ -185,15 +171,32 @@ class EigenReporter(Reporter):
 
     @torch.no_grad()
     def update(self, hiddens: Tensor) -> None:
-        (n, _, k, d) = hiddens.shape
+        (n, v, k, d) = hiddens.shape
 
         # Sanity checks
         assert k > 1, "Must provide at least two hidden states"
         assert hiddens.ndim == 4, "Must be of shape [batch, variants, choices, dim]"
 
         self.n += n
-        for i, x in enumerate(hiddens.unbind(2)):
-            self.norm.update(x=x, y=torch.full_like(x[..., 0], i))
+
+        # One-hot indicators for each prompt template
+        prompt_ids = torch.eye(v, device=hiddens.device).expand(n, -1, -1)
+        x_neg, x_pos = hiddens.unbind(2)
+        self.norm.update(
+            x=x_neg,
+            # Independent indicator for each (template, pseudo-label) pair
+            y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
+        )
+        self.norm.update(
+            x=x_pos,
+            # Independent indicator for each (template, pseudo-label) pair
+            y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
+        )
+        # for i, x in enumerate(hiddens.unbind(2)):
+        #     self.norm.update(
+        #         x=x,
+        #         y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1)
+        #     )
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
@@ -243,21 +246,12 @@ class EigenReporter(Reporter):
 
     def fit_streaming(self, truncated: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
-        # Convert the VINC matrix into "correlation matrix" form by dividing by
-        # the standard deviations of the variables.
-        if self.config.standardize:
-            scale = torch.rsqrt(
-                self.norm.var_x[:, None] * self.norm.var_x[None, :] + 1e-5
-            )
-        else:
-            scale = 1.0
-
         inv_weight = 1 - self.config.neg_cov_weight
         A = (
             self.config.var_weight * self.intercluster_cov
             - inv_weight * self.intracluster_cov
             - self.config.neg_cov_weight * self.contrastive_xcov
-        ) * scale
+        )
 
         # Remove the subspace responsible for pseudolabel correlations
         A = self.norm.P @ A @ self.norm.P.mT

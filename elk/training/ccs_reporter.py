@@ -9,15 +9,14 @@ from typing import Literal, Optional, cast
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.nn.functional import binary_cross_entropy as bce
 
 from ..metrics import roc_auc
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
 from .classifier import Classifier
+from .concept_eraser import ConceptEraser
 from .losses import LOSSES
 from .reporter import Reporter, ReporterConfig
-from .spectral_norm import SpectralNorm
 
 
 @dataclass
@@ -93,8 +92,10 @@ class CcsReporter(Reporter):
         self,
         cfg: CcsReporterConfig,
         in_features: int,
+        *,
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
+        num_variants: int = 1,
     ):
         super().__init__()
         self.config = cfg
@@ -106,7 +107,14 @@ class CcsReporter(Reporter):
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
-        self.norm = SpectralNorm(in_features, 1, device=device, dtype=dtype)
+        self.norm = ConceptEraser(
+            in_features,
+            2 * num_variants,
+            rank=num_variants,
+            # batch_dims=(num_variants,) if num_variants else (),
+            device=device,
+            dtype=dtype,
+        )
         self.probe = nn.Sequential(
             nn.Linear(
                 in_features,
@@ -189,13 +197,6 @@ class CcsReporter(Reporter):
         else:
             return roc_auc(pseudo_val, pseudo_preds).item()
 
-    def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
-        loss = sum(
-            LOSSES[name](logit0, logit1, coef)
-            for name, coef in self.config.loss_dict.items()
-        )
-        return assert_type(Tensor, loss)
-
     def reset_parameters(self):
         """Reset the parameters of the probe.
 
@@ -233,73 +234,44 @@ class CcsReporter(Reporter):
         """Return the credence assigned to the hidden state `x`."""
         return self.probe(self.norm(x)).squeeze(-1)
 
-    def loss(
-        self,
-        logit0: Tensor,
-        logit1: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> Tensor:
+    def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         """Return the loss of the reporter on the contrast pair (x0, x1).
 
         Args:
             logit0: The raw score output of the reporter on x0.
             logit1: The raw score output of the reporter on x1.
-            labels: The labels of the contrast pair. Defaults to None.
 
         Returns:
             loss: The loss of the reporter on the contrast pair (x0, x1).
-
-        Raises:
-            ValueError: If `supervised_weight > 0` but `labels` is None.
         """
-        loss = self.unsupervised_loss(logit0, logit1)
+        loss = sum(
+            LOSSES[name](logit0, logit1, coef)
+            for name, coef in self.config.loss_dict.items()
+        )
+        return assert_type(Tensor, loss)
 
-        # If labels are provided, use them to compute a supervised loss
-        if labels is not None:
-            num_labels = len(labels)
-            assert num_labels <= len(logit0), "Too many labels provided"
-            p0 = logit0[:num_labels].sigmoid()
-            p1 = logit1[:num_labels].sigmoid()
-
-            alpha = self.config.supervised_weight
-            preds = p0.add(1 - p1).mul(0.5).squeeze(-1)
-            # broadcast the labels, and flatten the predictions
-            # so that both are 1D tensors
-            broadcast_labels = labels.repeat_interleave(preds.shape[1]).float()
-            flattened_preds = preds.cpu().flatten()
-            bce_loss = bce(flattened_preds, broadcast_labels.type_as(flattened_preds))
-            loss = alpha * bce_loss + (1 - alpha) * loss
-
-        elif self.config.supervised_weight > 0:
-            raise ValueError(
-                "Supervised weight > 0 but no labels provided to compute loss"
-            )
-
-        return loss
-
-    def fit(
-        self,
-        hiddens: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> float:
-        """Fit the probe to the contrast pair (neg, pos).
-
-        Args:
-            contrast_pair: A tuple of tensors, (neg, pos), where x0 and x1 are the
-                contrastive representations.
-            labels: The labels of the contrast pair. Defaults to None.
+    def fit(self, hiddens: Tensor) -> float:
+        """Fit the probe to the contrast pair `hiddens`.
 
         Returns:
             best_loss: The best loss obtained.
-
-        Raises:
-            ValueError: If `optimizer` is not "adam" or "lbfgs".
-            RuntimeError: If the best loss is not finite.
         """
         x_neg, x_pos = hiddens.unbind(2)
 
-        self.norm.update(x=x_neg, y=torch.zeros_like(x_neg[..., 0]))
-        self.norm.update(x=x_pos, y=torch.ones_like(x_pos[..., 0]))
+        # One-hot indicators for each prompt template
+        n, v, _ = x_neg.shape
+        prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
+
+        self.norm.update(
+            x=x_neg,
+            # Independent indicator for each (template, pseudo-label) pair
+            y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
+        )
+        self.norm.update(
+            x=x_pos,
+            # Independent indicator for each (template, pseudo-label) pair
+            y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
+        )
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
         # Record the best acc, loss, and params found so far
@@ -316,9 +288,9 @@ class CcsReporter(Reporter):
                 self.probe[0].weight.data = V[:, -1, None].T
 
             if self.config.optimizer == "lbfgs":
-                loss = self.train_loop_lbfgs(x_neg, x_pos, labels)
+                loss = self.train_loop_lbfgs(x_neg, x_pos)
             elif self.config.optimizer == "adam":
-                loss = self.train_loop_adam(x_neg, x_pos, labels)
+                loss = self.train_loop_adam(x_neg, x_pos)
             else:
                 raise ValueError(f"Optimizer {self.config.optimizer} is not supported")
 
@@ -332,12 +304,7 @@ class CcsReporter(Reporter):
         self.load_state_dict(best_state)
         return best_loss
 
-    def train_loop_adam(
-        self,
-        x_neg: Tensor,
-        x_pos: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> float:
+    def train_loop_adam(self, x_neg: Tensor, x_pos: Tensor) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
 
         optimizer = torch.optim.AdamW(
@@ -349,18 +316,13 @@ class CcsReporter(Reporter):
             optimizer.zero_grad()
 
             # We already normalized in fit()
-            loss = self.loss(self(x_neg), self(x_pos), labels)
+            loss = self.loss(self(x_neg), self(x_pos))
             loss.backward()
             optimizer.step()
 
         return float(loss)
 
-    def train_loop_lbfgs(
-        self,
-        x_neg: Tensor,
-        x_pos: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> float:
+    def train_loop_lbfgs(self, x_neg: Tensor, x_pos: Tensor) -> float:
         """LBFGS train loop, returning the final loss. Modifies params in-place."""
 
         optimizer = torch.optim.LBFGS(
@@ -378,7 +340,7 @@ class CcsReporter(Reporter):
             optimizer.zero_grad()
 
             # We already normalized in fit()
-            loss = self.loss(self(x_neg), self(x_pos), labels)
+            loss = self.loss(self(x_neg), self(x_pos))
             regularizer = 0.0
 
             # We explicitly add L2 regularization to the loss, since LBFGS

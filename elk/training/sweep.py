@@ -20,6 +20,9 @@ class Sweep:
     add_pooled: InitVar[bool] = False
     """Whether to add a dataset that pools all of the other datasets together."""
 
+    skip_transfer_eval: bool = False
+    """Whether to perform transfer eval on every pair of datasets."""
+
     name: str | None = None
 
     # A bit of a hack to add all the command line arguments from Elicit
@@ -106,21 +109,24 @@ class Sweep:
                 run = replace(self.run_template, data=data, out_dir=out_dir)
                 run.execute()
 
-                if len(eval_datasets) > 1:
-                    print(colorize("== Transfer eval ==", "green"))
+                if not self.skip_transfer_eval:
+                    if len(eval_datasets) > 1:
+                        print(colorize("== Transfer eval ==", "green"))
 
-                # Now evaluate the reporter on the other datasets
-                for eval_dataset in eval_datasets:
-                    # We already evaluated on this one during training
-                    if eval_dataset in train_datasets:
-                        continue
+                    # Now evaluate the reporter on the other datasets
+                    for eval_dataset in eval_datasets:
+                        # We already evaluated on this one during training
+                        if eval_dataset in train_datasets:
+                            continue
 
-                    assert run.out_dir is not None
-                    eval = Eval(
-                        data=replace(run.data, model=model, datasets=(eval_dataset,)),
-                        source=run.out_dir,
-                        out_dir=out_dir / "transfer" / eval_dataset,
-                        num_gpus=run.num_gpus,
-                        min_gpu_mem=run.min_gpu_mem,
-                    )
-                    eval.execute(highlight_color="green")
+                        assert run.out_dir is not None
+                        eval = Eval(
+                            data=replace(
+                                run.data, model=model, datasets=(eval_dataset,)
+                            ),
+                            source=run.out_dir,
+                            out_dir=out_dir / "transfer" / eval_dataset,
+                            num_gpus=run.num_gpus,
+                            min_gpu_mem=run.min_gpu_mem,
+                        )
+                        eval.execute(highlight_color="green")

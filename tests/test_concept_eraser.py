@@ -5,7 +5,7 @@ from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
 
 from elk.metrics import to_one_hot
-from elk.training import SpectralNorm
+from elk.training import ConceptEraser
 
 
 @pytest.mark.parametrize("batch_dims", [(), (2,), (3, 4)])
@@ -15,8 +15,8 @@ def test_stats(batch_dims: tuple[int, ...]):
     batch_size = 10
     num_batches = 5
 
-    # Initialize the SpectralNorm
-    norm = SpectralNorm(num_features, num_classes, batch_dims=batch_dims)
+    # Initialize the ConceptEraser
+    eraser = ConceptEraser(num_features, num_classes, batch_dims=batch_dims)
 
     # Generate random data
     torch.manual_seed(42)
@@ -30,7 +30,7 @@ def test_stats(batch_dims: tuple[int, ...]):
 
     # Compute cross-covariance matrix using batched updates
     for x, y in zip(x_data, y_data):
-        norm.update(x, y)
+        eraser.update(x, y)
 
     # Compute the expected cross-covariance matrix using the whole dataset
     x_all = torch.cat(x_data)
@@ -39,13 +39,11 @@ def test_stats(batch_dims: tuple[int, ...]):
     mean_y = y_all.type_as(x_all).mean(dim=0)
     x_centered = x_all - mean_x
     y_centered = y_all - mean_y
-    expected_var = x_all.var(dim=0, unbiased=False)
     expected_xcov = torch.einsum("b...m,b...n->...mn", x_centered, y_centered)
     expected_xcov /= batch_size * num_batches
 
     # Compare the computed cross-covariance matrix with the expected one
-    torch.testing.assert_close(norm.var_x, expected_var)
-    torch.testing.assert_close(norm.xcov, expected_xcov)
+    torch.testing.assert_close(eraser.xcov, expected_xcov)
 
 
 # Both `1` and `2` are binary classification problems, but `1` means the labels are
@@ -68,8 +66,8 @@ def test_projection(num_classes: int):
     if num_classes > 1:
         Y_t = to_one_hot(Y_t, num_classes)
 
-    norm = SpectralNorm(d, num_classes, dtype=torch.float64).update(X_t, Y_t)
-    X_ = norm(X_t)
+    eraser = ConceptEraser(d, num_classes, dtype=torch.float64).update(X_t, Y_t)
+    X_ = eraser(X_t)
 
     # Heuristic threshold for singular values taken from torch.linalg.pinv
     eps = max(n, d) * torch.finfo(X_.dtype).eps

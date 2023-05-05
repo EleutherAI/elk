@@ -18,7 +18,6 @@ def load_prompts(
     *,
     binarize: bool = False,
     num_shots: int = 0,
-    num_variants: int = -1,
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
     template_path: str | None = None,
@@ -60,12 +59,9 @@ def load_prompts(
     prompter.drop_non_mc_templates()
 
     num_templates = len(prompter.templates)
-    num_variants = (
-        num_templates if num_variants == -1 else min(num_variants, num_templates)
-    )
-    assert num_variants > 0
+    assert num_templates > 0
     if rank == 0:
-        print(f"Using {num_variants} variants of each prompt")
+        print(f"Extracting {num_templates} variants of each prompt")
 
     label_column = prompter.label_column or infer_label_column(ds.features)
 
@@ -110,7 +106,6 @@ def load_prompts(
             binarize=binarize,
             label_column=label_column,
             label_choices=label_choices,  # type: ignore[arg-type]
-            num_variants=num_variants,
             prompter=prompter,
             rng=rng,
             fewshot_iter=fewshot_iter,
@@ -123,15 +118,12 @@ def _convert_to_prompts(
     binarize: bool,
     label_column: str,
     label_choices: list[bool | int | str],
-    num_variants: int,
     rng: Random,
     fewshot_iter: Iterator[list[dict]] | None = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
     prompts = []
     templates = list(prompter.templates.values())
-    if num_variants < len(templates):
-        templates = rng.sample(templates, num_variants)
 
     def qa_cat(q: str, a: str) -> str:
         # if the jinja template already adds whitespace, don't add more

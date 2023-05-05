@@ -2,7 +2,7 @@ import torch
 from torch import Tensor, nn
 
 
-class SpectralNorm(nn.Module):
+class ConceptEraser(nn.Module):
     """Removes the subspace responsible for correlations between hiddens and labels."""
 
     mean_x: Tensor
@@ -14,12 +14,6 @@ class SpectralNorm(nn.Module):
     u: Tensor
     """Orthonormal basis of the subspace to remove."""
 
-    x_M2: Tensor
-    """Unnormalized second moment of X."""
-
-    y_M2: Tensor
-    """Unnormalized second moment of Y."""
-
     xcov_M2: Tensor
     """Unnormalized cross-covariance matrix X^T Y."""
 
@@ -28,34 +22,30 @@ class SpectralNorm(nn.Module):
 
     def __init__(
         self,
-        num_features: int,
-        num_classes: int,
+        x_dim: int,
+        y_dim: int,
         *,
         batch_dims: tuple[int, ...] = (),
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
-        standardize: bool = False,
+        rank: int | None = None,
     ):
         super().__init__()
 
         self.batch_dims = batch_dims
-        self.num_classes = num_classes
-        self.num_features = num_features
-        self.standardize = standardize
+        self.y_dim = y_dim
+        self.x_dim = x_dim
+        self.rank = rank or y_dim
 
         self.register_buffer(
-            "mean_x", torch.zeros(*batch_dims, num_features, device=device, dtype=dtype)
+            "mean_x", torch.zeros(*batch_dims, x_dim, device=device, dtype=dtype)
         )
-        self.register_buffer("mean_y", self.mean_x.new_zeros(*batch_dims, num_classes))
-        self.register_buffer(
-            "u", self.mean_x.new_zeros(*batch_dims, num_features, num_classes)
-        )
-        self.register_buffer("x_M2", self.mean_x.new_zeros(*batch_dims, num_features))
+        self.register_buffer("mean_y", self.mean_x.new_zeros(*batch_dims, y_dim))
+        self.register_buffer("u", self.mean_x.new_zeros(*batch_dims, x_dim, self.rank))
         self.register_buffer(
             "xcov_M2",
-            self.mean_x.new_zeros(*batch_dims, num_features, num_classes),
+            self.mean_x.new_zeros(*batch_dims, x_dim, y_dim),
         )
-        self.register_buffer("y_M2", self.mean_x.new_zeros(*batch_dims, num_classes))
         self.register_buffer("n", torch.tensor(0, device=device, dtype=dtype))
 
     def forward(self, x: Tensor) -> Tensor:
@@ -66,16 +56,15 @@ class SpectralNorm(nn.Module):
 
         # First center the input
         x_ = x - self.mean_x
-        if self.standardize:
-            x_ /= torch.sqrt(self.var_x + 1e-5)
 
-        # Remove the subspace
-        x_ -= (x_ @ self.u) @ self.u.mT
+        # Remove the subspace. We treat x_ as a batch of (1 x d) vectors
+        proj = (x_[..., None, :] @ self.u) @ self.u.mT
+        x_ -= proj.squeeze(-2)
 
         return x_
 
     @torch.no_grad()
-    def update(self, x: Tensor, y: Tensor) -> "SpectralNorm":
+    def update(self, x: Tensor, y: Tensor) -> "ConceptEraser":
         """Update the running statistics with a new batch of data."""
         *_, d, c = self.xcov_M2.shape
 
@@ -104,33 +93,23 @@ class SpectralNorm(nn.Module):
         self.y_M2 += torch.sum(delta_y * delta_y2, dim=0)
         self.xcov_M2 += torch.einsum("b...m,b...n->...mn", delta_x, delta_y2)
 
-        # Get orthonormal basis for the column space of the cross-covariance matrix
-        self.u, _ = torch.linalg.qr(self.xcorr if self.standardize else self.xcov)
+        if self.y_dim == self.rank:
+            # When we're entirely erasing the subspace, we can use QR instead of SVD to
+            # get an orthonormal basis for the column space of the xcov matrix
+            self.u, _ = torch.linalg.qr(self.xcov)
+        else:
+            # We only want to erase the highest energy part of the subspace
+            self.u, _, _ = torch.svd_lowrank(self.xcov, q=self.rank)
+
         return self
 
     @property
     def P(self) -> Tensor:
         """Projection matrix for removing the subspace."""
-        eye = torch.eye(self.num_features, device=self.u.device, dtype=self.u.dtype)
+        eye = torch.eye(self.x_dim, device=self.u.device, dtype=self.u.dtype)
         return eye - self.u @ self.u.mT
-
-    @property
-    def var_x(self) -> Tensor:
-        """The variance of X."""
-        return self.x_M2 / self.n
-
-    @property
-    def var_y(self) -> Tensor:
-        """The variance of Y."""
-        return self.y_M2 / self.n
 
     @property
     def xcov(self) -> Tensor:
         """The cross-covariance matrix."""
         return self.xcov_M2 / self.n
-
-    @property
-    def xcorr(self) -> Tensor:
-        """The cross-correlation matrix."""
-        var_prods = self.var_x[..., None] * self.var_y[..., None, :]
-        return self.xcov / torch.sqrt(var_prods + 1e-5)
