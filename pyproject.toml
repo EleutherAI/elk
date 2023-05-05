@@ -30,7 +30,11 @@ dependencies = [
     # 4.0 introduced the breaking change of using return_dict=True by default
     "transformers>=4.0.0",
     # required by promptsource, which doesn't specify a version
-    "jinja2"
+    "jinja2",
+    # For visualization of results
+    "plotly==5.14.1",
+    "kaleido==0.2.1",
+
 ]
 version = "0.1.1"
 

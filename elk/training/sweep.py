@@ -3,6 +3,8 @@ from dataclasses import InitVar, dataclass, replace
 import numpy as np
 import torch
 
+from elk.utils.visualize import render_model_results
+
 from ..evaluation import Eval
 from ..extraction import Extract
 from ..files import elk_reporter_dir, memorably_named_dir
@@ -29,6 +31,9 @@ class Sweep:
     If negative, no hyperparameter sweeps will be performed. Only valid for Eigen."""
     skip_transfer_eval: bool = False
     """Whether to perform transfer eval on every pair of datasets."""
+    
+    visualize: bool = False
+    """Whether to generate visualizions of the results of the sweep."""
 
     name: str | None = None
 
@@ -163,3 +168,7 @@ class Sweep:
                                     skip_supervised=run.supervised == "none",
                                 )
                                 eval.execute(highlight_color="green")
+
+        if self.visualize:
+            for i, model in enumerate(self.models):
+                render_model_results(sweep_dir / model, sweep_dir / "visualizations")
