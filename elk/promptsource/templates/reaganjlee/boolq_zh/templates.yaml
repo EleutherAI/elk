@@ -73,9 +73,9 @@ templates:
     reference: ''
   7d21d974-0624-4d4f-9e8c-644e2d009cb5: !Template
     answer_choices: 没有 ||| 是的
-    id: 7d21d974-0624-4d4f-9e8c-644e2d009cb5 
+    id: 7d21d974-0624-4d4f-9e8c-644e2d009cb5
     jinja: "{{ passage }} \n\n读完之后, 你能告诉我{{ question }}吗?\
-      \ ||| {% if answer != -1 %}{{ answer_choices[answer] }}{% endif %}" 
+      \ ||| {% if answer != -1 %}{{ answer_choices[answer] }}{% endif %}"
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
