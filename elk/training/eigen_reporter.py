@@ -122,7 +122,7 @@ class EigenReporter(Reporter):
 
     def forward(self, hiddens: Tensor) -> Tensor:
         """Return the predicted log odds on input `x`."""
-        raw_scores = hiddens @ self.weight.mT
+        raw_scores = hiddens @ (self.weight.mT if self.weight.mT.dtype != torch.float64 else self.weight.mT.type(torch.float32))
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
     @property
@@ -216,7 +216,9 @@ class EigenReporter(Reporter):
             L, Q = truncated_eigh(A, k=self.config.num_heads, seed=self.config.seed)
         else:
             try:
-                L, Q = torch.linalg.eigh(A)
+                # L, Q = torch.linalg.eigh(A)
+                # TOD: Why does casting to 64 work?
+                L, Q = torch.linalg.eigh(A.type(torch.float64))
             except torch.linalg.LinAlgError as e:
                 # Check if the matrix has non-finite values
                 if not A.isfinite().all():

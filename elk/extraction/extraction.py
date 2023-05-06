@@ -241,17 +241,19 @@ def extract_hiddens(
                 )
                 # Throw out layers we don't care about
                 # TODO: All of RWKV's hiddens are useful. Don't throw them out.
-                hiddens = [hiddens[i] for i in layer_indices]
+                if not cfg.model.startswith("rwkv"):
+                    hiddens = [hiddens[i] for i in layer_indices]
 
-                # Current shape of each element: (batch_size, seq_len, hidden_size)
-                if cfg.token_loc == "first":
-                    hiddens = [h[..., 0, :] for h in hiddens]
-                elif cfg.token_loc == "last":
-                    hiddens = [h[..., -1, :] if len(h.shape) >= 2 else h for h in hiddens]
-                elif cfg.token_loc == "mean":
-                    hiddens = [h.mean(dim=-2) for h in hiddens]
-                else:
-                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+                if has_per_token_states := len(hiddens[-1].shape) > 1:
+                    # Current shape of each element: (batch_size, seq_len, hidden_size)
+                    if cfg.token_loc == "first":
+                        hiddens = [h[..., 0, :] for h in hiddens]
+                    elif cfg.token_loc == "last":
+                        hiddens = [h[..., -1, :] if len(h.shape) >= 2 else h for h in hiddens]
+                    elif cfg.token_loc == "mean":
+                        hiddens = [h.mean(dim=-2) for h in hiddens]
+                    else:
+                        raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
                 for layer_idx, hidden in zip(layer_indices, hiddens):
                     hidden_dict[f"hidden_{layer_idx}"][i, j] = float32_to_int16(hidden)

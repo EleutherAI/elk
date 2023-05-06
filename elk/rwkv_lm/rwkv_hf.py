@@ -1,7 +1,12 @@
 import os
 import torch
 from huggingface_hub import hf_hub_download
-from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizer, BatchEncoding
+from transformers import (
+    PretrainedConfig,
+    PreTrainedModel,
+    PreTrainedTokenizer,
+    BatchEncoding,
+)
 from transformers.modeling_outputs import CausalLMOutput
 
 # The rwkv.model is the official build
@@ -19,7 +24,7 @@ class RWKVConfig(PretrainedConfig):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.hidden_size = 4096
-        self.num_hidden_layers = 33
+        self.num_hidden_layers = 160
         self.is_encoder_decoder = False
         self.architectures = ["RWKV-LM"]
 
@@ -45,7 +50,7 @@ class RWKVModel(PreTrainedModel):
         # 14b
         # weights_path = hf_hub_download(repo_id="BlinkDL/rwkv-4-pile-14b", filename="RWKV-4-Pile-14B-20230213-8019.pth")
 
-        strategy = f"{device} bf16"
+        strategy = f"{device} fp16"
         self.model = RWKV(model=weights_path, strategy=strategy)
         self.device_object = torch.device(device)
 
@@ -70,8 +75,8 @@ class RWKVModel(PreTrainedModel):
 
         return response
 
-class RWKVTokenizer(PreTrainedTokenizer):
 
+class RWKVTokenizer(PreTrainedTokenizer):
     model_max_length = 2048
 
     def __init__(self, vocab_file_path="elk/rwkv_lm/20B_tokenizer.json"):
@@ -87,9 +92,7 @@ class RWKVTokenizer(PreTrainedTokenizer):
         add_special_tokens=None,
     ):
         input_ids = self.encode(text)
-        return BatchEncoding({
-            "input_ids": torch.tensor([input_ids])
-        })
+        return BatchEncoding({"input_ids": torch.tensor([input_ids])})
 
     def encode(self, text):
         return self.pipeline.encode(text)
