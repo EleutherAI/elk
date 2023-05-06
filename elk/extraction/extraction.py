@@ -265,7 +265,7 @@ def extract_hiddens(
         # Iterate over variants
         for i, record in enumerate(example["prompts"]):
             variant_questions = []
-            cached_kv: tuple[tuple[Tensor]] | None = None
+            cached_question_kv: tuple[tuple[Tensor]] | None = None
             # Iterate over answers
             for j, choice in enumerate(record):
                 text = choice["question"]
@@ -305,13 +305,14 @@ def extract_hiddens(
                 inputs = dict(input_ids=input_ids_to_pass.long())
                 if is_enc_dec:
                     inputs["labels"] = answer
-                if cached_kv is not None:
-                    inputs["past_key_values"] = cached_kv
-                    inputs["input_ids"] = input_ids
+                if cached_question_kv is not None:
+                    # If we cached the question, all we need to pass is the answer
+                    inputs["past_key_values"] = cached_question_kv
+                    inputs["input_ids"] = answer
 
                 outputs = model(**inputs, output_hidden_states=True, use_cache=True)
 
-                cached_kv = get_reusable_kv(
+                cached_question_kv = get_reusable_kv(
                     answer_ids=answer, past_key_values=outputs.past_key_values
                 )
                 # Compute the log probability of the answer tokens if available
