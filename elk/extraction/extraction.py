@@ -307,6 +307,7 @@ def extract_hiddens(
                 if is_enc_dec:
                     inputs["labels"] = answer
                 if cached_question_kv is not None:
+                    print("Using cached question key-values")
                     # If we cached the question, all we need to pass is the answer
                     inputs["past_key_values"] = cached_question_kv
                     inputs["input_ids"] = answer
