@@ -16,7 +16,6 @@ class Eigendecomposition(NamedTuple):
     eigenvectors: Tensor
 
 
-@torch.autocast("cuda", enabled=torch.cuda.is_available())
 def truncated_eigh(
     A: Tensor,
     k: int = 1,

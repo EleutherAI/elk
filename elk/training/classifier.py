@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import torch
 from torch import Tensor
@@ -8,6 +8,14 @@ from torch.nn.functional import (
 from torch.nn.functional import (
     cross_entropy,
 )
+
+
+@dataclass
+class InlpResult:
+    """Result of Iterative Nullspace Projection (NLP)."""
+
+    losses: list[float] = field(default_factory=list)
+    classifiers: list["Classifier"] = field(default_factory=list)
 
 
 @dataclass
@@ -175,10 +183,58 @@ class Classifier(torch.nn.Module):
         self.fit(x, y, l2_penalty=best_penalty, max_iter=max_iter)
         return RegularizationPath(l2_penalties, mean_losses.tolist())
 
+    @classmethod
+    def inlp(
+        cls, x: Tensor, y: Tensor, max_iter: int | None = None, tol: float = 0.01
+    ) -> InlpResult:
+        """Iterative Nullspace Projection (INLP) <https://arxiv.org/abs/2004.07667>.
+
+        Args:
+            x: Input tensor of shape (N, D), where N is the number of samples and D is
+                the input dimension.
+            y: Target tensor of shape (N,) for binary classification or (N, C) for
+                multiclass classification, where C is the number of classes.
+            max_iter: Maximum number of iterations to run. If `None`, run for the full
+                dimension of the input.
+            tol: Tolerance for the loss function. The algorithm will stop when the loss
+                is within `tol` of the entropy of the labels.
+
+        Returns:
+            `InlpResult` containing the classifiers and losses achieved at each
+            iteration.
+        """
+
+        y.shape[-1] if y.ndim > 1 else 2
+        d = x.shape[-1]
+        loss = 0.0
+
+        # Compute entropy of the labels
+        p = y.float().mean()
+        H = -p * torch.log(p) - (1 - p) * torch.log(1 - p)
+
+        if max_iter is not None:
+            d = min(d, max_iter)
+
+        # Iterate until the loss is within epsilon of the entropy
+        result = InlpResult()
+        for _ in range(d):
+            clf = cls(d, device=x.device, dtype=x.dtype)
+            loss = clf.fit(x, y)
+            result.classifiers.append(clf)
+            result.losses.append(loss)
+
+            if loss >= (1.0 - tol) * H:
+                break
+
+            # Project the data onto the nullspace of the classifier
+            x = clf.nullspace_project(x)
+
+        return result
+
     def nullspace_project(self, x: Tensor) -> Tensor:
         """Project the given data onto the nullspace of the classifier."""
 
         # https://en.wikipedia.org/wiki/Projection_(linear_algebra)
         A = self.linear.weight.data.T
         P = A @ torch.linalg.solve(A.mT @ A, A.mT)
-        return x - P @ x
+        return x - x @ P

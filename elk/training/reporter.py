@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -19,25 +19,6 @@ class ReporterConfig(Serializable):
     """
 
     seed: int = 42
-
-
-@dataclass
-class OptimConfig(Serializable):
-    """
-    Args:
-        lr: The learning rate to use. Ignored when `optimizer` is `"lbfgs"`.
-            Defaults to 1e-2.
-        num_epochs: The number of epochs to train for. Defaults to 1000.
-        num_tries: The number of times to try training the reporter. Defaults to 10.
-        optimizer: The optimizer to use. Defaults to "adam".
-        weight_decay: The weight decay or L2 penalty to use. Defaults to 0.01.
-    """
-
-    lr: float = 1e-2
-    num_epochs: int = 1000
-    num_tries: int = 10
-    optimizer: Literal["adam", "lbfgs"] = "lbfgs"
-    weight_decay: float = 0.01
 
 
 class Reporter(nn.Module, ABC):

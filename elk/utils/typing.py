@@ -15,9 +15,9 @@ def assert_type(typ: Type[T], obj: Any) -> T:
 
 def float32_to_int16(x: torch.Tensor) -> torch.Tensor:
     """Converts float32 to float16, then reinterprets as int16."""
-    downcast = x.type(torch.bfloat16)
+    downcast = x.type(torch.float16)
     if not downcast.isfinite().all():
-        raise ValueError("Non-finite values in tensor")
+        raise ValueError("Cannot convert to 16 bit: values are not finite")
 
     return downcast.view(torch.int16)
 

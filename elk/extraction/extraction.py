@@ -28,6 +28,7 @@ from transformers.modeling_outputs import Seq2SeqLMOutput
 from ..promptsource import DatasetTemplates
 from ..utils import (
     assert_type,
+    colorize,
     float32_to_int16,
     infer_label_column,
     infer_num_classes,
@@ -37,6 +38,10 @@ from ..utils import (
     is_autoregressive,
     select_train_val_splits,
     select_usable_devices,
+)
+from .dataset_name import (
+    DatasetDictWithName,
+    extract_dataset_name_and_config,
 )
 from .generator import _GeneratorBuilder
 from .prompt_loading import PromptConfig, load_prompts
@@ -75,7 +80,9 @@ class Extract(Serializable):
             config = assert_type(
                 PretrainedConfig, AutoConfig.from_pretrained(self.model)
             )
-            self.layers = tuple(range(0, config.num_hidden_layers, layer_stride))
+            # Note that we always include 0 which is the embedding layer
+            layer_range = range(1, config.num_hidden_layers + 1, layer_stride)
+            self.layers = (0,) + tuple(layer_range)
 
     def explode(self) -> list["Extract"]:
         """Explode this config into a list of configs, one for each layer."""
@@ -137,8 +144,8 @@ def extract_hiddens(
         world_size=world_size,
     )
 
-    # Iterating over questions
-    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
+    # Add one to the number of layers to account for the embedding layer
+    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
 
     global_max_examples = p_cfg.max_examples[0 if split_type == "train" else 1]
     # break `max_examples` among the processes roughly equally
@@ -184,7 +191,8 @@ def extract_hiddens(
                 variant_questions.append(text)
                 encoding = tokenizer(
                     text,
-                    add_special_tokens=False,
+                    # Keep [CLS] and [SEP] for BERT-style models
+                    add_special_tokens=True,
                     return_tensors="pt",
                     text_target=target,  # type: ignore[arg-type]
                     truncation=True,
@@ -196,6 +204,7 @@ def extract_hiddens(
                 else:
                     encoding2 = tokenizer(
                         choice["answer"],
+                        # Don't include [CLS] and [SEP] in the answer
                         add_special_tokens=False,
                         return_tensors="pt",
                     ).to(device)
@@ -203,15 +212,15 @@ def extract_hiddens(
 
                     input_ids = torch.cat([input_ids, answer], dim=-1)
                     if max_len := tokenizer.model_max_length:
-                        input_ids = input_ids[..., -max_len:]
+                        cur_len = input_ids.shape[-1]
+                        input_ids = input_ids[..., -min(cur_len, max_len) :]
 
                 # Make sure we only pass the arguments that the model expects
                 inputs = dict(input_ids=input_ids)
                 if is_enc_dec:
                     inputs["labels"] = answer
 
-                with torch.autocast("cuda", enabled=torch.cuda.is_available()):
-                    outputs = model(**inputs, output_hidden_states=True)
+                outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
                 if has_lm_preds:
@@ -230,10 +239,8 @@ def extract_hiddens(
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 )
-                # First element of list is the input embeddings
-                # hiddens = hiddens[1:]
-
                 # Throw out layers we don't care about
+                # TODO: All of RWKV's hiddens are useful. Don't throw them out.
                 hiddens = [hiddens[i] for i in layer_indices]
 
                 # Current shape of each element: (batch_size, seq_len, hidden_size)
@@ -272,18 +279,20 @@ def extract(
     cfg: "Extract",
     *,
     disable_cache: bool = False,
+    highlight_color: str = "cyan",
     num_gpus: int = -1,
     min_gpu_mem: int | None = None,
-) -> DatasetDict:
+) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
 
     def get_splits() -> SplitDict:
         available_splits = assert_type(SplitDict, info.splits)
         train_name, val_name = select_train_val_splits(available_splits)
+
+        pretty_name = colorize(assert_type(str, ds_name), highlight_color)
         print(
-            # Cyan color for dataset name
-            f"\033[36m{info.builder_name}\033[0m: using '{train_name}' for training and"
-            f" '{val_name}' for validation"
+            f"{pretty_name}: using '{train_name}' for training "
+            f"and '{val_name}' for validation"
         )
         limit_list = cfg.prompts.max_examples
 
@@ -301,7 +310,9 @@ def extract(
 
     model_cfg = instantiate_config(cfg.model)
 
-    ds_name, _, config_name = cfg.prompts.datasets[0].partition(" ")
+    ds_name, config_name = extract_dataset_name_and_config(
+        dataset_config_str=cfg.prompts.datasets[0]
+    )
     info = get_dataset_config_info(ds_name, config_name or None)
 
     ds_features = assert_type(Features, info.features)
@@ -321,7 +332,8 @@ def extract(
             dtype="int16",
             shape=(num_variants, num_classes, model_cfg.hidden_size),
         )
-        for layer in cfg.layers or range(model_cfg.num_hidden_layers)
+        # Add 1 to include the embedding layer
+        for layer in cfg.layers or range(model_cfg.num_hidden_layers + 1)
     }
     other_cols = {
         "variant_ids": Sequence(
@@ -347,6 +359,7 @@ def extract(
     devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
     builders = {
         split_name: _GeneratorBuilder(
+            # Use the dataset name from info_with_name, not the builder name
             builder_name=info.builder_name,
             config_name=info.config_name,
             cache_dir=None,
@@ -376,4 +389,8 @@ def extract(
         )
         ds[split] = builder.as_dataset(split=split)
 
-    return DatasetDict(ds)
+    dataset_dict = DatasetDict(ds)
+    return DatasetDictWithName(
+        name=ds_name,
+        dataset=dataset_dict,
+    )

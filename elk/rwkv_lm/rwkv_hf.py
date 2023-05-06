@@ -7,7 +7,8 @@ from transformers.modeling_outputs import CausalLMOutput
 # The rwkv.model is the official build
 # from rwkv.model import RWKV
 # rwkv_hiddens is a custom implementation that exposes all the hidden states as layer states - written by Nora
-from .rwkv_hiddens import RWKV
+# from .rwkv_hiddens import RWKV
+from rwkv.model import RWKV
 from rwkv.utils import PIPELINE
 
 os.environ["RWKV_JIT_ON"] = "1"
