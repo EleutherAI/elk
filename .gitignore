@@ -5,7 +5,12 @@ elk/trained/*
 nohup.out
 .idea
 *.pkl
+
+# Don't track any working/testing notebooks
 *.ipynb
+
+# Contributors may have their own custom VS code debug configurations
+.vscode/launch.json
 
 # scripts for experiments in progress
 my_*.sh
