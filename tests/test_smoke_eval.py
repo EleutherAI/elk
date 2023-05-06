@@ -2,10 +2,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from elk import Extract
+from elk import Extract, extract_hiddens
 from elk.evaluation import Eval
 from elk.training import CcsReporterConfig, EigenReporterConfig
 from elk.training.train import Elicit
+from elk.utils.multi_gpu import ModelDevices
 
 EVAL_EXPECTED_FILES = [
     "cfg.yaml",
@@ -19,7 +20,7 @@ def setup_elicit(
     tmp_path: Path,
     dataset_name="imdb",
     model_path="sshleifer/tiny-gpt2",
-    min_mem=10 * 1024 ** 2,
+    min_mem=10 * 1024**2,
     is_ccs: bool = True,
 ) -> Elicit:
     """Setup elicit config for testing, execute elicit, and save output to tmp_path.
@@ -94,6 +95,22 @@ def test_smoke_tfr_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     transfer_datasets = ("christykoh/imdb_pt",)
     eval_run(elicit, transfer_datasets=transfer_datasets)
     eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)
+
+
+def test_extract():
+    for i in extract_hiddens(
+        cfg=Extract(
+            model="sshleifer/tiny-gpt2",
+            datasets=("imdb",),
+            max_examples=(10, 10),
+            # run on all layers, tiny-gpt only has 2 layers
+        ),
+        devices=ModelDevices(first_device="cpu", other_devices=[]),
+        split_type="train",
+        rank=0,
+        world_size=1,
+    ):
+        print(i)
 
 
 def test_smoke_eval_run_tiny_gpt2_eigen(tmp_path: Path):
