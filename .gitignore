@@ -5,6 +5,7 @@ elk/trained/*
 nohup.out
 .idea
 *.pkl
+*.ipynb
 
 # scripts for experiments in progress
 my_*.sh
