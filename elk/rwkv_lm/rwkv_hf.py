@@ -82,7 +82,7 @@ class RWKVModel(PreTrainedModel):
         return response
 
     @staticmethod
-    def from_pretrained(pretrained_model_name_or_path):
+    def from_pretrained(pretrained_model_name_or_path, device):
         repo_weights_paths = {
             "BlinkDL/rwkv-4-pile-1b5": "RWKV-4-Pile-1B5-20220903-8040.pth",
             "BlinkDL/rwkv-4-pile-3b": "RWKV-4-Pile-3B-20221008-8023.pth",
@@ -96,7 +96,7 @@ class RWKVModel(PreTrainedModel):
 
         weights_path = hf_hub_download(repo_id=pretrained_model_name_or_path, filename=repo_weights_paths[pretrained_model_name_or_path])
         config = RWKVConfig.from_pretrained(pretrained_model_name_or_path)
-        model = RWKVModel(config, weights_path, device="cuda")
+        model = RWKVModel(config, weights_path, device)
         return model
 
 

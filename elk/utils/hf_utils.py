@@ -21,10 +21,12 @@ _DECODER_ONLY_SUFFIXES = [
 _AUTOREGRESSIVE_SUFFIXES = ["ConditionalGeneration"] + _DECODER_ONLY_SUFFIXES
 
 
-def instantiate_model(model_str: str, device: torch.device, **kwargs) -> PreTrainedModel:
+def instantiate_model(
+    model_str: str, device: torch.device, **kwargs
+) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class."""
-    if model_str.startswith("rwkv"):
-        return RWKVModel(device)
+    if model_str.startswith("BlinkDL/rwkv"):
+        return RWKVModel.from_pretrained(model_str, device)
 
     model_cfg = AutoConfig.from_pretrained(model_str)
     archs = model_cfg.architectures
@@ -44,9 +46,8 @@ def instantiate_model(model_str: str, device: torch.device, **kwargs) -> PreTrai
 
 def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:
     """Instantiate a tokenizer, using the fast one iff it exists."""
-    if model_str.startswith("rwkv"):
+    if model_str.startswith("BlinkDL/rwkv"):
         return RWKVTokenizer()
-        # return GPT2TokenizerFast(tokenizer_file="elk/rwkv_lm/20B_tokenizer.json")
 
     try:
         return AutoTokenizer.from_pretrained(model_str, use_fast=True, **kwargs)
@@ -59,8 +60,8 @@ def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:
 
 def instantiate_config(model_str: str, **kwargs) -> PretrainedConfig:
     """Instantiate a config."""
-    if model_str.startswith("rwkv"):
-        return RWKVConfig()
+    if model_str.startswith("BlinkDL/rwkv"):
+        return RWKVConfig.from_pretrained(model_str)
 
     return AutoConfig.from_pretrained(model_str, **kwargs)
 

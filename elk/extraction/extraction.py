@@ -240,8 +240,7 @@ def extract_hiddens(
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
                 )
                 # Throw out layers we don't care about
-                # TODO: All of RWKV's hiddens are useful. Don't throw them out.
-                if not cfg.model.startswith("rwkv"):
+                if not cfg.model.startswith("BlinkDL/rwkv"):
                     hiddens = [hiddens[i] for i in layer_indices]
 
                 if has_per_token_states := len(hiddens[-1].shape) > 1:
@@ -249,7 +248,9 @@ def extract_hiddens(
                     if cfg.token_loc == "first":
                         hiddens = [h[..., 0, :] for h in hiddens]
                     elif cfg.token_loc == "last":
-                        hiddens = [h[..., -1, :] if len(h.shape) >= 2 else h for h in hiddens]
+                        hiddens = [
+                            h[..., -1, :] if len(h.shape) >= 2 else h for h in hiddens
+                        ]
                     elif cfg.token_loc == "mean":
                         hiddens = [h.mean(dim=-2) for h in hiddens]
                     else:
