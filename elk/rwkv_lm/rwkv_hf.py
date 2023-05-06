@@ -75,8 +75,6 @@ class RWKVModel(PreTrainedModel):
         response = CausalLMOutput(
             logits=token.detach().clone(),
             hidden_states=states
-            # hidden_states=[states[-1]],
-            # hidden_states=[state.detach() for state in output_states],
         )
 
         return response

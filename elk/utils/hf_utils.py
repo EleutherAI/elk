@@ -4,7 +4,6 @@ from transformers import (
     AutoConfig,
     AutoModel,
     AutoTokenizer,
-    GPT2TokenizerFast,
     PretrainedConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
