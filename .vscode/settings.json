@@ -3,13 +3,10 @@
     "python.formatting.blackArgs": [
         "-l 88"
     ],
-    "python.formatting.provider": "none",
+    "python.formatting.provider": "black",
     "python.testing.pytestArgs": [
         "tests"
     ],
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,
-    "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
-    },
 }
