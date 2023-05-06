@@ -310,8 +310,8 @@ def extract_hiddens(
                     # If we cached the question, all we need to pass is the answer
                     inputs["past_key_values"] = cached_question_kv
                     inputs["input_ids"] = answer
-
-                outputs = model(**inputs, output_hidden_states=True, use_cache=True)
+                with torch.no_grad():
+                    outputs = model(**inputs, output_hidden_states=True, use_cache=True)
 
                 cached_question_kv = (
                     get_reusable_kv(
