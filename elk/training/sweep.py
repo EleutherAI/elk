@@ -171,4 +171,4 @@ class Sweep:
 
         if self.visualize:
             for i, model in enumerate(self.models):
-                render_model_results(sweep_dir / model, sweep_dir / "visualizations")
+                render_model_results(sweep_dir, model)
