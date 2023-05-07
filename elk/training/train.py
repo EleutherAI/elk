@@ -119,7 +119,10 @@ class Elicit(Run):
                 # get a random subset of the training data
                 train_sub = dict()
                 for ds_name, (train_h, train_gt, train_lm_preds) in train_dict.items():
-                    sub_idx = torch.randperm(train_h.shape[0])[:num_platt]
+                    # TODO: Find the KNNs for each training point in the training data
+                    # Using L2 distance works better than inner product distance. See:
+                    # https://arxiv.org/abs/1911.00172, https://arxiv.org/abs/2112.04426
+                    sub_idx = torch.randperm(train_h.shape[0])[:num_train]
                     train_h_sub = train_h[sub_idx]
                     train_gt_sub = train_gt[sub_idx]
                     train_lm_preds_sub = (
