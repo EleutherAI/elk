@@ -28,23 +28,28 @@ class RWKVConfig(PretrainedConfig):
         path_config_maps = {
             "BlinkDL/rwkv-4-pile-1b5": {
                 "hidden_size": 2048,
-                "num_hidden_layers": 120,
+                "num_hidden_layers": 24
+                # "num_hidden_layers": 120,
             },
             "BlinkDL/rwkv-4-pile-3b": {
                 "hidden_size": 2560,
-                "num_hidden_layers": 160,
+                "num_hidden_layers": 32,
+                # "num_hidden_layers": 160,
             },
             "BlinkDL/rwkv-4-pile-7b": {
                 "hidden_size": 4096,
-                "num_hidden_layers": 160,
+                "num_hidden_layers": 32,
+                # "num_hidden_layers": 160,
             },
             "BlinkDL/rwkv-4-pile-14b": {
                 "hidden_size": 5120,
-                "num_hidden_layers": 200,
+                "num_hidden_layers": 40,
+                # "num_hidden_layers": 200,
             },
             "BlinkDL/rwkv-4-raven": {
                 "hidden_size": 5120,
-                "num_hidden_layers": 200,
+                "num_hidden_layers": 40,
+                # "num_hidden_layers": 200,
             }
         }
         return RWKVConfig(
@@ -72,9 +77,33 @@ class RWKVModel(PreTrainedModel):
     ):
         inputs = input_ids[0].detach().cpu()
         token, states = self.model.forward(inputs, None)
+
+        # RWKV returnes five states for each layer. This can result in up to 160 states for each layer which blows up the memory.
+        # Take the .aa state since it results in good perf most of the time.
+        # state: 0=att_xx 1=att_aa 2=att_bb 3=att_pp 4=ffn_xx
+
+        layer_states = []
+        for i in range(0, len(states), 5):
+            layer_states.append(states[i:i+5])
+
+        layer_states_types = {
+            "att_xx": [],
+            "att_aa": [],
+            "att_bb": [],
+            "att_pp": [],
+            "ffn_xx": []
+        }
+
+        for layer_state_list in layer_states:
+            layer_states_types["att_xx"].append(layer_state_list[0])
+            layer_states_types["att_aa"].append(layer_state_list[1])
+            layer_states_types["att_bb"].append(layer_state_list[2])
+            layer_states_types["att_pp"].append(layer_state_list[3])
+            layer_states_types["ffn_xx"].append(layer_state_list[4])
+
         response = CausalLMOutput(
             logits=token.detach().clone(),
-            hidden_states=states
+            hidden_states=layer_states_types["att_bb"]
         )
 
         return response
@@ -82,10 +111,10 @@ class RWKVModel(PreTrainedModel):
     @staticmethod
     def from_pretrained(pretrained_model_name_or_path, device):
         repo_weights_paths = {
-            "BlinkDL/rwkv-4-pile-1b5": "RWKV-4-Pile-1B5-20220903-8040.pth",
-            "BlinkDL/rwkv-4-pile-3b": "RWKV-4-Pile-3B-20221008-8023.pth",
-            "BlinkDL/rwkv-4-pile-7b": "RWKV-4-Pile-7B-20221115-8047.pth",
-            "BlinkDL/rwkv-4-pile-14b": "RWKV-4-Pile-14B-20230213-8019.pth",
+            "BlinkDL/rwkv-4-pile-1b5": "RWKV-4-Pile-1B5-20220929-ctx4096.pth",
+            "BlinkDL/rwkv-4-pile-3b": "RWKV-4-Pile-3B-20221110-ctx4096.pth",
+            "BlinkDL/rwkv-4-pile-7b": "RWKV-4-Pile-7B-20230109-ctx4096.pth",
+            "BlinkDL/rwkv-4-pile-14b": "RWKV-4-Pile-14B-2023xxxx-ctx8192-testxxx.pth",
             "BlinkDL/rwkv-4-raven": "RWKV-4-Raven-14B-v10-Eng99%-Other1%-20230427-ctx8192.pth",
         }
 
