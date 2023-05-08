@@ -131,13 +131,13 @@ class Run(ABC, Serializable):
 
             split = ds[key].with_format("torch", device=device, dtype=torch.int16)
             labels = assert_type(Tensor, split["label"])
-            val_h = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
+            split_h = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
 
             with split.formatted_as("torch", device=device):
                 has_preds = "model_logits" in split.features
                 lm_preds = split["model_logits"] if has_preds else None
 
-            out[ds_name] = (val_h, labels.to(val_h.device), lm_preds)
+            out[ds_name] = (split_h, labels.to(split_h.device), lm_preds)
 
         return out
 

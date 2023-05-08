@@ -108,6 +108,40 @@ class Elicit(Run):
         platt_set_h = torch.cat(platt_set_h)
         platt_set_gt = torch.cat(platt_set_gt)
 
+        # precompute distances between all training points
+        train_h_dist_mats = dict()
+        for ds_name, (train_h, _, _) in train_dict.items():
+            train_h_dist_mats[ds_name] = torch.zeros((len(train_h), len(train_h)))
+            for i, h1_raw in enumerate(train_h):
+                for j, h2_raw in enumerate(train_h):
+                    if i == j:
+                        train_h_dist_mats[ds_name][i, j] = 0
+                    elif i < j:
+                        # compute L2 distance between h1 and h2
+                        # where we concatenate away the variants dimension
+                        # Using L2 distance works better than inner product distance.
+                        # See:
+                        # https://arxiv.org/abs/1911.00172
+                        # https://arxiv.org/abs/2112.04426
+                        h1 = rearrange(h1_raw, "v k d -> k (v d)")
+                        h2 = rearrange(h2_raw, "v k d -> k (v d)")
+                        assert (
+                            h1.shape[0] == h2.shape[0] == 2
+                        ), "Only supports 2 classes"
+                        # the distance is the minimum of the 4 pairwise distances to
+                        # because we don't know the labels, so we don't want our metric
+                        # to say all the nearby examples have the same label
+                        dist = min(
+                            [
+                                torch.dist(h1[0], h2[0]),  # type: ignore
+                                torch.dist(h1[0], h2[1]),  # type: ignore
+                                torch.dist(h1[1], h2[0]),  # type: ignore
+                                torch.dist(h1[1], h2[1]),  # type: ignore
+                            ]
+                        )
+                        train_h_dist_mats[ds_name][i, j] = dist
+                        train_h_dist_mats[ds_name][j, i] = dist
+
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         train_subs = defaultdict(list)
         train_sub_credences = defaultdict(list)
@@ -119,10 +153,8 @@ class Elicit(Run):
                 # get a random subset of the training data
                 train_sub = dict()
                 for ds_name, (train_h, train_gt, train_lm_preds) in train_dict.items():
-                    # TODO: Find the KNNs for each training point in the training data
-                    # Using L2 distance works better than inner product distance. See:
-                    # https://arxiv.org/abs/1911.00172, https://arxiv.org/abs/2112.04426
-                    sub_idx = torch.randperm(train_h.shape[0])[:num_train]
+                    # Find the KNNs for each training point in the training data
+                    sub_idx = torch.argsort(train_h_dist_mats[ds_name][i])[:num_train]
                     train_h_sub = train_h[sub_idx]
                     train_gt_sub = train_gt[sub_idx]
                     train_lm_preds_sub = (
