@@ -231,7 +231,9 @@ class CcsReporter(Reporter):
 
     def forward(self, x: Tensor) -> Tensor:
         """Return the credence assigned to the hidden state `x`."""
-        return self.probe(self.norm(x)).squeeze(-1)
+        # return self.probe(self.norm(x)).squeeze(-1)
+        raw_scores = self.probe(self.norm(x)).squeeze(-1)
+        return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
     def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         """Return the loss of the reporter on the contrast pair (x0, x1).
