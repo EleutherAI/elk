@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from simple_parsing import ArgumentParser
 
 from elk.evaluation.evaluate import Eval
-from elk.plotting.visualize import Plot
+from elk.plotting.command import Plot
 from elk.training.sweep import Sweep
 from elk.training.train import Elicit
 

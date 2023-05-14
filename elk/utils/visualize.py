@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -20,7 +19,7 @@ def generate_heatmap(data, model, layer, viz_dir: Path):
 
     viz_dir = viz_dir / model
     viz_dir.mkdir(parents=True, exist_ok=True)
-        
+
     fig.write_image(viz_dir / f"{layer}.png")
 
 
@@ -43,6 +42,7 @@ def reduce_model_results(model_path):
 
     return df
 
+
 def render_model_results(root_dir, model):
     viz_dir = root_dir / "visualizations"
     print(f"Saving sweep visualizations to \033[1m{viz_dir}\033[0m")
@@ -52,8 +52,5 @@ def render_model_results(root_dir, model):
     for layer in range(layer_min, layer_max + 1):
         df = df[df["ensembling"] == "full"]
         df = df[df["layer"] == layer]
-        
-        generate_heatmap(data=df, 
-                         model=model, 
-                         layer=layer, 
-                         viz_dir=viz_dir)
+
+        generate_heatmap(data=df, model=model, layer=layer, viz_dir=viz_dir)

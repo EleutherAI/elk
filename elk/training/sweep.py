@@ -31,7 +31,7 @@ class Sweep:
     If negative, no hyperparameter sweeps will be performed. Only valid for Eigen."""
     skip_transfer_eval: bool = False
     """Whether to perform transfer eval on every pair of datasets."""
-    
+
     visualize: bool = False
     """Whether to generate visualizions of the results of the sweep."""
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -13,27 +13,8 @@ from plotly.subplots import make_subplots
 
 import elk.plotting.utils as utils
 
-
-@dataclass
-class Plot:
-    sweeps: list[Path] = field(default_factory=list)
-
-    def execute(self):
-        sweeps_path = Path.home() / "elk-reporters" / "sweeps"
-        # in sweeps_path find the most recent sweep
-        sweep = max(sweeps_path.iterdir(), key=os.path.getctime)
-        if self.sweeps:
-            sweep = self.sweeps[0]
-        if len(self.sweeps) > 1:
-            print(
-                f"""{len(self.sweeps)} paths specified.
-                Only one sweep is supported at this time."""
-            )
-        else:
-            visualize_sweep(sweep)  # TODO support more than one sweep
-
-
 VIZ_PATH = Path(os.getcwd()) / "viz"
+
 ALL_DS_NAMES = [
     "super_glue:rte",
     "super_glue:boolq",
@@ -47,26 +28,14 @@ ALL_DS_NAMES = [
 ]
 
 
-METHODS = [
-    ("ccs-ar", "none"),
-    ("vinc-std-norm-ar", "none"),
-    ("vinc-std-norm-ar", "full"),
-    ("crctpc", "none"),
-]
-
-
 class SweepByDsMultiplot:
     def __init__(self, model_name: str):
         self.model_name = model_name
 
-    def load() -> SweepByDsMultiplot:
-        pass
+    def validate(self, sweep: Sweep) -> bool:
+        return True
 
-    def validate(self, df) -> bool:
-        # validate only one
-        pass
-
-    def render(self, sweep: Sweep):
+    def render(self, sweep: Sweep, with_transfer=False, write=True) -> go.Figure:
         df = sweep.df
         unique_datasets = df["eval_dataset"].unique()
         run_names = df["run_name"].unique()
@@ -78,7 +47,6 @@ class SweepByDsMultiplot:
             rows=num_rows, cols=3, subplot_titles=unique_datasets, shared_yaxes=True
         )
 
-        # combos = METHODS
         combos = list(itertools.product(run_names, ensembles))
 
         color_map = {
@@ -87,8 +55,13 @@ class SweepByDsMultiplot:
 
         for run_name, ensemble in combos:
             run_data = df[df["run_name"] == run_name]
-            ensemble_data = run_data[run_data["ensembling"] == ensemble]
-
+            ensemble_data: pd.DataFrame = run_data[run_data["ensembling"] == ensemble]
+            if with_transfer:  # TODO write tests
+                pass  # TODO implement this case
+            else:
+                ensemble_data = ensemble_data[
+                    ensemble_data["eval_dataset"] == ensemble_data["train_dataset"]
+                ]
             for i, dataset_name in enumerate(unique_datasets, start=1):
                 dataset_data = ensemble_data[
                     ensemble_data["eval_dataset"] == dataset_name
@@ -130,30 +103,28 @@ class SweepByDsMultiplot:
 
         fig = utils.set_subplot_title_font_size(fig, font_size=8)
         fig = utils.set_legend_font_size(fig, font_size=8)
-        fig.write_image(
-            file=VIZ_PATH / sweep.name / f"{self.model_name}-line-ds-multiplot.png",
-            scale=2,
-        )
-        fig.write_html(
-            file=VIZ_PATH / sweep.name / f"{self.model_name}-line-ds-multiplot.html"
-        )
+        if write:
+            fig.write_image(
+                file=VIZ_PATH / sweep.name / f"{self.model_name}-line-ds-multiplot.png",
+                scale=2,
+            )
+            fig.write_html(
+                file=VIZ_PATH / sweep.name / f"{self.model_name}-line-ds-multiplot.html"
+            )
 
         return fig
 
 
 class TransferEvalHeatmap:
     def __init__(
-        self, layer: int, score_type: str = "auroc_estimate"
-    ):  # TODO make enum
+        self, layer: int, score_type: str = "auroc_estimate", ensembling: str = "full"
+    ):
         self.layer = layer
         self.score_type = score_type
-
-    def load() -> TransferEvalHeatmap:
-        pass
+        self.ensembling = ensembling
 
     def validate(self, df) -> bool:
-        # validate only one
-        pass
+        return True
 
     def generate(self, df: pd.DataFrame) -> go.Figure:
         """
@@ -181,12 +152,8 @@ class TransferEvalTrend:
         self.dataset_names = dataset_names
         self.score_type = score_type
 
-    def load() -> TransferEvalTrend:
-        pass
-
     def validate(self, df) -> bool:
-        # validate only one
-        pass
+        return True
 
     def generate(self, df: pd.DataFrame) -> go.Figure:
         # TODO should I filter out the non-transfer dataset?
@@ -257,94 +224,38 @@ class Model:
 
         return cls(df, sweep_name, model_name, is_transfer)
 
-    def render(self, dataset_names: list[str] = ALL_DS_NAMES):
+    def render(
+        self,
+        dataset_names: list[str] = ALL_DS_NAMES,
+        score_type="auroc_estimate",
+        ensembling="full",
+    ) -> None:
         df = self.df
         model_name = self.model_name
-        is_transfer = self.is_transfer
         sweep_name = self.sweep_name
         layer_min, layer_max = df["layer"].min(), df["layer"].max()
         if not (VIZ_PATH / sweep_name).exists():
             (VIZ_PATH / sweep_name).mkdir()
         if not (VIZ_PATH / sweep_name / f"{model_name}").exists():
             (VIZ_PATH / sweep_name / f"{model_name}").mkdir()
-        if is_transfer:
+        if self.is_transfer:
             for layer in range(layer_min, layer_max + 1):
-
-                def filter_df(df, ensembling, layer):
-                    df = df[df["ensembling"] == ensembling]
-                    df = df[df["layer"] == layer]
-                    return df
-
-                filtered = filter_df(df, "full", layer)
-
+                filtered = df[(df["layer"] == layer) & (df["ensembling"] == ensembling)]
                 path = VIZ_PATH / sweep_name / f"{model_name}" / f"{layer}.png"
                 if not path.parent.exists():
                     path.parent.mkdir()
-                fig = TransferEvalHeatmap(layer).generate(filtered)
+                fig = TransferEvalHeatmap(
+                    layer, score_type=score_type, ensembling=ensembling
+                ).generate(filtered)
                 fig.write_image(file=path)
 
-        TransferEvalTrend(dataset_names).generate(df).write_image(
-            file=VIZ_PATH / sweep_name / f"{model_name}" / "trend.png"
+        fig = (
+            TransferEvalTrend(dataset_names)
+            .generate(df)
+            .write_image(
+                file=VIZ_PATH / sweep_name / f"{model_name}" / "transfer_eval_trend.png"
+            )
         )
-
-
-def reduce_model_results(model_path: Path, run_name: str) -> Model:
-    df = pd.DataFrame()
-    model_name = model_path.name
-
-    def handle_csv(dir, eval_dataset, train_dataset):
-        file = dir / "eval.csv"
-        eval_df = pd.read_csv(file)
-        eval_df["eval_dataset"] = eval_dataset
-        eval_df["train_dataset"] = train_dataset
-        return eval_df
-
-    is_transfer = False
-    for train_dir in model_path.iterdir():
-        eval_df = handle_csv(train_dir, train_dir.name, train_dir.name)
-        df = pd.concat([df, eval_df], ignore_index=True)
-        transfer_dir = train_dir / "transfer"
-        if transfer_dir.exists():
-            is_transfer = True
-            for eval_ds_dir in transfer_dir.iterdir():
-                eval_df = handle_csv(eval_ds_dir, eval_ds_dir.name, train_dir.name)
-                df = pd.concat([df, eval_df], ignore_index=True)
-
-    df["model_name"] = model_name
-    df["run_name"] = run_name
-
-    return Model(df, run_name, model_name, is_transfer)
-
-
-def render_model_results(res: Model, dataset_names: list[str] = ALL_DS_NAMES):
-    df = res.df
-    model_name = res.model_name
-    is_transfer = res.is_transfer
-    sweep_name = res.sweep_name
-    layer_min, layer_max = df["layer"].min(), df["layer"].max()
-    if not (VIZ_PATH / sweep_name).exists():
-        (VIZ_PATH / sweep_name).mkdir()
-    if not (VIZ_PATH / sweep_name / f"{model_name}").exists():
-        (VIZ_PATH / sweep_name / f"{model_name}").mkdir()
-    if is_transfer:
-        for layer in range(layer_min, layer_max + 1):
-
-            def filter_df(df, ensembling, layer):
-                df = df[df["ensembling"] == ensembling]
-                df = df[df["layer"] == layer]
-                return df
-
-            filtered = filter_df(df, "full", layer)
-
-            path = VIZ_PATH / sweep_name / f"{model_name}" / f"{layer}.png"
-            if not path.parent.exists():
-                path.parent.mkdir()
-            fig = TransferEvalHeatmap(layer).generate(filtered)
-            fig.write_image(file=path)
-
-    TransferEvalTrend(dataset_names).generate(df).write_image(
-        file=VIZ_PATH / sweep_name / f"{model_name}" / "trend.png"
-    )
 
 
 # the following function does too many things.
@@ -359,7 +270,10 @@ class Sweep:
     df: pd.DataFrame
     path: Path
     datasets: list[str]
-    models: list[str]
+    models: dict[str, Model]
+
+    def model_names(self):
+        return list(self.models.keys())
 
     @classmethod
     def collect(cls, sweep: Path) -> Sweep:
@@ -373,14 +287,19 @@ class Sweep:
             sweep_viz_path.mkdir()
 
         model_paths = get_model_paths(sweep)
-        df = pd.DataFrame()
-        for model_path in model_paths:
-            model_res = Model.collect(model_path, sweep_name)
-            render_model_results(model_res)
-            df = pd.concat([df, model_res.df], ignore_index=True)
-        # make new dataclass here that
+        # df = pd.DataFrame()
+        # models = {}
+        # for model_path in model_paths:
+        #     model = Model.collect(model_path, sweep_name)
+        #     models[model.model_name] = model
+        #     df = pd.concat([df, model.df], ignore_index=True)
+
+        models = {
+            model_path.name: Model.collect(model_path, sweep_name)
+            for model_path in model_paths
+        }
+        df = pd.concat([model.df for model in models.values()], ignore_index=True)
         datasets = list(df["eval_dataset"].unique())
-        models = list(df["model_name"].unique())
         return cls(sweep_name, df, sweep_viz_path, datasets, models)
 
     def generate_multiplots(self):
@@ -430,23 +349,7 @@ def get_model_paths(sweep_path: Path) -> list[Path]:
 
 def visualize_sweep(sweep_path: Path):
     sweep = Sweep.collect(sweep_path)
-    # special data filtering
-    # NOTE TRANSFER: select only data where eval_dataset == train_dataset
-    # all_data = all_data[all_data["eval_dataset"] == all_data["train_dataset"]]
-    # NOTE ensembling: select only data where ensembling == full
-    # all_data = all_data[all_data["ensembling"] == "full"]
-    # NOTE modify all the auroc to be the max of auroc and (1-auroc)
-    # NOTE this should really be handled data side
-    # all_data["auroc_estimate"] = all_data["auroc_estimate"].apply(
-    #     lambda x: max(x, 1 - x)
-    # )
+    for model in sweep.models.values():
+        model.render()
     sweep.generate_table(write=True)
     sweep.generate_multiplots()
-
-
-if __name__ == "__main__":
-    root = Path(os.getcwd())
-    if not VIZ_PATH.exists():
-        VIZ_PATH.mkdir()
-    utils.restructure_to_sweep(root / "elk-reporters", root / "data", "platt-4")
-    visualize_sweep(root / "data" / "platt-4")
