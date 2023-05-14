@@ -34,6 +34,7 @@ dependencies = [
     # For visualization of results
     "plotly==5.14.1",
     "kaleido==0.2.1",
+    "rich==13.3.5"
 
 ]
 version = "0.1.1"
