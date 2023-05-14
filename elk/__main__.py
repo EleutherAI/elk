@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from simple_parsing import ArgumentParser
 
 from elk.evaluation.evaluate import Eval
+from elk.plotting.visualize import Plot
 from elk.training.sweep import Sweep
 from elk.training.train import Elicit
 
@@ -13,7 +14,7 @@ from elk.training.train import Elicit
 class Command:
     """Some top-level command"""
 
-    command: Elicit | Eval | Sweep
+    command: Elicit | Eval | Sweep | Plot
 
     def execute(self):
         return self.command.execute()
