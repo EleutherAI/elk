@@ -32,7 +32,7 @@ class Sweep:
     """Whether to perform transfer eval on every pair of datasets."""
 
     visualize: bool = False
-    """Whether to generate visualizions of the results of the sweep."""
+    """Whether to generate visualizations of the results of the sweep."""
 
     name: str | None = None
 
