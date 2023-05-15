@@ -3,11 +3,10 @@ from dataclasses import InitVar, dataclass, replace
 import numpy as np
 import torch
 
-from elk.utils.visualize import render_model_results
-
 from ..evaluation import Eval
 from ..extraction import Extract
 from ..files import elk_reporter_dir, memorably_named_dir
+from ..plotting.visualize import visualize_sweep
 from ..training.eigen_reporter import EigenReporterConfig
 from ..utils import colorize
 from .train import Elicit
@@ -170,5 +169,4 @@ class Sweep:
                                 eval.execute(highlight_color="green")
 
         if self.visualize:
-            for i, model in enumerate(self.models):
-                render_model_results(sweep_dir, model)
+            visualize_sweep(sweep_dir)
