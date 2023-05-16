@@ -1,15 +1,15 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from elk.files import elk_reporter_dir
 
-from elk.plotting.visualize import visualize_sweep
+from .visualize import visualize_sweep
+from ..files import elk_reporter_dir
 
+from simple_parsing import field
 
 @dataclass
 class Plot:
-    sweeps: list[str] = field(default_factory=list)
-
+    sweeps: list[str] = field(positional=True, default_factory=list)
     def execute(self):
         sweeps_root_dir = Path.home() / elk_reporter_dir() / "sweeps"
 
