@@ -1,8 +1,8 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from elk.files import elk_reporter_dir
 
+from elk.files import elk_reporter_dir
 from elk.plotting.visualize import visualize_sweep
 
 
