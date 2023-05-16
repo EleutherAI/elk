@@ -5,7 +5,7 @@ import torch
 
 from ..evaluation import Eval
 from ..extraction import Extract
-from ..files import elk_reporter_dir, memorably_named_dir
+from ..files import memorably_named_dir, sweeps_dir
 from ..plotting.visualize import visualize_sweep
 from ..training.eigen_reporter import EigenReporterConfig
 from ..utils import colorize
@@ -93,7 +93,7 @@ class Sweep:
         print(f"Models: {self.models}")
         print(f"Datasets: {self.datasets}")
 
-        root_dir = elk_reporter_dir() / "sweeps"
+        root_dir = sweeps_dir()
         sweep_dir = root_dir / self.name if self.name else memorably_named_dir(root_dir)
         print(f"Saving sweep results to \033[1m{sweep_dir}\033[0m")  # bold
 
