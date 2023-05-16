@@ -1,9 +1,10 @@
 import os
 from dataclasses import dataclass, field
+
 from pathlib import Path
 
 from .visualize import visualize_sweep
-from ..files import elk_reporter_dir
+from ..files import sweeps_dir
 
 from simple_parsing import field
 
@@ -11,8 +12,7 @@ from simple_parsing import field
 class Plot:
     sweeps: list[str] = field(positional=True, default_factory=list)
     def execute(self):
-        sweeps_root_dir = Path.home() / elk_reporter_dir() / "sweeps"
-
+        sweeps_root_dir = sweeps_dir()
         sweep = max(sweeps_root_dir.iterdir(), key=os.path.getctime)
         if self.sweeps:
             sweep = sweeps_root_dir / self.sweeps[0]
