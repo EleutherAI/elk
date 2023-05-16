@@ -1,27 +1,29 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from elk.files import elk_reporter_dir
 
 from elk.plotting.visualize import visualize_sweep
 
 
 @dataclass
 class Plot:
-    sweep: list[str] = field(default_factory=list)
+    sweeps: list[str] = field(default_factory=list)
 
     def execute(self):
-        sweeps_path = Path.home() / "elk-reporters" / "sweeps"
-        # in sweeps_path find the most recent sweep
-        sweep = max(sweeps_path.iterdir(), key=os.path.getctime)
-        if self.sweep:
-            sweep = sweeps_path / self.sweep[0]
+        sweeps_root_dir = Path.home() / elk_reporter_dir() / "sweeps"
+
+        sweep = max(sweeps_root_dir.iterdir(), key=os.path.getctime)
+        if self.sweeps:
+            sweep = sweeps_root_dir / self.sweeps[0]
             if not sweep.exists():
-                print(f"No sweep with name {self.sweep[0]} found in {sweeps_path}")
+                print(f"No sweep with name {self.sweeps[0]} found in {sweeps_root_dir}")
                 return
-        if len(self.sweep) > 1:
+        if len(self.sweeps) > 1:
+            # TODO support more than one sweep
             print(
-                f"""{len(self.sweep)} paths specified.
+                f"""{len(self.sweeps)} paths specified.
                 Only one sweep is supported at this time."""
             )
         else:
-            visualize_sweep(sweep)  # TODO support more than one sweep
+            visualize_sweep(sweep)

@@ -44,12 +44,10 @@ def display_table(pivot_table):
 
     table = Table(show_header=True, header_style="bold magenta", show_lines=True)
 
-    # Add columns
     table.add_column("Run Name")
     for column in pivot_table.columns:
         table.add_column(str(column))
 
-    # Add rows
     for index, row in pivot_table.iterrows():
         table.add_row(str(index), *[str(value) for value in row])
 
