@@ -287,13 +287,6 @@ class Sweep:
             sweep_viz_path.mkdir()
 
         model_paths = get_model_paths(sweep)
-        # df = pd.DataFrame()
-        # models = {}
-        # for model_path in model_paths:
-        #     model = Model.collect(model_path, sweep_name)
-        #     models[model.model_name] = model
-        #     df = pd.concat([df, model.df], ignore_index=True)
-
         models = {
             model_path.name: Model.collect(model_path, sweep_name)
             for model_path in model_paths
@@ -301,6 +294,12 @@ class Sweep:
         df = pd.concat([model.df for model in models.values()], ignore_index=True)
         datasets = list(df["eval_dataset"].unique())
         return cls(sweep_name, df, sweep_viz_path, datasets, models)
+
+    def render(self):
+        for model in self.models.values():
+            model.render()
+        self.generate_table(write=True)
+        self.generate_multiplots()
 
     def generate_multiplots(self):
         return [SweepByDsMultiplot(model).render(self) for model in self.models]
@@ -348,8 +347,4 @@ def get_model_paths(sweep_path: Path) -> list[Path]:
 
 
 def visualize_sweep(sweep_path: Path):
-    sweep = Sweep.collect(sweep_path)
-    for model in sweep.models.values():
-        model.render()
-    sweep.generate_table(write=True)
-    sweep.generate_multiplots()
+    Sweep.collect(sweep_path).render()
