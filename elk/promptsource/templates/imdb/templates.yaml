@@ -3,9 +3,9 @@ templates:
   02ff2949-0f45-4d97-941e-6fa4c0afbc2d: !Template
     answer_choices: negative ||| positive
     id: 02ff2949-0f45-4d97-941e-6fa4c0afbc2d
-    jinja: 'The following movie review expresses what sentiment? {{text}}
+    jinja: '{{text}}
 
-
+      The preceding movie review expresses sentiment best described as
       ||| {{ answer_choices
       [label] }}'
     metadata: !TemplateMetadata
