@@ -12,34 +12,29 @@ from plotly.colors import qualitative
 from plotly.subplots import make_subplots
 
 import elk.plotting.utils as utils
+from elk.utils.constants import BURNS_DATASETS
 
 VIZ_PATH = Path(os.getcwd()) / "viz"
 
-ALL_DS_NAMES = [
-    "super_glue:rte",
-    "super_glue:boolq",
-    "dbpedia_14",
-    "piqa",
-    "amazon_polarity",
-    "glue:qnli",
-    "ag_news",
-    "imdb",
-    "super_glue:copa",
-]
-
 
 class SweepByDsMultiplot:
+    """Multiplot containing visualization where the x-axis is the layer and
+    the y-axis is auroc_estimate. Each subplot is a different dataset.
+    """
+
     def __init__(self, model_name: str):
         self.model_name = model_name
 
-    def validate(self, sweep: Sweep) -> bool:
-        return True
-
-    def render(self, sweep: Sweep, with_transfer=False, write=True) -> go.Figure:
+    def render(
+        self,
+        sweep: SweepVisualization,
+        with_transfer=False,
+        ensembles=["full", "partial", "none"],
+        write=False,
+    ) -> go.Figure:
         df = sweep.df
         unique_datasets = df["eval_dataset"].unique()
         run_names = df["run_name"].unique()
-        ensembles = ["full", "none"]
         num_datasets = len(unique_datasets)
         num_rows = (num_datasets + 2) // 3
 
@@ -123,12 +118,9 @@ class TransferEvalHeatmap:
         self.score_type = score_type
         self.ensembling = ensembling
 
-    def validate(self, df) -> bool:
-        return True
-
-    def generate(self, df: pd.DataFrame) -> go.Figure:
+    def render(self, df: pd.DataFrame, write=False) -> go.Figure:
         """
-        Generate a heatmap for dataset of a model.
+        Render a heatmap for dataset of a model.
         """
         model_name = df["eval_dataset"].iloc[0]  # infer model name
         # TODO: validate
@@ -152,10 +144,7 @@ class TransferEvalTrend:
         self.dataset_names = dataset_names
         self.score_type = score_type
 
-    def validate(self, df) -> bool:
-        return True
-
-    def generate(self, df: pd.DataFrame) -> go.Figure:
+    def render(self, df: pd.DataFrame) -> go.Figure:
         # TODO should I filter out the non-transfer dataset?
         model_name = df["eval_dataset"].iloc[0]  # infer model name
         df = self._filter_transfer_datasets(df, self.dataset_names)
@@ -190,33 +179,28 @@ class TransferEvalTrend:
 
 
 @dataclass
-class Model:
+class ModelVisualization:
     df: pd.DataFrame
     sweep_name: str
     model_name: str
     is_transfer: bool
 
     @classmethod
-    def collect(cls, model_path: Path, sweep_name: str) -> Model:
+    def collect(cls, model_path: Path, sweep_name: str) -> ModelVisualization:
         df = pd.DataFrame()
         model_name = model_path.name
 
-        def handle_csv(dir, eval_dataset, train_dataset):
-            file = dir / "eval.csv"
-            eval_df = pd.read_csv(file)
-            eval_df["eval_dataset"] = eval_dataset
-            eval_df["train_dataset"] = train_dataset
-            return eval_df
-
         is_transfer = False
         for train_dir in model_path.iterdir():
-            eval_df = handle_csv(train_dir, train_dir.name, train_dir.name)
+            eval_df = cls._read_eval_csv(train_dir, train_dir.name, train_dir.name)
             df = pd.concat([df, eval_df], ignore_index=True)
             transfer_dir = train_dir / "transfer"
             if transfer_dir.exists():
                 is_transfer = True
                 for eval_ds_dir in transfer_dir.iterdir():
-                    eval_df = handle_csv(eval_ds_dir, eval_ds_dir.name, train_dir.name)
+                    eval_df = cls._read_eval_csv(
+                        eval_ds_dir, eval_ds_dir.name, train_dir.name
+                    )
                     df = pd.concat([df, eval_df], ignore_index=True)
 
         df["model_name"] = model_name
@@ -224,9 +208,9 @@ class Model:
 
         return cls(df, sweep_name, model_name, is_transfer)
 
-    def render(
+    def render_and_save(
         self,
-        dataset_names: list[str] = ALL_DS_NAMES,
+        dataset_names: list[str] = BURNS_DATASETS,
         score_type="auroc_estimate",
         ensembling="full",
     ) -> None:
@@ -234,10 +218,8 @@ class Model:
         model_name = self.model_name
         sweep_name = self.sweep_name
         layer_min, layer_max = df["layer"].min(), df["layer"].max()
-        if not (VIZ_PATH / sweep_name).exists():
-            (VIZ_PATH / sweep_name).mkdir()
-        if not (VIZ_PATH / sweep_name / f"{model_name}").exists():
-            (VIZ_PATH / sweep_name / f"{model_name}").mkdir()
+        model_path = VIZ_PATH / sweep_name / f"{model_name}"
+        model_path.mkdir(parents=True, exist_ok=True)
         if self.is_transfer:
             for layer in range(layer_min, layer_max + 1):
                 filtered = df[(df["layer"] == layer) & (df["ensembling"] == ensembling)]
@@ -246,105 +228,89 @@ class Model:
                     path.parent.mkdir()
                 fig = TransferEvalHeatmap(
                     layer, score_type=score_type, ensembling=ensembling
-                ).generate(filtered)
+                ).render(filtered)
                 fig.write_image(file=path)
-
-        fig = (
-            TransferEvalTrend(dataset_names)
-            .generate(df)
-            .write_image(
-                file=VIZ_PATH / sweep_name / f"{model_name}" / "transfer_eval_trend.png"
-            )
+        fig = TransferEvalTrend(dataset_names).render(df)
+        fig.write_image(
+            file=VIZ_PATH / sweep_name / f"{model_name}" / "transfer_eval_trend.png"
         )
 
-
-# the following function does too many things.
-# it can be split up into:
-# function that takes a sweep/run and returns a dataframe
-# function that takes df runs / run / model (with or without transfer) and renders it
+    @staticmethod
+    def _read_eval_csv(path, eval_dataset, train_dataset):
+        file = path / "eval.csv"
+        eval_df = pd.read_csv(file)
+        eval_df["eval_dataset"] = eval_dataset
+        eval_df["train_dataset"] = train_dataset
+        return eval_df
 
 
 @dataclass
-class Sweep:
+class SweepVisualization:
     name: str
     df: pd.DataFrame
     path: Path
     datasets: list[str]
-    models: dict[str, Model]
+    models: dict[str, ModelVisualization]
 
     def model_names(self):
         return list(self.models.keys())
 
+    @staticmethod
+    def _get_model_paths(sweep_path: Path) -> list[Path]:
+        folders = []
+        for model_repo in sweep_path.iterdir():
+            if not model_repo.is_dir():
+                raise Exception("expected model repo to be a directory")
+            if model_repo.name.startswith("gpt2"):
+                folders += [model_repo]
+            else:
+                folders += [p for p in model_repo.iterdir() if p.is_dir()]
+        return folders
+
     @classmethod
-    def collect(cls, sweep: Path) -> Sweep:
+    def collect(cls, sweep: Path) -> SweepVisualization:
         sweep_name = sweep.parts[-1]
         sweep_viz_path = VIZ_PATH / sweep_name
+        sweep_viz_path.mkdir(parents=True, exist_ok=True)
 
-        # TODO refactor out
-        if not VIZ_PATH.exists():
-            VIZ_PATH.mkdir()
-        if not sweep_viz_path.exists():
-            sweep_viz_path.mkdir()
-
-        model_paths = get_model_paths(sweep)
+        model_paths = cls._get_model_paths(sweep)
         models = {
-            model_path.name: Model.collect(model_path, sweep_name)
+            model_path.name: ModelVisualization.collect(model_path, sweep_name)
             for model_path in model_paths
         }
         df = pd.concat([model.df for model in models.values()], ignore_index=True)
         datasets = list(df["eval_dataset"].unique())
         return cls(sweep_name, df, sweep_viz_path, datasets, models)
 
-    def render(self):
+    def render_and_save(self):
         for model in self.models.values():
-            model.render()
-        self.generate_table(write=True)
-        self.generate_multiplots()
+            model.render_and_save()
+        self.render_table(write=True)
+        self.render_multiplots(write=True)
 
-    def generate_multiplots(self):
-        return [SweepByDsMultiplot(model).render(self) for model in self.models]
+    def render_multiplots(self, write=False):
+        return [
+            SweepByDsMultiplot(model).render(self, write=write) for model in self.models
+        ]
 
-    def generate_table(
-        self, layer=-5, score_type="auroc_estimate", print=True, write=False
+    def render_table(
+        self, layer=-5, score_type="auroc_estimate", display=True, write=False
     ):
         df = self.df
-
         layer_by_model = (df.groupby("model_name")["layer"].max() + layer).clip(lower=0)
-
-        # Create an empty DataFrame to store the selected records
         df_selected_layer = pd.DataFrame()
-
-        # For each model, select the record corresponding to max layer - 5
         for model, layer in layer_by_model.items():
             record = df[(df["model_name"] == model) & (df["layer"] == layer)]
             df_selected_layer = pd.concat([df_selected_layer, record])
-
-        # Generate the pivot table
         pivot_table = df_selected_layer.pivot_table(
             index="run_name", columns="model_name", values=score_type
         )
-
-        if print:
+        if display:
             utils.display_table(pivot_table)
         if write:
             pivot_table.to_csv(f"score_table_{score_type}.csv")
-
         return pivot_table
 
 
-def get_model_paths(sweep_path: Path) -> list[Path]:
-    # TODO write test
-    # run / model_repo / model / dataset / eval.csv
-    folders = []
-    for model_repo in sweep_path.iterdir():
-        if not model_repo.is_dir():
-            raise Exception("expected model repo to be a directory")
-        if model_repo.name.startswith("gpt2"):
-            folders += [model_repo]
-        else:
-            folders += [p for p in model_repo.iterdir() if p.is_dir()]
-    return folders
-
-
 def visualize_sweep(sweep_path: Path):
-    Sweep.collect(sweep_path).render()
+    SweepVisualization.collect(sweep_path).render_and_save(write=True)

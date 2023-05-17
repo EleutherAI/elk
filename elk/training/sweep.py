@@ -9,6 +9,7 @@ from ..files import memorably_named_dir, sweeps_dir
 from ..plotting.visualize import visualize_sweep
 from ..training.eigen_reporter import EigenReporterConfig
 from ..utils import colorize
+from ..utils.constants import BURNS_DATASETS
 from .train import Elicit
 
 
@@ -62,19 +63,7 @@ class Sweep:
         # on the Huggingface Hub.
         if "burns" in self.datasets:
             self.datasets.remove("burns")
-            self.datasets.extend(
-                [
-                    "ag_news",
-                    "amazon_polarity",
-                    "dbpedia_14",
-                    "glue:qnli",
-                    "imdb",
-                    "piqa",
-                    "super_glue:boolq",
-                    "super_glue:copa",
-                    "super_glue:rte",
-                ]
-            )
+            self.datasets.extend(BURNS_DATASETS)
             print(
                 "Interpreting `burns` as all datasets used in Burns et al. (2022) "
                 "available on the HuggingFace Hub"

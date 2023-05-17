@@ -1,6 +1,3 @@
-import shutil
-from pathlib import Path
-
 from rich.console import Console
 from rich.table import Table
 
@@ -52,27 +49,3 @@ def display_table(pivot_table):
         table.add_row(str(index), *[str(value) for value in row])
 
     console.print(table)
-
-
-def restructure_to_sweep(
-    elk_reporters: Path, data_path, new_name: str
-):  # usually /elk-reporters/*
-    for model_repo_path in elk_reporters.iterdir():
-        for model_path in model_repo_path.iterdir():
-            for dataset_path in model_path.iterdir():
-                for run_path in dataset_path.iterdir():
-                    new_path = (
-                        data_path
-                        / new_name
-                        / run_path.name
-                        / model_repo_path.name
-                        / model_path.name
-                        / dataset_path.name
-                    )
-                    if not new_path.exists():
-                        new_path.mkdir(parents=True)
-                    for file in run_path.iterdir():
-                        if file.is_file():
-                            shutil.copy(file, new_path / file.name)
-                        else:
-                            shutil.copytree(file, new_path / file.name)

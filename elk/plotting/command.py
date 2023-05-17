@@ -1,5 +1,4 @@
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from simple_parsing import field
 
@@ -13,7 +12,7 @@ class Plot:
 
     def execute(self):
         sweeps_root_dir = sweeps_dir()
-        sweep = max(sweeps_root_dir.iterdir(), key=os.path.getctime)
+        sweep = max(sweeps_root_dir.iterdir(), key=lambda f: f.stat().st_ctime)
         if self.sweeps:
             sweep = sweeps_root_dir / self.sweeps[0]
             if not sweep.exists():
