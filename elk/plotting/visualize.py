@@ -49,7 +49,9 @@ class SweepByDsMultiplot:
             run_data = df[df["run_name"] == run_name]
             ensemble_data: pd.DataFrame = run_data[run_data["ensembling"] == ensemble]
             if with_transfer:  # TODO write tests
-                pass  # TODO implement this case
+                ensemble_data = ensemble_data.groupby(
+                    ["eval_dataset", "layer", "run_name", "ensembling"], as_index=False
+                ).agg({"auroc_estimate": "mean"})
             else:
                 ensemble_data = ensemble_data[
                     ensemble_data["eval_dataset"] == ensemble_data["train_dataset"]
@@ -252,7 +254,7 @@ class SweepVisualization:
         folders = []
         for model_repo in sweep_path.iterdir():
             if not model_repo.is_dir():
-                raise Exception("expected model repo to be a directory")
+                raise Exception(f"expected {model_repo} to be a directory")
             if model_repo.name.startswith("gpt2"):
                 folders += [model_repo]
             else:
@@ -263,6 +265,8 @@ class SweepVisualization:
     def collect(cls, sweep_path: Path) -> SweepVisualization:
         sweep_name = sweep_path.parts[-1]
         sweep_viz_path = sweep_path / "viz"
+        if sweep_viz_path.exists():
+            raise Exception("This sweep has already been visualized.")
         sweep_viz_path.mkdir(parents=True, exist_ok=True)
 
         model_paths = cls._get_model_paths(sweep_path)
@@ -282,7 +286,8 @@ class SweepVisualization:
 
     def render_multiplots(self, write=False):
         return [
-            SweepByDsMultiplot(model).render(self, write=write) for model in self.models
+            SweepByDsMultiplot(model).render(self, write=write, with_transfer=False)
+            for model in self.models
         ]
 
     def render_table(
