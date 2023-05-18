@@ -1,3 +1,4 @@
+import shutil
 from dataclasses import dataclass
 
 import rich
@@ -15,6 +16,7 @@ def pretty_error(msg):
 @dataclass
 class Plot:
     sweeps: list[str] = field(positional=True, default_factory=list)
+    overwrite: bool = False
 
     def execute(self):
         sweeps_root_dir = sweeps_dir()
@@ -29,9 +31,12 @@ class Plot:
                 f"""{len(self.sweeps)} paths specified.
                 Only one sweep is supported at this time."""
             )
-        elif (sweep / "viz").exists():
+        elif (sweep / "viz").exists() and not self.overwrite:
             pretty_error(
-                f"[blue]{sweep / 'viz'}[/blue] already exists. Delete it to re-run."
+                f"[blue]{sweep / 'viz'}[/blue] already exists. "
+                f"Use --overwrite to overwrite."
             )
         else:
+            if self.overwrite:
+                shutil.rmtree(sweep / "viz")
             visualize_sweep(sweep)
