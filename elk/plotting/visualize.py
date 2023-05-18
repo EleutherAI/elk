@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import itertools
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,8 +12,6 @@ from plotly.subplots import make_subplots
 
 import elk.plotting.utils as utils
 from elk.utils.constants import BURNS_DATASETS
-
-VIZ_PATH = Path(os.getcwd()) / "viz"
 
 
 class SweepByDsMultiplot:
@@ -100,11 +97,11 @@ class SweepByDsMultiplot:
         fig = utils.set_legend_font_size(fig, font_size=8)
         if write:
             fig.write_image(
-                file=VIZ_PATH / sweep.name / f"{self.model_name}-line-ds-multiplot.png",
+                file=sweep.path / f"{self.model_name}-line-ds-multiplot.png",
                 scale=2,
             )
             fig.write_html(
-                file=VIZ_PATH / sweep.name / f"{self.model_name}-line-ds-multiplot.html"
+                file=sweep.path / f"{self.model_name}-line-ds-multiplot.html"
             )
 
         return fig
@@ -210,30 +207,25 @@ class ModelVisualization:
 
     def render_and_save(
         self,
+        sweep: SweepVisualization,
         dataset_names: list[str] = BURNS_DATASETS,
         score_type="auroc_estimate",
         ensembling="full",
     ) -> None:
         df = self.df
         model_name = self.model_name
-        sweep_name = self.sweep_name
         layer_min, layer_max = df["layer"].min(), df["layer"].max()
-        model_path = VIZ_PATH / sweep_name / f"{model_name}"
+        model_path = sweep.path / model_name
         model_path.mkdir(parents=True, exist_ok=True)
         if self.is_transfer:
             for layer in range(layer_min, layer_max + 1):
                 filtered = df[(df["layer"] == layer) & (df["ensembling"] == ensembling)]
-                path = VIZ_PATH / sweep_name / f"{model_name}" / f"{layer}.png"
-                if not path.parent.exists():
-                    path.parent.mkdir()
                 fig = TransferEvalHeatmap(
                     layer, score_type=score_type, ensembling=ensembling
                 ).render(filtered)
-                fig.write_image(file=path)
+                fig.write_image(file=model_path / f"{layer}.png")
         fig = TransferEvalTrend(dataset_names).render(df)
-        fig.write_image(
-            file=VIZ_PATH / sweep_name / f"{model_name}" / "transfer_eval_trend.png"
-        )
+        fig.write_image(file=model_path / "transfer_eval_trend.png")
 
     @staticmethod
     def _read_eval_csv(path, eval_dataset, train_dataset):
@@ -268,12 +260,12 @@ class SweepVisualization:
         return folders
 
     @classmethod
-    def collect(cls, sweep: Path) -> SweepVisualization:
-        sweep_name = sweep.parts[-1]
-        sweep_viz_path = VIZ_PATH / sweep_name
+    def collect(cls, sweep_path: Path) -> SweepVisualization:
+        sweep_name = sweep_path.parts[-1]
+        sweep_viz_path = sweep_path / "viz"
         sweep_viz_path.mkdir(parents=True, exist_ok=True)
 
-        model_paths = cls._get_model_paths(sweep)
+        model_paths = cls._get_model_paths(sweep_path)
         models = {
             model_path.name: ModelVisualization.collect(model_path, sweep_name)
             for model_path in model_paths
@@ -284,7 +276,7 @@ class SweepVisualization:
 
     def render_and_save(self):
         for model in self.models.values():
-            model.render_and_save()
+            model.render_and_save(self)
         self.render_table(write=True)
         self.render_multiplots(write=True)
 
@@ -313,4 +305,4 @@ class SweepVisualization:
 
 
 def visualize_sweep(sweep_path: Path):
-    SweepVisualization.collect(sweep_path).render_and_save(write=True)
+    SweepVisualization.collect(sweep_path).render_and_save()
