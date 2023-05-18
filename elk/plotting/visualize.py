@@ -15,10 +15,6 @@ from elk.utils.constants import BURNS_DATASETS
 
 
 class SweepByDsMultiplot:
-    """Multiplot containing visualization where the x-axis is the layer and
-    the y-axis is auroc_estimate. Each subplot is a different dataset.
-    """
-
     def __init__(self, model_name: str):
         self.model_name = model_name
 
@@ -118,9 +114,6 @@ class TransferEvalHeatmap:
         self.ensembling = ensembling
 
     def render(self, df: pd.DataFrame, write=False) -> go.Figure:
-        """
-        Render a heatmap for dataset of a model.
-        """
         model_name = df["eval_dataset"].iloc[0]  # infer model name
         # TODO: validate
         pivot = pd.pivot_table(
