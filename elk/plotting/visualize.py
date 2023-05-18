@@ -3,6 +3,7 @@ from __future__ import annotations
 import itertools
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 import plotly.express as px
@@ -11,7 +12,6 @@ from plotly.colors import qualitative
 from plotly.subplots import make_subplots
 
 import elk.plotting.utils as utils
-from elk.utils.constants import BURNS_DATASETS
 
 
 class SweepByDsMultiplot:
@@ -132,14 +132,16 @@ class TransferEvalHeatmap:
 
 
 class TransferEvalTrend:
-    def __init__(self, dataset_names, score_type: str = "auroc_estimate"):
+    def __init__(
+        self, dataset_names: Optional[list[str]], score_type: str = "auroc_estimate"
+    ):
         self.dataset_names = dataset_names
         self.score_type = score_type
 
     def render(self, df: pd.DataFrame) -> go.Figure:
-        # TODO should I filter out the non-transfer dataset?
-        model_name = df["eval_dataset"].iloc[0]  # infer model name
-        df = self._filter_transfer_datasets(df, self.dataset_names)
+        model_name = df["model_name"].iloc[0]
+        if self.dataset_names is not None:
+            df = self._filter_transfer_datasets(df, self.dataset_names)
         pivot = pd.pivot_table(
             df, values=self.score_type, index="layer", columns="eval_dataset"
         )
@@ -164,7 +166,8 @@ class TransferEvalTrend:
 
         return fig
 
-    def _filter_transfer_datasets(self, df, dataset_names):
+    @staticmethod
+    def _filter_transfer_datasets(df, dataset_names):
         df = df[df["eval_dataset"].isin(dataset_names)]
         df = df[df["train_dataset"].isin(dataset_names)]
         return df
@@ -203,7 +206,7 @@ class ModelVisualization:
     def render_and_save(
         self,
         sweep: SweepVisualization,
-        dataset_names: list[str] = BURNS_DATASETS,
+        dataset_names: Optional[list[str]] = None,
         score_type="auroc_estimate",
         ensembling="full",
     ) -> None:
