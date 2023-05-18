@@ -24,7 +24,7 @@ class TestGetModelPaths(TestCase):
         self.assertEqual(len(result), 3)
         self.assertTrue(any([p.name == "llama-13b" for p in result]))
         self.assertTrue(any([p.name == "llama-12b" for p in result]))
-        self.assertTrue(any([p.name == "gpt2" for p in result]))
+        self.assertTrue(any([p.name == "gpt2-medium" for p in result]))
 
 
 if __name__ == "__main__":
