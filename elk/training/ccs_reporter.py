@@ -108,7 +108,6 @@ class CcsReporter(Reporter):
         self.norm = ConceptEraser(
             in_features,
             2 * num_variants,
-            # batch_dims=(num_variants,) if num_variants else (),
             device=device,
             dtype=dtype,
         )
