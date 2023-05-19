@@ -8,7 +8,7 @@ description = "Keeping language models honest by directly eliciting knowledge en
 readme = "README.md"
 requires-python = ">=3.10"
 keywords = ["nlp", "interpretability", "language-models", "explainable-ai"]
-license = { text = "MIT License" }
+license = {text = "MIT License"}
 dependencies = [
     # Allows us to use device_map in from_pretrained. Also needed for 8bit
     "accelerate",
@@ -30,12 +30,7 @@ dependencies = [
     # 4.0 introduced the breaking change of using return_dict=True by default
     "transformers>=4.0.0",
     # required by promptsource, which doesn't specify a version
-    "jinja2",
-    # For visualization of results
-    "plotly==5.14.1",
-    "kaleido==0.2.1",
-    "rich==13.3.5"
-
+    "jinja2"
 ]
 version = "0.1.1"
 
@@ -46,7 +41,6 @@ dev = [
     "pytest",
     "pyright==1.1.304",
     "scikit-learn",
-    "pyfakefs"
 ]
 8bit = [
     "bitsandbytes",

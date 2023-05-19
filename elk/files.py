@@ -6,10 +6,6 @@ import random
 from pathlib import Path
 
 
-def sweeps_dir() -> Path:
-    return elk_reporter_dir() / "sweeps"
-
-
 def elk_reporter_dir() -> Path:
     """Return the directory where reporter checkpoints and logs are stored."""
     env_dir = os.environ.get("ELK_DIR", None)
