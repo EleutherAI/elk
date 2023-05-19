@@ -50,7 +50,6 @@ class Run(ABC, Serializable):
     debug: bool = False
     min_gpu_mem: int | None = None  # in bytes
     num_gpus: int = -1
-    out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
 
     def execute(

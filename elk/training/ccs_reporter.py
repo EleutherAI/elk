@@ -10,10 +10,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from ..metrics import roc_auc
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
-from .classifier import Classifier
 from .concept_eraser import ConceptEraser
 from .losses import LOSSES
 from .reporter import Reporter, ReporterConfig
@@ -141,60 +139,6 @@ class CcsReporter(Reporter):
                     device=device,
                 )
             )
-
-    @torch.no_grad()
-    def check_separability(
-        self,
-        train_pair: tuple[Tensor, Tensor],
-        val_pair: tuple[Tensor, Tensor],
-    ) -> float:
-        """Measure how linearly separable the pseudo-labels are for a contrast pair.
-
-        Args:
-            train_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
-                contrastive representations. Used for training the classifier.
-            val_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
-                contrastive representations. Used for evaluating the classifier.
-
-        Returns:
-            The AUROC of a linear classifier fit on the pseudo-labels.
-        """
-        x0, x1 = map(self.norm, train_pair)
-        val_x0, val_x1 = map(self.norm, val_pair)
-
-        pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
-        pseudo_train = torch.cat(
-            [
-                torch.zeros_like(x0[..., 0]),
-                torch.ones_like(x1[..., 0]),
-            ]
-        ).flatten()
-        pseudo_val = torch.cat(
-            [
-                torch.zeros_like(val_x0[..., 0]),
-                torch.ones_like(val_x1[..., 0]),
-            ]
-        ).flatten()
-
-        pseudo_clf.fit(
-            # b v d -> (b v) d
-            torch.cat([x0, x1]).flatten(0, 1),
-            pseudo_train,
-            # Use the same weight decay as the reporter
-            l2_penalty=self.config.weight_decay,
-        )
-        pseudo_preds = pseudo_clf(
-            # b v d -> (b v) d
-            torch.cat([val_x0, val_x1]).flatten(0, 1)
-        ).squeeze(-1)
-
-        # Edge case where the classifier learns to set its weights to zero
-        # Technically AUROC is not defined here but we "fill in" the value of 0.5
-        # since this is the limit as the weights approach zero
-        if not pseudo_preds.any():
-            return 0.5
-        else:
-            return roc_auc(pseudo_val, pseudo_preds).item()
 
     def reset_parameters(self):
         """Reset the parameters of the probe.

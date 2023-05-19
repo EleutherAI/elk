@@ -84,10 +84,6 @@ class Elicit(Run):
             (val_h, val_gt, _) = next(iter(val_dict.values()))
             x0, x1 = first_train_h.unbind(2)
             val_x0, val_x1 = val_h.unbind(2)
-            pseudo_auroc = reporter.check_separability(
-                train_pair=(x0, x1),
-                val_pair=(val_x0, val_x1),
-            )
 
             # TODO: Enable Platt scaling for CCS once normalization is fixed
             # (_, v, k, _) = first_train_h.shape
@@ -113,7 +109,6 @@ class Elicit(Run):
                 )
                 reporter.update(train_h)
 
-            pseudo_auroc = None
             train_loss = reporter.fit_streaming()
             reporter.platt_scale(
                 torch.cat(label_list),
@@ -151,7 +146,6 @@ class Elicit(Run):
                         **meta,
                         "ensembling": mode,
                         **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                        "pseudo_auroc": pseudo_auroc,
                         "train_loss": train_loss,
                     }
                 )
