@@ -5,9 +5,11 @@ import torch
 
 from ..evaluation import Eval
 from ..extraction import Extract
-from ..files import elk_reporter_dir, memorably_named_dir
+from ..files import memorably_named_dir, sweeps_dir
+from ..plotting.visualize import visualize_sweep
 from ..training.eigen_reporter import EigenReporterConfig
 from ..utils import colorize
+from ..utils.constants import BURNS_DATASETS
 from .train import Elicit
 
 
@@ -29,6 +31,9 @@ class Sweep:
     If negative, no hyperparameter sweeps will be performed. Only valid for Eigen."""
     skip_transfer_eval: bool = False
     """Whether to perform transfer eval on every pair of datasets."""
+
+    visualize: bool = False
+    """Whether to generate visualizations of the results of the sweep."""
 
     name: str | None = None
 
@@ -58,19 +63,7 @@ class Sweep:
         # on the Huggingface Hub.
         if "burns" in self.datasets:
             self.datasets.remove("burns")
-            self.datasets.extend(
-                [
-                    "ag_news",
-                    "amazon_polarity",
-                    "dbpedia_14",
-                    "glue:qnli",
-                    "imdb",
-                    "piqa",
-                    "super_glue:boolq",
-                    "super_glue:copa",
-                    "super_glue:rte",
-                ]
-            )
+            self.datasets.extend(BURNS_DATASETS)
             print(
                 "Interpreting `burns` as all datasets used in Burns et al. (2022) "
                 "available on the HuggingFace Hub"
@@ -89,7 +82,7 @@ class Sweep:
         print(f"Models: {self.models}")
         print(f"Datasets: {self.datasets}")
 
-        root_dir = elk_reporter_dir() / "sweeps"
+        root_dir = sweeps_dir()
         sweep_dir = root_dir / self.name if self.name else memorably_named_dir(root_dir)
         print(f"Saving sweep results to \033[1m{sweep_dir}\033[0m")  # bold
 
@@ -163,3 +156,6 @@ class Sweep:
                                     skip_supervised=run.supervised == "none",
                                 )
                                 eval.execute(highlight_color="green")
+
+        if self.visualize:
+            visualize_sweep(sweep_dir)
