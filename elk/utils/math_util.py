@@ -19,26 +19,6 @@ def batch_cov(x: Tensor) -> Tensor:
     return x_.mT @ x_ / x_.shape[-2]
 
 
-@torch.jit.script
-def cov_mean_fused(x: Tensor) -> Tensor:
-    """Compute the mean of the covariance matrices of a batch of data matrices.
-
-    The computation is done in a memory-efficient way, without materializing all
-    the covariance matrices in VRAM.
-
-    Args:
-        x: A tensor of shape [batch, n, d].
-
-    Returns:
-        A tensor of shape [d, d].
-    """
-    b, n, d = x.shape
-
-    x_ = x - x.mean(dim=1, keepdim=True)
-    x_ = x_.reshape(-1, d)
-    return x_.mT @ x_ / (b * n)
-
-
 def stochastic_round_constrained(x: list[float], rng: random.Random) -> list[int]:
     """Stochastic rounding under integer constraints.
 

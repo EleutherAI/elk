@@ -8,6 +8,7 @@ from typing import Literal, Optional, cast
 
 import torch
 import torch.nn as nn
+from einops import rearrange
 from torch import Tensor
 
 from ..parsing import parse_loss
@@ -200,21 +201,12 @@ class CcsReporter(Reporter):
             best_loss: The best loss obtained.
         """
         x_neg, x_pos = hiddens.unbind(2)
-
-        # One-hot indicators for each prompt template
         n, v, _ = x_neg.shape
-        prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
 
-        self.norm.update(
-            x=x_neg,
-            # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
-        )
-        self.norm.update(
-            x=x_pos,
-            # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
-        )
+        # Independent indicator for each (template, pseudo-label) pair
+        prompt_ids = torch.eye(2 * v, device=hiddens.device).expand(n, -1, -1)
+        self.norm.update(x=rearrange(hiddens, "n v k d -> n (k v) d"), y=prompt_ids)
+
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
         # Record the best acc, loss, and params found so far

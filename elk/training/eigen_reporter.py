@@ -8,7 +8,6 @@ from einops import rearrange
 from torch import Tensor, nn
 
 from ..truncated_eigh import truncated_eigh
-from ..utils.math_util import cov_mean_fused
 from .concept_eraser import ConceptEraser
 from .reporter import Reporter, ReporterConfig
 
@@ -17,12 +16,6 @@ from .reporter import Reporter, ReporterConfig
 class EigenReporterConfig(ReporterConfig):
     """Configuration for an EigenReporter."""
 
-    var_weight: float = 0.0
-    """The weight of the variance term in the loss."""
-
-    neg_cov_weight: float = 1.0
-    """The weight of the negative covariance term in the loss."""
-
     num_heads: int = 1
     """The number of eigenvectors to compute from the VINC matrix."""
 
@@ -30,12 +23,7 @@ class EigenReporterConfig(ReporterConfig):
     """Whether to save the reporter statistics to disk in EigenReporter.save(). This
     is useful for debugging and analysis, but can take up a lot of disk space."""
 
-    use_centroids: bool = True
-    """Whether to average hiddens within each cluster before computing covariance."""
-
     def __post_init__(self):
-        if not (0 <= self.neg_cov_weight <= 1):
-            raise ValueError("neg_cov_weight must be in [0, 1]")
         if self.num_heads <= 0:
             raise ValueError("num_heads must be positive")
 
@@ -54,11 +42,6 @@ class EigenReporter(Reporter):
 
     Attributes:
         config: The reporter configuration.
-        intercluster_cov_M2: The unnormalized covariance matrix averaged over all
-            classes.
-        intracluster_cov: The running mean of the covariance matrices within each
-            cluster. This doesn't need to be a running sum because it's doesn't use
-            Welford's algorithm.
         contrastive_xcov_M2: Average of the unnormalized cross-covariance matrices
             across all pairs of classes (k, k').
         n: The running sum of the number of clusters processed by `update()`.
@@ -67,13 +50,10 @@ class EigenReporter(Reporter):
     """
 
     config: EigenReporterConfig
-
-    intercluster_cov_M2: Tensor  # variance
-    intracluster_cov: Tensor  # invariance
     contrastive_xcov_M2: Tensor  # negative covariance
 
+    mean: Tensor
     n: Tensor
-    class_means: Tensor | None
     weight: Tensor
 
     def __init__(
@@ -104,32 +84,17 @@ class EigenReporter(Reporter):
 
         # Running statistics
         self.register_buffer(
+            "mean",
+            torch.zeros(in_features, device=device, dtype=dtype),
+            persistent=cfg.save_reporter_stats,
+        )
+        self.register_buffer(
             "n",
             torch.zeros((), device=device, dtype=torch.long),
             persistent=cfg.save_reporter_stats,
         )
         self.register_buffer(
-            "class_means",
-            (
-                torch.zeros(num_classes, in_features, device=device, dtype=dtype)
-                if num_classes is not None
-                else None
-            ),
-            persistent=cfg.save_reporter_stats,
-        )
-
-        self.register_buffer(
             "contrastive_xcov_M2",
-            torch.zeros(in_features, in_features, device=device, dtype=dtype),
-            persistent=cfg.save_reporter_stats,
-        )
-        self.register_buffer(
-            "intercluster_cov_M2",
-            torch.zeros(in_features, in_features, device=device, dtype=dtype),
-            persistent=cfg.save_reporter_stats,
-        )
-        self.register_buffer(
-            "intracluster_cov",
             torch.zeros(in_features, in_features, device=device, dtype=dtype),
             persistent=cfg.save_reporter_stats,
         )
@@ -151,20 +116,6 @@ class EigenReporter(Reporter):
         return self.contrastive_xcov_M2 / self.n
 
     @property
-    def intercluster_cov(self) -> Tensor:
-        assert self.n > 0, "Stats not initialized; did you set save_reporter_stats?"
-        return self.intercluster_cov_M2 / self.n
-
-    @property
-    def confidence(self) -> Tensor:
-        return self.weight @ self.intercluster_cov @ self.weight.mT
-
-    @property
-    def invariance(self) -> Tensor:
-        assert self.n > 0, "Stats not initialized; did you set save_reporter_stats?"
-        return -self.weight @ self.intracluster_cov @ self.weight.mT
-
-    @property
     def consistency(self) -> Tensor:
         return -self.weight @ self.contrastive_xcov @ self.weight.mT
 
@@ -176,51 +127,25 @@ class EigenReporter(Reporter):
         assert k > 1, "Must provide at least two hidden states"
         assert hiddens.ndim == 4, "Must be of shape [batch, variants, choices, dim]"
 
-        self.n += n
+        self.n += n * v
 
         # Independent indicator for each (template, pseudo-label) pair
         prompt_ids = torch.eye(k * v, device=hiddens.device).expand(n, -1, -1)
         self.norm.update(x=rearrange(hiddens, "n v k d -> n (k v) d"), y=prompt_ids)
 
-        # *** Invariance (intra-cluster) ***
-        # This is just a standard online *mean* update, since we're computing the
-        # mean of covariance matrices, not the covariance matrix of means.
-        intra_cov = cov_mean_fused(rearrange(hiddens, "n v k d -> (n k) v d"))
-        self.intracluster_cov += (n / self.n) * (intra_cov - self.intracluster_cov)
+        # Welford's online algorithm
+        delta = hiddens - self.mean
+        self.mean += delta.sum(dim=(0, 1, 2)) / (self.n * k)
+        delta2 = hiddens - self.mean
 
-        if self.config.use_centroids:
-            # VINC style
-            centroids = hiddens.mean(1)
-        else:
-            # CRC-TPC style
-            centroids = rearrange(hiddens, "n v k d -> (n v) k d")
-
-        deltas, deltas2 = [], []
-
-        # Iterating over classes
-        for i, h in enumerate(centroids.unbind(1)):
-            # Update the running means if needed
-            if self.class_means is not None:
-                delta = h - self.class_means[i]
-                self.class_means[i] += delta.sum(dim=0) / self.n
-
-                # Post-mean update deltas are used to update the (co)variance
-                delta2 = h - self.class_means[i]  # [n, d]
-            else:
-                delta = h - h.mean(dim=0)
-                delta2 = delta
-
-            # *** Variance (inter-cluster) ***
-            # See code at https://bit.ly/3YC9BhH and "Welford's online algorithm"
-            # in https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance.
-            self.intercluster_cov_M2.addmm_(delta.mT, delta2, alpha=1 / k)
-            deltas.append(delta)
-            deltas2.append(delta2)
+        delta = rearrange(delta, "n v k d -> (n v) k d")
+        delta2 = rearrange(delta2, "n v k d -> (n v) k d")
 
         # *** Negative covariance (contrastive) ***
         # Iterating over pairs of classes (k, k') where k != k'
-        for i, d in enumerate(deltas):
-            for j, d_ in enumerate(deltas2):
+        # TODO: Rewrite this as O(k) instead of O(k^2)
+        for i, d in enumerate(delta.unbind(1)):
+            for j, d_ in enumerate(delta2.unbind(1)):
                 # Compare to the other classes only
                 if i == j:
                     continue
@@ -230,15 +155,8 @@ class EigenReporter(Reporter):
 
     def fit_streaming(self, truncated: bool = False) -> float:
         """Fit the probe using the current streaming statistics."""
-        inv_weight = 1 - self.config.neg_cov_weight
-        A = (
-            self.config.var_weight * self.intercluster_cov
-            - inv_weight * self.intracluster_cov
-            - self.config.neg_cov_weight * self.contrastive_xcov
-        )
-
-        # Remove the subspace responsible for pseudolabel correlations
-        A = self.norm.P @ A @ self.norm.P.mT
+        # Remove the subspace responsible for pseudolabel and prompt correlations
+        A = -self.norm.P @ self.contrastive_xcov @ self.norm.P.mT
 
         if truncated:
             L, Q = truncated_eigh(A, k=self.config.num_heads, seed=self.config.seed)

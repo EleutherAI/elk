@@ -2,18 +2,10 @@ import math
 from random import Random
 
 import numpy as np
-import torch
 from hypothesis import given
 from hypothesis import strategies as st
 
-from elk.utils import batch_cov, cov_mean_fused, stochastic_round_constrained
-
-
-def test_cov_mean_fused():
-    X = torch.randn(10, 500, 100, dtype=torch.float64)
-    cov_gt = batch_cov(X).mean(dim=0)
-    cov_fused = cov_mean_fused(X)
-    assert torch.allclose(cov_gt, cov_fused)
+from elk.utils import stochastic_round_constrained
 
 
 @given(

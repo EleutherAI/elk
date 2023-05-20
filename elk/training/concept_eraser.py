@@ -164,10 +164,6 @@ class ConceptEraser(nn.Module):
         d, c = self.xcov_M2.shape
         x = x.reshape(-1, d).type_as(self.mean_x)
 
-        if not x.isfinite().all():
-            print("WARNING: Skipping non-finite values in X")
-            return self
-
         n, d2 = x.shape
         assert d == d2, f"Unexpected number of features {d2}"
 
