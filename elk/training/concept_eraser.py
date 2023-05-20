@@ -48,6 +48,23 @@ class ConceptEraser(nn.Module):
         max_rank: int | None = None,
         svd_tol: float = 1e-3,
     ):
+        """Initialize a ConceptEraser.
+
+        Args:
+            x_dim: Dimensionality of the input.
+            y_dim: Dimensionality of the labels.
+            cov_type: Type of covariance matrix to use. One of "eye", "diag", or "full".
+            affine: Whether to use a bias term to ensure the unconditional mean of the
+                features remains the same after erasure.
+            device: Device to put the statistics on.
+            dtype: Data type to use for the statistics.
+            max_rank: Maximum dimensionality of the subspace to delete.
+            svd_tol: Singular values under this threshold are truncated, both during
+                the phase where we do SVD on the cross-covariance matrix, and at the
+                phase where we compute the pseudoinverse of the projected covariance
+                matrix. Higher values are more numerically stable and result in less
+                damage to the representation, but may leave trace correlations intact.
+        """
         super().__init__()
 
         self.y_dim = y_dim
@@ -79,14 +96,6 @@ class ConceptEraser(nn.Module):
             raise ValueError(f"Unknown covariance type {self.cov_type}")
 
         self.register_buffer("x_M2", M2)
-
-    def clear_x(self):
-        """Clear the running statistics of X."""
-        self.n_x.zero_()
-        self.mean_x.zero_()
-
-        if self.x_M2 is not None:
-            self.x_M2.zero_()
 
     def forward(self, x: Tensor) -> Tensor:
         """Minimally edit `x` to remove correlations with the target concepts.
