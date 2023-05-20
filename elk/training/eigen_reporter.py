@@ -20,7 +20,7 @@ class EigenReporterConfig(ReporterConfig):
     var_weight: float = 0.0
     """The weight of the variance term in the loss."""
 
-    neg_cov_weight: float = 0.5
+    neg_cov_weight: float = 1.0
     """The weight of the negative covariance term in the loss."""
 
     num_heads: int = 1
@@ -178,24 +178,9 @@ class EigenReporter(Reporter):
 
         self.n += n
 
-        # One-hot indicators for each prompt template
-        prompt_ids = torch.eye(v, device=hiddens.device).expand(n, -1, -1)
-        x_neg, x_pos = hiddens.unbind(2)
-        self.norm.update(
-            x=x_neg,
-            # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
-        )
-        self.norm.update(
-            x=x_pos,
-            # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
-        )
-        # for i, x in enumerate(hiddens.unbind(2)):
-        #     self.norm.update(
-        #         x=x,
-        #         y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1)
-        #     )
+        # Independent indicator for each (template, pseudo-label) pair
+        prompt_ids = torch.eye(k * v, device=hiddens.device).expand(n, -1, -1)
+        self.norm.update(x=rearrange(hiddens, "n v k d -> n (k v) d"), y=prompt_ids)
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
