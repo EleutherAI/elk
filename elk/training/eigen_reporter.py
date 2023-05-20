@@ -85,13 +85,12 @@ class EigenReporter(Reporter):
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
         num_variants: int = 1,
-        track_class_means: bool = True,
     ):
         super().__init__()
         self.config = cfg
         self.in_features = in_features
         self.num_classes = num_classes
-        self.track_class_means = track_class_means
+        self.num_variants = num_variants
 
         # Learnable Platt scaling parameters
         self.bias = nn.Parameter(torch.zeros(cfg.num_heads, device=device, dtype=dtype))
@@ -302,5 +301,6 @@ class EigenReporter(Reporter):
         state.update(
             in_features=self.in_features,
             num_classes=self.num_classes,
+            num_variants=self.num_variants,
         )
         torch.save(state, path)

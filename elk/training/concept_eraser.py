@@ -69,6 +69,7 @@ class ConceptEraser(nn.Module):
 
         self.y_dim = y_dim
         self.x_dim = x_dim
+        self._P = None
 
         self.affine = affine
         self.cov_type = cov_type
