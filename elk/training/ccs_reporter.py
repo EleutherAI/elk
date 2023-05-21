@@ -20,51 +20,57 @@ from .reporter import Reporter, ReporterConfig
 
 @dataclass
 class CcsReporterConfig(ReporterConfig):
-    """
-    Args:
-        activation: The activation function to use. Defaults to GELU.
-        bias: Whether to use a bias term in the linear layers. Defaults to True.
-        hidden_size: The number of hidden units in the MLP. Defaults to None.
-            By default, use an MLP expansion ratio of 4/3. This ratio is used by
-            Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
-            MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
-            but this seems to lead to excessively large MLPs when num_layers > 2.
-        init: The initialization scheme to use. Defaults to "zero".
-        loss: The loss function to use. list of strings, each of the form
-            "coef*name", where coef is a float and name is one of the keys in
-            `elk.training.losses.LOSSES`.
-            Example: --loss 1.0*consistency_squared 0.5*prompt_var
-            corresponds to the loss function 1.0*consistency_squared + 0.5*prompt_var.
-            Defaults to the loss "ccs_squared_loss".
-        normalization: The kind of normalization to apply to the hidden states.
-        num_layers: The number of layers in the MLP. Defaults to 1.
-        pre_ln: Whether to include a LayerNorm module before the first linear
-            layer. Defaults to False.
-        supervised_weight: The weight of the supervised loss. Defaults to 0.0.
-
-        lr: The learning rate to use. Ignored when `optimizer` is `"lbfgs"`.
-            Defaults to 1e-2.
-        num_epochs: The number of epochs to train for. Defaults to 1000.
-        num_tries: The number of times to try training the reporter. Defaults to 10.
-        optimizer: The optimizer to use. Defaults to "adam".
-        weight_decay: The weight decay or L2 penalty to use. Defaults to 0.01.
-    """
-
     activation: Literal["gelu", "relu", "swish"] = "gelu"
+    """The activation function to use."""
+
     bias: bool = True
+    """Whether to use a bias term in the linear layers."""
+
     hidden_size: Optional[int] = None
+    """The number of hidden units in the MLP. Defaults to None.
+    By default, use an MLP expansion ratio of 4/3. This ratio is used by
+    Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
+    MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
+    but this seems to lead to excessively large MLPs when num_layers > 2."""
+
     init: Literal["default", "pca", "spherical", "zero"] = "default"
+    """The initialization scheme to use."""
+
     loss: list[str] = field(default_factory=lambda: ["ccs"])
+    """The loss function to use. list of strings, each of the form "coef*name",
+    where coef is a float and name is one of the keys in
+    `elk.training.losses.LOSSES`.
+    Example: --loss 1.0*consistency_squared 0.5*prompt_var
+    corresponds to the loss function 1.0*consistency_squared + 0.5*prompt_var.
+    Defaults to the loss "ccs_squared_loss"."""
+
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
+    """Dictionary representation of the loss function with keys as loss names and
+    values as loss coefficients."""
+
     num_layers: int = 1
+    """The number of layers in the MLP."""
+
     pre_ln: bool = False
+    """Whether to include a LayerNorm module before the first linear layer."""
+
     supervised_weight: float = 0.0
+    """The weight of the supervised loss."""
 
     lr: float = 1e-2
+    """The learning rate to use. Ignored when `optimizer` is `"lbfgs"`."""
+
     num_epochs: int = 1000
+    """The number of epochs to train for."""
+
     num_tries: int = 10
+    """The number of times to try training the reporter."""
+
     optimizer: Literal["adam", "lbfgs"] = "lbfgs"
+    """The optimizer to use."""
+
     weight_decay: float = 0.01
+    """The weight decay or L2 penalty to use."""
 
     @classmethod
     def reporter_class(cls) -> type[Reporter]:
