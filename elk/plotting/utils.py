@@ -1,8 +1,10 @@
+import pandas as pd
 from rich.console import Console
 from rich.table import Table
 
 
 def set_subplot_title_font_size(fig, font_size=14, font_family="Arial"):
+    """Update the font size and family of the subplot."""
     fig.update_annotations(
         font=dict(
             family=font_family,
@@ -13,6 +15,7 @@ def set_subplot_title_font_size(fig, font_size=14, font_family="Arial"):
 
 
 def set_legend_font_size(fig, font_size=8, font_family="Arial"):
+    """Update the font size and family of the xaxis, yaxis, and legend."""
     fig.update_layout(
         xaxis=dict(
             tickfont=dict(
@@ -36,7 +39,8 @@ def set_legend_font_size(fig, font_size=8, font_family="Arial"):
     return fig
 
 
-def display_table(pivot_table):
+def display_table(pivot_table: pd.DataFrame):
+    """Display a Dataframe as a table."""
     console = Console()
 
     table = Table(show_header=True, header_style="bold magenta", show_lines=True)
