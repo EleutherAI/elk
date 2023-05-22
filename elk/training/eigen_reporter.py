@@ -30,6 +30,9 @@ class EigenReporterConfig(ReporterConfig):
     """Whether to save the reporter statistics to disk in EigenReporter.save(). This
     is useful for debugging and analysis, but can take up a lot of disk space."""
 
+    erase_prompts: bool = False
+    """Whether to apply concept erasure on the prompt template IDs."""
+
     use_centroids: bool = True
     """Whether to average hiddens within each cluster before computing covariance."""
 
@@ -85,21 +88,19 @@ class EigenReporter(Reporter):
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
         num_variants: int = 1,
-        track_class_means: bool = True,
     ):
         super().__init__()
         self.config = cfg
         self.in_features = in_features
         self.num_classes = num_classes
         self.num_variants = num_variants
-        self.track_class_means = track_class_means
 
         # Learnable Platt scaling parameters
         self.bias = nn.Parameter(torch.zeros(cfg.num_heads, device=device, dtype=dtype))
         self.scale = nn.Parameter(torch.ones(cfg.num_heads, device=device, dtype=dtype))
         self.norm = ConceptEraser(
             in_features,
-            num_classes * num_variants,
+            num_classes * num_variants if cfg.erase_prompts else num_classes,
             device=device,
             dtype=dtype,
         )
@@ -180,19 +181,15 @@ class EigenReporter(Reporter):
 
         self.n += n
 
-        # One-hot indicators for each prompt template
-        prompt_ids = torch.eye(v, device=hiddens.device).expand(n, -1, -1)
-        x_neg, x_pos = hiddens.unbind(2)
-        self.norm.update(
-            x=x_neg,
+        if self.config.erase_prompts:
             # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
-        )
-        self.norm.update(
-            x=x_pos,
-            # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
-        )
+            indicators = torch.eye(k * v, device=hiddens.device).expand(n, -1, -1)
+            self.norm.update(x=hiddens, y=indicators)
+        else:
+            # Only use indicators for each pseudo-label
+            indicators = torch.eye(k, device=hiddens.device).expand(n, v, -1, -1)
+
+        self.norm.update(x=hiddens, y=indicators)
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
