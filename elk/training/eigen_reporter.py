@@ -17,7 +17,7 @@ class EigenReporterConfig(ReporterConfig):
     """Configuration for an EigenReporter."""
 
     num_heads: int = 1
-    """The number of eigenvectors to compute from the VINC matrix."""
+    """The number of eigenvectors to compute from the covariance matrix."""
 
     save_reporter_stats: bool = False
     """Whether to save the reporter statistics to disk in EigenReporter.save(). This
@@ -33,28 +33,22 @@ class EigenReporterConfig(ReporterConfig):
 
 
 class EigenReporter(Reporter):
-    """A linear reporter whose weights are computed via eigendecomposition.
-
-    Args:
-        cfg: The reporter configuration.
-        in_features: The number of input features.
-        num_classes: The number of classes for tracking the running means.
-
-    Attributes:
-        config: The reporter configuration.
-        contrastive_xcov_M2: Average of the unnormalized cross-covariance matrices
-            across all pairs of classes (k, k').
-        n: The running sum of the number of clusters processed by `update()`.
-        weight: The reporter weight matrix. Guaranteed to always be orthogonal, and
-            the columns are sorted in descending order of eigenvalue magnitude.
-    """
+    """A linear reporter whose weights are computed via eigendecomposition."""
 
     config: EigenReporterConfig
-    contrastive_xcov_M2: Tensor  # negative covariance
+    """The reporter configuration."""
+
+    contrastive_xcov_M2: Tensor
+    """Average of the unnormalized cross-covariance matrices across all pairs
+    of classes (k, k')."""
 
     mean: Tensor
     n: Tensor
+    """The running sum of the number of clusters processed by `update()`."""
+
     weight: Tensor
+    """The reporter weight matrix. Guaranteed to always be orthogonal, and
+    the columns are sorted in descending order of eigenvalue magnitude."""
 
     def __init__(
         self,
@@ -66,6 +60,16 @@ class EigenReporter(Reporter):
         dtype: torch.dtype | None = None,
         num_variants: int = 1,
     ):
+        """
+        Args:
+            cfg: The reporter configuration.
+            in_features: The number of input features.
+            num_classes: The number of classes for tracking the running means.
+            device: The device to run the Reporter on.
+            dtype: The data type to use in computations.
+            num_variants: The number of variants to consider in computations.
+        """
+
         super().__init__()
         self.config = cfg
         self.in_features = in_features

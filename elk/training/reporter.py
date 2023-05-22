@@ -3,7 +3,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import torch
 from simple_parsing.helpers import Serializable
@@ -40,7 +39,7 @@ class Reporter(nn.Module, ABC):
     def fit(
         self,
         hiddens: Tensor,
-        labels: Optional[Tensor] = None,
+        labels: Tensor | None = None,
     ) -> float:
         ...
 

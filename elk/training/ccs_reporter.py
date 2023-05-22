@@ -4,7 +4,7 @@ import math
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Optional, cast
+from typing import Literal, cast
 
 import torch
 import torch.nn as nn
@@ -26,7 +26,7 @@ class CcsReporterConfig(ReporterConfig):
     bias: bool = True
     """Whether to use a bias term in the linear layers."""
 
-    hidden_size: Optional[int] = None
+    hidden_size: int | None = None
     """The number of hidden units in the MLP. Defaults to None.
     By default, use an MLP expansion ratio of 4/3. This ratio is used by
     Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer

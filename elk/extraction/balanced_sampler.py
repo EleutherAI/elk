@@ -2,7 +2,7 @@ from collections import deque
 from dataclasses import InitVar, dataclass, field
 from itertools import cycle
 from random import Random
-from typing import Hashable, Iterable, Iterator, Optional
+from typing import Hashable, Iterable, Iterator
 
 from datasets import Features, IterableDataset
 from torch.utils.data import IterableDataset as TorchIterableDataset
@@ -67,7 +67,7 @@ class FewShotSampler:
         dataset: IterableDataset,
         num_shots: int,
         rng: Random,
-        label_col: Optional[str] = None,
+        label_col: str | None = None,
     ):
         self.dataset = dataset
         feats = assert_type(Features, dataset.features)

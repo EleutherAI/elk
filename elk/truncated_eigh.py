@@ -1,4 +1,4 @@
-from typing import Literal, NamedTuple, Optional
+from typing import Literal, NamedTuple
 
 import torch
 import torch.nn.functional as F
@@ -20,10 +20,10 @@ def truncated_eigh(
     A: Tensor,
     k: int = 1,
     *,
-    max_iter: Optional[int] = None,
-    ncv: Optional[int] = None,
+    max_iter: int | None = None,
+    ncv: int | None = None,
     tol: float = 1e-3,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     which: Literal["LA", "SA"] = "LA",
     verbose: bool = False,
 ) -> Eigendecomposition:
@@ -158,7 +158,7 @@ def truncated_eigh(
 
 
 @torch.jit.script
-def _solve_ritz_pairs(diag, off_diag, beta_k: Optional[Tensor], k: int, which: str):
+def _solve_ritz_pairs(diag, off_diag, beta_k: Tensor | None, k: int, which: str):
     """Solve the standard eigenvalue problem for the Ritz values and vectors.
 
     Args:
