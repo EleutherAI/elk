@@ -15,7 +15,14 @@ import elk.plotting.utils as utils
 
 
 class SweepByDsMultiplot:
+    """Class for generating line plots with multiple subplots for different datasets."""
+
     def __init__(self, model_name: str):
+        """Initialize the SweepByDsMultiplot instance.
+
+        Args:
+            model_name: The name of the model.
+        """
         self.model_name = model_name
 
     def render(
@@ -25,6 +32,17 @@ class SweepByDsMultiplot:
         ensembles=["full", "partial", "none"],
         write=False,
     ) -> go.Figure:
+        """Render the multiplot visualization.
+
+        Args:
+            sweep: The SweepVisualization instance containing the data.
+            with_transfer: Flag indicating whether to include transfer eval data.
+            ensembles: Filter for which ensembing options to include.
+            write: Flag indicating whether to write the visualization to disk.
+
+        Returns:
+            The generated Plotly figure.
+        """
         df = sweep.df
         unique_datasets = df["eval_dataset"].unique()
         run_names = df["run_name"].unique()
@@ -57,6 +75,10 @@ class SweepByDsMultiplot:
                     ensemble_data["eval_dataset"] == dataset_name
                 ]
                 dataset_data = dataset_data.sort_values(by="layer")
+                # Floor division by 3 is to determine the row num,
+                # The + 1 is added to convert the 0-based index to a 1-based index for
+                # Plotly's subplot numbering. Similar for col, except that the column
+                # position is determined by modulo division by 3.
                 row, col = (i - 1) // 3 + 1, (i - 1) % 3 + 1
                 fig.add_trace(
                     go.Scatter(
@@ -84,6 +106,10 @@ class SweepByDsMultiplot:
         )
 
         for i in range(1, num_datasets + 1):
+            # row=(i - 1) // 3 + 1: Floor division by 3 is to determine the row number,
+            # The + 1 is added to convert the 0-based index to a 1-based index for
+            # Plotly's subplot numbering. Similar for col, except that the column
+            # position is determined by modulo division by 3.
             fig.update_xaxes(
                 title_text="Layer", row=(i - 1) // 3 + 1, col=(i - 1) % 3 + 1
             )
@@ -106,14 +132,31 @@ class SweepByDsMultiplot:
 
 
 class TransferEvalHeatmap:
+    """Class for generating heatmaps for transfer evaluation results."""
+
     def __init__(
         self, layer: int, score_type: str = "auroc_estimate", ensembling: str = "full"
     ):
+        """Initialize the TransferEvalHeatmap instance.
+
+        Args:
+            layer: The layer number for the heatmap.
+            score_type: The type of score to display on the heatmap.
+            ensembling: The ensembling option to consider.
+        """
         self.layer = layer
         self.score_type = score_type
         self.ensembling = ensembling
 
-    def render(self, df: pd.DataFrame, write=False) -> go.Figure:
+    def render(self, df: pd.DataFrame) -> go.Figure:
+        """Render the heatmap visualization.
+
+        Args:
+            df: The DataFrame containing the transfer evaluation data.
+
+        Returns:
+            The generated Plotly figure.
+        """
         model_name = df["eval_dataset"].iloc[0]  # infer model name
         # TODO: validate
         pivot = pd.pivot_table(
@@ -132,13 +175,31 @@ class TransferEvalHeatmap:
 
 
 class TransferEvalTrend:
+    """Class for generating line plots for the trend of AUROC scores in transfer
+    evaluation."""
+
     def __init__(
         self, dataset_names: Optional[list[str]], score_type: str = "auroc_estimate"
     ):
+        """Initialize the TransferEvalTrend instance.
+
+        Args:
+            dataset_names: List of dataset names to include in the trend plot.
+                If None, all datasets will be included.
+            score_type: The type of score to display on the trend plot.
+        """
         self.dataset_names = dataset_names
         self.score_type = score_type
 
     def render(self, df: pd.DataFrame) -> go.Figure:
+        """Render the trend plot visualization.
+
+        Args:
+            df: The DataFrame containing the transfer evaluation data.
+
+        Returns:
+            The generated Plotly figure.
+        """
         model_name = df["model_name"].iloc[0]
         if self.dataset_names is not None:
             df = self._filter_transfer_datasets(df, self.dataset_names)
@@ -153,7 +214,6 @@ class TransferEvalTrend:
             title=f"AUROC Score Trend: {model_name}",
         )
 
-        # add line representing average of all datasets
         avg = pivot.mean(axis=1)
         fig.add_trace(
             go.Scatter(
@@ -175,6 +235,8 @@ class TransferEvalTrend:
 
 @dataclass
 class ModelVisualization:
+    """Class representing the visualization for a single model within a sweep."""
+
     df: pd.DataFrame
     sweep_name: str
     model_name: str
@@ -182,6 +244,15 @@ class ModelVisualization:
 
     @classmethod
     def collect(cls, model_path: Path, sweep_name: str) -> ModelVisualization:
+        """Collect the evaluation data for a model.
+
+        Args:
+            model_path: The path to the model directory.
+            sweep_name: The name of the sweep.
+
+        Returns:
+            The ModelVisualization instance containing the evaluation data.
+        """
         df = pd.DataFrame()
         model_name = model_path.name
 
@@ -210,6 +281,14 @@ class ModelVisualization:
         score_type="auroc_estimate",
         ensembling="full",
     ) -> None:
+        """Render and save the visualization for the model.
+
+        Args:
+            sweep: The SweepVisualization instance.
+            dataset_names: List of dataset names to include in the visualization.
+            score_type: The type of score to display.
+            ensembling: The ensembling option to consider.
+        """
         df = self.df
         model_name = self.model_name
         layer_min, layer_max = df["layer"].min(), df["layer"].max()
@@ -236,6 +315,8 @@ class ModelVisualization:
 
 @dataclass
 class SweepVisualization:
+    """Class representing the overall visualization for a sweep."""
+
     name: str
     df: pd.DataFrame
     path: Path
@@ -243,10 +324,26 @@ class SweepVisualization:
     models: dict[str, ModelVisualization]
 
     def model_names(self):
+        """Get the names of all models in the sweep.
+
+        Returns:
+            List of model names.
+        """
         return list(self.models.keys())
 
     @staticmethod
     def _get_model_paths(sweep_path: Path) -> list[Path]:
+        """Get the paths to the model directories in the sweep.
+
+        Args:
+            sweep_path: The path to the sweep directory.
+
+        Returns:
+            List of model directory paths.
+
+        Raises:
+            Exception: If the sweep has already been visualized.
+        """
         folders = []
         for model_repo in sweep_path.iterdir():
             if not model_repo.is_dir():
@@ -259,6 +356,17 @@ class SweepVisualization:
 
     @classmethod
     def collect(cls, sweep_path: Path) -> SweepVisualization:
+        """Collect the evaluation data for a sweep.
+
+        Args:
+            sweep_path: The path to the sweep directory.
+
+        Returns:
+            The SweepVisualization instance containing the evaluation data.
+
+        Raises:
+            Exception: If the output directory already exists.
+        """
         sweep_name = sweep_path.parts[-1]
         sweep_viz_path = sweep_path / "viz"
         if sweep_viz_path.exists():
@@ -275,12 +383,18 @@ class SweepVisualization:
         return cls(sweep_name, df, sweep_viz_path, datasets, models)
 
     def render_and_save(self):
+        """Render and save all visualizations for the sweep."""
         for model in self.models.values():
             model.render_and_save(self)
         self.render_table(write=True)
         self.render_multiplots(write=True)
 
     def render_multiplots(self, write=False):
+        """Render and optionally write the multiplot visualizations.
+
+        Args:
+            write: Flag indicating whether to write the visualizations to disk.
+        """
         return [
             SweepByDsMultiplot(model).render(self, write=write, with_transfer=False)
             for model in self.models
@@ -288,7 +402,18 @@ class SweepVisualization:
 
     def render_table(
         self, layer=-5, score_type="auroc_estimate", display=True, write=False
-    ):
+    ) -> pd.DataFrame:
+        """Render and optionally write the score table.
+
+        Args:
+            layer: The layer number (from last layer) to include in the score table.
+            score_type: The type of score to include in the table.
+            display: Flag indicating whether to display the table to stdout.
+            write: Flag indicating whether to write the table to a file.
+
+        Returns:
+            The generated score table as a pandas DataFrame.
+        """
         df = self.df
         layer_by_model = (df.groupby("model_name")["layer"].max() + layer).clip(lower=0)
         df_selected_layer = pd.DataFrame()
@@ -306,4 +431,9 @@ class SweepVisualization:
 
 
 def visualize_sweep(sweep_path: Path):
+    """Visualize a sweep by generating and saving the visualizations.
+
+    Args:
+        sweep_path: The path to the sweep data directory.
+    """
     SweepVisualization.collect(sweep_path).render_and_save()
