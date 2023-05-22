@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 def sweeps_dir() -> Path:
+    """Return the directory where sweeps are stored."""
     return elk_reporter_dir() / "sweeps"
 
 
