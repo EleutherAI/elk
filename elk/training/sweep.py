@@ -23,10 +23,12 @@ class Sweep:
 
     add_pooled: InitVar[bool] = False
     """Whether to add a dataset that pools all of the other datasets together."""
+
     hparam_step: float = -1.0
     """The step size for hyperparameter sweeps. Performs a 2D
     sweep over a and b in (var_weight, inv_weight, neg_cov_weight) = (a, 1 - b, b)
     If negative, no hyperparameter sweeps will be performed. Only valid for Eigen."""
+
     skip_transfer_eval: bool = False
     """Whether to perform transfer eval on every pair of datasets."""
 
@@ -132,12 +134,13 @@ class Sweep:
                             run.net.neg_cov_weight = neg_cov_weight
 
                             # Add hyperparameter values to output directory if needed
-                            out_dir /= f"var_weight={var_weight}"
-                            out_dir /= f"neg_cov_weight={neg_cov_weight}"
+                            assert run.out_dir is not None
+                            run.out_dir /= f"var_weight={var_weight:.2f}"
+                            run.out_dir /= f"neg_cov_weight={neg_cov_weight:.2f}"
 
                         try:
                             run.execute()
-                        except torch._C._LinAlgError as e:  # type: ignore
+                        except torch.linalg.LinAlgError as e:
                             print(colorize(f"LinAlgError: {e}", "red"))
                             continue
 
@@ -157,7 +160,7 @@ class Sweep:
                                         run.data, model=model, datasets=(eval_dataset,)
                                     ),
                                     source=run.out_dir,
-                                    out_dir=out_dir / "transfer" / eval_dataset,
+                                    out_dir=run.out_dir / "transfer" / eval_dataset,
                                     num_gpus=run.num_gpus,
                                     min_gpu_mem=run.min_gpu_mem,
                                     skip_supervised=run.supervised == "none",

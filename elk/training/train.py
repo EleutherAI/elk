@@ -63,12 +63,12 @@ class Elicit(Run):
         val_dict = self.prepare_data(device, layer, "val")
 
         (first_train_h, train_gt, _), *rest = train_dict.values()
-        (_, _, k, d) = first_train_h.shape
+        (_, v, k, d) = first_train_h.shape
         if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same hidden state size")
 
         # For a while we did support datasets with different numbers of classes, but
-        # we reverted this once we switched to SpectralNorm. There are a few options
+        # we reverted this once we switched to ConceptEraser. There are a few options
         # for re-enabling it in the future but they are somewhat complex and it's not
         # clear that it's worth it.
         if not all(other_h.shape[-2] == k for other_h, _, _ in rest):
@@ -78,8 +78,8 @@ class Elicit(Run):
         if isinstance(self.net, CcsReporterConfig):
             assert len(train_dict) == 1, "CCS only supports single-task training"
 
-            reporter = CcsReporter(self.net, d, device=device)
-            train_loss = reporter.fit(first_train_h, train_gt)
+            reporter = CcsReporter(self.net, d, device=device, num_variants=v)
+            train_loss = reporter.fit(first_train_h)
 
             (val_h, val_gt, _) = next(iter(val_dict.values()))
             x0, x1 = first_train_h.unbind(2)
@@ -89,15 +89,16 @@ class Elicit(Run):
                 val_pair=(val_x0, val_x1),
             )
 
-            # TODO: Enable Platt scaling for CCS once normalization is fixed
-            # (_, v, k, _) = first_train_h.shape
-            # reporter.platt_scale(
-            #     to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
-            #     rearrange(first_train_h, "n v k d -> (n v k) d"),
-            # )
+            (_, v, k, _) = first_train_h.shape
+            reporter.platt_scale(
+                to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
+                rearrange(first_train_h, "n v k d -> (n v k) d"),
+            )
 
         elif isinstance(self.net, EigenReporterConfig):
-            reporter = EigenReporter(self.net, d, num_classes=k, device=device)
+            reporter = EigenReporter(
+                self.net, d, num_classes=k, num_variants=v, device=device
+            )
 
             hidden_list, label_list = [], []
             for ds_name, (train_h, train_gt, _) in train_dict.items():

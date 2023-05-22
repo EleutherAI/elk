@@ -7,5 +7,4 @@ max_examples:
 - 5
 model: gpt2
 num_shots: 0
-num_variants: -1
 seed: 42
