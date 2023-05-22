@@ -28,22 +28,18 @@ class Plot:
         else:
             self.sweeps = [sweeps_root_dir / sweep for sweep in self.sweeps]
 
-        if self.sweeps and not (sweeps_root_dir / self.sweeps[0]).exists():
-            pretty_error(
-                f"No sweep with name {{{self.sweeps[0]}}} found in {sweeps_root_dir}"
-            )
-        elif len(self.sweeps) > 1:
-            # TODO support more than one sweep
-            pretty_error(
-                f"""{len(self.sweeps)} paths specified.
-                Only one sweep is supported at this time."""
-            )
-        elif (self.sweeps[0] / "viz").exists() and not self.overwrite:
-            pretty_error(
-                f"[blue]{self.sweeps[0] / 'viz'}[/blue] already exists. "
-                f"Use --overwrite to overwrite."
-            )
-        else:
-            if self.overwrite:
-                shutil.rmtree(self.sweeps[0] / "viz")
-            visualize_sweep(self.sweeps[0])
+        for sweep in self.sweeps:
+            if not (sweeps_root_dir / sweep).exists():
+                pretty_error(
+                    f"No sweep with name {{{sweep}}} found in {sweeps_root_dir}"
+                )
+            elif (sweep / "viz").exists() and not self.overwrite:
+                pretty_error(
+                    f"[blue]{sweep / 'viz'}[/blue] already exists. "
+                    f"Use --overwrite to overwrite."
+                )
+            else:
+                if self.overwrite:
+                    shutil.rmtree(sweep / "viz")
+
+                visualize_sweep(sweep)
