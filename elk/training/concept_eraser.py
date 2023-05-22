@@ -11,9 +11,6 @@ class ConceptEraser(nn.Module):
     mean_y: Tensor
     """Running mean of Y."""
 
-    u: Tensor
-    """Orthonormal basis of the subspace to remove."""
-
     xcov_M2: Tensor
     """Unnormalized cross-covariance matrix X^T Y."""
 
@@ -41,7 +38,6 @@ class ConceptEraser(nn.Module):
             "mean_x", torch.zeros(*batch_dims, x_dim, device=device, dtype=dtype)
         )
         self.register_buffer("mean_y", self.mean_x.new_zeros(*batch_dims, y_dim))
-        self.register_buffer("u", self.mean_x.new_zeros(*batch_dims, x_dim, self.rank))
         self.register_buffer(
             "xcov_M2",
             self.mean_x.new_zeros(*batch_dims, x_dim, y_dim),
@@ -89,21 +85,27 @@ class ConceptEraser(nn.Module):
         delta_y2 = y - self.mean_y
 
         self.xcov_M2 += torch.einsum("b...m,b...n->...mn", delta_x, delta_y2)
+        return self
+
+    @property
+    def u(self) -> Tensor:
+        """Orthonormal basis for the subspace to remove."""
         if self.y_dim == self.rank:
             # When we're entirely erasing the subspace, we can use QR instead of SVD to
             # get an orthonormal basis for the column space of the xcov matrix
-            self.u, _ = torch.linalg.qr(self.xcov)
+            u, _ = torch.linalg.qr(self.xcov)
         else:
             # We only want to erase the highest energy part of the subspace
-            self.u, _, _ = torch.svd_lowrank(self.xcov, q=self.rank)
+            u, _, _ = torch.svd_lowrank(self.xcov, q=self.rank)
 
-        return self
+        return u
 
     @property
     def P(self) -> Tensor:
         """Projection matrix for removing the subspace."""
-        eye = torch.eye(self.x_dim, device=self.u.device, dtype=self.u.dtype)
-        return eye - self.u @ self.u.mT
+        u = self.u
+        eye = torch.eye(self.x_dim, device=u.device, dtype=u.dtype)
+        return eye - u @ u.mT
 
     @property
     def xcov(self) -> Tensor:

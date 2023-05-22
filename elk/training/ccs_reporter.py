@@ -100,6 +100,7 @@ class CcsReporter(Reporter):
         super().__init__()
         self.config = cfg
         self.in_features = in_features
+        self.num_variants = num_variants
 
         # Learnable Platt scaling parameters
         self.bias = nn.Parameter(torch.zeros(1, device=device, dtype=dtype))
@@ -110,7 +111,6 @@ class CcsReporter(Reporter):
         self.norm = ConceptEraser(
             in_features,
             2 * num_variants,
-            # batch_dims=(num_variants,) if num_variants else (),
             device=device,
             dtype=dtype,
         )
@@ -359,5 +359,5 @@ class CcsReporter(Reporter):
     def save(self, path: Path | str) -> None:
         """Save the reporter to a file."""
         state = {k: v.cpu() for k, v in self.state_dict().items()}
-        state.update(in_features=self.in_features)
+        state.update(in_features=self.in_features, num_variants=self.num_variants)
         torch.save(state, path)

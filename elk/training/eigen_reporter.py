@@ -91,6 +91,7 @@ class EigenReporter(Reporter):
         self.config = cfg
         self.in_features = in_features
         self.num_classes = num_classes
+        self.num_variants = num_variants
         self.track_class_means = track_class_means
 
         # Learnable Platt scaling parameters
@@ -192,11 +193,6 @@ class EigenReporter(Reporter):
             # Independent indicator for each (template, pseudo-label) pair
             y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
         )
-        # for i, x in enumerate(hiddens.unbind(2)):
-        #     self.norm.update(
-        #         x=x,
-        #         y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1)
-        #     )
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
@@ -302,5 +298,6 @@ class EigenReporter(Reporter):
         state.update(
             in_features=self.in_features,
             num_classes=self.num_classes,
+            num_variants=self.num_variants,
         )
         torch.save(state, path)
