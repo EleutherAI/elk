@@ -1,9 +1,6 @@
-from __future__ import annotations
-
 import itertools
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 import plotly.express as px
@@ -14,20 +11,15 @@ from plotly.subplots import make_subplots
 import elk.plotting.utils as utils
 
 
+@dataclass
 class SweepByDsMultiplot:
     """Class for generating line plots with multiple subplots for different datasets."""
 
-    def __init__(self, model_name: str):
-        """Initialize the SweepByDsMultiplot instance.
-
-        Args:
-            model_name: The name of the model.
-        """
-        self.model_name = model_name
+    model_name: str
 
     def render(
         self,
-        sweep: SweepVisualization,
+        sweep: "SweepVisualization",
         with_transfer=False,
         ensembles=["full", "partial", "none"],
         write=False,
@@ -43,18 +35,24 @@ class SweepByDsMultiplot:
         Returns:
             The generated Plotly figure.
         """
-        df = sweep.df
+        df = sweep.df[sweep.df["model_name"] == self.model_name]
         unique_datasets = df["eval_dataset"].unique()
         run_names = df["run_name"].unique()
         num_datasets = len(unique_datasets)
         num_rows = (num_datasets + 2) // 3
 
         fig = make_subplots(
-            rows=num_rows, cols=3, subplot_titles=unique_datasets, shared_yaxes=True
+            rows=num_rows,
+            cols=3,
+            subplot_titles=unique_datasets,
+            shared_xaxes=True,
+            shared_yaxes=True,
+            vertical_spacing=0.1,
+            x_title="Layer",
+            y_title="AUROC",
         )
 
         combos = list(itertools.product(run_names, ensembles))
-
         color_map = {
             run_name: color for run_name, color in zip(combos, qualitative.Plotly)
         }
@@ -93,32 +91,13 @@ class SweepByDsMultiplot:
                     ),
                     row=row,
                     col=col,
+                ).update_yaxes(
+                    range=[0.4, 1.1],  # Between 0.5 and 1.0 but with a bit of buffer
+                    row=row,
+                    col=col,
                 )
 
-        fig.update_layout(
-            xaxis_title="Layer",
-            yaxis_title="AUROC Score",
-            title=f"Auroc Score Trend: {self.model_name}",
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
-            ),
-            margin=dict(t=100),
-        )
-
-        for i in range(1, num_datasets + 1):
-            # row=(i - 1) // 3 + 1: Floor division by 3 is to determine the row number,
-            # The + 1 is added to convert the 0-based index to a 1-based index for
-            # Plotly's subplot numbering. Similar for col, except that the column
-            # position is determined by modulo division by 3.
-            fig.update_xaxes(
-                title_text="Layer", row=(i - 1) // 3 + 1, col=(i - 1) % 3 + 1
-            )
-
-        for i in range(1, num_rows + 1):
-            fig.update_yaxes(title_text="AUROC Score", row=i, col=1)
-
-        fig = utils.set_subplot_title_font_size(fig, font_size=8)
-        fig = utils.set_legend_font_size(fig, font_size=8)
+        fig.update_layout(title=f"AUROC Trend: {self.model_name}")
         if write:
             fig.write_image(
                 file=sweep.path / f"{self.model_name}-line-ds-multiplot.png",
@@ -179,7 +158,7 @@ class TransferEvalTrend:
     evaluation."""
 
     def __init__(
-        self, dataset_names: Optional[list[str]], score_type: str = "auroc_estimate"
+        self, dataset_names: list[str] | None, score_type: str = "auroc_estimate"
     ):
         """Initialize the TransferEvalTrend instance.
 
@@ -243,7 +222,7 @@ class ModelVisualization:
     is_transfer: bool
 
     @classmethod
-    def collect(cls, model_path: Path, sweep_name: str) -> ModelVisualization:
+    def collect(cls, model_path: Path, sweep_name: str) -> "ModelVisualization":
         """Collect the evaluation data for a model.
 
         Args:
@@ -276,8 +255,8 @@ class ModelVisualization:
 
     def render_and_save(
         self,
-        sweep: SweepVisualization,
-        dataset_names: Optional[list[str]] = None,
+        sweep: "SweepVisualization",
+        dataset_names: list[str] | None = None,
         score_type="auroc_estimate",
         ensembling="full",
     ) -> None:
@@ -323,7 +302,7 @@ class SweepVisualization:
     datasets: list[str]
     models: dict[str, ModelVisualization]
 
-    def model_names(self):
+    def model_names(self) -> list[str]:
         """Get the names of all models in the sweep.
 
         Returns:
@@ -355,7 +334,7 @@ class SweepVisualization:
         return folders
 
     @classmethod
-    def collect(cls, sweep_path: Path) -> SweepVisualization:
+    def collect(cls, sweep_path: Path) -> "SweepVisualization":
         """Collect the evaluation data for a sweep.
 
         Args:
@@ -401,7 +380,7 @@ class SweepVisualization:
         ]
 
     def render_table(
-        self, layer=-5, score_type="auroc_estimate", display=True, write=False
+        self, layer=-2, score_type="auroc_estimate", display=True, write=False
     ) -> pd.DataFrame:
         """Render and optionally write the score table.
 

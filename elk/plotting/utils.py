@@ -50,6 +50,6 @@ def display_table(pivot_table: pd.DataFrame):
         table.add_column(str(column))
 
     for index, row in pivot_table.iterrows():
-        table.add_row(str(index), *[str(value) for value in row])
+        table.add_row(str(index), *map(str, row))
 
     console.print(table)
