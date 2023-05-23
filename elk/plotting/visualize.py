@@ -7,8 +7,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.colors import qualitative
 from plotly.subplots import make_subplots
-
-from .utils import display_table
+from rich.console import Console
+from rich.table import Table
 
 
 @dataclass
@@ -385,7 +385,20 @@ class SweepVisualization:
             index="run_name", columns="model_name", values=score_type
         )
         if display:
-            display_table(pivot_table)
+            console = Console()
+            table = Table(
+                show_header=True, header_style="bold magenta", show_lines=True
+            )
+
+            table.add_column("Run Name")
+            for column in pivot_table.columns:
+                table.add_column(str(column))
+
+            for index, row in pivot_table.iterrows():
+                table.add_row(str(index), *map(str, row))
+
+            console.print(table)
+
         if write:
             pivot_table.to_csv(f"score_table_{score_type}.csv")
         return pivot_table
