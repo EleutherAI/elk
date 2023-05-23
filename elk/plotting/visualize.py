@@ -360,7 +360,7 @@ class SweepVisualization:
         ]
 
     def render_table(
-        self, layer=-2, score_type="auroc_estimate", display=True, write=False
+        self, score_type="auroc_estimate", display=True, write=False
     ) -> pd.DataFrame:
         """Render and optionally write the score table.
 
@@ -373,14 +373,17 @@ class SweepVisualization:
         Returns:
             The generated score table as a pandas DataFrame.
         """
-        df = self.df
-        layer_by_model = (df.groupby("model_name")["layer"].max() + layer).clip(lower=0)
-        df_selected_layer = pd.DataFrame()
-        for model, layer in layer_by_model.items():
-            record = df[(df["model_name"] == model) & (df["layer"] == layer)]
-            df_selected_layer = pd.concat([df_selected_layer, record])
+        df = self.df[self.df["ensembling"] == "partial"]
 
-        pivot_table = df_selected_layer.pivot_table(
+        # For each model, we use the layer whose mean AUROC is the highest
+        best_layers, model_dfs = [], []
+        for _, model_df in df.groupby("model_name"):
+            best_layer = model_df.groupby("layer").auroc_estimate.mean().argmax()
+
+            best_layers.append(best_layer)
+            model_dfs.append(model_df[model_df["layer"] == best_layer])
+
+        pivot_table = pd.concat(model_dfs).pivot_table(
             index="eval_dataset",
             columns="model_name",
             values=score_type,
@@ -393,13 +396,14 @@ class SweepVisualization:
                 show_header=True, header_style="bold magenta", show_lines=True
             )
 
-            table.add_column("Run Name")
+            table.add_column("Dataset")
             for column in pivot_table.columns:
                 table.add_column(str(column))
 
             for index, row in pivot_table.iterrows():
                 table.add_row(str(index), *(f"{val:.3f}" for val in row))
 
+            table.add_row("Best Layer", *map(str, best_layers), style="bold")
             console.print(table)
 
         if write:
