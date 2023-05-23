@@ -110,22 +110,13 @@ class SweepByDsMultiplot:
         return fig
 
 
+@dataclass
 class TransferEvalHeatmap:
     """Class for generating heatmaps for transfer evaluation results."""
 
-    def __init__(
-        self, layer: int, score_type: str = "auroc_estimate", ensembling: str = "full"
-    ):
-        """Initialize the TransferEvalHeatmap instance.
-
-        Args:
-            layer: The layer number for the heatmap.
-            score_type: The type of score to display on the heatmap.
-            ensembling: The ensembling option to consider.
-        """
-        self.layer = layer
-        self.score_type = score_type
-        self.ensembling = ensembling
+    layer: int
+    score_type: str = "auroc_estimate"
+    ensembling: str = "full"
 
     def render(self, df: pd.DataFrame) -> go.Figure:
         """Render the heatmap visualization.
@@ -153,22 +144,13 @@ class TransferEvalHeatmap:
         return fig
 
 
+@dataclass
 class TransferEvalTrend:
     """Class for generating line plots for the trend of AUROC scores in transfer
     evaluation."""
 
-    def __init__(
-        self, dataset_names: list[str] | None, score_type: str = "auroc_estimate"
-    ):
-        """Initialize the TransferEvalTrend instance.
-
-        Args:
-            dataset_names: List of dataset names to include in the trend plot.
-                If None, all datasets will be included.
-            score_type: The type of score to display on the trend plot.
-        """
-        self.dataset_names = dataset_names
-        self.score_type = score_type
+    dataset_names: list[str] | None
+    score_type: str = "auroc_estimate"
 
     def render(self, df: pd.DataFrame) -> go.Figure:
         """Render the trend plot visualization.
