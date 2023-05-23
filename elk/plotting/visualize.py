@@ -1,4 +1,3 @@
-import itertools
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,7 +36,6 @@ class SweepByDsMultiplot:
         """
         df = sweep.df[sweep.df["model_name"] == self.model_name]
         unique_datasets = df["eval_dataset"].unique()
-        run_names = df["run_name"].unique()
         num_datasets = len(unique_datasets)
         num_rows = (num_datasets + 2) // 3
 
@@ -51,23 +49,19 @@ class SweepByDsMultiplot:
             x_title="Layer",
             y_title="AUROC",
         )
+        color_map = dict(zip(ensembles, qualitative.Plotly))
 
-        combos = list(itertools.product(run_names, ensembles))
-        color_map = {
-            run_name: color for run_name, color in zip(combos, qualitative.Plotly)
-        }
-
-        for run_name, ensemble in combos:
-            run_data = df[df["run_name"] == run_name]
-            ensemble_data: pd.DataFrame = run_data[run_data["ensembling"] == ensemble]
+        for ensemble in ensembles:
+            ensemble_data: pd.DataFrame = df[df["ensembling"] == ensemble]
             if with_transfer:  # TODO write tests
                 ensemble_data = ensemble_data.groupby(
-                    ["eval_dataset", "layer", "run_name", "ensembling"], as_index=False
+                    ["eval_dataset", "layer", "ensembling"], as_index=False
                 ).agg({"auroc_estimate": "mean"})
             else:
                 ensemble_data = ensemble_data[
                     ensemble_data["eval_dataset"] == ensemble_data["train_dataset"]
                 ]
+
             for i, dataset_name in enumerate(unique_datasets, start=1):
                 dataset_data = ensemble_data[
                     ensemble_data["eval_dataset"] == dataset_name
@@ -83,11 +77,11 @@ class SweepByDsMultiplot:
                         x=dataset_data["layer"],
                         y=dataset_data["auroc_estimate"],
                         mode="lines",
-                        name=f"{run_name}:{ensemble}",
+                        name=ensemble,
                         showlegend=False
                         if dataset_name != unique_datasets[0]
                         else True,
-                        line=dict(color=color_map[(run_name, ensemble)]),
+                        line=dict(color=color_map[ensemble]),
                     ),
                     row=row,
                     col=col,
@@ -97,7 +91,12 @@ class SweepByDsMultiplot:
                     col=col,
                 )
 
-        fig.update_layout(title=f"AUROC Trend: {self.model_name}")
+        fig.update_layout(
+            legend=dict(
+                title="Ensembling",
+            ),
+            title=f"AUROC Trend: {self.model_name}",
+        )
         if write:
             fig.write_image(
                 file=sweep.path / f"{self.model_name}-line-ds-multiplot.png",
@@ -199,12 +198,11 @@ class ModelVisualization:
     """Class representing the visualization for a single model within a sweep."""
 
     df: pd.DataFrame
-    sweep_name: str
     model_name: str
     is_transfer: bool
 
     @classmethod
-    def collect(cls, model_path: Path, sweep_name: str) -> "ModelVisualization":
+    def collect(cls, model_path: Path) -> "ModelVisualization":
         """Collect the evaluation data for a model.
 
         Args:
@@ -231,9 +229,7 @@ class ModelVisualization:
                     df = pd.concat([df, eval_df], ignore_index=True)
 
         df["model_name"] = model_name
-        df["run_name"] = sweep_name
-
-        return cls(df, sweep_name, model_name, is_transfer)
+        return cls(df, model_name, is_transfer)
 
     def render_and_save(
         self,
@@ -309,6 +305,8 @@ class SweepVisualization:
         for model_repo in sweep_path.iterdir():
             if not model_repo.is_dir():
                 raise Exception(f"expected {model_repo} to be a directory")
+
+            # TODO: Use a more robust heuristic
             if model_repo.name.startswith("gpt2"):
                 folders += [model_repo]
             else:
@@ -336,7 +334,7 @@ class SweepVisualization:
 
         model_paths = cls._get_model_paths(sweep_path)
         models = {
-            model_path.name: ModelVisualization.collect(model_path, sweep_name)
+            model_path.name: ModelVisualization.collect(model_path)
             for model_path in model_paths
         }
         df = pd.concat([model.df for model in models.values()], ignore_index=True)
@@ -381,8 +379,13 @@ class SweepVisualization:
         for model, layer in layer_by_model.items():
             record = df[(df["model_name"] == model) & (df["layer"] == layer)]
             df_selected_layer = pd.concat([df_selected_layer, record])
+
         pivot_table = df_selected_layer.pivot_table(
-            index="run_name", columns="model_name", values=score_type
+            index="eval_dataset",
+            columns="model_name",
+            values=score_type,
+            margins=True,
+            margins_name="Mean",
         )
         if display:
             console = Console()
@@ -395,7 +398,7 @@ class SweepVisualization:
                 table.add_column(str(column))
 
             for index, row in pivot_table.iterrows():
-                table.add_row(str(index), *map(str, row))
+                table.add_row(str(index), *(f"{val:.3f}" for val in row))
 
             console.print(table)
 
