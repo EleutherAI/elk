@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 from plotly.colors import qualitative
 from plotly.subplots import make_subplots
 
-import elk.plotting.utils as utils
+from .utils import display_table
 
 
 @dataclass
@@ -385,7 +385,7 @@ class SweepVisualization:
             index="run_name", columns="model_name", values=score_type
         )
         if display:
-            utils.display_table(pivot_table)
+            display_table(pivot_table)
         if write:
             pivot_table.to_csv(f"score_table_{score_type}.csv")
         return pivot_table
