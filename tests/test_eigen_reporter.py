@@ -5,11 +5,11 @@ from elk.utils import batch_cov, cov_mean_fused
 
 
 def test_eigen_reporter():
-    cluster_size = 5
+    num_clusters = 5
     hidden_size = 10
     N = 100
 
-    x = torch.randn(N, cluster_size, 2, hidden_size, dtype=torch.float64)
+    x = torch.randn(N, num_clusters, 2, hidden_size, dtype=torch.float64)
     x1, x2 = x.chunk(2, dim=0)
     x_neg, x_pos = x.unbind(2)
 
@@ -17,6 +17,7 @@ def test_eigen_reporter():
         EigenReporterConfig(),
         hidden_size,
         dtype=torch.float64,
+        num_variants=num_clusters,
     )
     reporter.update(x1)
     reporter.update(x2)

@@ -99,6 +99,8 @@ class Extract(Serializable):
     case of encoder-decoder models."""
 
     def __post_init__(self, layer_stride: int):
+        if self.num_variants != -1:
+            print("WARNING: num_variants is deprecated; use prompt_indices instead.")
         if len(self.datasets) == 0:
             raise ValueError(
                 "Must specify at least one dataset to extract hiddens from."
@@ -186,7 +188,6 @@ def extract_hiddens(
         ds_names[0],
         binarize=cfg.binarize,
         num_shots=cfg.num_shots,
-        num_variants=cfg.num_variants,
         split_type=split_type,
         template_path=cfg.template_path,
         rank=rank,
@@ -359,12 +360,10 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
         else infer_num_classes(ds_features[label_col])
     )
 
-    num_variants = cfg.num_variants
-    if num_variants < 0:
-        num_dropped = prompter.drop_non_mc_templates()
-        num_variants = len(prompter.templates)
-        if num_dropped:
-            print(f"Dropping {num_dropped} non-multiple choice templates")
+    num_dropped = prompter.drop_non_mc_templates()
+    num_variants = len(prompter.templates)
+    if num_dropped:
+        print(f"Dropping {num_dropped} non-multiple choice templates")
 
     layer_cols = {
         f"hidden_{layer}": Array3D(

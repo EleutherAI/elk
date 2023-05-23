@@ -43,6 +43,9 @@ class Run(ABC, Serializable):
     )
     """Datasets containing hidden states and labels for each layer."""
 
+    prompt_indices: tuple[int, ...] = ()
+    """The indices of the prompt templates to use. If empty, all prompts are used."""
+
     concatenated_layer_offset: int = 0
     debug: bool = False
     min_gpu_mem: int | None = None  # in bytes
@@ -131,13 +134,15 @@ class Run(ABC, Serializable):
 
             split = ds[key].with_format("torch", device=device, dtype=torch.int16)
             labels = assert_type(Tensor, split["label"])
-            val_h = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
+            hiddens = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
+            if self.prompt_indices:
+                hiddens = hiddens[:, self.prompt_indices]
 
             with split.formatted_as("torch", device=device):
                 has_preds = "model_logits" in split.features
                 lm_preds = split["model_logits"] if has_preds else None
 
-            out[ds_name] = (val_h, labels.to(val_h.device), lm_preds)
+            out[ds_name] = (hiddens, labels.to(hiddens.device), lm_preds)
 
         return out
 
