@@ -1,8 +1,8 @@
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from itertools import cycle
 from random import Random
-from typing import Iterable, Iterator, Optional
+from typing import Hashable, Iterable, Iterator, Optional
 
 from datasets import Features, IterableDataset
 from torch.utils.data import IterableDataset as TorchIterableDataset
@@ -16,35 +16,32 @@ from ..utils.typing import assert_type
 class BalancedSampler(TorchIterableDataset):
     """
     A sampler that approximately balances a multi-class classification dataset in a
-    streaming fashion.
-
-    Attributes:
-        data: The input dataset to balance.
-        num_classes: The total number of classes expected in the data.
-        buffer_size: The total buffer size to use for balancing the dataset. Each class
-            will have its own buffer with this size.
-    """
+    streaming fashion."""
 
     data: Iterable[dict]
-    num_classes: int
+    """The input dataset to balance."""
+    label_choices: InitVar[set[Hashable]]
+    """The set of all possible class labels."""
     buffer_size: int = 1000
-    buffers: dict[int, deque[dict]] = field(default_factory=dict, init=False)
+    """The per-class buffer size to use for balancing the dataset."""
+    buffers: dict[Hashable, deque[dict]] = field(default_factory=dict, init=False)
+    """The buffers used for balancing the dataset."""
     label_col: str = "label"
+    """The name of the column containing the class labels."""
 
-    def __post_init__(self):
+    def __post_init__(self, label_choices: set[Hashable]):
         # Initialize empty buffers
         self.buffers = {
-            label: deque(maxlen=self.buffer_size) for label in range(self.num_classes)
+            label: deque(maxlen=self.buffer_size) for label in label_choices
         }
 
     def __iter__(self):
         for sample in self.data:
             label = sample[self.label_col]
-
-            # This whole class is a no-op if the label is not an integer
-            if not isinstance(label, int):
-                yield sample
-                continue
+            if label not in self.buffers:
+                raise ValueError(
+                    f"Expected label to be one of {self.buffers}, got {label}"
+                )
 
             # Add the sample to the buffer for its class label
             self.buffers[label].append(sample)

@@ -2,10 +2,9 @@ balance: true
 datasets:
   - "super_glue:boolq"
   - "super_glue:copa"
-label_column: null
 max_examples:
 - 5
 - 5
+model: gpt2
 num_shots: 0
-num_variants: -1
 seed: 42

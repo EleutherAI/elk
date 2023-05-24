@@ -3,19 +3,19 @@
 import math
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, Optional, cast
 
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.nn.functional import binary_cross_entropy as bce
 
 from ..metrics import roc_auc
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
 from .classifier import Classifier
+from .concept_eraser import ConceptEraser
 from .losses import LOSSES
-from .normalizer import Normalizer
 from .reporter import Reporter, ReporterConfig
 
 
@@ -36,7 +36,7 @@ class CcsReporterConfig(ReporterConfig):
             `elk.training.losses.LOSSES`.
             Example: --loss 1.0*consistency_squared 0.5*prompt_var
             corresponds to the loss function 1.0*consistency_squared + 0.5*prompt_var.
-            Defaults to "ccs_prompt_var".
+            Defaults to the loss "ccs_squared_loss".
         normalization: The kind of normalization to apply to the hidden states.
         num_layers: The number of layers in the MLP. Defaults to 1.
         pre_ln: Whether to include a LayerNorm module before the first linear
@@ -59,7 +59,6 @@ class CcsReporterConfig(ReporterConfig):
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
     num_layers: int = 1
     pre_ln: bool = False
-    seed: int = 42
     supervised_weight: float = 0.0
 
     lr: float = 1e-2
@@ -67,6 +66,10 @@ class CcsReporterConfig(ReporterConfig):
     num_tries: int = 10
     optimizer: Literal["adam", "lbfgs"] = "lbfgs"
     weight_decay: float = 0.01
+
+    @classmethod
+    def reporter_class(cls) -> type[Reporter]:
+        return CcsReporter
 
     def __post_init__(self):
         self.loss_dict = parse_loss(self.loss)
@@ -76,7 +79,7 @@ class CcsReporterConfig(ReporterConfig):
 
 
 class CcsReporter(Reporter):
-    """An ELK reporter network.
+    """CCS reporter network.
 
     Args:
         in_features: The number of input features.
@@ -89,17 +92,28 @@ class CcsReporter(Reporter):
         self,
         cfg: CcsReporterConfig,
         in_features: int,
+        *,
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
+        num_variants: int = 1,
     ):
         super().__init__()
         self.config = cfg
+        self.in_features = in_features
+        self.num_variants = num_variants
+
+        # Learnable Platt scaling parameters
+        self.bias = nn.Parameter(torch.zeros(1, device=device, dtype=dtype))
+        self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
-        self.neg_norm = Normalizer((in_features,), device=device, dtype=dtype)
-        self.pos_norm = Normalizer((in_features,), device=device, dtype=dtype)
-
+        self.norm = ConceptEraser(
+            in_features,
+            2 * num_variants,
+            device=device,
+            dtype=dtype,
+        )
         self.probe = nn.Sequential(
             nn.Linear(
                 in_features,
@@ -128,6 +142,7 @@ class CcsReporter(Reporter):
                 )
             )
 
+    @torch.no_grad()
     def check_separability(
         self,
         train_pair: tuple[Tensor, Tensor],
@@ -144,46 +159,42 @@ class CcsReporter(Reporter):
         Returns:
             The AUROC of a linear classifier fit on the pseudo-labels.
         """
-        _x0, _x1 = train_pair
-        _val_x0, _val_x1 = val_pair
-
-        x0, x1 = self.neg_norm(_x0), self.pos_norm(_x1)
-        val_x0, val_x1 = self.neg_norm(_val_x0), self.pos_norm(_val_x1)
+        x0, x1 = map(self.norm, train_pair)
+        val_x0, val_x1 = map(self.norm, val_pair)
 
         pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
-        pseudo_train_labels = torch.cat(
+        pseudo_train = torch.cat(
             [
-                x0.new_zeros(x0.shape[0]),
-                x0.new_ones(x0.shape[0]),
+                torch.zeros_like(x0[..., 0]),
+                torch.ones_like(x1[..., 0]),
             ]
-        ).repeat_interleave(
-            x0.shape[1]
-        )  # make num_variants copies of each pseudo-label
-        pseudo_val_labels = torch.cat(
+        ).flatten()
+        pseudo_val = torch.cat(
             [
-                val_x0.new_zeros(val_x0.shape[0]),
-                val_x0.new_ones(val_x0.shape[0]),
+                torch.zeros_like(val_x0[..., 0]),
+                torch.ones_like(val_x1[..., 0]),
             ]
-        ).repeat_interleave(val_x0.shape[1])
+        ).flatten()
 
         pseudo_clf.fit(
             # b v d -> (b v) d
             torch.cat([x0, x1]).flatten(0, 1),
-            pseudo_train_labels,
+            pseudo_train,
+            # Use the same weight decay as the reporter
+            l2_penalty=self.config.weight_decay,
         )
-        with torch.no_grad():
-            pseudo_preds = pseudo_clf(
-                # b v d -> (b v) d
-                torch.cat([val_x0, val_x1]).flatten(0, 1)
-            ).squeeze(-1)
-            return roc_auc(pseudo_val_labels, pseudo_preds).item()
+        pseudo_preds = pseudo_clf(
+            # b v d -> (b v) d
+            torch.cat([val_x0, val_x1]).flatten(0, 1)
+        ).squeeze(-1)
 
-    def unsupervised_loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
-        loss = sum(
-            LOSSES[name](logit0, logit1, coef)
-            for name, coef in self.config.loss_dict.items()
-        )
-        return assert_type(Tensor, loss)
+        # Edge case where the classifier learns to set its weights to zero
+        # Technically AUROC is not defined here but we "fill in" the value of 0.5
+        # since this is the limit as the weights approach zero
+        if not pseudo_preds.any():
+            return 0.5
+        else:
+            return roc_auc(pseudo_val, pseudo_preds).item()
 
     def reset_parameters(self):
         """Reset the parameters of the probe.
@@ -219,77 +230,49 @@ class CcsReporter(Reporter):
             raise ValueError(f"Unknown init: {self.config.init}")
 
     def forward(self, x: Tensor) -> Tensor:
-        """Return the raw score output of the probe on `x`."""
-        return self.probe(x).squeeze(-1)
+        """Return the credence assigned to the hidden state `x`."""
+        raw_scores = self.probe(self.norm(x)).squeeze(-1)
+        return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
-    def loss(
-        self,
-        logit0: Tensor,
-        logit1: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> Tensor:
+    def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         """Return the loss of the reporter on the contrast pair (x0, x1).
 
         Args:
             logit0: The raw score output of the reporter on x0.
             logit1: The raw score output of the reporter on x1.
-            labels: The labels of the contrast pair. Defaults to None.
 
         Returns:
             loss: The loss of the reporter on the contrast pair (x0, x1).
-
-        Raises:
-            ValueError: If `supervised_weight > 0` but `labels` is None.
         """
-        loss = self.unsupervised_loss(logit0, logit1)
+        loss = sum(
+            LOSSES[name](logit0, logit1, coef)
+            for name, coef in self.config.loss_dict.items()
+        )
+        return assert_type(Tensor, loss)
 
-        # If labels are provided, use them to compute a supervised loss
-        if labels is not None:
-            num_labels = len(labels)
-            assert num_labels <= len(logit0), "Too many labels provided"
-            p0 = logit0[:num_labels].sigmoid()
-            p1 = logit1[:num_labels].sigmoid()
-
-            alpha = self.config.supervised_weight
-            preds = p0.add(1 - p1).mul(0.5).squeeze(-1)
-            # broadcast the labels, and flatten the predictions
-            # so that both are 1D tensors
-            broadcast_labels = labels.repeat_interleave(preds.shape[1]).float()
-            flattened_preds = preds.cpu().flatten()
-            bce_loss = bce(flattened_preds, broadcast_labels.type_as(flattened_preds))
-            loss = alpha * bce_loss + (1 - alpha) * loss
-
-        elif self.config.supervised_weight > 0:
-            raise ValueError(
-                "Supervised weight > 0 but no labels provided to compute loss"
-            )
-
-        return loss
-
-    def fit(
-        self,
-        hiddens: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> float:
-        """Fit the probe to the contrast pair (neg, pos).
-
-        Args:
-            contrast_pair: A tuple of tensors, (neg, pos), where x0 and x1 are the
-                contrastive representations.
-            labels: The labels of the contrast pair. Defaults to None.
+    def fit(self, hiddens: Tensor) -> float:
+        """Fit the probe to the contrast pair `hiddens`.
 
         Returns:
             best_loss: The best loss obtained.
-
-        Raises:
-            ValueError: If `optimizer` is not "adam" or "lbfgs".
-            RuntimeError: If the best loss is not finite.
         """
-        x_pos, x_neg = hiddens.unbind(2)
-        # Fit normalizers
-        self.pos_norm.fit(x_pos)
-        self.neg_norm.fit(x_neg)
-        x_pos, x_neg = self.pos_norm(x_pos), self.neg_norm(x_neg)
+        x_neg, x_pos = hiddens.unbind(2)
+
+        # One-hot indicators for each prompt template
+        n, v, _ = x_neg.shape
+        prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
+
+        self.norm.update(
+            x=x_neg,
+            # Independent indicator for each (template, pseudo-label) pair
+            y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
+        )
+        self.norm.update(
+            x=x_pos,
+            # Independent indicator for each (template, pseudo-label) pair
+            y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
+        )
+        x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
         # Record the best acc, loss, and params found so far
         best_loss = torch.inf
@@ -305,9 +288,9 @@ class CcsReporter(Reporter):
                 self.probe[0].weight.data = V[:, -1, None].T
 
             if self.config.optimizer == "lbfgs":
-                loss = self.train_loop_lbfgs(x_pos, x_neg, labels)
+                loss = self.train_loop_lbfgs(x_neg, x_pos)
             elif self.config.optimizer == "adam":
-                loss = self.train_loop_adam(x_pos, x_neg, labels)
+                loss = self.train_loop_adam(x_neg, x_pos)
             else:
                 raise ValueError(f"Optimizer {self.config.optimizer} is not supported")
 
@@ -321,12 +304,7 @@ class CcsReporter(Reporter):
         self.load_state_dict(best_state)
         return best_loss
 
-    def train_loop_adam(
-        self,
-        x_neg: Tensor,
-        x_pos: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> float:
+    def train_loop_adam(self, x_neg: Tensor, x_pos: Tensor) -> float:
         """Adam train loop, returning the final loss. Modifies params in-place."""
 
         optimizer = torch.optim.AdamW(
@@ -337,18 +315,14 @@ class CcsReporter(Reporter):
         for _ in range(self.config.num_epochs):
             optimizer.zero_grad()
 
-            loss = self.loss(self(x_pos), self(x_neg), labels)
+            # We already normalized in fit()
+            loss = self.loss(self(x_neg), self(x_pos))
             loss.backward()
             optimizer.step()
 
         return float(loss)
 
-    def train_loop_lbfgs(
-        self,
-        x_neg: Tensor,
-        x_pos: Tensor,
-        labels: Optional[Tensor] = None,
-    ) -> float:
+    def train_loop_lbfgs(self, x_neg: Tensor, x_pos: Tensor) -> float:
         """LBFGS train loop, returning the final loss. Modifies params in-place."""
 
         optimizer = torch.optim.LBFGS(
@@ -365,7 +339,8 @@ class CcsReporter(Reporter):
             nonlocal loss
             optimizer.zero_grad()
 
-            loss = self.loss(self(x_pos), self(x_neg), labels)
+            # We already normalized in fit()
+            loss = self.loss(self(x_neg), self(x_pos))
             regularizer = 0.0
 
             # We explicitly add L2 regularization to the loss, since LBFGS
@@ -380,3 +355,9 @@ class CcsReporter(Reporter):
 
         optimizer.step(closure)
         return float(loss)
+
+    def save(self, path: Path | str) -> None:
+        """Save the reporter to a file."""
+        state = {k: v.cpu() for k, v in self.state_dict().items()}
+        state.update(in_features=self.in_features, num_variants=self.num_variants)
+        torch.save(state, path)

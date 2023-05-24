@@ -1,9 +1,12 @@
-from copy import deepcopy
-from dataclasses import InitVar, dataclass
+from dataclasses import InitVar, dataclass, replace
 
-from ..evaluation.evaluate import Eval
-from ..extraction import Extract, PromptConfig
+import numpy as np
+import torch
+
+from ..evaluation import Eval
+from ..extraction import Extract
 from ..files import elk_reporter_dir, memorably_named_dir
+from ..training.eigen_reporter import EigenReporterConfig
 from ..utils import colorize
 from .train import Elicit
 
@@ -12,12 +15,22 @@ from .train import Elicit
 class Sweep:
     models: list[str]
     """List of Huggingface model strings to sweep over."""
+
     datasets: list[str]
     """List of dataset strings to sweep over. Each dataset string can contain
     multiple datasets, separated by plus signs. For example, "sst2+imdb" will
     pool SST-2 and IMDB together."""
+
     add_pooled: InitVar[bool] = False
     """Whether to add a dataset that pools all of the other datasets together."""
+
+    hparam_step: float = -1.0
+    """The step size for hyperparameter sweeps. Performs a 2D
+    sweep over a and b in (var_weight, inv_weight, neg_cov_weight) = (a, 1 - b, b)
+    If negative, no hyperparameter sweeps will be performed. Only valid for Eigen."""
+
+    skip_transfer_eval: bool = False
+    """Whether to perform transfer eval on every pair of datasets."""
 
     name: str | None = None
 
@@ -25,7 +38,7 @@ class Sweep:
     run_template: Elicit = Elicit(
         data=Extract(
             model="<placeholder>",
-            prompts=PromptConfig(datasets=["<placeholder>"]),
+            datasets=("<placeholder>",),
         )
     )
 
@@ -34,6 +47,39 @@ class Sweep:
             raise ValueError("No datasets specified")
         if not self.models:
             raise ValueError("No models specified")
+        # can only use hparam_step if we're using an eigen net
+        if self.hparam_step > 0 and not isinstance(
+            self.run_template.net, EigenReporterConfig
+        ):
+            raise ValueError("Can only use hparam_step with EigenReporterConfig")
+        elif self.hparam_step > 1:
+            raise ValueError("hparam_step must be in [0, 1]")
+
+        # Check for the magic dataset "burns" which is a shortcut for all of the
+        # datasets used in Burns et al., except Story Cloze, which is not available
+        # on the Huggingface Hub.
+        if "burns" in self.datasets:
+            self.datasets.remove("burns")
+            self.datasets.extend(
+                [
+                    "ag_news",
+                    "amazon_polarity",
+                    "dbpedia_14",
+                    "glue:qnli",
+                    "imdb",
+                    "piqa",
+                    "super_glue:boolq",
+                    "super_glue:copa",
+                    "super_glue:rte",
+                ]
+            )
+            print(
+                "Interpreting `burns` as all datasets used in Burns et al. (2022) "
+                "available on the HuggingFace Hub"
+            )
+
+        # Remove duplicates just in case
+        self.datasets = sorted(set(self.datasets))
 
         # Add an additional dataset that pools all of the datasets together.
         if add_pooled:
@@ -62,40 +108,61 @@ class Sweep:
             }
         )
 
-        for i, model_str in enumerate(self.models):
-            # Magenta color for the model name
-            print(f"\n\033[35m===== {model_str} ({i + 1} of {M}) =====\033[0m")
+        step = self.hparam_step
+        weights = np.arange(0.0, 1.0 + step, step) if step > 0 else [None]
+
+        for i, model in enumerate(self.models):
+            print(colorize(f"===== {model} ({i + 1} of {M}) =====", "magenta"))
 
             for dataset_str in self.datasets:
-                out_dir = sweep_dir / model_str / dataset_str
-
                 # Allow for multiple datasets to be specified in a single string with
                 # plus signs. This means we can pool datasets together inside of a
                 # single sweep.
-                train_datasets = [ds.strip() for ds in dataset_str.split("+")]
+                train_datasets = tuple(ds.strip() for ds in dataset_str.split("+"))
 
-                run = deepcopy(self.run_template)
-                run.data.model = model_str
-                run.data.prompts.datasets = train_datasets
-                run.out_dir = out_dir
-                run.execute()
+                for var_weight in weights:
+                    for neg_cov_weight in weights:
+                        out_dir = sweep_dir / model / dataset_str
 
-                if len(eval_datasets) > 1:
-                    print(colorize("== Transfer eval ==", "green"))
+                        data = replace(
+                            self.run_template.data, model=model, datasets=train_datasets
+                        )
+                        run = replace(self.run_template, data=data, out_dir=out_dir)
+                        if var_weight is not None and neg_cov_weight is not None:
+                            assert isinstance(run.net, EigenReporterConfig)
+                            run.net.var_weight = var_weight
+                            run.net.neg_cov_weight = neg_cov_weight
 
-                # Now evaluate the reporter on the other datasets
-                for eval_dataset in eval_datasets:
-                    # We already evaluated on this one during training
-                    if eval_dataset in train_datasets:
-                        continue
+                            # Add hyperparameter values to output directory if needed
+                            assert run.out_dir is not None
+                            run.out_dir /= f"var_weight={var_weight:.2f}"
+                            run.out_dir /= f"neg_cov_weight={neg_cov_weight:.2f}"
 
-                    data = deepcopy(run.data)
-                    data.model = model_str
-                    data.prompts.datasets = [eval_dataset]
+                        try:
+                            run.execute()
+                        except torch.linalg.LinAlgError as e:
+                            print(colorize(f"LinAlgError: {e}", "red"))
+                            continue
 
-                    eval = Eval(
-                        data=data,
-                        source=str(run.out_dir),
-                        out_dir=out_dir,
-                    )
-                    eval.execute(highlight_color="green")
+                        if not self.skip_transfer_eval:
+                            if len(eval_datasets) > 1:
+                                print(colorize("== Transfer eval ==", "green"))
+
+                            # Now evaluate the reporter on the other datasets
+                            for eval_dataset in eval_datasets:
+                                # We already evaluated on this one during training
+                                if eval_dataset in train_datasets:
+                                    continue
+
+                                assert run.out_dir is not None
+                                eval = Eval(
+                                    data=replace(
+                                        run.data, model=model, datasets=(eval_dataset,)
+                                    ),
+                                    source=run.out_dir,
+                                    out_dir=run.out_dir / "transfer" / eval_dataset,
+                                    num_gpus=run.num_gpus,
+                                    min_gpu_mem=run.min_gpu_mem,
+                                    skip_supervised=run.supervised == "none",
+                                )
+                                eval.execute(highlight_color="green")
