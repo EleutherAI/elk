@@ -284,12 +284,12 @@ def extract_hiddens(
                     # Record the EXACT question we fed to the model
                     variant_questions.append(text)
 
-                inputs = dict(input_ids=ids.long())
-                outputs = model(**inputs, output_hidden_states=True)
+                # inputs = dict(input_ids=ids.long(), labels=labels)
+                outputs = model(input_ids=ids.long(), output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
-                if has_lm_preds:
-                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss)
+                # if has_lm_preds:
+                #     lm_logits[i, j] = -assert_type(Tensor, outputs.loss)
 
                 hiddens = (
                     outputs.get("decoder_hidden_states") or outputs["hidden_states"]
