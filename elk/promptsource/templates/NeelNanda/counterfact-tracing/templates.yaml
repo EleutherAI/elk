@@ -1,9 +1,9 @@
 dataset: counterfact-tracing
 templates:
   0cc3ae39-3997-4686-8c93-5d51457efa1f: !Template
-    answer_choices: True ||| False
+    answer_choices: "{{target_true}} ||| {{target_false}}"
     id: 0cc3ae39-3997-4686-8c93-5d51457efa1f
-    jinja: '{{proposition}} ||| {{ answer_choices[label] }}'
+    jinja: '{{prompt}} |||'
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:

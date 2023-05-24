@@ -46,7 +46,31 @@ from .dataset_name import (
     parse_dataset_string,
 )
 from .generator import _GeneratorBuilder
-from .prompt_loading import load_prompts
+from .neel import get_neel_examples
+
+
+@dataclass
+class Choice:
+    question: str
+    answer: str
+
+
+@dataclass
+class Prompt:
+    choices: list[Choice]
+
+    def __len__(self):
+        return len(self.choices)
+
+    def __iter__(self):
+        yield from self.choices
+
+
+@dataclass
+class Example:
+    label: int
+    prompts: list[Prompt]
+    template_names: list[str]
 
 
 @dataclass
@@ -184,15 +208,17 @@ def extract_hiddens(
     if has_lm_preds and rank == 0:
         print("Model has language model head, will store predictions.")
 
-    prompt_ds = load_prompts(
-        ds_names[0],
-        binarize=cfg.binarize,
-        num_shots=cfg.num_shots,
-        split_type=split_type,
-        template_path=cfg.template_path,
-        rank=rank,
-        world_size=world_size,
-    )
+    # from elk.extraction import load_prompts
+    # prompt_ds = load_prompts(
+    #     ds_names[0],
+    #     binarize=cfg.binarize,
+    #     num_shots=cfg.num_shots,
+    #     split_type=split_type,
+    #     template_path=cfg.template_path,
+    #     rank=rank,
+    #     world_size=world_size,
+    # )
+    prompt_ds = get_neel_examples()
 
     # Add one to the number of layers to account for the embedding layer
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
@@ -212,13 +238,21 @@ def extract_hiddens(
     if rank == world_size - 1:
         max_examples += global_max_examples % world_size
 
+    # def example_to_dict(example: Example) -> dict:
+    #     return {
+    #         "prompt": example.prompt,
+    #         "choices": example.choices,
+    #         "label": example.label,
+    #     }
+
     for example in prompt_ds:
         # Check if we've yielded enough examples
+        print(example)
         if num_yielded >= max_examples:
             break
 
-        num_variants = len(example["prompts"])
-        num_choices = len(example["prompts"][0])
+        num_variants = len(example.prompts)
+        num_choices = len(example.prompts[0])
 
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
@@ -239,15 +273,17 @@ def extract_hiddens(
         text_questions = []
 
         # Iterate over variants
-        for i, record in enumerate(example["prompts"]):
+        for i, record in enumerate(example.prompts):  # a record is a prompt
             variant_questions = []
 
             # Iterate over answers
-            for j, choice in enumerate(record):
-                text = choice["question"]
+            for j, choice in enumerate(record):  # a choice is a prompt + answer
+                print(record)
+                print(choice)
+                text = choice.question
 
                 # Only feed question, not the answer, to the encoder for enc-dec models
-                target = choice["answer"] if is_enc_dec else None
+                target = choice.answer if is_enc_dec else None
                 encoding = tokenizer(
                     text,
                     # Keep [CLS] and [SEP] for BERT-style models
@@ -261,7 +297,7 @@ def extract_hiddens(
                     assert_type(Tensor, encoding.labels)
                 else:
                     encoding2 = tokenizer(
-                        choice["answer"],
+                        choice.answer,
                         # Don't include [CLS] and [SEP] in the answer
                         add_special_tokens=False,
                         return_tensors="pt",
@@ -275,7 +311,8 @@ def extract_hiddens(
                         else None
                     )
                     # print(ids.shape, answer.shape)
-                    # ids = torch.cat([ids, answer], -1)
+
+                    ids = torch.cat([ids, encoding2.input_ids], -1)
 
                 # If this input is too long, skip it
                 if ids.shape[-1] > max_length:
@@ -323,8 +360,8 @@ def extract_hiddens(
             continue
 
         out_record: dict[str, Any] = dict(
-            label=example["label"],
-            variant_ids=example["template_names"],
+            label=example.label,
+            variant_ids=example.template_names,
             text_questions=text_questions,
             **hidden_dict,
         )
@@ -332,6 +369,7 @@ def extract_hiddens(
             out_record["model_logits"] = lm_logits
 
         num_yielded += 1
+        print(out_record)
         yield out_record
 
 
