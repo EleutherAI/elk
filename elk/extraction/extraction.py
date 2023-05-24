@@ -258,7 +258,7 @@ def extract_hiddens(
 
                 ids = assert_type(Tensor, encoding.input_ids)
                 if is_enc_dec:
-                    answer = labels = assert_type(Tensor, encoding.labels)
+                    labels = assert_type(Tensor, encoding.labels)
                 else:
                     encoding2 = tokenizer(
                         choice["answer"],
@@ -267,14 +267,15 @@ def extract_hiddens(
                         return_tensors="pt",
                     ).to(device)
 
-                    answer = assert_type(Tensor, encoding2.input_ids)
+                    assert_type(Tensor, encoding2.input_ids)
                     labels = (
                         # -100 is the mask token
-                        torch.cat([torch.full_like(ids, -100), answer], dim=-1)
+                        torch.cat([torch.full_like(ids, -100)], dim=-1)
                         if has_lm_preds
                         else None
                     )
-                    ids = torch.cat([ids, answer], -1)
+                    # print(ids.shape, answer.shape)
+                    # ids = torch.cat([ids, answer], -1)
 
                 # If this input is too long, skip it
                 if ids.shape[-1] > max_length:
