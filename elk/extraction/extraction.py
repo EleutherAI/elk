@@ -258,7 +258,7 @@ def extract_hiddens(
 
                 ids = assert_type(Tensor, encoding.input_ids)
                 if is_enc_dec:
-                    labels = assert_type(Tensor, encoding.labels)
+                    assert_type(Tensor, encoding.labels)
                 else:
                     encoding2 = tokenizer(
                         choice["answer"],
@@ -268,7 +268,7 @@ def extract_hiddens(
                     ).to(device)
 
                     assert_type(Tensor, encoding2.input_ids)
-                    labels = (
+                    (
                         # -100 is the mask token
                         torch.cat([torch.full_like(ids, -100)], dim=-1)
                         if has_lm_preds
@@ -284,7 +284,7 @@ def extract_hiddens(
                     # Record the EXACT question we fed to the model
                     variant_questions.append(text)
 
-                inputs = dict(input_ids=ids.long(), labels=labels)
+                inputs = dict(input_ids=ids.long())
                 outputs = model(**inputs, output_hidden_states=True)
 
                 # Compute the log probability of the answer tokens if available
