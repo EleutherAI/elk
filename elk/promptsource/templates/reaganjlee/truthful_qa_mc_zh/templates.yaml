@@ -6,7 +6,7 @@ templates:
     id: 00fa401f-3329-48fa-be4a-1b6725292ee6
     jinja: '回答以下问题: {{ question }}
 
-      选择 1: {{''. ''.join([answer_choices[label], choices[label]])}}. 选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. 在选项1和选项2之间, 这道题的答案是 
+      选择 1: {{''. ''.join([answer_choices[label], choices[label]])}}. 选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. 在选项1和选项2之间, 这道题的答案是
       ||| {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -53,7 +53,7 @@ templates:
     id: 04fa401f-3329-48fa-be4a-1b6725292ee6
     jinja: '{{ question }}
 
-      选择 1: {{''. ''.join([answer_choices[label], choices[label]])}}. 选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. 
+      选择 1: {{''. ''.join([answer_choices[label], choices[label]])}}. 选择 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}.
       在选项1和选项2之间, 这个例子的主题是 |||  {{answer_choices[label]}}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -116,9 +116,9 @@ templates:
     reference: Burns et al.
   824ecb55-ecad-40c2-8033-f2fa0add2ddf: !Template
     answer_choices: A ||| B ||| C ||| D
-    id: 824ecb55-ecad-40c2-8033-f2fa0add2ddf 
-    jinja: '{{ question }} 给定一个选择列表: 
-      {% for k in range(choices | length) %}  
+    id: 824ecb55-ecad-40c2-8033-f2fa0add2ddf
+    jinja: '{{ question }} 给定一个选择列表:
+      {% for k in range(choices | length) %}
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 
@@ -138,7 +138,7 @@ templates:
     answer_choices: A ||| B ||| C ||| D
     id: 8eda7e71-6734-486f-b883-e99d3f14c0bf
     jinja: '为下列问题选择一个答案. 选项是 -
-      {% for k in range(choices | length) %}  
+      {% for k in range(choices | length) %}
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 
@@ -159,7 +159,7 @@ templates:
     answer_choices: A ||| B ||| C ||| D
     id: 9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67
     jinja: '{{ question }} 给定答案选择
-      {% for k in range(choices | length) %}  
+      {% for k in range(choices | length) %}
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 
@@ -177,7 +177,7 @@ templates:
     answer_choices: A ||| B ||| C ||| D
     id: f72fa410-3278-4f62-91f0-f9edf4a4e792
     jinja: '"{{ question }}", 给定一个选择列表:
-      {% for k in range(choices | length) %}  
+      {% for k in range(choices | length) %}
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 

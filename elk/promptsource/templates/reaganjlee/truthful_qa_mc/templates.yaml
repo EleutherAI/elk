@@ -116,9 +116,9 @@ templates:
     reference: Burns et al.
   824ecb55-ecad-40c2-8033-f2fa0add2ddf: !Template
     answer_choices: A ||| B ||| C ||| D
-    id: 824ecb55-ecad-40c2-8033-f2fa0add2ddf 
-    jinja: '{{ question }} Given a list of choices: 
-      {% for k in range(choices | length) %}  
+    id: 824ecb55-ecad-40c2-8033-f2fa0add2ddf
+    jinja: '{{ question }} Given a list of choices:
+      {% for k in range(choices | length) %}
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 
@@ -137,8 +137,8 @@ templates:
   8eda7e71-6734-486f-b883-e99d3f14c0bf: !Template
     answer_choices: A ||| B ||| C ||| D
     id: 8eda7e71-6734-486f-b883-e99d3f14c0bf
-    jinja: 'Pick one answer for the following question. The options are - 
-      {% for k in range(choices | length) %}  
+    jinja: 'Pick one answer for the following question. The options are -
+      {% for k in range(choices | length) %}
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 
@@ -158,8 +158,8 @@ templates:
   9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67: !Template
     answer_choices: A ||| B ||| C ||| D
     id: 9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67
-    jinja: '{{ question }} Given a choice of answers 
-      {% for k in range(choices | length) %}  
+    jinja: '{{ question }} Given a choice of answers
+      {% for k in range(choices | length) %}
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 
@@ -177,8 +177,8 @@ templates:
   f72fa410-3278-4f62-91f0-f9edf4a4e792: !Template
     answer_choices: A ||| B ||| C ||| D
     id: f72fa410-3278-4f62-91f0-f9edf4a4e792
-    jinja: '"{{ question }}", given a list of choices: 
-      {% for k in range(choices | length) %}  
+    jinja: '"{{ question }}", given a list of choices:
+      {% for k in range(choices | length) %}
 
       {{''. ''.join([answer_choices[k], choices[k]])}}
 

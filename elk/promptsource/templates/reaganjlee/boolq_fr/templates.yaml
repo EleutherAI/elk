@@ -10,8 +10,8 @@ templates:
       |||
 
 
-      {% if label != -1 %}
-      {{answer_choices[label]}}
+      {% if answer != -1 %}
+      {{answer_choices[answer]}}
       {% endif %}"
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -25,8 +25,8 @@ templates:
   492f0f88-4370-46cd-839b-1de37a55aeda: !Template
     answer_choices: Non ||| Oui
     id: 492f0f88-4370-46cd-839b-1de37a55aeda
-    jinja: "{{ passage }} \nQuestion : {{ question }}\nRéponse : ||| \n{% if label !=\
-      \ -1 %}\n{{ answer_choices[label] }}{% endif %}"
+    jinja: "{{ passage }} \nQuestion : {{ question }}\nRéponse : ||| \n{% if answer !=\
+      \ -1 %}\n{{ answer_choices[answer] }}{% endif %}"
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
@@ -40,7 +40,7 @@ templates:
     answer_choices: Non ||| Oui
     id: 6cb6a026-c070-470a-b75d-bb8fdf424e35
     jinja: "{{ passage }} \n\nAprès avoir lu cela, je me demande {{ question }} ? |||\n{% if\
-      \ label != -1 %}\n{{ answer_choices[label] }}{% endif %}"
+      \ answer != -1 %}\n{{ answer_choices[answer] }}{% endif %}"
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
@@ -59,8 +59,8 @@ templates:
       Répondez à la question oui/non suivante : {{question}}? Oui ou non? |||
 
 
-      {% if label != -1 %}
-      {{answer_choices[label]}}
+      {% if answer != -1 %}
+      {{answer_choices[answer]}}
       {% endif %}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -75,7 +75,7 @@ templates:
     answer_choices: Non ||| Oui
     id: 7d21d974-0624-4d4f-9e8c-644e2d009cb5
     jinja: "{{ passage }} \n\nAprès avoir lu cela, pourriez-vous me dire {{ question }} ?\
-      \ ||| {% if label != -1 %}{{ answer_choices[label] }}{% endif %}"
+      \ ||| {% if answer != -1 %}{{ answer_choices[answer] }}{% endif %}"
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
@@ -89,7 +89,7 @@ templates:
     answer_choices: Non ||| Oui
     id: 922d3e87-ac58-4731-84d1-f0a40e47afb5
     jinja: "EXAMEN\n1. Répondez par oui ou non.\n\nDocument : {{passage}}\nQuestion : {{question}}?\
-      \ ||| \n{% if label != -1 %}\n{{answer_choices[label]}}{% endif %}"
+      \ ||| \n{% if answer != -1 %}\n{{answer_choices[answer]}}{% endif %}"
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:
@@ -103,7 +103,7 @@ templates:
     answer_choices: Non ||| Oui
     id: 9a1bf459-8047-437c-9def-f21e960429cc
     jinja: "Basé sur le passage suivant, {{ question }}?\n\n{{ passage }}\
-      \ ||| \n\n{% if label != -1 %}{{ answer_choices[label] }}{% endif %}"
+      \ ||| \n\n{% if answer != -1 %}{{ answer_choices[answer] }}{% endif %}"
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
@@ -124,8 +124,8 @@ templates:
       Question : {{question}} ? |||
 
 
-      {% if label != -1 %}
-      {{answer_choices[label]}}
+      {% if answer != -1 %}
+      {{answer_choices[answer]}}
       {% endif %}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -142,8 +142,8 @@ templates:
     jinja: '{{ passage }}
 
       Basé sur le passage précédent, {{ question }} ? |||
-      {% if label != -1 %}
-      {{ answer_choices[label]}}
+      {% if answer != -1 %}
+      {{ answer_choices[answer]}}
       {% endif %}'
     metadata: !TemplateMetadata
       choices_in_prompt: false
@@ -163,8 +163,8 @@ templates:
       Q : {{question}}? Vrai ou faux? |||
 
 
-      {% if label != -1 %}
-      {{answer_choices[label]}}
+      {% if answer != -1 %}
+      {{answer_choices[answer]}}
       {% endif %}'
     metadata: !TemplateMetadata
       choices_in_prompt: true
