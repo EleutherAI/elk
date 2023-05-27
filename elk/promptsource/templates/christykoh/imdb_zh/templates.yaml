@@ -185,7 +185,7 @@ templates:
     name: burns_2
     reference: ''
   e01970ab-42c0-4e6e-a08f-4940d889ef37: !Template
-    answer_choices: 他们不喜欢！ ||| 他们喜欢它
+    answer_choices: 他们不喜欢！ ||| 他们喜欢
     id: e01970ab-42c0-4e6e-a08f-4940d889ef37
     jinja: '{{text}}
 
