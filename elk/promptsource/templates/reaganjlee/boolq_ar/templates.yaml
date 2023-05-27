@@ -25,8 +25,8 @@ templates:
   492f0f88-4370-46cd-839b-1de37a55aeda: !Template
     answer_choices: لا ||| نعم
     id: 492f0f88-4370-46cd-839b-1de37a55aeda
-    jinja: "{{passage}} \n السؤال: {{ question }} \n الإجابة: ||| \n {٪ if answer!=\
-       \ -1٪} \n{{ answer_choices[answer] }} {٪ endif٪}" 
+    jinja: "{{passage}} \n السؤال: {{ question }} \n الإجابة: ||| \n {% if answer!=\
+       \ -1%} \n{{ answer_choices[answer] }} {% endif %}" 
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
@@ -39,7 +39,7 @@ templates:
   6cb6a026-c070-470a-b75d-bb8fdf424e35: !Template 
     answer_choices: لا ||| نعم
     id: 6cb6a026-c070-470a-b75d-bb8fdf424e35
-    jinja: "{{passage}} \n\n بعد أن قرأت ذلك ، أتساءل {{question}}؟ ||| \n {٪ if\
+    jinja: "{{passage}} \n\n بعد أن قرأت ذلك ، أتساءل {{question}}؟ ||| \n {% if\
       \ answer != -1 %}\n{{ answer_choices[answer] }}{% endif %}"
     metadata: !TemplateMetadata
       choices_in_prompt: false
