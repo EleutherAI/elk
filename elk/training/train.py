@@ -53,7 +53,7 @@ class Elicit(Run):
         layer: int,
         devices: list[str],
         world_size: int,
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], list[dict]]:
         """Train a single reporter on a single layer."""
 
         self.make_reproducible(seed=self.net.seed + layer)
@@ -192,4 +192,4 @@ class Elicit(Run):
                         }
                     )
 
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, [])
