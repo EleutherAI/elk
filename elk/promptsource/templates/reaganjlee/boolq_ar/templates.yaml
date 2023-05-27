@@ -26,7 +26,7 @@ templates:
     answer_choices: لا ||| نعم
     id: 492f0f88-4370-46cd-839b-1de37a55aeda
     jinja: "{{passage}} \n السؤال: {{ question }} \n الإجابة: ||| \n {% if answer!=\
-       \ -1%} \n{{ answer_choices[answer] }} {% endif %}" 
+       \ -1%} \n{{ answer_choices[answer] }} {% endif %}"
     metadata: !TemplateMetadata
       choices_in_prompt: false
       languages:
