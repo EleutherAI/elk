@@ -32,20 +32,20 @@ class Example:
 
 
 def row_to_example(row, id):
-    case = random.choice([0, 1, 2, 3])
+    case = random.choice([0, 3])
     match case:
         case 0:
             first = f"{row['target_true']}"
             second = f" not{row['target_true']}"
             label = 0
-        case 1:
-            first = f" not{row['target_false']}"
-            second = f"{row['target_false']}"
-            label = 0
-        case 2:
-            first = f" not{row['target_true']}"
-            second = f"{row['target_true']}"
-            label = 1
+        # case 1:
+        #     first = f" not{row['target_false']}"
+        #     second = f"{row['target_false']}"
+        #     label = 0
+        # case 2:
+        #     first = f" not{row['target_true']}"
+        #     second = f"{row['target_true']}"
+        #     label = 1
         case 3:
             first = f"{row['target_false']}"
             second = f" not{row['target_false']}"
@@ -54,7 +54,9 @@ def row_to_example(row, id):
     prompts = [
         Prompt(
             choices=[
-                Choice(question=row["prompt"], answer=first),
+                Choice(
+                    question=row["prompt"], answer=first
+                ),  # model(question + answer)
                 Choice(question=row["prompt"], answer=second),
             ]
         )
