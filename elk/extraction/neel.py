@@ -1,7 +1,11 @@
+import os
 import random
 from dataclasses import dataclass
 
+import openai
 from datasets import load_dataset
+from rich import print
+from tqdm import tqdm
 
 
 @dataclass
@@ -29,6 +33,21 @@ class Example:
     label: int
     prompts: list[Prompt]
     template_names: list[str]
+
+
+@dataclass(frozen=True)
+class NeelRow:
+    prompt: str
+    target_true: str
+    target_false: str
+
+    @staticmethod
+    def from_ds(row):
+        return NeelRow(
+            prompt=row["prompt"],
+            target_true=row["target_true"],
+            target_false=row["target_false"],
+        )
 
 
 def row_to_example(row, id):
@@ -87,9 +106,82 @@ def get_neel_examples():
     return examples
 
 
-if __name__ == "__main__":
-    from rich import print
+def get_and_save_neel_inverted_by_lm():
+    # Load dataset
+    dataset = load_dataset("NeelNanda/counterfact-tracing")
 
-    examples = get_neel_examples()
-    first_example = examples[0:10]
-    print(first_example)
+    # Set up the OpenAI API
+    openai.api_key = os.environ["OPENAI_API_KEY"]
+    print("OpenAI API key:", openai.api_key)
+
+    # Open the file in write mode
+    with open("inverted_prompts.tsv", "w") as f:
+        # Write the header
+        f.write(
+            "relation_id\toriginal_prompt\toriginal_target_true\t"
+            "original_target_false\tinverted_prompt_true\tinverted_prompt_false\n"
+        )
+
+        # Iterate through the dataset and generate inverted prompts
+        start = 0
+        end = 5000  # len(dataset['train'])
+        bar = tqdm(range(start, end))
+        for i in bar:
+            data = dataset["train"][i]
+            target_true = data["target_true"]
+            target_false = data["target_false"]
+            prompt = data["prompt"]
+            relation_id = data["relation_id"]
+
+            instruct = f"""
+Negate the following sentences and don't say anything else:
+"{prompt + target_true}"
+"{prompt + target_false}"
+            """
+            inverted = generate_inverted_prompt(instruct)
+            bar.set_description(instruct + inverted)
+
+            try:
+                inverted_true = inverted.split("\n")[0]
+                inverted_false = inverted.split("\n")[1]
+
+                # Write to the file
+                f.write(
+                    f"{i}\t{prompt}\t{target_true}\t{target_false}"
+                    f"\t{inverted_true}\t{inverted_false}\n"
+                )
+                f.flush()
+            except:  # noqa: E722
+                print(f"Error: {relation_id} {inverted}")
+                continue
+
+
+def generate_inverted_prompt(prompt):
+    # Call the ChatGPT API to generate inverted prompts
+    prompt1 = """Negate the following sentences or questions and
+    don't say anything else:
+    Autonomous University of Madrid, which is located in Spain
+    Autonomous University of Madrid, which is located in England
+    """
+    ans1 = (
+        "Autonomous University of Madrid, which not located in Spain\n"
+        "Autonomous University of Madrid, which not located in England"
+    )
+    prompt2 = prompt
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt1},
+            {"role": "assistant", "content": ans1},
+            {"role": "user", "content": prompt2},
+        ],
+    )
+    # Extract the generated inverted prompt from the API response
+    inverted_prompt = response.choices[0].message.content.strip()
+
+    return inverted_prompt
+
+
+if __name__ == "__main__":
+    get_and_save_neel_inverted_by_lm()
