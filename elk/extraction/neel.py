@@ -1,3 +1,4 @@
+import concurrent.futures
 import os
 import random
 import time
@@ -9,7 +10,7 @@ from datasets import IterableDatasetDict, load_dataset
 from rich import print
 from tqdm import tqdm
 
-
+TRY_LIMIT = 3
 @dataclass
 class Choice:
     question: str
@@ -108,6 +109,46 @@ def get_neel_examples():
     return examples
 
 
+def generate_inverted_prompts(args):
+    print(f'Generating inverted prompt for {args}')
+    prompt, ans_true, ans_false, i = args
+    start_time = time.time()
+    prompt1 = """Negate the two sentences or questions and
+    don't say anything else:
+    Autonomous University of Madrid, which is located in Spain
+    Autonomous University of Madrid, which is located in England
+    """
+    ans1 = "Autonomous University of Madrid, which is not located in Spain\nAutonomous University of Madrid, which is not located in England"
+    print(f"{prompt}{ans_true}\n{prompt}{ans_false}\n")
+    for try_no in range(TRY_LIMIT):
+        try:
+            print(f'Generating prompt for {f"{prompt}[{ans_true}/{ans_false}]"}')
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt1},
+                    {"role": "assistant", "content": ans1},
+                    {"role": "user", "content": f"{prompt}{ans_true}\n{prompt}{ans_false}"},
+                ],
+            )
+            req_time = time.time() - start_time
+            print(f"Request time: {req_time}")
+            # Extract the generated inverted prompt from the API response
+            print(response)
+            inverted_prompt = response.choices[0].message.content.strip()
+            inverted_true = inverted_prompt.split("\n")[0]
+            inverted_false = inverted_prompt.split("\n")[1]
+        except Exception as err:
+            if try_no < TRY_LIMIT:
+                req_time = time.time() - start_time
+                print(f"Error try {try_no}, stack trace: {err} took {req_time},\nRetrying...")
+            else:
+                return "ERROR", "ERROR"
+        else:
+            return inverted_true, inverted_false
+    return "ERROR", inverted_prompt or "ERROR"
+
 def get_and_save_neel_inverted_by_lm():
     # Load dataset
     dataset: IterableDatasetDict = load_dataset("NeelNanda/counterfact-tracing")
@@ -118,6 +159,8 @@ def get_and_save_neel_inverted_by_lm():
 
     # Open the file in write mode
     FILE_PATH = "inverted_prompts.tsv"
+    batch_size = 10
+    
     with open(FILE_PATH, "a") as f:
         # Write the header if it exists
         if os.path.getsize(FILE_PATH) == 0:
@@ -129,79 +172,89 @@ def get_and_save_neel_inverted_by_lm():
         # Iterate through the dataset and generate inverted prompts
         start = int(argv[1])
         end = int(argv[2])  # len(dataset['train'])
-        bar = tqdm(range(start, end))
-        for i in bar:
-            data = dataset["train"][i]
-            target_true = data["target_true"]
-            target_false = data["target_false"]
-            prompt = data["prompt"]
-            relation_id = data["relation_id"]
+        tqdm(range(start, end))
 
-            instruct = f"""
-Negate the following sentences and don't say anything else:
-"{prompt + target_true}"
-"{prompt + target_false}"
-            """
-            inverted = generate_inverted_prompt(instruct)
-            bar.set_description(instruct + inverted)
+        subset = dataset["train"].select(range(start, end))
+        jobs = [(data["prompt"], data["target_true"], data["target_false"], i) for i, data in zip(range(start, end), subset)]
+        indices = range(start, end)
+        completed = {}
 
-            try:
-                inverted_true = inverted.split("\n")[0]
-                inverted_false = inverted.split("\n")[1]
+        last_batch = range(end - batch_size, end)
+        import threading
+        lock = threading.Lock()
+        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=batch_size) as executor:
+            # future_to_inverted = {executor.submit(generate_inverted_prompts, (data['prompt'], data['target_true'], data['target_false'], i)): data for i, data in enumerate(dataset["train"].select(range(start, end)))}
+            future_to_inverted = {executor.submit(generate_inverted_prompts, job): (data, i) for job, data, i in zip(jobs, subset, indices)}
+            
+            for future in concurrent.futures.as_completed(future_to_inverted):
+                with lock:
+                    try:
+                        inverted_true, inverted_false = future.result()
+                    except Exception as exc:
+                        lock.release()
+                        print("B")
+                        print(exc)
+                        break
+                    else:
+                        (data, i) = future_to_inverted[future]
+                        
+                        completed[i] = (data, inverted_true, inverted_false)
+                        smallest_i = min(completed.keys())
+                        largest_i = max(completed.keys())
+                        next_batch = range(smallest_i, smallest_i + batch_size)
+                        print(f"Queue: {completed.keys()}, next_batch: {next_batch}")
+                        if set(next_batch).issubset(completed.keys()) or set(last_batch).issubset(completed.keys()):
+                            for j in range(smallest_i, smallest_i + batch_size):
+                                try:
+                                    (data, inverted_true, inverted_false) = completed[j]
+                                    target_true = data["target_true"]
+                                    target_false = data["target_false"]
+                                    prompt = data["prompt"]
+                                    relation_id = j
+                                    f.write(
+                                        f"{relation_id}\t{prompt}\t{target_true}\t{target_false}"
+                                        f"\t{inverted_true}\t{inverted_false}\n"
+                                    )
+                                    f.flush()
+                                    del completed[j]
+                                except Exception as err:
+                                    # print('A')
+                                    # print(f"small_i: {smallest_i}, large_i: {largest_i}, j: {j}, completed: {completed.keys()}")
+                                    # print(f"Queue: {completed.keys()}, next_batch: {next_batch}")
+                                    # print(err)
 
-                # Write to the file
+                                    # write error to file
+                                    (data, inverted_prompt) = completed[j]
+                                    inverted_true = inverted_prompt
+                                    inverted_false = "ERR"
+                                    target_true = "ERR"
+                                    target_false = "ERR"
+                                    prompt = "ERR"
+                                    relation_id = j
+                                    f.write(
+                                        f"{relation_id}\t{prompt}\t{target_true}\t{target_false}"
+                                        f"\t{inverted_true}\t{inverted_false}\n"
+                                    )
+                                    f.flush()
+                                    del completed[j]
+            
+            # Write the remaining prompts to file
+            for k, v in completed.items():
+                (data, inverted_true, inverted_false) = v
+                target_true = data["target_true"]
+                target_false = data["target_false"]
+                prompt = data["prompt"]
+                relation_id = k
                 f.write(
-                    f"{i}\t{prompt}\t{target_true}\t{target_false}"
+                    f"{relation_id}\t{prompt}\t{target_true}\t{target_false}"
                     f"\t{inverted_true}\t{inverted_false}\n"
                 )
                 f.flush()
-            except:  # noqa: E722
-                print(f"Error: {relation_id} {inverted}")
-                continue
 
+                            
 
-def generate_inverted_prompt(prompt):
-    # Call the ChatGPT API to generate inverted prompts
-    prompt1 = """Negate the following sentences or questions and
-    don't say anything else:
-    Autonomous University of Madrid, which is located in Spain
-    Autonomous University of Madrid, which is located in England
-    """
-    ans1 = (
-        "Autonomous University of Madrid, which not located in Spain\n"
-        "Autonomous University of Madrid, which not located in England"
-    )
-    prompt2 = prompt
-    TRY_LIMIT = 3
-    for try_no in range(TRY_LIMIT):
-        start_time = time.time()
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": prompt1},
-                    {"role": "assistant", "content": ans1},
-                    {"role": "user", "content": prompt2},
-                ],
-            )
-            req_time = time.time() - start_time
-            print(f"Request time: {req_time}")
-            # Extract the generated inverted prompt from the API response
-            inverted_prompt = response.choices[0].message.content.strip()
-        except Exception as err:
-            if try_no < TRY_LIMIT:
-                req_time = time.time() - start_time
-                print(
-                    f"Error try {try_no}, stack trace: {err},"
-                    "took {req_time},\nRetrying..."
-                )
-                continue
-            else:
-                print(f"Error try {try_no}, stack trace: {err}\nSorry, goodbye.")
-                raise err
-        else:
-            return inverted_prompt
+                    
 
 
 if __name__ == "__main__":
