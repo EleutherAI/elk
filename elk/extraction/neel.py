@@ -110,6 +110,42 @@ def get_neel_examples():
 
     return examples
 
+def get_lm_negated_examples():
+    tsv = open("inverted_prompts.tsv", "r")
+    # read lines skipping header
+    lines = tsv.readlines()[1:]
+    examples = []
+    for line in lines:
+        line = line.split("\t")
+        examples.append(
+            Example(
+                label=0,
+                prompts=[
+                    Prompt(
+                        choices=[
+                            Choice(question=f"{line[1]}{line[2]}", answer=""),
+                            Choice(question=line[4], answer=""),
+                        ]
+                    )
+                ],
+                template_names=["template_null"],
+            )
+        )
+        examples.append(
+            Example(
+                label=1,
+                prompts=[
+                    Prompt(
+                        choices=[
+                            Choice(question=f"{line[1]}{line[3]}", answer=""),
+                            Choice(question=line[5], answer=""),
+                        ]
+                    )
+                ],
+                template_names=["template_null"],
+            )
+        )
+    return examples
 
 def generate_inverted_prompts(args):
     print(f"Generating inverted prompt for {args}")
@@ -240,4 +276,6 @@ def get_and_save_neel_inverted_by_lm():
                             f.flush()
 
 if __name__ == "__main__":
-    get_and_save_neel_inverted_by_lm()
+    # get_and_save_neel_inverted_by_lm()
+    get_lm_negated_examples()
+    

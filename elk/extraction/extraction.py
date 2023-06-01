@@ -46,7 +46,7 @@ from .dataset_name import (
     parse_dataset_string,
 )
 from .generator import _GeneratorBuilder
-from .neel import get_neel_examples
+from .neel import get_lm_negated_examples
 
 
 @dataclass
@@ -218,7 +218,7 @@ def extract_hiddens(
     #     rank=rank,
     #     world_size=world_size,
     # )
-    prompt_ds = get_neel_examples()
+    prompt_ds = get_lm_negated_examples()
 
     # Add one to the number of layers to account for the embedding layer
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
