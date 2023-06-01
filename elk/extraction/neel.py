@@ -11,6 +11,8 @@ from rich import print
 from tqdm import tqdm
 
 TRY_LIMIT = 3
+
+
 @dataclass
 class Choice:
     question: str
@@ -110,7 +112,7 @@ def get_neel_examples():
 
 
 def generate_inverted_prompts(args):
-    print(f'Generating inverted prompt for {args}')
+    print(f"Generating inverted prompt for {args}")
     prompt, ans_true, ans_false, i = args
     start_time = time.time()
     prompt1 = """Negate the two sentences or questions and
@@ -129,7 +131,10 @@ def generate_inverted_prompts(args):
                     {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": prompt1},
                     {"role": "assistant", "content": ans1},
-                    {"role": "user", "content": f"{prompt}{ans_true}\n{prompt}{ans_false}"},
+                    {
+                        "role": "user",
+                        "content": f"{prompt}{ans_true}\n{prompt}{ans_false}",
+                    },
                 ],
             )
             req_time = time.time() - start_time
@@ -142,12 +147,15 @@ def generate_inverted_prompts(args):
         except Exception as err:
             if try_no < TRY_LIMIT:
                 req_time = time.time() - start_time
-                print(f"Error try {try_no}, stack trace: {err} took {req_time},\nRetrying...")
+                print(
+                    f"Error try {try_no}, stack trace: {err} took {req_time},\nRetrying..."
+                )
             else:
                 return "ERROR", "ERROR"
         else:
             return inverted_true, inverted_false
     return "ERROR", inverted_prompt or "ERROR"
+
 
 def get_and_save_neel_inverted_by_lm():
     # Load dataset
@@ -159,8 +167,8 @@ def get_and_save_neel_inverted_by_lm():
 
     # Open the file in write mode
     FILE_PATH = "inverted_prompts.tsv"
-    batch_size = 10
-    
+    batch_size = 30
+
     with open(FILE_PATH, "a") as f:
         # Write the header if it exists
         if os.path.getsize(FILE_PATH) == 0:
@@ -175,18 +183,22 @@ def get_and_save_neel_inverted_by_lm():
         tqdm(range(start, end))
 
         subset = dataset["train"].select(range(start, end))
-        jobs = [(data["prompt"], data["target_true"], data["target_false"], i) for i, data in zip(range(start, end), subset)]
+        jobs = [
+            (data["prompt"], data["target_true"], data["target_false"], i)
+            for i, data in zip(range(start, end), subset)
+        ]
         indices = range(start, end)
-        completed = {}
-
-        last_batch = range(end - batch_size, end)
         import threading
+
         lock = threading.Lock()
-        
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=batch_size) as executor:
             # future_to_inverted = {executor.submit(generate_inverted_prompts, (data['prompt'], data['target_true'], data['target_false'], i)): data for i, data in enumerate(dataset["train"].select(range(start, end)))}
-            future_to_inverted = {executor.submit(generate_inverted_prompts, job): (data, i) for job, data, i in zip(jobs, subset, indices)}
-            
+            future_to_inverted = {
+                executor.submit(generate_inverted_prompts, job): (data, i)
+                for job, data, i in zip(jobs, subset, indices)
+            }
+
             for future in concurrent.futures.as_completed(future_to_inverted):
                 with lock:
                     try:
@@ -198,64 +210,34 @@ def get_and_save_neel_inverted_by_lm():
                         break
                     else:
                         (data, i) = future_to_inverted[future]
-                        
-                        completed[i] = (data, inverted_true, inverted_false)
-                        smallest_i = min(completed.keys())
-                        largest_i = max(completed.keys())
-                        next_batch = range(smallest_i, smallest_i + batch_size)
-                        print(f"Queue: {completed.keys()}, next_batch: {next_batch}")
-                        if set(next_batch).issubset(completed.keys()) or set(last_batch).issubset(completed.keys()):
-                            for j in range(smallest_i, smallest_i + batch_size):
-                                try:
-                                    (data, inverted_true, inverted_false) = completed[j]
-                                    target_true = data["target_true"]
-                                    target_false = data["target_false"]
-                                    prompt = data["prompt"]
-                                    relation_id = j
-                                    f.write(
-                                        f"{relation_id}\t{prompt}\t{target_true}\t{target_false}"
-                                        f"\t{inverted_true}\t{inverted_false}\n"
-                                    )
-                                    f.flush()
-                                    del completed[j]
-                                except Exception as err:
-                                    # print('A')
-                                    # print(f"small_i: {smallest_i}, large_i: {largest_i}, j: {j}, completed: {completed.keys()}")
-                                    # print(f"Queue: {completed.keys()}, next_batch: {next_batch}")
-                                    # print(err)
+                        try:
+                            target_true = data["target_true"]
+                            target_false = data["target_false"]
+                            prompt = data["prompt"]
+                            relation_id = i
+                            f.write(
+                                f"{relation_id}\t{prompt}\t{target_true}\t{target_false}"
+                                f"\t{inverted_true}\t{inverted_false}\n"
+                            )
+                            f.flush()
+                        except Exception:
+                            # print('A')
+                            # print(f"small_i: {smallest_i}, large_i: {largest_i}, j: {j}, completed: {completed.keys()}")
+                            # print(f"Queue: {completed.keys()}, next_batch: {next_batch}")
+                            # print(err)
 
-                                    # write error to file
-                                    (data, inverted_prompt) = completed[j]
-                                    inverted_true = inverted_prompt
-                                    inverted_false = "ERR"
-                                    target_true = "ERR"
-                                    target_false = "ERR"
-                                    prompt = "ERR"
-                                    relation_id = j
-                                    f.write(
-                                        f"{relation_id}\t{prompt}\t{target_true}\t{target_false}"
-                                        f"\t{inverted_true}\t{inverted_false}\n"
-                                    )
-                                    f.flush()
-                                    del completed[j]
-            
-            # Write the remaining prompts to file
-            for k, v in completed.items():
-                (data, inverted_true, inverted_false) = v
-                target_true = data["target_true"]
-                target_false = data["target_false"]
-                prompt = data["prompt"]
-                relation_id = k
-                f.write(
-                    f"{relation_id}\t{prompt}\t{target_true}\t{target_false}"
-                    f"\t{inverted_true}\t{inverted_false}\n"
-                )
-                f.flush()
-
-                            
-
-                    
-
+                            # write error to file
+                            inverted_true = inverted_true
+                            inverted_false = inverted_false
+                            target_true = "ERR"
+                            target_false = "ERR"
+                            prompt = "ERR"
+                            relation_id = i
+                            f.write(
+                                f"{relation_id}\t{prompt}\t{target_true}\t{target_false}"
+                                f"\t{inverted_true}\t{inverted_false}\n"
+                            )
+                            f.flush()
 
 if __name__ == "__main__":
     get_and_save_neel_inverted_by_lm()
