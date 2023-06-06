@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from sys import argv
 
 import openai
-from datasets import IterableDatasetDict, load_dataset, Dataset
+import datasets
+from datasets import IterableDatasetDict, load_dataset, Dataset, DatasetDict
 from rich import print
 from tqdm import tqdm
 
@@ -111,41 +112,52 @@ def get_neel_examples():
     return examples
 
 def get_lm_negated_examples():
-    tsv = open("filterdots.tsv", "r")
+    from rich import print
+    dataset_dict: DatasetDict = load_dataset("derpyplops/counterfact-lm-neg")
     # read lines skipping header
-    lines = tsv.readlines()[1:]
+    # concatenate train and test splits
+    dataset = datasets.concatenate_datasets(list(dataset_dict.values()))
     examples = []
-    for line in lines:
-        line = line.split("\t")
-        true_eg = Example(
-                label=0,
-                prompts=[
-                    Prompt(
-                        choices=[
-                            Choice(question=f"{line[1]}{line[2]}", answer=""),
-                            Choice(question=line[4], answer=""),
-                        ]
-                    )
-                ],
-                template_names=["template_null"],
-            )
-        false_eg = Example(
-                    label=1,
+    for row in dataset:
+        try: # has 5 errors, blank inverted_prompt_false
+            original_prompt = row['original_prompt']
+            original_target_true = row['original_target_true']
+            original_target_false = row['original_target_false']
+            inverted_prompt_true = row['inverted_prompt_true']
+            inverted_prompt_false = row['inverted_prompt_false']
+        
+
+            true_eg = Example(
+                    label=0,
                     prompts=[
                         Prompt(
                             choices=[
-                                Choice(question=f"{line[1]}{line[3]}", answer=""),
-                                Choice(question=line[5].strip(), answer=""),
+                                Choice(question=f"{original_prompt}{original_target_true}", answer=""),
+                                Choice(question=inverted_prompt_true, answer=""),
                             ]
                         )
                     ],
                     template_names=["template_null"],
                 )
-        for eg in [true_eg, false_eg]:
-            if random.choice([True, False]):
-                examples.append(eg)
-            else:
-                examples.append(invert_example(eg))
+            false_eg = Example(
+                        label=1,
+                        prompts=[
+                            Prompt(
+                                choices=[
+                                    Choice(question=f"{original_prompt}{original_target_false}", answer=""),
+                                    Choice(question=inverted_prompt_false.strip(), answer=""),
+                                ]
+                            )
+                        ],
+                        template_names=["template_null"],
+                    )
+            for eg in [true_eg, false_eg]:
+                if random.choice([True, False]):
+                    examples.append(eg)
+                else:
+                    examples.append(invert_example(eg))
+        except Exception as e:
+            print(f"Exception {e}")
     return examples
 
 def upload_to_huggingface(tsv_path):
@@ -288,6 +300,6 @@ def get_and_save_neel_inverted_by_lm():
 
 if __name__ == "__main__":
     # get_and_save_neel_inverted_by_lm()
-    # xs = get_lm_negated_examples()
-    upload_to_huggingface('filterdots.tsv')
+    xs = get_lm_negated_examples()
+    # upload_to_huggingface('filterdots.tsv')
     
