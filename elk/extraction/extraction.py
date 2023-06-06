@@ -247,7 +247,6 @@ def extract_hiddens(
 
     for example in prompt_ds:
         # Check if we've yielded enough examples
-        print(example)
         if num_yielded >= max_examples:
             break
 
@@ -278,8 +277,9 @@ def extract_hiddens(
 
             # Iterate over answers
             for j, choice in enumerate(record):  # a choice is a prompt + answer
-                print(record)
-                print(choice)
+                if j % 100 == 0:
+                    print(f"Processing example {i} choice {j}")
+                    print(choice)
                 text = choice.question
 
                 # Only feed question, not the answer, to the encoder for enc-dec models
@@ -369,7 +369,6 @@ def extract_hiddens(
             out_record["model_logits"] = lm_logits
 
         num_yielded += 1
-        print(out_record)
         yield out_record
 
 
