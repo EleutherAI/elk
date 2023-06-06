@@ -214,9 +214,18 @@ class ModelVisualization:
         """
         df = pd.DataFrame()
         model_name = model_path.name
-
         is_transfer = False
-        for train_dir in model_path.iterdir():
+
+        def get_train_dirs(model_path):
+            # toplevel is either repo/dataset or dataset
+            for toplevel in model_path.iterdir():
+                if (toplevel / "eval.csv").exists():
+                    yield toplevel
+                else:
+                    for train_dir in toplevel.iterdir():
+                        yield train_dir
+
+        for train_dir in get_train_dirs(model_path):
             eval_df = cls._read_eval_csv(train_dir, train_dir.name, train_dir.name)
             df = pd.concat([df, eval_df], ignore_index=True)
             transfer_dir = train_dir / "transfer"
