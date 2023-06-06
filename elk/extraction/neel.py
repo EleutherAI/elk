@@ -1,4 +1,4 @@
-import concurrent.futures
+# import concurrent.futures
 import os
 import random
 import time
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from sys import argv
 
 import openai
-from datasets import IterableDatasetDict, load_dataset
+from datasets import IterableDatasetDict, load_dataset, Dataset
 from rich import print
 from tqdm import tqdm
 
@@ -148,6 +148,16 @@ def get_lm_negated_examples():
                 examples.append(invert_example(eg))
     return examples
 
+def upload_to_huggingface(tsv_path):
+    # Load the TSV file as a Dataset
+    dataset = Dataset.from_csv(tsv_path, delimiter='\t')
+    # split into train test
+    dd = dataset.train_test_split(test_size=0.5)
+    # save to huggingface
+    dd.push_to_hub("derpyplops/counterfact-lm-neg")
+
+
+
 def generate_inverted_prompts(args):
     print(f"Generating inverted prompt for {args}")
     prompt, ans_true, ans_false, i = args
@@ -278,6 +288,6 @@ def get_and_save_neel_inverted_by_lm():
 
 if __name__ == "__main__":
     # get_and_save_neel_inverted_by_lm()
-    xs = get_lm_negated_examples()
-    print(xs[0:10])
+    # xs = get_lm_negated_examples()
+    upload_to_huggingface('filterdots.tsv')
     
