@@ -2,6 +2,8 @@ from dataclasses import InitVar, dataclass, replace
 
 import numpy as np
 import torch
+from datasets import get_dataset_config_info
+from transformers import AutoConfig
 
 from ..evaluation import Eval
 from ..extraction import Extract
@@ -11,6 +13,16 @@ from ..training.eigen_reporter import EigenReporterConfig
 from ..utils import colorize
 from ..utils.constants import BURNS_DATASETS
 from .train import Elicit
+
+
+def assert_models_exist(model_names):
+    for model_name in model_names:
+        AutoConfig.from_pretrained(model_name)
+
+
+def assert_datasets_exist(dataset_names):
+    for dataset_name in dataset_names:
+        get_dataset_config_info(dataset_name)
 
 
 @dataclass
@@ -81,7 +93,9 @@ class Sweep:
     def execute(self):
         M, D = len(self.models), len(self.datasets)
         print(f"Starting sweep over {M} models and {D} datasets ({M * D} runs)")
+        assert_models_exist(self.models)
         print(f"Models: {self.models}")
+        assert_datasets_exist(self.datasets)
         print(f"Datasets: {self.datasets}")
 
         root_dir = sweeps_dir()
