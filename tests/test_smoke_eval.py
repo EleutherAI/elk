@@ -9,7 +9,7 @@ from elk.training.train import Elicit
 
 EVAL_EXPECTED_FILES = [
     "cfg.yaml",
-    "fingerprints.yaml",
+    "metadata.yaml",
     "eval.csv",
 ]
 

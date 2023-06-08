@@ -99,7 +99,7 @@ class Run(ABC, Serializable):
         # properly without this flag enabled.
         save(self, self.out_dir / "cfg.yaml", save_dc_types=True)
 
-        path = self.out_dir / "fingerprints.yaml"
+        path = self.out_dir / "metadata.yaml"
 
         with open(path, "w") as meta_f:
             dataset_fingerprints = {
