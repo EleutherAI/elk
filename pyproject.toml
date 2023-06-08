@@ -12,6 +12,8 @@ license = { text = "MIT License" }
 dependencies = [
     # Allows us to use device_map in from_pretrained. Also needed for 8bit
     "accelerate",
+    # For pseudolabel and prompt normalization
+    "concept-erasure>=0.0.2",
     # Added distributed.split_dataset_by_node for IterableDatasets
     "datasets>=2.9.0",
     "einops",

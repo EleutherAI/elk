@@ -4,12 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+from concept_erasure import ConceptEraser
 from einops import rearrange
 from torch import Tensor, nn
 
 from ..truncated_eigh import truncated_eigh
 from ..utils.math_util import cov_mean_fused
-from .concept_eraser import ConceptEraser
 from .reporter import Reporter, ReporterConfig
 
 
@@ -184,12 +184,12 @@ class EigenReporter(Reporter):
         if self.config.erase_prompts:
             # Independent indicator for each (template, pseudo-label) pair
             indicators = torch.eye(k * v, device=hiddens.device).expand(n, -1, -1)
-            self.norm.update(x=hiddens, y=indicators)
+            self.norm.update(x=hiddens, z=indicators)
         else:
             # Only use indicators for each pseudo-label
             indicators = torch.eye(k, device=hiddens.device).expand(n, v, -1, -1)
 
-        self.norm.update(x=hiddens, y=indicators)
+        self.norm.update(x=hiddens, z=indicators)
 
         # *** Invariance (intra-cluster) ***
         # This is just a standard online *mean* update, since we're computing the
@@ -283,6 +283,10 @@ class EigenReporter(Reporter):
         Returns:
             loss: Negative eigenvalue associated with the VINC direction.
         """
+        # Save disk space by dropping covariance stats for LEACE
+        if not self.config.save_reporter_stats:
+            self.norm.finalize()
+
         self.update(hiddens)
         return self.fit_streaming()
 

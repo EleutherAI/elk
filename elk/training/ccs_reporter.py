@@ -8,13 +8,13 @@ from typing import Literal, Optional, cast
 
 import torch
 import torch.nn as nn
+from concept_erasure import ConceptEraser
 from torch import Tensor
 
 from ..metrics import roc_auc
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
 from .classifier import Classifier
-from .concept_eraser import ConceptEraser
 from .losses import LOSSES
 from .reporter import Reporter, ReporterConfig
 
@@ -302,6 +302,8 @@ class CcsReporter(Reporter):
             raise RuntimeError("Got NaN/infinite loss during training")
 
         self.load_state_dict(best_state)
+        self.norm.finalize()  # Save disk space by dropping covariance stats
+
         return best_loss
 
     def train_loop_adam(self, x_neg: Tensor, x_pos: Tensor) -> float:
