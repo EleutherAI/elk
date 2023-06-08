@@ -1,5 +1,6 @@
 import os
 import random
+import subprocess
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -29,6 +30,18 @@ from .utils import (
     select_split,
     select_usable_devices,
 )
+
+
+def fetch_git_hash() -> str:
+    try:
+        return (
+            subprocess.check_output(["git", "rev-parse", "HEAD"])
+            .decode("ascii")
+            .strip()
+        )
+    except Exception as e:
+        print(f"Could not get git revision hash, stack trace: {e}")
+        return "ERROR_HASH_NOT_FOUND"
 
 
 @dataclass
@@ -87,11 +100,16 @@ class Run(ABC, Serializable):
         save(self, self.out_dir / "cfg.yaml", save_dc_types=True)
 
         path = self.out_dir / "fingerprints.yaml"
+
         with open(path, "w") as meta_f:
+            dataset_fingerprints = {
+                ds_name: {split: ds[split]._fingerprint for split in ds.keys()}
+                for ds_name, ds in self.datasets
+            }
             yaml.dump(
                 {
-                    ds_name: {split: ds[split]._fingerprint for split in ds.keys()}
-                    for ds_name, ds in self.datasets
+                    "git_hash": fetch_git_hash(),
+                    "datasets": dataset_fingerprints,
                 },
                 meta_f,
             )
