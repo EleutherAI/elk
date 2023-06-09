@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from .burns_norm import BurnsNorm
 from ..metrics import roc_auc
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
@@ -57,6 +58,7 @@ class CcsReporterConfig(ReporterConfig):
     init: Literal["default", "pca", "spherical", "zero"] = "default"
     loss: list[str] = field(default_factory=lambda: ["ccs"])
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
+    normalization: Literal["lace", "burns"] = "leace"
     num_layers: int = 1
     pre_ln: bool = False
     supervised_weight: float = 0.0
@@ -66,6 +68,7 @@ class CcsReporterConfig(ReporterConfig):
     num_tries: int = 10
     optimizer: Literal["adam", "lbfgs"] = "lbfgs"
     weight_decay: float = 0.01
+
 
     @classmethod
     def reporter_class(cls) -> type[Reporter]:
@@ -107,13 +110,15 @@ class CcsReporter(Reporter):
         self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
-
-        self.norm = ConceptEraser(
-            in_features,
-            2 * num_variants,
-            device=device,
-            dtype=dtype,
-        )
+        if self.config.normalization == "burns":
+            self.norm = BurnsNorm()
+        else:
+            self.norm = ConceptEraser(
+                in_features,
+                2 * num_variants,
+                device=device,
+                dtype=dtype,
+            )
         self.probe = nn.Sequential(
             nn.Linear(
                 in_features,
@@ -262,16 +267,18 @@ class CcsReporter(Reporter):
         n, v, _ = x_neg.shape
         prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
 
-        self.norm.update(
-            x=x_neg,
-            # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
-        )
-        self.norm.update(
-            x=x_pos,
-            # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
-        )
+        if self.config.normalization == "leace":
+            self.norm.update(
+                x=x_neg,
+                # Independent indicator for each (template, pseudo-label) pair
+                y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
+            )
+            self.norm.update(
+                x=x_pos,
+                # Independent indicator for each (template, pseudo-label) pair
+                y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
+            )
+
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
         # Record the best acc, loss, and params found so far
