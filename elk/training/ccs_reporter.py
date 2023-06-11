@@ -265,12 +265,12 @@ class CcsReporter(Reporter):
         self.norm.update(
             x=x_neg,
             # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
+            z=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
         )
         self.norm.update(
             x=x_pos,
             # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
+            z=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
         )
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
