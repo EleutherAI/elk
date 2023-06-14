@@ -283,10 +283,6 @@ class EigenReporter(Reporter):
         Returns:
             loss: Negative eigenvalue associated with the VINC direction.
         """
-        # Save disk space by dropping covariance stats for LEACE
-        if not self.config.save_reporter_stats:
-            self.norm.finalize()
-
         self.update(hiddens)
         return self.fit_streaming()
 
