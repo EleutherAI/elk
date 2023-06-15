@@ -58,7 +58,7 @@ class CcsReporterConfig(ReporterConfig):
     init: Literal["default", "pca", "spherical", "zero"] = "default"
     loss: list[str] = field(default_factory=lambda: ["ccs"])
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
-    norm: Literal["leace", "burns"] = "leace" # TODO: move to parent class ?
+    norm: Literal["leace", "burns"] = "leace"
     num_layers: int = 1
     pre_ln: bool = False
     supervised_weight: float = 0.0
