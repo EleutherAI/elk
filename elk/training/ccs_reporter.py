@@ -58,7 +58,7 @@ class CcsReporterConfig(ReporterConfig):
     init: Literal["default", "pca", "spherical", "zero"] = "default"
     loss: list[str] = field(default_factory=lambda: ["ccs"])
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
-    normalization: Literal["lace", "burns"] = "leace"
+    norm: Literal["leace", "burns"] = "leace" # TODO: move to parent class ?
     num_layers: int = 1
     pre_ln: bool = False
     supervised_weight: float = 0.0
@@ -110,8 +110,9 @@ class CcsReporter(Reporter):
         self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
-        if self.config.normalization == "burns":
+        if self.config.norm == "burns":
             self.norm = BurnsNorm()
+            print("buuurn")
         else:
             self.norm = ConceptEraser(
                 in_features,
@@ -236,7 +237,7 @@ class CcsReporter(Reporter):
 
     def forward(self, x: Tensor) -> Tensor:
         """Return the credence assigned to the hidden state `x`."""
-        raw_scores = self.probe(self.norm(x)).squeeze(-1)
+        raw_scores = self.probe(x).squeeze(-1)
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
     def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
@@ -267,7 +268,7 @@ class CcsReporter(Reporter):
         n, v, _ = x_neg.shape
         prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
 
-        if self.config.normalization == "leace":
+        if self.config.norm == "leace":
             self.norm.update(
                 x=x_neg,
                 # Independent indicator for each (template, pseudo-label) pair
@@ -278,7 +279,7 @@ class CcsReporter(Reporter):
                 # Independent indicator for each (template, pseudo-label) pair
                 y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
             )
-
+            
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
         # Record the best acc, loss, and params found so far
