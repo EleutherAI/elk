@@ -112,7 +112,6 @@ class CcsReporter(Reporter):
         hidden_size = cfg.hidden_size or 4 * in_features // 3
         if self.config.norm == "burns":
             self.norm = BurnsNorm()
-            print("buuurn")
         else:
             self.norm = ConceptEraser(
                 in_features,
