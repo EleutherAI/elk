@@ -10,10 +10,10 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from .burns_norm import BurnsNorm
 from ..metrics import roc_auc
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
+from .burns_norm import BurnsNorm
 from .classifier import Classifier
 from .concept_eraser import ConceptEraser
 from .losses import LOSSES
@@ -58,7 +58,7 @@ class CcsReporterConfig(ReporterConfig):
     init: Literal["default", "pca", "spherical", "zero"] = "default"
     loss: list[str] = field(default_factory=lambda: ["ccs"])
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
-    norm: Literal["leace", "burns"] = "leace"
+    norm: Literal["leace", "burns"] = "leace"  # codespell: ignore
     num_layers: int = 1
     pre_ln: bool = False
     supervised_weight: float = 0.0
@@ -68,7 +68,6 @@ class CcsReporterConfig(ReporterConfig):
     num_tries: int = 10
     optimizer: Literal["adam", "lbfgs"] = "lbfgs"
     weight_decay: float = 0.01
-
 
     @classmethod
     def reporter_class(cls) -> type[Reporter]:
@@ -278,7 +277,7 @@ class CcsReporter(Reporter):
                 # Independent indicator for each (template, pseudo-label) pair
                 y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
             )
-            
+
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
         # Record the best acc, loss, and params found so far

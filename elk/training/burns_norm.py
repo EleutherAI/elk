@@ -3,10 +3,13 @@ from torch import Tensor, nn
 
 
 class BurnsNorm(nn.Module):
-    """ Burns et al. style normalization  Minimal changes from the original code. """
+    """Burns et al. style normalization  Minimal changes from the original code."""
 
-    def forward(self, x: Tensor) -> Tensor:        
-        assert x.dim() == 3, f"the input should have a dimension of 3 not dimension {x.dim()}, current shape of input x: {x.shape}" 
+    def forward(self, x: Tensor) -> Tensor:
+        assert (
+            x.dim() == 3
+        ), f"the input should have a dimension of 3 not dimension {x.dim()}, \
+        current shape of input x: {x.shape}"
 
         x: Tensor = x - torch.mean(x, dim=0)
         norm = torch.linalg.norm(x, dim=2)
