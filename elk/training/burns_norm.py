@@ -10,8 +10,12 @@ class BurnsNorm(nn.Module):
             x.dim() == 3
         ), f"the input should have a dimension of 3 not dimension {x.dim()}, \
         current shape of input x: {x.shape}"
-
-        x: Tensor = x - torch.mean(x, dim=0)
-        norm = torch.linalg.norm(x, dim=2)
-        avg_norm = torch.mean(norm)
-        return x / avg_norm * torch.sqrt(torch.tensor(x.shape[2], dtype=torch.float32))
+        
+        x_mean: Tensor = x - torch.mean(x, dim=0)
+        if torch.all(x_mean == 0):
+            # input embeddings entries are identical, which leads to x_mean having only zero entries.
+            return x
+        else:
+            norm = torch.linalg.norm(x_mean, dim=2)
+            avg_norm = torch.mean(norm)
+            return x_mean / avg_norm * torch.sqrt(torch.tensor(x_mean.shape[2], dtype=torch.float32))
