@@ -295,7 +295,7 @@ def extract_hiddens(
                 )
                 # Throw out layers we don't care about
                 hiddens = [hiddens[i] for i in layer_indices]
-                
+
                 # Current shape of each element: (batch_size, seq_len, hidden_size)
                 if cfg.token_loc == "first":
                     hiddens = [h[..., 0, :] for h in hiddens]
@@ -320,7 +320,7 @@ def extract_hiddens(
         # We skipped a variant because it was too long; move on to the next example
         if len(text_questions) != num_variants:
             continue
-        
+
         out_record: dict[str, Any] = dict(
             label=example["label"],
             variant_ids=example["template_names"],
