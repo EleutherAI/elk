@@ -2,13 +2,27 @@ from dataclasses import InitVar, dataclass, replace
 
 import numpy as np
 import torch
+from datasets import get_dataset_config_info
+from transformers import AutoConfig
 
 from ..evaluation import Eval
 from ..extraction import Extract
-from ..files import elk_reporter_dir, memorably_named_dir
+from ..files import memorably_named_dir, sweeps_dir
+from ..plotting.visualize import visualize_sweep
 from ..training.eigen_reporter import EigenReporterConfig
 from ..utils import colorize
+from ..utils.constants import BURNS_DATASETS
 from .train import Elicit
+
+
+def assert_models_exist(model_names):
+    for model_name in model_names:
+        AutoConfig.from_pretrained(model_name)
+
+
+def assert_datasets_exist(dataset_names):
+    for dataset_name in dataset_names:
+        get_dataset_config_info(dataset_name)
 
 
 @dataclass
@@ -31,6 +45,9 @@ class Sweep:
 
     skip_transfer_eval: bool = False
     """Whether to perform transfer eval on every pair of datasets."""
+
+    visualize: bool = False
+    """Whether to generate visualizations of the results of the sweep."""
 
     name: str | None = None
 
@@ -60,19 +77,7 @@ class Sweep:
         # on the Huggingface Hub.
         if "burns" in self.datasets:
             self.datasets.remove("burns")
-            self.datasets.extend(
-                [
-                    "ag_news",
-                    "amazon_polarity",
-                    "dbpedia_14",
-                    "glue:qnli",
-                    "imdb",
-                    "piqa",
-                    "super_glue:boolq",
-                    "super_glue:copa",
-                    "super_glue:rte",
-                ]
-            )
+            self.datasets.extend(BURNS_DATASETS)
             print(
                 "Interpreting `burns` as all datasets used in Burns et al. (2022) "
                 "available on the HuggingFace Hub"
@@ -88,10 +93,12 @@ class Sweep:
     def execute(self):
         M, D = len(self.models), len(self.datasets)
         print(f"Starting sweep over {M} models and {D} datasets ({M * D} runs)")
+        assert_models_exist(self.models)
         print(f"Models: {self.models}")
+        assert_datasets_exist(self.datasets)
         print(f"Datasets: {self.datasets}")
 
-        root_dir = elk_reporter_dir() / "sweeps"
+        root_dir = sweeps_dir()
         sweep_dir = root_dir / self.name if self.name else memorably_named_dir(root_dir)
         print(f"Saving sweep results to \033[1m{sweep_dir}\033[0m")  # bold
 
@@ -166,3 +173,6 @@ class Sweep:
                                     skip_supervised=run.supervised == "none",
                                 )
                                 eval.execute(highlight_color="green")
+
+        if self.visualize:
+            visualize_sweep(sweep_dir)
