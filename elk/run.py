@@ -18,6 +18,8 @@ from simple_parsing.helpers.serialization import save
 from torch import Tensor
 from tqdm import tqdm
 
+from elk.metrics.eval import layer_ensembling
+
 from .debug_logging import save_debug_log
 from .extraction import Extract, extract
 from .extraction.dataset_name import DatasetDictWithName
@@ -183,6 +185,7 @@ class Run(ABC, Serializable):
             try:
                 for df_dict, vals in tqdm(mapper(func, layers), total=len(layers)):
                     vals_buffers.append(vals)
+                    print("vals", vals)
                     for k, v in df_dict.items(): # type: ignore
                         df_buffers[k].append(v)
             finally:
@@ -192,8 +195,11 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
-                # save vals_buffers as pickle
-                with open(self.out_dir / f"vals.pkl", "wb") as f:
-                    pickle.dump(vals_buffers, f)
+                breakpoint()
+                print("hi")
+                # layer_ensembling_results = layer_ensembling(vals_buffers)
                 
-                print("Saved vals to ", self.out_dir / f"vals.pkl")
+                
+                # for name, dfs in df_buffers.items():
+                #     df = pd.concat(dfs).sort_values(by=["layer", "ensembling"])
+                #     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
