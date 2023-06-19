@@ -3,7 +3,7 @@ import pickle
 import random
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import partial
 from pathlib import Path
 from typing import Callable, Literal
@@ -18,7 +18,7 @@ from simple_parsing.helpers.serialization import save
 from torch import Tensor
 from tqdm import tqdm
 
-from elk.metrics.eval import layer_ensembling
+from elk.metrics.eval import EvalResult, layer_ensembling
 
 from .debug_logging import save_debug_log
 from .extraction import Extract, extract
@@ -181,25 +181,21 @@ class Run(ABC, Serializable):
         with ctx.Pool(num_devices) as pool:
             mapper = pool.imap_unordered if num_devices > 1 else map
             df_buffers = defaultdict(list)
-            vals_buffers = []
+            layer_outputs = []
             try:
-                for df_dict, vals in tqdm(mapper(func, layers), total=len(layers)):
-                    vals_buffers.append(vals)
-                    print("vals", vals)
+                for df_dict, layer_output in tqdm(mapper(func, layers), total=len(layers)):
+                    layer_outputs.append(layer_output)
                     for k, v in df_dict.items(): # type: ignore
                         df_buffers[k].append(v)
             finally:
+                
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
                     df = pd.concat(dfs).sort_values(by=["layer", "ensembling"])
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
-                breakpoint()
-                print("hi")
-                # layer_ensembling_results = layer_ensembling(vals_buffers)
-                
-                
-                # for name, dfs in df_buffers.items():
-                #     df = pd.concat(dfs).sort_values(by=["layer", "ensembling"])
-                #     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
+
+                layer_ensembling_results: EvalResult = layer_ensembling(layer_outputs)
+                df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
+                df.round(4).to_csv(self.out_dir / f"layer_ensembling_results.csv", index=False)
