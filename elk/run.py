@@ -1,9 +1,8 @@
 import os
-import pickle
 import random
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Callable, Literal
@@ -183,12 +182,13 @@ class Run(ABC, Serializable):
             df_buffers = defaultdict(list)
             layer_outputs = []
             try:
-                for df_dict, layer_output in tqdm(mapper(func, layers), total=len(layers)):
+                for df_dict, layer_output in tqdm(
+                    mapper(func, layers), total=len(layers)
+                ):
                     layer_outputs.append(layer_output)
-                    for k, v in df_dict.items(): # type: ignore
+                    for k, v in df_dict.items():  # type: ignore
                         df_buffers[k].append(v)
             finally:
-                
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
                     df = pd.concat(dfs).sort_values(by=["layer", "ensembling"])
@@ -198,4 +198,6 @@ class Run(ABC, Serializable):
 
                 layer_ensembling_results: EvalResult = layer_ensembling(layer_outputs)
                 df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
-                df.round(4).to_csv(self.out_dir / f"layer_ensembling_results.csv", index=False)
+                df.round(4).to_csv(
+                    self.out_dir / "layer_ensembling_results.csv", index=False
+                )
