@@ -57,18 +57,50 @@ def calc_auroc(y_logits, y_true, ensembling, num_classes):
     return auroc
 
 
-def calc_calibrated_accuracies(y_true, pos_probs):
+def calc_calibrated_accuracies(y_true, pos_probs) -> AccuracyResult:
+    """
+    Calculate the calibrated accuracies
+    
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        pos_probs: Predicted class tensor of shape (n, num_variants, num_classes).
+        
+    Returns:
+        AccuracyResult: A dictionary containing the accuracy and confidence interval.
+    """
+    
     cal_thresh = pos_probs.float().quantile(y_true.float().mean())
     cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
     cal_acc = accuracy_ci(y_true, cal_preds)
     return cal_acc
 
-def calc_calibrated_errors(y_true, pos_probs):
+def calc_calibrated_errors(y_true, pos_probs) -> CalibrationEstimate:
+    """
+    Calculate the expected calibration error.
+    
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+        
+    Returns:
+        CalibrationEstimate: 
+    """
+    
     cal = CalibrationError().update(y_true.flatten(), pos_probs.flatten())
     cal_err = cal.compute()
     return cal_err
 
-def calc_accuracies(y_logits, y_true):
+def calc_accuracies(y_logits, y_true) -> AccuracyResult:
+    """
+    Calculate the accuracy
+
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+
+    Returns:
+        AccuracyResult: A dictionary containing the accuracy and confidence interval.
+    """
     y_pred = y_logits.argmax(dim=-1)
     return accuracy_ci(y_true, y_pred)
 
@@ -98,7 +130,18 @@ def evaluate_preds(
 
     return calc_eval_results(y_true, y_logits, ensembling, num_classes)
 
-def calc_eval_results(y_true, y_logits, ensembling, num_classes):
+def calc_eval_results(y_true, y_logits, ensembling, num_classes) -> EvalResult:
+    """
+    Calculate the evaluation results
+
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+        ensembling: The ensembling mode.
+    
+    Returns:
+        EvalResult: The result of evaluating a classifier containing the accuracy, calibrated accuracies, calibrated errors, and AUROC.
+    """
     acc = calc_accuracies(y_logits=y_logits, y_true=y_true)
     
     pos_probs = torch.sigmoid(y_logits[..., 1] - y_logits[..., 0])
@@ -113,6 +156,15 @@ def calc_eval_results(y_true, y_logits, ensembling, num_classes):
     return EvalResult(acc, cal_acc, cal_err, auroc)
 
 def layer_ensembling(layer_outputs) -> EvalResult:
+    """
+    Return EvalResult after ensembling the probe output of the middle to last layers
+    
+    Args:
+        layer_outputs: A list of dictionaries containing the ground truth and predicted class tensor of shape (n, num_variants, num_classes).
+    
+    Returns:
+        EvalResult: The result of evaluating a classifier containing the accuracy, calibrated accuracies, calibrated errors, and AUROC.
+    """
     y_logits_means = []
     y_trues = []
     
