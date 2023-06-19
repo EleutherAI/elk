@@ -53,7 +53,6 @@ class Eval(Run):
             layer_outputs.append(
                 {**meta, "val_gt": val_gt, "val_credences": val_credences}
             )
-
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
                     {
