@@ -44,7 +44,7 @@ class Eval(Run):
         reporter.eval()
 
         row_bufs = defaultdict(list)
-        
+
         vals = []
         for ds_name, (val_h, val_gt, _) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
