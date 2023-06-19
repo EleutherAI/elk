@@ -45,12 +45,12 @@ class Eval(Run):
 
         row_bufs = defaultdict(list)
         
-        vals = []
+        layer_outputs = []
         for ds_name, (val_h, val_gt, _) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
-            vals.append({**meta, "val_gt": val_gt, "val_credences": val_credences})
+            layer_outputs.append({**meta, "val_gt": val_gt, "val_credences": val_credences})
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
                     {
@@ -78,4 +78,4 @@ class Eval(Run):
                             }
                         )
 
-        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, vals)
+        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, layer_outputs)
