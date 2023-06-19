@@ -137,12 +137,14 @@ class Elicit(Run):
             lr_models = []
 
         row_bufs = defaultdict(list)
+        vals = []
         for ds_name in val_dict:
             val_h, val_gt, val_lm_preds = val_dict[ds_name]
             train_h, train_gt, train_lm_preds = train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
+            vals.append({**meta, "val_gt": val_gt, "val_credences": val_credences})
             train_credences = reporter(train_h)
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
@@ -192,4 +194,4 @@ class Elicit(Run):
                         }
                     )
 
-        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, [])
+        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, vals)
