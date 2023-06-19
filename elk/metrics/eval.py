@@ -144,7 +144,8 @@ def calc_eval_results(y_true, y_logits, ensembling, num_classes) -> EvalResult:
         ensembling: The ensembling mode.
 
     Returns:
-        EvalResult: The result of evaluating a classifier containing the accuracy, calibrated accuracies, calibrated errors, and AUROC.
+        EvalResult: The result of evaluating a classifier containing the accuracy,
+        calibrated accuracies, calibrated errors, and AUROC.
     """
     acc = calc_accuracies(y_logits=y_logits, y_true=y_true)
 
@@ -172,10 +173,12 @@ def layer_ensembling(layer_outputs) -> EvalResult:
     Return EvalResult after ensembling the probe output of the middle to last layers
 
     Args:
-        layer_outputs: A list of dictionaries containing the ground truth and predicted class tensor of shape (n, num_variants, num_classes).
+        layer_outputs: A list of dictionaries containing the ground truth and
+        predicted class tensor of shape (n, num_variants, num_classes).
 
     Returns:
-        EvalResult: The result of evaluating a classifier containing the accuracy, calibrated accuracies, calibrated errors, and AUROC.
+        EvalResult: The result of evaluating a classifier containing the accuracy,
+        calibrated accuracies, calibrated errors, and AUROC.
     """
     y_logits_means = []
     y_trues = []

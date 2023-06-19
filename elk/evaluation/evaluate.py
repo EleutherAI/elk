@@ -44,13 +44,16 @@ class Eval(Run):
         reporter.eval()
 
         row_bufs = defaultdict(list)
-        
+
         layer_outputs = []
         for ds_name, (val_h, val_gt, _) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
-            layer_outputs.append({**meta, "val_gt": val_gt, "val_credences": val_credences})
+            layer_outputs.append(
+                {**meta, "val_gt": val_gt, "val_credences": val_credences}
+            )
+
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
                     {
