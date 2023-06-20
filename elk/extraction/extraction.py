@@ -344,6 +344,7 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
     with prevent_name_conflicts():
         model_cfg = AutoConfig.from_pretrained(cfg.model)
 
+    # TODO get breakpoint
     ds_name, config_name = parse_dataset_string(dataset_config_str=cfg.datasets[0])
     info = get_dataset_config_info(ds_name, config_name or None)
 
