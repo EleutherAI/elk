@@ -7,6 +7,7 @@ from transformers import AutoConfig
 
 from ..evaluation import Eval
 from ..extraction import Extract
+from ..extraction.dataset_name import parse_dataset_string
 from ..files import memorably_named_dir, sweeps_dir
 from ..plotting.visualize import visualize_sweep
 from ..training.eigen_reporter import EigenReporterConfig
@@ -22,7 +23,9 @@ def assert_models_exist(model_names):
 
 def assert_datasets_exist(dataset_names):
     for dataset_name in dataset_names:
-        get_dataset_config_info(dataset_name)
+        ds_name, config_name = parse_dataset_string(dataset_config_str=dataset_name)
+        # TODO refactor this
+        get_dataset_config_info(ds_name, config_name or None)
 
 
 @dataclass
