@@ -168,7 +168,7 @@ def calc_eval_results(y_true, y_logits, ensembling, num_classes) -> EvalResult:
     return EvalResult(acc, cal_acc, cal_err, auroc)
 
 
-def layer_ensembling(layer_outputs) -> EvalResult:
+def layer_ensembling(layer_outputs: list, ensembling: str) -> EvalResult:
     """
     Return EvalResult after ensembling the probe output of the middle to last layers
 
@@ -183,7 +183,7 @@ def layer_ensembling(layer_outputs) -> EvalResult:
     y_logits_means = []
     y_trues = []
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     for layer_output in layer_outputs:
         y_logits = layer_output[0]["val_credences"].to(device)
 
@@ -208,7 +208,7 @@ def layer_ensembling(layer_outputs) -> EvalResult:
     return calc_eval_results(
         y_true=y_trues[2],
         y_logits=y_layer_logits_means,
-        ensembling="full",
+        ensembling=ensembling,
         num_classes=num_classes,
     )
 

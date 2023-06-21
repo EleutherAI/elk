@@ -17,7 +17,7 @@ from simple_parsing.helpers.serialization import save
 from torch import Tensor
 from tqdm import tqdm
 
-from elk.metrics.eval import EvalResult, layer_ensembling
+from elk.metrics.eval import layer_ensembling
 
 from .debug_logging import save_debug_log
 from .extraction import Extract, extract
@@ -196,8 +196,19 @@ class Run(ABC, Serializable):
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
 
-                layer_ensembling_results: EvalResult = layer_ensembling(layer_outputs)
-                df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
-                df.round(4).to_csv(
+                dfs = []
+                for ensemble in [
+                    "full",
+                    "partial",
+                    "none",
+                ]:  # TODO: Replace ensemble strings with enums everywhere
+                    layer_ensembling_results = layer_ensembling(layer_outputs, ensemble)
+                    df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
+                    df = df.round(4)
+                    df["ensemble"] = ensemble
+                    dfs.append(df)
+
+                df_conc = pd.concat(dfs)
+                df_conc.to_csv(
                     self.out_dir / "layer_ensembling_results.csv", index=False
                 )
