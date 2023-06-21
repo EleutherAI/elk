@@ -144,9 +144,11 @@ class Elicit(Run):
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
+
             layer_outputs.append(
-                {**meta, "val_gt": val_gt, "val_credences": val_credences}
+                {**meta, "val_gt": val_gt.detach(), "val_credences": val_credences.detach()}
             )
+
             train_credences = reporter(train_h)
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(

@@ -184,12 +184,12 @@ def layer_ensembling(layer_outputs) -> EvalResult:
     y_trues = []
 
     for layer_output in layer_outputs:
-        y_logits = layer_output[0]["val_credences"]
+        y_logits = layer_output[0]["val_credences"].cpu()
 
         # full ensembling
         y_logits_means.append(y_logits.mean(dim=1))
 
-        y_true = layer_output[0]["val_gt"]
+        y_true = layer_output[0]["val_gt"].cpu()
         y_trues.append(y_true)
 
     num_classes = layer_outputs[0][0]["val_credences"].shape[2]
