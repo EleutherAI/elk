@@ -183,7 +183,7 @@ def layer_ensembling(layer_outputs) -> EvalResult:
     y_logits_means = []
     y_trues = []
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     for layer_output in layer_outputs:
         y_logits = layer_output[0]["val_credences"].to(device)
 
