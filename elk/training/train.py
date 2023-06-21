@@ -146,7 +146,11 @@ class Elicit(Run):
             val_credences = reporter(val_h)
 
             layer_outputs.append(
-                {**meta, "val_gt": val_gt.detach(), "val_credences": val_credences.detach()}
+                {
+                    **meta,
+                    "val_gt": val_gt.detach(),
+                    "val_credences": val_credences.detach(),
+                }
             )
 
             train_credences = reporter(train_h)
