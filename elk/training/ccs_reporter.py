@@ -38,7 +38,7 @@ class CcsReporterConfig(ReporterConfig):
             Example: --loss 1.0*consistency_squared 0.5*prompt_var
             corresponds to the loss function 1.0*consistency_squared + 0.5*prompt_var.
             Defaults to the loss "ccs_squared_loss".
-        normalization: The kind of normalization to apply to the hidden states.
+        norm: The kind of normalization to apply to the hidden states.
         num_layers: The number of layers in the MLP. Defaults to 1.
         pre_ln: Whether to include a LayerNorm module before the first linear
             layer. Defaults to False.
