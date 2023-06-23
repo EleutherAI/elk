@@ -7,5 +7,5 @@ class Ensembling(Enum):
     NONE = "none"
 
     @staticmethod
-    def all() -> list["Ensembling"]:
-        return list(Ensembling)
+    def all() -> tuple["Ensembling"]:
+        return tuple(Ensembling)

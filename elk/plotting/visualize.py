@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 import pandas as pd
 import plotly.express as px
@@ -22,7 +23,7 @@ class SweepByDsMultiplot:
         self,
         sweep: "SweepVisualization",
         with_transfer: bool = False,
-        ensemblings: Ensembling = Ensembling.all(),
+        ensemblings: Iterable[Ensembling] = Ensembling.all(),
         write: bool = False,
     ) -> go.Figure:
         """Render the multiplot visualization.
