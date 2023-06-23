@@ -210,7 +210,7 @@ class Run(ABC, Serializable):
 
                 df_concat = pd.concat(dfs)
                 # Rearrange the columns so that ensembling is in front
-                columns = ["ensemble"] + [
+                columns = ["ensembling"] + [
                     col for col in df_concat.columns if col != "ensembling"
                 ]
                 df_concat = df_concat[columns]
