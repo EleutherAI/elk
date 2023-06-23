@@ -205,10 +205,15 @@ class Run(ABC, Serializable):
                     )
                     df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
                     df = df.round(4)
-                    df["ensemble"] = ensembling
+                    df["ensembling"] = ensembling.value
                     dfs.append(df)
 
-                df_conc = pd.concat(dfs)
-                df_conc.to_csv(
+                df_concat = pd.concat(dfs)
+                # Rearrange the columns so that ensembling is in front
+                columns = ["ensemble"] + [
+                    col for col in df_concat.columns if col != "ensembling"
+                ]
+                df_concat = df_concat[columns]
+                df_concat.to_csv(
                     self.out_dir / "layer_ensembling_results.csv", index=False
                 )
