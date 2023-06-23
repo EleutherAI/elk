@@ -131,7 +131,6 @@ def evaluate_preds(
         y_logits = y_logits.mean(dim=1)
     else:
         y_true = repeat(y_true, "n -> n v", v=num_variants)
-
     return calc_eval_results(y_true, y_logits, ensembling, num_classes)
 
 
@@ -182,34 +181,24 @@ def layer_ensembling(layer_outputs: list, ensembling: Ensembling) -> EvalResult:
         EvalResult: The result of evaluating a classifier containing the accuracy,
         calibrated accuracies, calibrated errors, and AUROC.
     """
-    y_logits_means = []
-    y_trues = []
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    y_logits_means = []
+    y_true = layer_outputs[0][0]["val_gt"].to(device)
+
     for layer_output in layer_outputs:
         y_logits = layer_output[0]["val_credences"].to(device)
-
-        # full ensembling
-        y_logits_means.append(y_logits.mean(dim=1))
-
-        y_true = layer_output[0]["val_gt"].to(device)
-        y_trues.append(y_true)
+        y_logits_means.append(y_logits.mean(dim=1))  # full ensembling
 
     num_classes = layer_outputs[0][0]["val_credences"].shape[2]
-
     # get logits and ground_truth from middle to last layer
-    middle_index = len(y_trues) // 2
-    y_trues = y_trues[middle_index:]
-    y_logits = y_logits_means[middle_index:]
-
-    y_logits_layers = torch.stack(y_logits)
-
+    middle_index = len(layer_outputs) // 2
+    y_logits_stacked = torch.stack(y_logits_means[middle_index:])
     # layer ensembling of the stacked logits
-    y_layer_logits_means = torch.mean(y_logits_layers, dim=0)
+    y_logits_stacked_mean = torch.mean(y_logits_stacked, dim=0)
 
     return calc_eval_results(
-        y_true=y_trues[2],
-        y_logits=y_layer_logits_means,
+        y_true=y_true,
+        y_logits=y_logits_stacked_mean,
         ensembling=ensembling,
         num_classes=num_classes,
     )
