@@ -11,6 +11,7 @@ from ..metrics import evaluate_preds
 from ..run import Run
 from ..training import Reporter
 from ..utils import Color
+from ..utils.types import Ensembling
 
 
 @dataclass(kw_only=True)
@@ -53,12 +54,12 @@ class Eval(Run):
             layer_outputs.append(
                 {**meta, "val_gt": val_gt, "val_credences": val_credences}
             )
-            for mode in ("none", "partial", "full"):
+            for ensembling in Ensembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        "ensembling": ensembling.value,
+                        **evaluate_preds(val_gt, val_credences, ensembling).to_dict(),
                     }
                 )
 
@@ -73,10 +74,12 @@ class Eval(Run):
                         model.eval()
                         row_bufs["lr_eval"].append(
                             {
-                                "ensembling": mode,
+                                "ensembling": ensembling.value,
                                 "inlp_iter": i,
                                 **meta,
-                                **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                                **evaluate_preds(
+                                    val_gt, model(val_h), ensembling
+                                ).to_dict(),
                             }
                         )
 

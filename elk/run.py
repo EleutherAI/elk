@@ -31,6 +31,7 @@ from .utils import (
     select_split,
     select_usable_devices,
 )
+from .utils.types import Ensembling
 
 
 @dataclass
@@ -197,15 +198,14 @@ class Run(ABC, Serializable):
                     save_debug_log(self.datasets, self.out_dir)
 
                 dfs = []
-                for ensemble in [
-                    "full",
-                    "partial",
-                    "none",
-                ]:  # TODO: Replace ensemble strings with enums everywhere
-                    layer_ensembling_results = layer_ensembling(layer_outputs, ensemble)
+
+                for ensembling in Ensembling.all():
+                    layer_ensembling_results = layer_ensembling(
+                        layer_outputs, ensembling
+                    )
                     df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
                     df = df.round(4)
-                    df["ensemble"] = ensemble
+                    df["ensemble"] = ensembling
                     dfs.append(df)
 
                 df_conc = pd.concat(dfs)

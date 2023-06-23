@@ -1,10 +1,10 @@
 from dataclasses import asdict, dataclass
-from typing import Literal
 
 import torch
 from einops import repeat
 from torch import Tensor
 
+from ..utils.types import Ensembling
 from .accuracy import AccuracyResult, accuracy_ci
 from .calibration import CalibrationError, CalibrationEstimate
 from .roc_auc import RocAucResult, roc_auc_ci
@@ -42,11 +42,11 @@ class EvalResult:
 
 
 def calc_auroc(y_logits, y_true, ensembling, num_classes):
-    if ensembling == "none":
+    if ensembling == Ensembling.NONE:
         auroc = roc_auc_ci(
             to_one_hot(y_true, num_classes).long().flatten(1), y_logits.flatten(1)
         )
-    elif ensembling in ("partial", "full"):
+    elif ensembling in (Ensembling.PARTIAL, Ensembling.FULL):
         # Pool together the negative and positive class logits
         if num_classes == 2:
             auroc = roc_auc_ci(y_true, y_logits[..., 1] - y_logits[..., 0])
@@ -111,7 +111,7 @@ def calc_accuracies(y_logits, y_true) -> AccuracyResult:
 def evaluate_preds(
     y_true: Tensor,
     y_logits: Tensor,
-    ensembling: Literal["none", "partial", "full"] = "none",
+    ensembling: Ensembling = Ensembling.NONE,
 ) -> EvalResult:
     """
     Evaluate the performance of a classification model.
@@ -119,6 +119,7 @@ def evaluate_preds(
     Args:
         y_true: Ground truth tensor of shape (n,).
         y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+        ensembling: The ensembling mode.
 
     Returns:
         dict: A dictionary containing the accuracy, AUROC, and ECE.
@@ -126,7 +127,7 @@ def evaluate_preds(
     (n, num_variants, num_classes) = y_logits.shape
     assert y_true.shape == (n,)
 
-    if ensembling == "full":
+    if ensembling == Ensembling.FULL:
         y_logits = y_logits.mean(dim=1)
     else:
         y_true = repeat(y_true, "n -> n v", v=num_variants)
@@ -168,13 +169,14 @@ def calc_eval_results(y_true, y_logits, ensembling, num_classes) -> EvalResult:
     return EvalResult(acc, cal_acc, cal_err, auroc)
 
 
-def layer_ensembling(layer_outputs: list, ensembling: str) -> EvalResult:
+def layer_ensembling(layer_outputs: list, ensembling: Ensembling) -> EvalResult:
     """
     Return EvalResult after ensembling the probe output of the middle to last layers
 
     Args:
         layer_outputs: A list of dictionaries containing the ground truth and
         predicted class tensor of shape (n, num_variants, num_classes).
+        ensembling: The ensembling mode.
 
     Returns:
         EvalResult: The result of evaluating a classifier containing the accuracy,

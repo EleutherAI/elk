@@ -14,6 +14,7 @@ from simple_parsing.helpers.serialization import save
 from ..metrics import evaluate_preds, to_one_hot
 from ..run import Run
 from ..training.supervised import train_supervised
+from ..utils.types import Ensembling
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .eigen_reporter import EigenReporter, EigenReporterConfig
@@ -154,7 +155,7 @@ class Elicit(Run):
             )
 
             train_credences = reporter(train_h)
-            for mode in ("none", "partial", "full"):
+            for mode in Ensembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,

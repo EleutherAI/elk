@@ -9,6 +9,8 @@ from plotly.subplots import make_subplots
 from rich.console import Console
 from rich.table import Table
 
+from elk.utils.types import Ensembling
+
 
 @dataclass
 class SweepByDsMultiplot:
@@ -19,16 +21,16 @@ class SweepByDsMultiplot:
     def render(
         self,
         sweep: "SweepVisualization",
-        with_transfer=False,
-        ensembles=["full", "partial", "none"],
-        write=False,
+        with_transfer: bool = False,
+        ensemblings: Ensembling = Ensembling.all(),
+        write: bool = False,
     ) -> go.Figure:
         """Render the multiplot visualization.
 
         Args:
             sweep: The SweepVisualization instance containing the data.
             with_transfer: Flag indicating whether to include transfer eval data.
-            ensembles: Filter for which ensembing options to include.
+            ensemblings: Filter for which ensembing options to include.
             write: Flag indicating whether to write the visualization to disk.
 
         Returns:
@@ -49,10 +51,10 @@ class SweepByDsMultiplot:
             x_title="Layer",
             y_title="AUROC",
         )
-        color_map = dict(zip(ensembles, qualitative.Plotly))
+        color_map = dict(zip(ensemblings, qualitative.Plotly))
 
-        for ensemble in ensembles:
-            ensemble_data: pd.DataFrame = df[df["ensembling"] == ensemble]
+        for ensembling in ensemblings:
+            ensemble_data: pd.DataFrame = df[df["ensembling"] == ensembling.value]
             if with_transfer:  # TODO write tests
                 ensemble_data = ensemble_data.groupby(
                     ["eval_dataset", "layer", "ensembling"], as_index=False
@@ -77,11 +79,11 @@ class SweepByDsMultiplot:
                         x=dataset_data["layer"],
                         y=dataset_data["auroc_estimate"],
                         mode="lines",
-                        name=ensemble,
+                        name=ensembling.value,
                         showlegend=False
                         if dataset_name != unique_datasets[0]
                         else True,
-                        line=dict(color=color_map[ensemble]),
+                        line=dict(color=color_map[ensembling]),
                     ),
                     row=row,
                     col=col,
@@ -115,7 +117,7 @@ class TransferEvalHeatmap:
 
     layer: int
     score_type: str = "auroc_estimate"
-    ensembling: str = "full"
+    ensembling: Ensembling = Ensembling.FULL
 
     def render(self, df: pd.DataFrame) -> go.Figure:
         """Render the heatmap visualization.
@@ -245,7 +247,7 @@ class ModelVisualization:
         sweep: "SweepVisualization",
         dataset_names: list[str] | None = None,
         score_type="auroc_estimate",
-        ensembling="full",
+        ensembling=Ensembling.FULL,
     ) -> None:
         """Render and save the visualization for the model.
 
@@ -262,7 +264,9 @@ class ModelVisualization:
         model_path.mkdir(parents=True, exist_ok=True)
         if self.is_transfer:
             for layer in range(layer_min, layer_max + 1):
-                filtered = df[(df["layer"] == layer) & (df["ensembling"] == ensembling)]
+                filtered = df[
+                    (df["layer"] == layer) & (df["ensembling"] == ensembling.value)
+                ]
                 fig = TransferEvalHeatmap(
                     layer, score_type=score_type, ensembling=ensembling
                 ).render(filtered)
@@ -382,7 +386,7 @@ class SweepVisualization:
         Returns:
             The generated score table as a pandas DataFrame.
         """
-        df = self.df[self.df["ensembling"] == "partial"]
+        df = self.df[self.df["ensembling"] == Ensembling.PARTIAL.value]
 
         # For each model, we use the layer whose mean AUROC is the highest
         best_layers, model_dfs = [], []
