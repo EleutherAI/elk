@@ -11,7 +11,7 @@ from ..metrics import evaluate_preds
 from ..run import Run
 from ..training import Reporter
 from ..utils import Color
-from ..utils.types import Ensembling
+from ..utils.types import PromptEnsembling
 
 
 @dataclass(kw_only=True)
@@ -54,7 +54,7 @@ class Eval(Run):
             layer_outputs.append(
                 {**meta, "val_gt": val_gt, "val_credences": val_credences}
             )
-            for ensembling in Ensembling.all():
+            for ensembling in PromptEnsembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,

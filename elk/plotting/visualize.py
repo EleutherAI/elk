@@ -10,7 +10,7 @@ from plotly.subplots import make_subplots
 from rich.console import Console
 from rich.table import Table
 
-from elk.utils.types import Ensembling
+from elk.utils.types import PromptEnsembling
 
 
 @dataclass
@@ -23,7 +23,7 @@ class SweepByDsMultiplot:
         self,
         sweep: "SweepVisualization",
         with_transfer: bool = False,
-        ensemblings: Iterable[Ensembling] = Ensembling.all(),
+        ensemblings: Iterable[PromptEnsembling] = PromptEnsembling.all(),
         write: bool = False,
     ) -> go.Figure:
         """Render the multiplot visualization.
@@ -118,7 +118,7 @@ class TransferEvalHeatmap:
 
     layer: int
     score_type: str = "auroc_estimate"
-    ensembling: Ensembling = Ensembling.FULL
+    ensembling: PromptEnsembling = PromptEnsembling.FULL
 
     def render(self, df: pd.DataFrame) -> go.Figure:
         """Render the heatmap visualization.
@@ -248,7 +248,7 @@ class ModelVisualization:
         sweep: "SweepVisualization",
         dataset_names: list[str] | None = None,
         score_type="auroc_estimate",
-        ensembling=Ensembling.FULL,
+        ensembling=PromptEnsembling.FULL,
     ) -> None:
         """Render and save the visualization for the model.
 
@@ -387,7 +387,7 @@ class SweepVisualization:
         Returns:
             The generated score table as a pandas DataFrame.
         """
-        df = self.df[self.df["ensembling"] == Ensembling.PARTIAL.value]
+        df = self.df[self.df["ensembling"] == PromptEnsembling.PARTIAL.value]
 
         # For each model, we use the layer whose mean AUROC is the highest
         best_layers, model_dfs = [], []

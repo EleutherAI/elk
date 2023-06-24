@@ -31,7 +31,7 @@ from .utils import (
     select_split,
     select_usable_devices,
 )
-from .utils.types import Ensembling
+from .utils.types import PromptEnsembling
 
 
 @dataclass
@@ -199,7 +199,7 @@ class Run(ABC, Serializable):
 
                 dfs = []
 
-                for ensembling in Ensembling.all():
+                for ensembling in PromptEnsembling.all():
                     layer_ensembling_results = layer_ensembling(
                         layer_outputs, ensembling
                     )

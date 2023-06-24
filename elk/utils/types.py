@@ -1,11 +1,11 @@
 from enum import Enum
 
 
-class Ensembling(Enum):
+class PromptEnsembling(Enum):
     FULL = "full"
     PARTIAL = "partial"
     NONE = "none"
 
     @staticmethod
-    def all() -> tuple["Ensembling"]:
-        return tuple(Ensembling)
+    def all() -> tuple["PromptEnsembling"]:
+        return tuple(PromptEnsembling)
