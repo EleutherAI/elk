@@ -268,12 +268,13 @@ class CcsReporter(Reporter):
         prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
 
         if self.config.norm == "leace":
-            self.norm.update(
+            # type ignore because otherwise throws error, probably bug with pyright
+            self.norm.update(  # type: ignore
                 x=x_neg,
                 # Independent indicator for each (template, pseudo-label) pair
                 y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
             )
-            self.norm.update(
+            self.norm.update(  # type: ignore
                 x=x_pos,
                 # Independent indicator for each (template, pseudo-label) pair
                 y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
