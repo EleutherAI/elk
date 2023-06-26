@@ -109,10 +109,11 @@ class CcsReporter(Reporter):
         self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
+
         if self.config.norm == "burns":
-            self.norm: nn.module = BurnsNorm()
+            self.norm = BurnsNorm()
         else:
-            self.norm: nn.module = ConceptEraser(
+            self.norm = ConceptEraser(
                 in_features,
                 2 * num_variants,
                 device=device,
