@@ -13,7 +13,8 @@ class BurnsNorm(nn.Module):
 
         x_mean: Tensor = x - torch.mean(x, dim=0)
         if torch.all(x_mean == 0):
-            # input embeddings entries are identical, which leads to x_mean having only zero entries.
+            # input embeddings entries are identical,
+            # which leads to x_mean having only zero entries.
             return x
         else:
             norm = torch.linalg.norm(x_mean, dim=2)

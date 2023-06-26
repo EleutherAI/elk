@@ -359,7 +359,8 @@ class SweepVisualization:
         """Render and save all visualizations for the sweep."""
         for model in self.models.values():
             model.render_and_save(self)
-        self.render_table(write=True)
+        for ensembling in PromptEnsembling.all():
+            self.render_table(ensembling=ensembling, write=True)
         self.render_multiplots(write=True)
 
     def render_multiplots(self, write=False):
@@ -374,20 +375,25 @@ class SweepVisualization:
         ]
 
     def render_table(
-        self, score_type="auroc_estimate", display=True, write=False
+        self,
+        score_type="auroc_estimate",
+        ensembling=PromptEnsembling.FULL,
+        display=True,
+        write=False,
     ) -> pd.DataFrame:
         """Render and optionally write the score table.
 
         Args:
             layer: The layer number (from last layer) to include in the score table.
             score_type: The type of score to include in the table.
+            ensembling: The ensembling option to consider.
             display: Flag indicating whether to display the table to stdout.
             write: Flag indicating whether to write the table to a file.
 
         Returns:
             The generated score table as a pandas DataFrame.
         """
-        df = self.df[self.df["ensembling"] == PromptEnsembling.PARTIAL.value]
+        df = self.df[self.df["ensembling"] == ensembling.value]
 
         # For each model, we use the layer whose mean AUROC is the highest
         best_layers, model_dfs = [], []
@@ -418,10 +424,11 @@ class SweepVisualization:
                 table.add_row(str(index), *(f"{val:.3f}" for val in row))
 
             table.add_row("Best Layer", *map(str, best_layers), style="bold")
+            console.print(f"Ensembling: [magenta]{ensembling.value}[/magenta]")
             console.print(table)
 
         if write:
-            pivot_table.to_csv(f"score_table_{score_type}.csv")
+            pivot_table.to_csv(f"score_table_{score_type}.csv")  # TODO fix path
         return pivot_table
 
 
