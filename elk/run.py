@@ -31,6 +31,7 @@ from .utils import (
     select_split,
     select_usable_devices,
 )
+from .utils.types import PromptEnsembling
 
 
 @dataclass
@@ -197,18 +198,22 @@ class Run(ABC, Serializable):
                     save_debug_log(self.datasets, self.out_dir)
 
                 dfs = []
-                for ensemble in [
-                    "full",
-                    "partial",
-                    "none",
-                ]:  # TODO: Replace ensemble strings with enums everywhere
-                    layer_ensembling_results = layer_ensembling(layer_outputs, ensemble)
+
+                for ensembling in PromptEnsembling.all():
+                    layer_ensembling_results = layer_ensembling(
+                        layer_outputs, ensembling
+                    )
                     df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
                     df = df.round(4)
-                    df["ensemble"] = ensemble
+                    df["ensembling"] = ensembling.value
                     dfs.append(df)
 
-                df_conc = pd.concat(dfs)
-                df_conc.to_csv(
+                df_concat = pd.concat(dfs)
+                # Rearrange the columns so that ensembling is in front
+                columns = ["ensembling"] + [
+                    col for col in df_concat.columns if col != "ensembling"
+                ]
+                df_concat = df_concat[columns]
+                df_concat.to_csv(
                     self.out_dir / "layer_ensembling_results.csv", index=False
                 )

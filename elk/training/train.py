@@ -14,6 +14,7 @@ from simple_parsing.helpers.serialization import save
 from ..metrics import evaluate_preds, to_one_hot
 from ..run import Run
 from ..training.supervised import train_supervised
+from ..utils.types import PromptEnsembling
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .eigen_reporter import EigenReporter, EigenReporterConfig
@@ -154,12 +155,12 @@ class Elicit(Run):
             )
 
             train_credences = reporter(train_h)
-            for mode in ("none", "partial", "full"):
+            for ensembling in PromptEnsembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        "ensembling": ensembling.value,
+                        **evaluate_preds(val_gt, val_credences, ensembling).to_dict(),
                         "pseudo_auroc": pseudo_auroc,
                         "train_loss": train_loss,
                     }
@@ -168,8 +169,10 @@ class Elicit(Run):
                 row_bufs["train_eval"].append(
                     {
                         **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                        "ensembling": ensembling.value,
+                        **evaluate_preds(
+                            train_gt, train_credences, ensembling
+                        ).to_dict(),
                         "train_loss": train_loss,
                     }
                 )
@@ -178,8 +181,10 @@ class Elicit(Run):
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            "ensembling": ensembling.value,
+                            **evaluate_preds(
+                                val_gt, val_lm_preds, ensembling
+                            ).to_dict(),
                         }
                     )
 
@@ -187,8 +192,10 @@ class Elicit(Run):
                     row_bufs["train_lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
+                            "ensembling": ensembling.value,
+                            **evaluate_preds(
+                                train_gt, train_lm_preds, ensembling
+                            ).to_dict(),
                         }
                     )
 
@@ -196,9 +203,11 @@ class Elicit(Run):
                     row_bufs["lr_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
+                            "ensembling": ensembling.value,
                             "inlp_iter": i,
-                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            **evaluate_preds(
+                                val_gt, model(val_h), ensembling
+                            ).to_dict(),
                         }
                     )
 

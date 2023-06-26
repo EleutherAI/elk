@@ -1,10 +1,10 @@
 from dataclasses import asdict, dataclass
-from typing import Literal
 
 import torch
 from einops import repeat
 from torch import Tensor
 
+from ..utils.types import PromptEnsembling
 from .accuracy import AccuracyResult, accuracy_ci
 from .calibration import CalibrationError, CalibrationEstimate
 from .roc_auc import RocAucResult, roc_auc_ci
@@ -42,11 +42,11 @@ class EvalResult:
 
 
 def calc_auroc(y_logits, y_true, ensembling, num_classes):
-    if ensembling == "none":
+    if ensembling == PromptEnsembling.NONE:
         auroc = roc_auc_ci(
             to_one_hot(y_true, num_classes).long().flatten(1), y_logits.flatten(1)
         )
-    elif ensembling in ("partial", "full"):
+    elif ensembling in (PromptEnsembling.PARTIAL, PromptEnsembling.FULL):
         # Pool together the negative and positive class logits
         if num_classes == 2:
             auroc = roc_auc_ci(y_true, y_logits[..., 1] - y_logits[..., 0])
@@ -111,7 +111,7 @@ def calc_accuracies(y_logits, y_true) -> AccuracyResult:
 def evaluate_preds(
     y_true: Tensor,
     y_logits: Tensor,
-    ensembling: Literal["none", "partial", "full"] = "none",
+    ensembling: PromptEnsembling = PromptEnsembling.NONE,
 ) -> EvalResult:
     """
     Evaluate the performance of a classification model.
@@ -119,6 +119,7 @@ def evaluate_preds(
     Args:
         y_true: Ground truth tensor of shape (n,).
         y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+        ensembling: The ensembling mode.
 
     Returns:
         dict: A dictionary containing the accuracy, AUROC, and ECE.
@@ -126,11 +127,10 @@ def evaluate_preds(
     (n, num_variants, num_classes) = y_logits.shape
     assert y_true.shape == (n,)
 
-    if ensembling == "full":
+    if ensembling == PromptEnsembling.FULL:
         y_logits = y_logits.mean(dim=1)
     else:
         y_true = repeat(y_true, "n -> n v", v=num_variants)
-
     return calc_eval_results(y_true, y_logits, ensembling, num_classes)
 
 
@@ -168,46 +168,37 @@ def calc_eval_results(y_true, y_logits, ensembling, num_classes) -> EvalResult:
     return EvalResult(acc, cal_acc, cal_err, auroc)
 
 
-def layer_ensembling(layer_outputs: list, ensembling: str) -> EvalResult:
+def layer_ensembling(layer_outputs: list, ensembling: PromptEnsembling) -> EvalResult:
     """
     Return EvalResult after ensembling the probe output of the middle to last layers
 
     Args:
         layer_outputs: A list of dictionaries containing the ground truth and
         predicted class tensor of shape (n, num_variants, num_classes).
+        ensembling: The ensembling mode.
 
     Returns:
         EvalResult: The result of evaluating a classifier containing the accuracy,
         calibrated accuracies, calibrated errors, and AUROC.
     """
-    y_logits_means = []
-    y_trues = []
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    y_logits_means = []
+    y_true = layer_outputs[0][0]["val_gt"].to(device)
+
     for layer_output in layer_outputs:
         y_logits = layer_output[0]["val_credences"].to(device)
-
-        # full ensembling
-        y_logits_means.append(y_logits.mean(dim=1))
-
-        y_true = layer_output[0]["val_gt"].to(device)
-        y_trues.append(y_true)
+        y_logits_means.append(y_logits.mean(dim=1))  # full ensembling
 
     num_classes = layer_outputs[0][0]["val_credences"].shape[2]
-
     # get logits and ground_truth from middle to last layer
-    middle_index = len(y_trues) // 2
-    y_trues = y_trues[middle_index:]
-    y_logits = y_logits_means[middle_index:]
-
-    y_logits_layers = torch.stack(y_logits)
-
+    middle_index = len(layer_outputs) // 2
+    y_logits_stacked = torch.stack(y_logits_means[middle_index:])
     # layer ensembling of the stacked logits
-    y_layer_logits_means = torch.mean(y_logits_layers, dim=0)
+    y_logits_stacked_mean = torch.mean(y_logits_stacked, dim=0)
 
     return calc_eval_results(
-        y_true=y_trues[2],
-        y_logits=y_layer_logits_means,
+        y_true=y_true,
+        y_logits=y_logits_stacked_mean,
         ensembling=ensembling,
         num_classes=num_classes,
     )
