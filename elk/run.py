@@ -214,6 +214,4 @@ class Run(ABC, Serializable):
                     col for col in df_concat.columns if col != "ensembling"
                 ]
                 df_concat = df_concat[columns]
-                df_concat.to_csv(
-                    self.out_dir / "layer_ensembling_results.csv", index=False
-                )
+                df_concat.to_csv(self.out_dir / "layer_ensembling.csv", index=False)

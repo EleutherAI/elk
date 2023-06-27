@@ -201,6 +201,7 @@ class ModelVisualization:
     """Class representing the visualization for a single model within a sweep."""
 
     df: pd.DataFrame
+    layer_ensembling_df: pd.DataFrame
     model_name: str
     is_transfer: bool
 
@@ -215,7 +216,8 @@ class ModelVisualization:
         Returns:
             The ModelVisualization instance containing the evaluation data.
         """
-        df = pd.DataFrame()
+        df_sum = pd.DataFrame()
+        layer_ensembling_df_sum = pd.DataFrame()
         model_name = model_path.name
         is_transfer = False
 
@@ -229,19 +231,30 @@ class ModelVisualization:
                         yield train_dir
 
         for train_dir in get_train_dirs(model_path):
-            eval_df = cls._read_eval_csv(train_dir, train_dir.name, train_dir.name)
-            df = pd.concat([df, eval_df], ignore_index=True)
+            eval_df, layer_ensembling_df = cls._read_csvs(
+                train_dir, train_dir.name, train_dir.name
+            )
+            df_sum = pd.concat([df_sum, eval_df], ignore_index=True)
+            layer_ensembling_df_sum = pd.concat(
+                [layer_ensembling_df_sum, layer_ensembling_df],
+                ignore_index=True,
+            )
             transfer_dir = train_dir / "transfer"
             if transfer_dir.exists():
                 is_transfer = True
                 for eval_ds_dir in transfer_dir.iterdir():
-                    eval_df = cls._read_eval_csv(
+                    eval_df = cls._read_csvs(
                         eval_ds_dir, eval_ds_dir.name, train_dir.name
                     )
-                    df = pd.concat([df, eval_df], ignore_index=True)
+                    df_sum = pd.concat([df_sum, eval_df], ignore_index=True)
+                    layer_ensembling_df_sum = pd.concat(
+                        [layer_ensembling_df_sum, layer_ensembling_df],
+                        ignore_index=True,
+                    )  # TODO fold into function
 
-        df["model_name"] = model_name
-        return cls(df, model_name, is_transfer)
+        df_sum["model_name"] = model_name
+        layer_ensembling_df_sum["model_name"] = model_name
+        return cls(df_sum, layer_ensembling_df_sum, model_name, is_transfer)
 
     def render_and_save(
         self,
@@ -276,8 +289,22 @@ class ModelVisualization:
         fig.write_image(file=model_path / "transfer_eval_trend.png")
 
     @staticmethod
-    def _read_eval_csv(path, eval_dataset, train_dataset):
-        file = path / "eval.csv"
+    def _read_csvs(path, eval_dataset, train_dataset):
+        eval_file = path / "eval.csv"
+        eval_df = pd.read_csv(eval_file)
+        eval_df["eval_dataset"] = eval_dataset
+        eval_df["train_dataset"] = train_dataset
+
+        layer_ensembling_file = path / "layer_ensembling.csv"
+        layer_ensembling_df = pd.read_csv(layer_ensembling_file)
+        layer_ensembling_df["eval_dataset"] = eval_dataset
+        layer_ensembling_df["train_dataset"] = train_dataset
+
+        return eval_df, layer_ensembling_df
+
+    @staticmethod
+    def _read_layer_ensembling_csv(path, eval_dataset, train_dataset):
+        file = path / "layer_ensembling.csv"
         eval_df = pd.read_csv(file)
         eval_df["eval_dataset"] = eval_dataset
         eval_df["train_dataset"] = train_dataset
@@ -290,6 +317,7 @@ class SweepVisualization:
 
     name: str
     df: pd.DataFrame
+    layer_ensembling_df: pd.DataFrame
     path: Path
     datasets: list[str]
     models: dict[str, ModelVisualization]
@@ -352,8 +380,13 @@ class SweepVisualization:
             for model_path in model_paths
         }
         df = pd.concat([model.df for model in models.values()], ignore_index=True)
+        layer_ensembling_df = pd.concat(
+            [model.layer_ensembling_df for model in models.values()], ignore_index=True
+        )
         datasets = list(df["eval_dataset"].unique())
-        return cls(sweep_name, df, sweep_viz_path, datasets, models)
+        return cls(
+            sweep_name, df, layer_ensembling_df, sweep_viz_path, datasets, models
+        )
 
     def render_and_save(self):
         """Render and save all visualizations for the sweep."""
@@ -361,6 +394,7 @@ class SweepVisualization:
             model.render_and_save(self)
         for ensembling in PromptEnsembling.all():
             self.render_table(ensembling=ensembling, write=True)
+            self.render_layer_ensembling_table(ensembling=ensembling, write=True)
         self.render_multiplots(write=True)
 
     def render_multiplots(self, write=False):
@@ -373,6 +407,24 @@ class SweepVisualization:
             SweepByDsMultiplot(model).render(self, write=write, with_transfer=False)
             for model in self.models
         ]
+
+    def render_layer_ensembling_table(
+        self,
+        ensembling: PromptEnsembling,
+        display=True,
+        write=False,
+    ) -> pd.DataFrame:
+        """
+        Render and optionally write the layer ensembling table.
+
+        Args:
+            ensembling: The ensembling type to consider.
+            display: Flag indicating whether to display the table to stdout.
+            write: Flag indicating whether to write the table to a file.
+        Returns:
+            The generated layer ensembling table as a pandas DataFrame.
+        """
+        pass
 
     def render_table(
         self,
@@ -428,7 +480,8 @@ class SweepVisualization:
             console.print(table)
 
         if write:
-            pivot_table.to_csv(f"score_table_{score_type}.csv")  # TODO fix path
+            print(f"Writing {score_type} table to {score_type}_{ensembling.value}.csv")
+            pivot_table.to_csv(self.path / f"{score_type}_{ensembling.value}.csv")
         return pivot_table
 
 
