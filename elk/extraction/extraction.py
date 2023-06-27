@@ -284,7 +284,7 @@ def extract_hiddens(
                     variant_questions.append(text)
 
                 inputs: dict[str, Tensor | None] = dict(input_ids=ids.long())
-                if is_enc_dec:
+                if is_enc_dec or has_lm_preds:
                     inputs["labels"] = labels
                 outputs = model(**inputs, output_hidden_states=True)
 
