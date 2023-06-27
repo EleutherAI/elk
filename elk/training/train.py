@@ -11,9 +11,9 @@ from einops import rearrange, repeat
 from simple_parsing import subgroups
 from simple_parsing.helpers.serialization import save
 
+from ..extraction import Extract
 from ..metrics import evaluate_preds, to_one_hot
 from ..run import Run
-from ..extraction import Extract
 from ..training.supervised import train_supervised
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
@@ -35,7 +35,7 @@ class Elicit(Run):
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
 
-    @staticmethod 
+    @staticmethod
     def Default():
         return Elicit(
             data=Extract(
