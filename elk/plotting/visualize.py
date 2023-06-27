@@ -424,7 +424,58 @@ class SweepVisualization:
         Returns:
             The generated layer ensembling table as a pandas DataFrame.
         """
-        pass
+        """
+            Render and optionally write the layer ensembling table.
+
+            Args:
+                score_type: The type of score to include in the table.
+                display: Flag indicating whether to display the table to stdout.
+                write: Flag indicating whether to write the table to a file.
+
+            Returns:
+                The generated layer ensembling table as a pandas DataFrame.
+            """
+
+        score_type = "auroc_estimate"
+        layer_ensembling_df = self.layer_ensembling_df[
+            self.layer_ensembling_df["ensembling"] == ensembling.value
+        ]
+
+        # Pivot the layer ensembling df
+        pivot_table = layer_ensembling_df.pivot_table(
+            index="eval_dataset",
+            columns="model_name",
+            values=score_type,
+            margins=True,
+            margins_name="Mean",
+        )
+
+        if display:
+            console = Console()
+            table = Table(
+                show_header=True, header_style="bold magenta", show_lines=True
+            )
+
+            table.add_column("Dataset")
+            for column in pivot_table.columns:
+                table.add_column(str(column))
+
+            for index, row in pivot_table.iterrows():
+                table.add_row(str(index), *(f"{val:.3f}" for val in row))
+
+            console.print(
+                f"[blue bold]Layer Ensembling[/blue bold]\nEnsembling Type: ["
+                f"blue"
+                f"]{ensembling.value}["
+                f"/blue]"
+            )
+            console.print(table)
+
+        if write:
+            filename = f"{score_type}_withlayerensembling_{ensembling.value}.csv"
+            print(f"Writing to: [{filename}]")
+            pivot_table.to_csv(self.path / filename)
+        return pivot_table
 
     def render_table(
         self,
@@ -476,12 +527,20 @@ class SweepVisualization:
                 table.add_row(str(index), *(f"{val:.3f}" for val in row))
 
             table.add_row("Best Layer", *map(str, best_layers), style="bold")
-            console.print(f"Ensembling: [magenta]{ensembling.value}[/magenta]")
+            console.print(
+                f"[yellow bold]Prompt Ensembling by Layer[/yellow "
+                f"bold]\nEnsembling "
+                f"Type: ["
+                f"yellow"
+                f"]{ensembling.value}["
+                f"/yellow]"
+            )
             console.print(table)
 
         if write:
-            print(f"Writing {score_type} table to {score_type}_{ensembling.value}.csv")
-            pivot_table.to_csv(self.path / f"{score_type}_{ensembling.value}.csv")
+            filename = f"{score_type}_promptensemblingonly_{ensembling.value}.csv"
+            print(f"Writing to: {filename}")
+            pivot_table.to_csv(self.path / filename)
         return pivot_table
 
 
