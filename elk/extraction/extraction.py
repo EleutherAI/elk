@@ -283,8 +283,8 @@ def extract_hiddens(
                     # Record the EXACT question we fed to the model
                     variant_questions.append(text)
 
-                inputs: dict[str, Tensor | None] = dict(input_ids=ids.long())
-                if is_enc_dec or has_lm_preds:
+                inputs = dict(input_ids=ids.long())
+                if is_enc_dec:
                     inputs["labels"] = labels
                 outputs = model(**inputs, output_hidden_states=True)
 
