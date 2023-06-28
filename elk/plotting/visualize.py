@@ -5,12 +5,15 @@ from typing import Iterable
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import rich
 from plotly.colors import qualitative
 from plotly.subplots import make_subplots
 from rich.console import Console
 from rich.table import Table
 
 from elk.utils.types import PromptEnsembling
+
+summary_dict = dict()
 
 
 @dataclass
@@ -243,7 +246,7 @@ class ModelVisualization:
             if transfer_dir.exists():
                 is_transfer = True
                 for eval_ds_dir in transfer_dir.iterdir():
-                    eval_df = cls._read_csvs(
+                    eval_df, layer_ensembling_df = cls._read_csvs(
                         eval_ds_dir, eval_ds_dir.name, train_dir.name
                     )
                     df_sum = pd.concat([df_sum, eval_df], ignore_index=True)
@@ -295,7 +298,7 @@ class ModelVisualization:
         eval_df["eval_dataset"] = eval_dataset
         eval_df["train_dataset"] = train_dataset
 
-        layer_ensembling_file = path / "layer_ensembling.csv"
+        layer_ensembling_file = path / "layer_ensembling_results.csv"
         layer_ensembling_df = pd.read_csv(layer_ensembling_file)
         layer_ensembling_df["eval_dataset"] = eval_dataset
         layer_ensembling_df["train_dataset"] = train_dataset
@@ -304,7 +307,7 @@ class ModelVisualization:
 
     @staticmethod
     def _read_layer_ensembling_csv(path, eval_dataset, train_dataset):
-        file = path / "layer_ensembling.csv"
+        file = path / "layer_ensembling_results.csv"
         eval_df = pd.read_csv(file)
         eval_df["eval_dataset"] = eval_dataset
         eval_df["train_dataset"] = train_dataset
@@ -391,10 +394,15 @@ class SweepVisualization:
     def render_and_save(self):
         """Render and save all visualizations for the sweep."""
         for model in self.models.values():
-            model.render_and_save(self)
+            # model.render_and_save(self)
+            pass
         for ensembling in PromptEnsembling.all():
-            self.render_table(ensembling=ensembling, write=True)
-            self.render_layer_ensembling_table(ensembling=ensembling, write=True)
+            self.render_table(
+                ensembling=ensembling, score_type="acc_estimate", write=True
+            )
+            self.render_layer_ensembling_table(
+                ensembling=ensembling, score_type="acc_estimate", write=True
+            )
         self.render_multiplots(write=True)
 
     def render_multiplots(self, write=False):
@@ -411,6 +419,7 @@ class SweepVisualization:
     def render_layer_ensembling_table(
         self,
         ensembling: PromptEnsembling,
+        score_type: str,
         display=True,
         write=False,
     ) -> pd.DataFrame:
@@ -436,7 +445,13 @@ class SweepVisualization:
                 The generated layer ensembling table as a pandas DataFrame.
             """
 
-        score_type = "auroc_estimate"
+        # if column ensembling doesn't exist, change column called
+        # ensemble to ensembling
+        if "ensemble" in self.layer_ensembling_df.columns:
+            self.layer_ensembling_df.rename(
+                columns={"ensemble": "ensembling"}, inplace=True
+            )
+
         layer_ensembling_df = self.layer_ensembling_df[
             self.layer_ensembling_df["ensembling"] == ensembling.value
         ]
@@ -449,6 +464,9 @@ class SweepVisualization:
             margins=True,
             margins_name="Mean",
         )
+        key = f"layer-{ensembling.value}"
+        val = pivot_table["Mean"]["Mean"]
+        summary_dict[key] = val
 
         if display:
             console = Console()
@@ -496,51 +514,67 @@ class SweepVisualization:
         Returns:
             The generated score table as a pandas DataFrame.
         """
-        df = self.df[self.df["ensembling"] == ensembling.value]
+        df = self.df[
+            (self.df["ensembling"] == ensembling.value)
+            & (self.df["eval_dataset"] == self.df["train_dataset"])
+        ]
 
-        # For each model, we use the layer whose mean AUROC is the highest
-        best_layers, model_dfs = [], []
+        best_layers, model_last_dfs, model_p75_dfs = [], [], []
+        # 75p layer is, per model, the layer that's 75th of the way through
+
         for _, model_df in df.groupby("model_name"):
-            best_layer = model_df.groupby("layer").auroc_estimate.mean().argmax()
+            p75_layer = round(int(model_df.layer.max()) * 3 / 4)
+            last_layer = int(model_df.layer.max())
 
-            best_layers.append(best_layer)
-            model_dfs.append(model_df[model_df["layer"] == best_layer])
+            best_layers.append(last_layer)
+            model_last_dfs.append(model_df[model_df["layer"] == last_layer])
+            model_p75_dfs.append(model_df[model_df["layer"] == p75_layer])
 
-        pivot_table = pd.concat(model_dfs).pivot_table(
-            index="eval_dataset",
-            columns="model_name",
-            values=score_type,
-            margins=True,
-            margins_name="Mean",
-        )
-        if display:
-            console = Console()
-            table = Table(
-                show_header=True, header_style="bold magenta", show_lines=True
+        d = {
+            "model_last": model_last_dfs,
+            "model_p75": model_p75_dfs,
+        }
+
+        for name, model_dfs in d.items():
+            pivot_table = pd.concat(model_dfs).pivot_table(
+                index="eval_dataset",
+                columns="model_name",
+                values=score_type,
+                margins=True,
+                margins_name="Mean",
             )
+            key = f"{name}-{ensembling.value}"
+            val = pivot_table["Mean"]["Mean"]
+            summary_dict[key] = val
 
-            table.add_column("Dataset")
-            for column in pivot_table.columns:
-                table.add_column(str(column))
+            if display:
+                console = Console()
+                table = Table(
+                    show_header=True, header_style="bold magenta", show_lines=True
+                )
 
-            for index, row in pivot_table.iterrows():
-                table.add_row(str(index), *(f"{val:.3f}" for val in row))
+                table.add_column("Dataset")
+                for column in pivot_table.columns:
+                    table.add_column(str(column))
 
-            table.add_row("Best Layer", *map(str, best_layers), style="bold")
-            console.print(
-                f"[yellow bold]Prompt Ensembling by Layer[/yellow "
-                f"bold]\nEnsembling "
-                f"Type: ["
-                f"yellow"
-                f"]{ensembling.value}["
-                f"/yellow]"
-            )
-            console.print(table)
+                for index, row in pivot_table.iterrows():
+                    table.add_row(str(index), *(f"{val:.3f}" for val in row))
 
-        if write:
-            filename = f"{score_type}_promptensemblingonly_{ensembling.value}.csv"
-            print(f"Writing to: {filename}")
-            pivot_table.to_csv(self.path / filename)
+                table.add_row("Best Layer", *map(str, best_layers), style="bold")
+                console.print(
+                    f"[yellow bold]Prompt Ensembling by {name}[/yellow "
+                    f"bold]\nEnsembling "
+                    f"Type: ["
+                    f"yellow"
+                    f"]{ensembling.value}["
+                    f"/yellow]"
+                )
+                console.print(table)
+
+            if write:
+                filename = f"{score_type}_promptensemblingonly_{ensembling.value}.csv"
+                print(f"Writing to: {filename}\n")
+                pivot_table.to_csv(self.path / filename)
         return pivot_table
 
 
@@ -551,3 +585,14 @@ def visualize_sweep(sweep_path: Path):
         sweep_path: The path to the sweep data directory.
     """
     SweepVisualization.collect(sweep_path).render_and_save()
+    summary_dict_with_name = dict(sweep=sweep_path.name, **summary_dict)
+    rich.print(summary_dict_with_name)
+    # write to csv
+    import csv
+
+    with open("acc_summary.csv", "a") as f:
+        w = csv.DictWriter(f, summary_dict_with_name.keys())
+        # add header with first run
+        if f.tell() == 0:
+            w.writeheader()
+        w.writerow(summary_dict_with_name)
