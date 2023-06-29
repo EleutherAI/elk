@@ -397,11 +397,10 @@ class SweepVisualization:
             # model.render_and_save(self)
             pass
         for ensembling in PromptEnsembling.all():
-            self.render_table(
-                ensembling=ensembling, score_type="acc_estimate", write=True
-            )
+            score_type = "auroc_estimate"
+            self.render_table(ensembling=ensembling, score_type=score_type, write=True)
             self.render_layer_ensembling_table(
-                ensembling=ensembling, score_type="acc_estimate", write=True
+                ensembling=ensembling, score_type=score_type, write=True
             )
         self.render_multiplots(write=True)
 
@@ -586,13 +585,18 @@ def visualize_sweep(sweep_path: Path):
     """
     SweepVisualization.collect(sweep_path).render_and_save()
     summary_dict_with_name = dict(sweep=sweep_path.name, **summary_dict)
+    summary_dict_with_name_filtered = {
+        k: v for k, v in summary_dict_with_name.items() if "partial" not in k
+    }
+    print(summary_dict_with_name.keys())
+    print(summary_dict_with_name_filtered.keys())
     rich.print(summary_dict_with_name)
     # write to csv
     import csv
 
-    with open("acc_summary.csv", "a") as f:
-        w = csv.DictWriter(f, summary_dict_with_name.keys())
+    with open("auroc_nopartial_summary.csv", "a") as f:
+        w = csv.DictWriter(f, summary_dict_with_name_filtered.keys())
         # add header with first run
         if f.tell() == 0:
             w.writeheader()
-        w.writerow(summary_dict_with_name)
+        w.writerow(summary_dict_with_name_filtered)
