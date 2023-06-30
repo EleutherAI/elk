@@ -18,6 +18,8 @@ from simple_parsing.helpers.serialization import save
 from torch import Tensor
 from tqdm import tqdm
 
+import elk
+
 from .debug_logging import save_debug_log
 from .extraction import Extract, extract
 from .extraction.dataset_name import DatasetDictWithName
@@ -35,7 +37,9 @@ from .utils import (
 def fetch_git_hash() -> str:
     try:
         return (
-            subprocess.check_output(["git", "rev-parse", "HEAD"])
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=Path(elk.__file__).parent.parent
+            )
             .decode("ascii")
             .strip()
         )
