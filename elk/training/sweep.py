@@ -1,4 +1,4 @@
-from dataclasses import InitVar, dataclass, replace, field
+from dataclasses import InitVar, dataclass, field, replace
 
 import numpy as np
 import torch
