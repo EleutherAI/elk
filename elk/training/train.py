@@ -36,7 +36,7 @@ class Elicit(Run):
     on the training data. "cv" means to use cross-validation."""
 
     @staticmethod
-    def Default():
+    def default():
         return Elicit(
             data=Extract(
                 model="<placeholder>",

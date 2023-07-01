@@ -51,7 +51,7 @@ class Sweep:
     name: str | None = None
 
     # A bit of a hack to add all the command line arguments from Elicit
-    run_template: Elicit = field(default_factory=Elicit.Default)
+    run_template: Elicit = field(default_factory=Elicit.default)
 
     def __post_init__(self, add_pooled: bool):
         if not self.datasets:
