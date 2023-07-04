@@ -162,6 +162,7 @@ class Sweep:
                                     continue
 
                                 assert run.out_dir is not None
+                                # TODO we should fix this so that this isn't needed
                                 eval = Eval(
                                     data=replace(
                                         run.data, model=model, datasets=(eval_dataset,)
@@ -173,7 +174,9 @@ class Sweep:
                                     skip_supervised=run.supervised == "none",
                                     prompt_indices=run.prompt_indices,
                                     concatenated_layer_offset=run.concatenated_layer_offset,
-                                    datasets=run.datasets,
+                                    # datasets=run.datasets,
+                                    # this isn't needed because it's
+                                    # immediately overwritten
                                     debug=run.debug,
                                     disable_cache=run.disable_cache,
                                 )
