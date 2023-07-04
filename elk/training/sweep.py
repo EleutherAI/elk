@@ -171,7 +171,13 @@ class Sweep:
                                     num_gpus=run.num_gpus,
                                     min_gpu_mem=run.min_gpu_mem,
                                     skip_supervised=run.supervised == "none",
+                                    prompt_indices=run.prompt_indices,
+                                    concatenated_layer_offset=run.concatenated_layer_offset,
+                                    datasets=run.datasets,
+                                    debug=run.debug,
+                                    disable_cache=run.disable_cache,
                                 )
+
                                 eval.execute(highlight_color="green")
 
         if self.visualize:
