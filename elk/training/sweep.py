@@ -165,6 +165,7 @@ class Sweep:
                                     continue
 
                                 assert run.out_dir is not None
+                                # TODO we should fix this so that this isn't needed
                                 eval = Eval(
                                     data=replace(
                                         run.data, model=model, datasets=(eval_dataset,)
@@ -174,7 +175,15 @@ class Sweep:
                                     num_gpus=run.num_gpus,
                                     min_gpu_mem=run.min_gpu_mem,
                                     skip_supervised=run.supervised == "none",
+                                    prompt_indices=run.prompt_indices,
+                                    concatenated_layer_offset=run.concatenated_layer_offset,
+                                    # datasets=run.datasets,
+                                    # this isn't needed because it's
+                                    # immediately overwritten
+                                    debug=run.debug,
+                                    disable_cache=run.disable_cache,
                                 )
+
                                 eval.execute(highlight_color="green")
 
         if self.visualize:
