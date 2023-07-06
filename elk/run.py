@@ -34,7 +34,7 @@ from .utils import (
 )
 
 
-def fetch_git_hash() -> str:
+def fetch_git_hash() -> str | None:
     try:
         return (
             subprocess.check_output(
@@ -43,9 +43,8 @@ def fetch_git_hash() -> str:
             .decode("ascii")
             .strip()
         )
-    except Exception as e:
-        print(f"Could not get git revision hash, stack trace: {e}")
-        return "ERROR_HASH_NOT_FOUND"
+    except NotADirectoryError:
+        return
 
 
 @dataclass
@@ -103,20 +102,7 @@ class Run(ABC, Serializable):
         # properly without this flag enabled.
         save(self, self.out_dir / "cfg.yaml", save_dc_types=True)
 
-        path = self.out_dir / "metadata.yaml"
-
-        with open(path, "w") as meta_f:
-            dataset_fingerprints = {
-                ds_name: {split: ds[split]._fingerprint for split in ds.keys()}
-                for ds_name, ds in self.datasets
-            }
-            yaml.dump(
-                {
-                    "git_hash": fetch_git_hash(),
-                    "datasets": dataset_fingerprints,
-                },
-                meta_f,
-            )
+        self.write_metadata()
 
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
@@ -212,3 +198,21 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
+
+    def write_metadata(self):
+        """Write metadata about the run to a yaml file."""
+        with open(self.out_dir / "metadata.yaml", "w") as meta_f:
+            dataset_fingerprints = {
+                ds_name: {split: ds[split]._fingerprint for split in ds.keys()}
+                for ds_name, ds in self.datasets
+            }
+            metadata = {
+                "datasets": dataset_fingerprints,
+            }
+            git_hash = fetch_git_hash()
+            if git_hash is not None:
+                metadata["git_hash"] = git_hash
+            yaml.dump(
+                metadata,
+                meta_f,
+            )
