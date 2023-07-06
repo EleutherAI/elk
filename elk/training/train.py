@@ -17,6 +17,7 @@ from ..training.supervised import train_supervised
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsReporter, CcsReporterConfig
 from .eigen_reporter import EigenReporter, EigenReporterConfig
+from .lda_reporter import LdaReporter, LdaReporterConfig
 from .reporter import ReporterConfig
 
 
@@ -25,7 +26,12 @@ class Elicit(Run):
     """Full specification of a reporter training run."""
 
     net: ReporterConfig = subgroups(
-        {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
+        {
+            "ccs": CcsReporterConfig,
+            "eigen": EigenReporterConfig,
+            "lda": LdaReporterConfig,
+        },
+        default="eigen",
     )
     """Config for building the reporter network."""
 
@@ -74,20 +80,14 @@ class Elicit(Run):
         if not all(other_h.shape[-2] == k for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same number of classes")
 
+        train_loss = None
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
+
         if isinstance(self.net, CcsReporterConfig):
             assert len(train_dict) == 1, "CCS only supports single-task training"
 
             reporter = CcsReporter(self.net, d, device=device, num_variants=v)
             train_loss = reporter.fit(first_train_h)
-
-            (val_h, val_gt, _) = next(iter(val_dict.values()))
-            x0, x1 = first_train_h.unbind(2)
-            val_x0, val_x1 = val_h.unbind(2)
-            pseudo_auroc = reporter.check_separability(
-                train_pair=(x0, x1),
-                val_pair=(val_x0, val_x1),
-            )
 
             (_, v, k, _) = first_train_h.shape
             reporter.platt_scale(
@@ -112,12 +112,16 @@ class Elicit(Run):
                 )
                 reporter.update(train_h)
 
-            pseudo_auroc = None
             train_loss = reporter.fit_streaming()
             reporter.platt_scale(
                 torch.cat(label_list),
                 torch.cat(hidden_list),
             )
+        elif isinstance(self.net, LdaReporterConfig):
+            reporter = LdaReporter(
+                self.net, d, num_classes=k, num_variants=v, device=device
+            )
+            reporter.fit(first_train_h, train_gt)
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.net)}")
 
@@ -150,7 +154,6 @@ class Elicit(Run):
                         **meta,
                         "ensembling": mode,
                         **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                        "pseudo_auroc": pseudo_auroc,
                         "train_loss": train_loss,
                     }
                 )
