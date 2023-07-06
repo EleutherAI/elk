@@ -42,7 +42,7 @@ class EigenFitterConfig(FitterConfig):
 
 
 class EigenFitter:
-    """A linear reporter whose weights are computed via eigendecomposition.
+    """Fit a linear reporter with eigendecomposition.
 
     Args:
         cfg: The reporter configuration.

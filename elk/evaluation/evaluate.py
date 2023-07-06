@@ -40,7 +40,6 @@ class Eval(Run):
 
         reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
         reporter = torch.load(reporter_path, map_location=device)
-        reporter.eval()
 
         row_bufs = defaultdict(list)
         for ds_name, (val_h, val_gt, _) in val_output.items():
