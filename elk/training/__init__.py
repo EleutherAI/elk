@@ -1,14 +1,15 @@
-from .ccs_reporter import CcsReporter, CcsReporterConfig
+from .ccs_reporter import CcsConfig, CcsReporter
 from .classifier import Classifier
-from .eigen_reporter import EigenReporter, EigenReporterConfig
-from .reporter import Reporter, ReporterConfig
+from .common import FitterConfig
+from .eigen_reporter import EigenFitter, EigenFitterConfig
+from .platt_scaling import PlattMixin
 
 __all__ = [
     "CcsReporter",
-    "CcsReporterConfig",
+    "CcsConfig",
     "Classifier",
-    "EigenReporter",
-    "EigenReporterConfig",
-    "Reporter",
-    "ReporterConfig",
+    "EigenFitter",
+    "EigenFitterConfig",
+    "FitterConfig",
+    "PlattMixin",
 ]
