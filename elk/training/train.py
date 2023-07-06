@@ -81,7 +81,6 @@ class Elicit(Run):
             reporter = CcsReporter(self.net, d, device=device, num_variants=v)
             train_loss = reporter.fit(first_train_h)
 
-            (val_h, val_gt, _) = next(iter(val_dict.values()))
             (_, v, k, _) = first_train_h.shape
             reporter.platt_scale(
                 to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
