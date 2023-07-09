@@ -41,7 +41,19 @@ class EvalResult:
         return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
 
 
-def calc_auroc(y_logits, y_true, ensembling, num_classes):
+def calc_auroc(y_logits: Tensor, y_true: Tensor, ensembling: PromptEnsembling, num_classes: int) -> RocAucResult:
+    """
+    Calculate the AUROC
+
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+        ensembling: The ensembling mode.
+        num_classes: The number of classes.
+
+    Returns:
+        RocAucResult: A dictionary containing the AUROC and confidence interval.
+    """
     if ensembling == PromptEnsembling.NONE:
         auroc = roc_auc_ci(
             to_one_hot(y_true, num_classes).long().flatten(1), y_logits.flatten(1)
@@ -134,7 +146,7 @@ def evaluate_preds(
     return calc_eval_results(y_true, y_logits, ensembling, num_classes)
 
 
-def calc_eval_results(y_true, y_logits, ensembling, num_classes) -> EvalResult:
+def calc_eval_results(y_true: Tensor, y_logits: Tensor, ensembling: PromptEnsembling, num_classes: int) -> EvalResult:
     """
     Calculate the evaluation results
 
