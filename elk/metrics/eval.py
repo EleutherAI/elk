@@ -41,31 +41,31 @@ class EvalResult:
         return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
 
 
-def calc_auroc(y_logits: Tensor, y_true: Tensor, ensembling: PromptEnsembling, num_classes: int) -> RocAucResult:
+def calc_auroc(y_logits: Tensor, y_true: Tensor, prompt_ensembling: PromptEnsembling, num_classes: int) -> RocAucResult:
     """
     Calculate the AUROC
 
     Args:
         y_true: Ground truth tensor of shape (n,).
         y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
-        ensembling: The ensembling mode.
+        prompt_ensembling: The prompt_ensembling mode.
         num_classes: The number of classes.
 
     Returns:
         RocAucResult: A dictionary containing the AUROC and confidence interval.
     """
-    if ensembling == PromptEnsembling.NONE:
+    if prompt_ensembling == PromptEnsembling.NONE:
         auroc = roc_auc_ci(
             to_one_hot(y_true, num_classes).long().flatten(1), y_logits.flatten(1)
         )
-    elif ensembling in (PromptEnsembling.PARTIAL, PromptEnsembling.FULL):
+    elif prompt_ensembling in (PromptEnsembling.PARTIAL, PromptEnsembling.FULL):
         # Pool together the negative and positive class logits
         if num_classes == 2:
             auroc = roc_auc_ci(y_true, y_logits[..., 1] - y_logits[..., 0])
         else:
             auroc = roc_auc_ci(to_one_hot(y_true, num_classes).long(), y_logits)
     else:
-        raise ValueError(f"Unknown mode: {ensembling}")
+        raise ValueError(f"Unknown mode: {prompt_ensembling}")
 
     return auroc
 
@@ -123,7 +123,7 @@ def calc_accuracies(y_logits, y_true) -> AccuracyResult:
 def evaluate_preds(
     y_true: Tensor,
     y_logits: Tensor,
-    ensembling: PromptEnsembling = PromptEnsembling.NONE,
+    prompt_ensembling: PromptEnsembling = PromptEnsembling.NONE,
 ) -> EvalResult:
     """
     Evaluate the performance of a classification model.
@@ -131,7 +131,7 @@ def evaluate_preds(
     Args:
         y_true: Ground truth tensor of shape (n,).
         y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
-        ensembling: The ensembling mode.
+        prompt_ensembling: The prompt_ensembling mode.
 
     Returns:
         dict: A dictionary containing the accuracy, AUROC, and ECE.
@@ -139,21 +139,21 @@ def evaluate_preds(
     (n, num_variants, num_classes) = y_logits.shape
     assert y_true.shape == (n,)
 
-    if ensembling == PromptEnsembling.FULL:
+    if prompt_ensembling == PromptEnsembling.FULL:
         y_logits = y_logits.mean(dim=1)
     else:
         y_true = repeat(y_true, "n -> n v", v=num_variants)
-    return calc_eval_results(y_true, y_logits, ensembling, num_classes)
+    return calc_eval_results(y_true, y_logits, prompt_ensembling, num_classes)
 
 
-def calc_eval_results(y_true: Tensor, y_logits: Tensor, ensembling: PromptEnsembling, num_classes: int) -> EvalResult:
+def calc_eval_results(y_true: Tensor, y_logits: Tensor, prompt_ensembling: PromptEnsembling, num_classes: int) -> EvalResult:
     """
     Calculate the evaluation results
 
     Args:
         y_true: Ground truth tensor of shape (n,).
         y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
-        ensembling: The ensembling mode.
+        prompt_ensembling: The prompt_ensembling mode.
 
     Returns:
         EvalResult: The result of evaluating a classifier containing the accuracy,
@@ -174,20 +174,20 @@ def calc_eval_results(y_true: Tensor, y_logits: Tensor, ensembling: PromptEnsemb
     )
 
     auroc = calc_auroc(
-        y_logits=y_logits, y_true=y_true, ensembling=ensembling, num_classes=num_classes
+        y_logits=y_logits, y_true=y_true, prompt_ensembling=prompt_ensembling, num_classes=num_classes
     )
 
     return EvalResult(acc, cal_acc, cal_err, auroc)
 
 
-def layer_ensembling(layer_outputs: list, ensembling: PromptEnsembling) -> EvalResult:
+def layer_ensembling(layer_outputs: list, prompt_ensembling: PromptEnsembling) -> EvalResult:
     """
-    Return EvalResult after ensembling the probe output of the middle to last layers
+    Return EvalResult after prompt_ensembling the probe output of the middle to last layers
 
     Args:
         layer_outputs: A list of dictionaries containing the ground truth and
         predicted class tensor of shape (n, num_variants, num_classes).
-        ensembling: The ensembling mode.
+        prompt_ensembling: The prompt_ensembling mode.
 
     Returns:
         EvalResult: The result of evaluating a classifier containing the accuracy,
@@ -199,19 +199,19 @@ def layer_ensembling(layer_outputs: list, ensembling: PromptEnsembling) -> EvalR
 
     for layer_output in layer_outputs:
         y_logits = layer_output[0]["val_credences"].to(device)
-        y_logits_means.append(y_logits.mean(dim=1))  # full ensembling
+        y_logits_means.append(y_logits.mean(dim=1))  # full prompt_ensembling
 
     num_classes = layer_outputs[0][0]["val_credences"].shape[2]
     # get logits and ground_truth from middle to last layer
     middle_index = len(layer_outputs) // 2
     y_logits_stacked = torch.stack(y_logits_means[middle_index:])
-    # layer ensembling of the stacked logits
+    # layer prompt_ensembling of the stacked logits
     y_logits_stacked_mean = torch.mean(y_logits_stacked, dim=0)
 
     return calc_eval_results(
         y_true=y_true,
         y_logits=y_logits_stacked_mean,
-        ensembling=ensembling,
+        prompt_ensembling=prompt_ensembling,
         num_classes=num_classes,
     )
 
