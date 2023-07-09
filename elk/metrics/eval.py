@@ -41,7 +41,9 @@ class EvalResult:
         return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
 
 
-def calc_auroc(y_logits: Tensor, y_true: Tensor, ensembling: PromptEnsembling, num_classes: int) -> RocAucResult:
+def calc_auroc(
+    y_logits: Tensor, y_true: Tensor, ensembling: PromptEnsembling, num_classes: int
+) -> RocAucResult:
     """
     Calculate the AUROC
 
@@ -146,7 +148,9 @@ def evaluate_preds(
     return calc_eval_results(y_true, y_logits, ensembling, num_classes)
 
 
-def calc_eval_results(y_true: Tensor, y_logits: Tensor, ensembling: PromptEnsembling, num_classes: int) -> EvalResult:
+def calc_eval_results(
+    y_true: Tensor, y_logits: Tensor, ensembling: PromptEnsembling, num_classes: int
+) -> EvalResult:
     """
     Calculate the evaluation results
 
