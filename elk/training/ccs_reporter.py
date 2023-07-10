@@ -3,73 +3,61 @@
 import math
 from copy import deepcopy
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Literal, Optional, cast
 
 import torch
 import torch.nn as nn
+from concept_erasure import LeaceFitter
 from torch import Tensor
 
-from ..metrics import roc_auc
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
-from .classifier import Classifier
-from .concept_eraser import ConceptEraser
+from .common import FitterConfig
 from .losses import LOSSES
-from .reporter import Reporter, ReporterConfig
+from .platt_scaling import PlattMixin
 
 
 @dataclass
-class CcsReporterConfig(ReporterConfig):
-    """
-    Args:
-        activation: The activation function to use. Defaults to GELU.
-        bias: Whether to use a bias term in the linear layers. Defaults to True.
-        hidden_size: The number of hidden units in the MLP. Defaults to None.
-            By default, use an MLP expansion ratio of 4/3. This ratio is used by
-            Tucker et al. (2022) <https://arxiv.org/abs/2204.09722> in their 3-layer
-            MLP probes. We could also use a ratio of 4, imitating transformer FFNs,
-            but this seems to lead to excessively large MLPs when num_layers > 2.
-        init: The initialization scheme to use. Defaults to "zero".
-        loss: The loss function to use. list of strings, each of the form
-            "coef*name", where coef is a float and name is one of the keys in
-            `elk.training.losses.LOSSES`.
-            Example: --loss 1.0*consistency_squared 0.5*prompt_var
-            corresponds to the loss function 1.0*consistency_squared + 0.5*prompt_var.
-            Defaults to the loss "ccs_squared_loss".
-        normalization: The kind of normalization to apply to the hidden states.
-        num_layers: The number of layers in the MLP. Defaults to 1.
-        pre_ln: Whether to include a LayerNorm module before the first linear
-            layer. Defaults to False.
-        supervised_weight: The weight of the supervised loss. Defaults to 0.0.
-
-        lr: The learning rate to use. Ignored when `optimizer` is `"lbfgs"`.
-            Defaults to 1e-2.
-        num_epochs: The number of epochs to train for. Defaults to 1000.
-        num_tries: The number of times to try training the reporter. Defaults to 10.
-        optimizer: The optimizer to use. Defaults to "adam".
-        weight_decay: The weight decay or L2 penalty to use. Defaults to 0.01.
-    """
-
+class CcsConfig(FitterConfig):
     activation: Literal["gelu", "relu", "swish"] = "gelu"
+    """The activation function to use."""
     bias: bool = True
+    """Whether to use a bias term in the linear layers."""
     hidden_size: Optional[int] = None
+    """
+    The number of hidden units in the MLP. Defaults to None. By default, use an MLP
+    expansion ratio of 4/3. This ratio is used by Tucker et al. (2022)
+    <https://arxiv.org/abs/2204.09722> in their 3-layer MLP probes. We could also use
+    a ratio of 4, imitating transformer FFNs, but this seems to lead to excessively
+    large MLPs when num_layers > 2.
+    """
     init: Literal["default", "pca", "spherical", "zero"] = "default"
+    """The initialization scheme to use."""
     loss: list[str] = field(default_factory=lambda: ["ccs"])
+    """
+    The loss function to use. list of strings, each of the form "coef*name", where coef
+    is a float and name is one of the keys in `elk.training.losses.LOSSES`.
+    Example: `--loss 1.0*consistency_squared 0.5*prompt_var` corresponds to the loss
+    function 1.0*consistency_squared + 0.5*prompt_var.
+    """
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
     num_layers: int = 1
+    """The number of layers in the MLP."""
     pre_ln: bool = False
+    """Whether to include a LayerNorm module before the first linear layer."""
     supervised_weight: float = 0.0
+    """The weight of the supervised loss."""
 
     lr: float = 1e-2
+    """The learning rate to use. Ignored when `optimizer` is `"lbfgs"`."""
     num_epochs: int = 1000
+    """The number of epochs to train for."""
     num_tries: int = 10
+    """The number of times to try training the reporter."""
     optimizer: Literal["adam", "lbfgs"] = "lbfgs"
+    """The optimizer to use."""
     weight_decay: float = 0.01
-
-    @classmethod
-    def reporter_class(cls) -> type[Reporter]:
-        return CcsReporter
+    """The weight decay or L2 penalty to use."""
 
     def __post_init__(self):
         self.loss_dict = parse_loss(self.loss)
@@ -78,7 +66,7 @@ class CcsReporterConfig(ReporterConfig):
         self.loss = [f"{coef}*{name}" for name, coef in self.loss_dict.items()]
 
 
-class CcsReporter(Reporter):
+class CcsReporter(nn.Module, PlattMixin):
     """CCS reporter network.
 
     Args:
@@ -86,11 +74,11 @@ class CcsReporter(Reporter):
         cfg: The reporter configuration.
     """
 
-    config: CcsReporterConfig
+    config: CcsConfig
 
     def __init__(
         self,
-        cfg: CcsReporterConfig,
+        cfg: CcsConfig,
         in_features: int,
         *,
         device: str | torch.device | None = None,
@@ -108,12 +96,7 @@ class CcsReporter(Reporter):
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
-        self.norm = ConceptEraser(
-            in_features,
-            2 * num_variants,
-            device=device,
-            dtype=dtype,
-        )
+        self.norm = None
         self.probe = nn.Sequential(
             nn.Linear(
                 in_features,
@@ -141,60 +124,6 @@ class CcsReporter(Reporter):
                     device=device,
                 )
             )
-
-    @torch.no_grad()
-    def check_separability(
-        self,
-        train_pair: tuple[Tensor, Tensor],
-        val_pair: tuple[Tensor, Tensor],
-    ) -> float:
-        """Measure how linearly separable the pseudo-labels are for a contrast pair.
-
-        Args:
-            train_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
-                contrastive representations. Used for training the classifier.
-            val_pair: A tuple of tensors, (x0, x1), where x0 and x1 are the
-                contrastive representations. Used for evaluating the classifier.
-
-        Returns:
-            The AUROC of a linear classifier fit on the pseudo-labels.
-        """
-        x0, x1 = map(self.norm, train_pair)
-        val_x0, val_x1 = map(self.norm, val_pair)
-
-        pseudo_clf = Classifier(x0.shape[-1], device=x0.device)  # type: ignore
-        pseudo_train = torch.cat(
-            [
-                torch.zeros_like(x0[..., 0]),
-                torch.ones_like(x1[..., 0]),
-            ]
-        ).flatten()
-        pseudo_val = torch.cat(
-            [
-                torch.zeros_like(val_x0[..., 0]),
-                torch.ones_like(val_x1[..., 0]),
-            ]
-        ).flatten()
-
-        pseudo_clf.fit(
-            # b v d -> (b v) d
-            torch.cat([x0, x1]).flatten(0, 1),
-            pseudo_train,
-            # Use the same weight decay as the reporter
-            l2_penalty=self.config.weight_decay,
-        )
-        pseudo_preds = pseudo_clf(
-            # b v d -> (b v) d
-            torch.cat([val_x0, val_x1]).flatten(0, 1)
-        ).squeeze(-1)
-
-        # Edge case where the classifier learns to set its weights to zero
-        # Technically AUROC is not defined here but we "fill in" the value of 0.5
-        # since this is the limit as the weights approach zero
-        if not pseudo_preds.any():
-            return 0.5
-        else:
-            return roc_auc(pseudo_val, pseudo_preds).item()
 
     def reset_parameters(self):
         """Reset the parameters of the probe.
@@ -231,6 +160,8 @@ class CcsReporter(Reporter):
 
     def forward(self, x: Tensor) -> Tensor:
         """Return the credence assigned to the hidden state `x`."""
+        assert self.norm is not None, "Must call fit() before forward()"
+
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
@@ -259,19 +190,22 @@ class CcsReporter(Reporter):
         x_neg, x_pos = hiddens.unbind(2)
 
         # One-hot indicators for each prompt template
-        n, v, _ = x_neg.shape
+        n, v, d = x_neg.shape
         prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
 
-        self.norm.update(
+        fitter = LeaceFitter(d, 2 * v, dtype=x_neg.dtype, device=x_neg.device)
+        fitter.update(
             x=x_neg,
             # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
+            z=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
         )
-        self.norm.update(
+        fitter.update(
             x=x_pos,
             # Independent indicator for each (template, pseudo-label) pair
-            y=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
+            z=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
         )
+        self.norm = fitter.eraser
+
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
         # Record the best acc, loss, and params found so far
@@ -355,9 +289,3 @@ class CcsReporter(Reporter):
 
         optimizer.step(closure)
         return float(loss)
-
-    def save(self, path: Path | str) -> None:
-        """Save the reporter to a file."""
-        state = {k: v.cpu() for k, v in self.state_dict().items()}
-        state.update(in_features=self.in_features, num_variants=self.num_variants)
-        torch.save(state, path)
