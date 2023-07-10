@@ -18,7 +18,7 @@ from ..utils.typing import assert_type
 from .ccs_reporter import CcsConfig, CcsReporter
 from .common import FitterConfig
 from .eigen_reporter import EigenFitter, EigenFitterConfig
-from .lda_reporter import LdaReporter, LdaReporterConfig
+from .lda import LdaConfig, LdaFitter
 
 
 @dataclass
@@ -29,7 +29,7 @@ class Elicit(Run):
         {
             "ccs": CcsConfig,
             "eigen": EigenFitterConfig,
-            "lda": LdaReporterConfig,
+            "lda": LdaConfig,
         },
         default="eigen",
     )
@@ -118,11 +118,8 @@ class Elicit(Run):
                 torch.cat(label_list),
                 torch.cat(hidden_list),
             )
-        elif isinstance(self.net, LdaReporterConfig):
-            reporter = LdaReporter(
-                self.net, d, num_classes=k, num_variants=v, device=device
-            )
-            reporter.fit(first_train_h, train_gt)
+        elif isinstance(self.net, LdaConfig):
+            reporter = LdaFitter(self.net).fit(first_train_h, train_gt)
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.net)}")
 
