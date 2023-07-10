@@ -33,7 +33,7 @@ from .utils import (
 
 @dataclass
 class Run(ABC, Serializable):
-    data: Extract
+    extract: Extract
     out_dir: Path | None = None
     """Directory to save results to. If None, a directory will be created
     automatically."""
@@ -67,14 +67,14 @@ class Run(ABC, Serializable):
                 min_gpu_mem=self.min_gpu_mem,
                 split_type=split_type,
             )
-            for cfg in self.data.explode()
+            for cfg in self.extract.explode()
         ]
 
         if self.out_dir is None:
             # Save in a memorably-named directory inside of
             # ELK_REPORTER_DIR/<model_name>/<dataset_name>
-            ds_name = "+".join(self.data.datasets)
-            root = elk_reporter_dir() / self.data.model / ds_name
+            ds_name = "+".join(self.extract.datasets)
+            root = elk_reporter_dir() / self.extract.model / ds_name
 
             self.out_dir = memorably_named_dir(root)
 

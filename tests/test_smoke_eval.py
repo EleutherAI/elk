@@ -26,7 +26,7 @@ def setup_elicit(
     Returns the elicit run configuration.
     """
     elicit = Elicit(
-        data=Extract(
+        extract=Extract(
             model=model_path,
             datasets=(dataset_name,),
             max_examples=(10, 10),
@@ -54,7 +54,7 @@ def eval_run(elicit: Elicit, transfer_datasets: tuple[str, ...] = ()) -> float:
     Returns a reference time (in seconds) for file modification checking.
     """
     tmp_path = elicit.out_dir
-    extract = elicit.data
+    extract = elicit.extract
     assert tmp_path is not None
 
     # record elicit modification time as reference.
@@ -64,7 +64,7 @@ def eval_run(elicit: Elicit, transfer_datasets: tuple[str, ...] = ()) -> float:
         # update datasets to a different dataset
         extract.datasets = transfer_datasets
 
-    eval = Eval(data=extract, source=tmp_path)
+    eval = Eval(extract=extract, source=tmp_path)
     eval.execute()
     return start_time_sec
 

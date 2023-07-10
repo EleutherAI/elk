@@ -51,7 +51,7 @@ class Classifier(torch.nn.Module):
         self.linear = torch.nn.Linear(
             input_dim, num_classes if num_classes > 2 else 1, device=device, dtype=dtype
         )
-        self.linear.bias.data.zero_()
+        self.linear.bias.extract.zero_()
         self.linear.weight.data.zero_()
 
     def forward(self, x: Tensor) -> Tensor:

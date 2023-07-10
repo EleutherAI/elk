@@ -23,7 +23,7 @@ class Eval(Run):
         # Set our output directory before super().execute() does
         if not self.out_dir:
             root = elk_reporter_dir() / self.source
-            self.out_dir = root / "transfer" / "+".join(self.data.datasets)
+            self.out_dir = root / "transfer" / "+".join(self.extract.datasets)
 
     def execute(self, highlight_color: Color = "cyan"):
         return super().execute(highlight_color, split_type="val")

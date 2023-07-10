@@ -53,7 +53,7 @@ class Sweep:
 
     # A bit of a hack to add all the command line arguments from Elicit
     run_template: Elicit = Elicit(
-        data=Extract(
+        extract=Extract(
             model="<placeholder>",
             datasets=("<placeholder>",),
         )
@@ -132,7 +132,9 @@ class Sweep:
                         out_dir = sweep_dir / model / dataset_str
 
                         data = replace(
-                            self.run_template.data, model=model, datasets=train_datasets
+                            self.run_template.extract,
+                            model=model,
+                            datasets=train_datasets,
                         )
                         run = replace(self.run_template, data=data, out_dir=out_dir)
                         if var_weight is not None and neg_cov_weight is not None:
@@ -164,8 +166,10 @@ class Sweep:
                                 assert run.out_dir is not None
                                 # TODO we should fix this so that this isn't needed
                                 eval = Eval(
-                                    data=replace(
-                                        run.data, model=model, datasets=(eval_dataset,)
+                                    extract=replace(
+                                        run.extract,
+                                        model=model,
+                                        datasets=(eval_dataset,),
                                     ),
                                     source=run.out_dir,
                                     out_dir=run.out_dir / "transfer" / eval_dataset,

@@ -28,7 +28,7 @@ def test_classifier_roughly_same_sklearn():
     )
     # check that the weights are roughly the same
     sklearn_coef = torch.from_numpy(model.coef_)
-    torch_coef = classifier.linear.weight.data
+    torch_coef = classifier.linear.weight.extract
     torch.testing.assert_close(sklearn_coef, torch_coef, atol=1e-2, rtol=1e-2)
 
     # check that on a new sample, the predictions are roughly the same
