@@ -5,18 +5,28 @@ import torch
 from torch import Tensor
 
 
-@torch.jit.script
-def batch_cov(x: Tensor) -> Tensor:
-    """Compute a batch of covariance matrices.
+def cov(
+    x: Tensor, y: Tensor | None = None, dim: int | None = None, unbiased: bool = False
+) -> Tensor:
+    """Compute the (cross-)covariance matrix for `x` (and `y`).
 
     Args:
-        x: A tensor of shape [..., n, d].
-
-    Returns:
-        A tensor of shape [..., d, d].
+        x: A tensor of shape [*, d].
+        y: An optional tensor of shape [*, k]. If not provided, defaults to `x`.
+        dim: The dimension to reduce over. If not provided, defaults to all but the
+            last dimension.
+        unbiased: Whether to use Bessel's correction.
     """
-    x_ = x - x.mean(dim=-2, keepdim=True)
-    return x_.mT @ x_ / x_.shape[-2]
+    if y is None:
+        y = x
+    if dim is None:
+        dim = 0
+        x = x.flatten(0, -2)
+        y = y.flatten(0, -2)
+
+    x = x - x.mean(dim)
+    y = y - y.mean(dim)
+    return x.T @ y / (x.shape[dim] - unbiased)
 
 
 @torch.jit.script

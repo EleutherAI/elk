@@ -8,6 +8,7 @@ from concept_erasure import optimal_linear_shrinkage
 from einops import rearrange
 from torch import Tensor
 
+from ..utils.math_util import cov, cov_mean_fused
 from .common import FitterConfig, Reporter
 
 
@@ -15,7 +16,18 @@ from .common import FitterConfig, Reporter
 class LdaConfig(FitterConfig):
     """Configuration for an LdaFitter."""
 
+    anchor_gamma: float = 1.0
+    """Gamma parameter for anchor regression."""
+
+    invariance_weight: float = 0.5
+    """Weight of the prompt invariance term in the loss."""
+
     l2_penalty: float = 0.0
+
+    def __post_init__(self):
+        assert self.anchor_gamma >= 0, "anchor_gamma must be non-negative"
+        assert 0 <= self.invariance_weight <= 1, "invariance_weight must be in [0, 1]"
+        assert self.l2_penalty >= 0, "l2_penalty must be non-negative"
 
 
 class LdaFitter:
@@ -31,24 +43,56 @@ class LdaFitter:
         """Fit the probe to the contrast set `hiddens`.
 
         Args:
-            hiddens: The contrast set of shape [batch, variants, choices, dim].
+            hiddens: The contrast set of shape [batch, variants, (choices,) dim].
+            labels: Integer labels of shape [batch].
         """
-        (n, _, k, _) = hiddens.shape
+        n, v, *_ = hiddens.shape
+        assert n == labels.shape[0], "hiddens and labels must have the same batch size"
 
-        # Sanity checks
-        assert k > 1, "Must provide at least two hidden states"
-        assert hiddens.ndim == 4, "Must be of shape [batch, variants, choices, dim]"
+        # This is a contrast set; create a true-false label for each element
+        if len(hiddens.shape) == 4:
+            hiddens = rearrange(hiddens, "n v k d -> (n k) v d")
+            labels = F.one_hot(labels.long()).flatten()
 
-        # Create a true-false label for each element of the contrast set
-        mask = F.one_hot(labels.long(), num_classes=k).bool()  # [n, k]
-        mask = mask[:, None, :].expand_as(hiddens[..., 0])  # [n, 1, k] -> [n, v, k]
+            n = len(labels)
+            counts = (labels.sum(), n - labels.sum())
+        else:
+            counts = torch.bincount(labels)
+            assert len(counts) == 2, "Only binary classification is supported for now"
 
-        mu_pos = hiddens[mask].mean(0)
-        mu_neg = hiddens[~mask].mean(0)
+        # Construct targets for the least-squares dual problem
+        z = torch.where(labels.bool(), n / counts[0], -n / counts[1]).unsqueeze(1)
 
-        sigma = rearrange(hiddens, "n v k d -> d (n v k)").cov()
-        sigma = optimal_linear_shrinkage(sigma, n)
-        torch.linalg.diagonal(sigma).add_(self.config.l2_penalty)
+        # Adjust X and Z for anchor regression <https://arxiv.org/abs/1801.06229>
+        gamma = self.config.anchor_gamma
+        if gamma != 1.0:
+            # Implicitly compute n x n orthogonal projection onto the column space of
+            # the anchor variables without materializing the whole matrix. Since the
+            # anchors are one-hot, it turns out this is equivalent to adding a multiple
+            # of the anchor-conditional means.
+            # In general you're supposed to adjust the labels too, but we don't need
+            # to do that because by construction the anchor-conditional means of the
+            # labels are already all zero.
+            hiddens = hiddens + (gamma**0.5 - 1) * hiddens.mean(0)
 
-        w = torch.linalg.solve(sigma, mu_pos - mu_neg)
+        # We can decompose the covariance matrix into the sum of the within-cluster
+        # covariance and the between-cluster covariance. This allows us to put extra
+        # weight on the within-cluster variance to encourage invariance to the prompt.
+        # NOTE: We're not applying shrinkage to each cluster covariance matrix because
+        # we're averaging over them, which should reduce the variance of the estimate
+        # a lot. Shrinkage could make MSE worse in this case.
+        S_between = optimal_linear_shrinkage(cov(hiddens.mean(1)), n)
+        S_within = cov_mean_fused(hiddens)
+
+        # Convex combination but multiply by 2 to keep the same scale
+        alpha = 2 * self.config.invariance_weight
+        S = alpha * S_within + (2 - alpha) * S_between
+
+        # Add ridge penalty
+        torch.linalg.diagonal(S).add_(self.config.l2_penalty)
+
+        # Broadcast the labels across variants
+        sigma_xz = cov(hiddens, z.expand_as(hiddens[..., 0]).unsqueeze(-1))
+        w = torch.linalg.solve(S, sigma_xz.squeeze(-1))
+
         return Reporter(w[None])
