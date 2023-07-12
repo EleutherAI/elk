@@ -165,26 +165,8 @@ class Sweep:
 
                                 assert run.out_dir is not None
                                 # TODO we should fix this so that this isn't needed
-                                eval = Eval(
-                                    extract=replace(
-                                        run.extract,
-                                        model=model,
-                                        datasets=(eval_dataset,),
-                                    ),
-                                    source=run.out_dir,
-                                    out_dir=run.out_dir / "transfer" / eval_dataset,
-                                    num_gpus=run.num_gpus,
-                                    min_gpu_mem=run.min_gpu_mem,
-                                    skip_supervised=run.supervised == "none",
-                                    prompt_indices=run.prompt_indices,
-                                    concatenated_layer_offset=run.concatenated_layer_offset,
-                                    # datasets=run.datasets,
-                                    # this isn't needed because it's
-                                    # immediately overwritten
-                                    debug=run.debug,
-                                    disable_cache=run.disable_cache,
-                                )
 
+                                eval = run.make_eval(model, eval_dataset)
                                 eval.execute(highlight_color="green")
 
         if self.visualize:
