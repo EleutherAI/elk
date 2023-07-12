@@ -161,7 +161,6 @@ class Sweep:
                                     continue
 
                                 assert elicit.out_dir is not None
-                                # TODO we should fix this so that this isn't needed
 
                                 eval = elicit.make_eval(model, eval_dataset)
                                 eval.execute(highlight_color="green")

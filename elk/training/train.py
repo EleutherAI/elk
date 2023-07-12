@@ -63,8 +63,7 @@ class Elicit(Run):
             skip_supervised=self.supervised == "none",
             prompt_indices=self.prompt_indices,
             concatenated_layer_offset=self.concatenated_layer_offset,
-            # datasets=run.datasets isn't needed because it's
-            # immediately overwritten
+            # datasets isn't needed because it's immediately overwritten
             debug=self.debug,
             disable_cache=self.disable_cache,
         )
