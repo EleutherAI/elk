@@ -178,13 +178,18 @@ def calc_eval_results(
     )
 
     auroc = calc_auroc(
-        y_logits=y_logits, y_true=y_true, prompt_ensembling=prompt_ensembling, num_classes=num_classes
+        y_logits=y_logits,
+        y_true=y_true,
+        prompt_ensembling=prompt_ensembling,
+        num_classes=num_classes,
     )
 
     return EvalResult(acc, cal_acc, cal_err, auroc)
 
 
-def layer_ensembling(layer_outputs: list, prompt_ensembling: PromptEnsembling) -> EvalResult:
+def layer_ensembling(
+    layer_outputs: list, prompt_ensembling: PromptEnsembling
+) -> EvalResult:
     """
     Return EvalResult after prompt_ensembling the probe output of the middle to last layers
 
