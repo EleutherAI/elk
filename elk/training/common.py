@@ -18,7 +18,7 @@ class FitterConfig(Serializable, decode_into_subclasses=True):
 @dataclass
 class Reporter(PlattMixin):
     weight: Tensor
-    eraser: LeaceEraser
+    eraser: LeaceEraser | None = None
 
     def __post_init__(self):
         # Platt scaling parameters
@@ -27,5 +27,8 @@ class Reporter(PlattMixin):
 
     def __call__(self, hiddens: Tensor) -> Tensor:
         """Return the predicted log odds on input `x`."""
-        raw_scores = self.eraser(hiddens) @ self.weight.mT
+        if self.eraser is not None:
+            hiddens = self.eraser(hiddens)
+
+        raw_scores = hiddens @ self.weight.mT
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)

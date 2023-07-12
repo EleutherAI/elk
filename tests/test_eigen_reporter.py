@@ -1,7 +1,7 @@
 import torch
 
 from elk.training import EigenFitter, EigenFitterConfig
-from elk.utils import batch_cov, cov_mean_fused
+from elk.utils import cov, cov_mean_fused
 
 
 def test_eigen_reporter():
@@ -31,7 +31,7 @@ def test_eigen_reporter():
 
     # Check that the streaming covariance is correct
     neg_centroids, pos_centroids = x_neg.mean(dim=1), x_pos.mean(dim=1)
-    true_cov = 0.5 * (batch_cov(neg_centroids) + batch_cov(pos_centroids))
+    true_cov = 0.5 * (cov(neg_centroids) + cov(pos_centroids))
     torch.testing.assert_close(reporter.intercluster_cov, true_cov)
 
     # Check that the streaming negative covariance is correct

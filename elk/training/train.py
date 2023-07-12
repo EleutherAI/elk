@@ -18,6 +18,7 @@ from ..utils.typing import assert_type
 from .ccs_reporter import CcsConfig, CcsReporter
 from .common import FitterConfig
 from .eigen_reporter import EigenFitter, EigenFitterConfig
+from .lda import LdaConfig, LdaFitter
 
 
 @dataclass
@@ -25,7 +26,12 @@ class Elicit(Run):
     """Full specification of a reporter training run."""
 
     net: FitterConfig = subgroups(
-        {"ccs": CcsConfig, "eigen": EigenFitterConfig}, default="eigen"
+        {
+            "ccs": CcsConfig,
+            "eigen": EigenFitterConfig,
+            "lda": LdaConfig,
+        },
+        default="eigen",
     )
     """Config for building the reporter network."""
 
@@ -74,6 +80,7 @@ class Elicit(Run):
         if not all(other_h.shape[-2] == k for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same number of classes")
 
+        train_loss = None
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
         train_loss = None
 
@@ -111,6 +118,8 @@ class Elicit(Run):
                 torch.cat(label_list),
                 torch.cat(hidden_list),
             )
+        elif isinstance(self.net, LdaConfig):
+            reporter = LdaFitter(self.net).fit(first_train_h, train_gt)
         else:
             raise ValueError(f"Unknown reporter config type: {type(self.net)}")
 
