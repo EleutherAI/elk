@@ -57,7 +57,9 @@ class Eval(Run):
                     {
                         **meta,
                         "prompt_ensembling": prompt_ensembling.value,
-                        **evaluate_preds(val_gt, val_credences, prompt_ensembling).to_dict(),
+                        **evaluate_preds(
+                            val_gt, val_credences, prompt_ensembling
+                        ).to_dict(),
                     }
                 )
 

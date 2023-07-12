@@ -153,7 +153,9 @@ class Elicit(Run):
                     {
                         **meta,
                         "prompt_ensembling": prompt_ensembling.value,
-                        **evaluate_preds(val_gt, val_credences, prompt_ensembling).to_dict(),
+                        **evaluate_preds(
+                            val_gt, val_credences, prompt_ensembling
+                        ).to_dict(),
                         "pseudo_auroc": pseudo_auroc,
                         "train_loss": train_loss,
                     }
