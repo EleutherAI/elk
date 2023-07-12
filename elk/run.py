@@ -201,14 +201,14 @@ class Run(ABC, Serializable):
 
     def write_metadata(self):
         """Write metadata about the run to a yaml file."""
+        assert self.out_dir is not None
         with open(self.out_dir / "metadata.yaml", "w") as meta_f:
             dataset_fingerprints = {
                 ds_name: {split: ds[split]._fingerprint for split in ds.keys()}
                 for ds_name, ds in self.datasets
             }
-            metadata = {
-                "datasets": dataset_fingerprints,
-            }
+            metadata = dict()
+            metadata["datasets"] = dataset_fingerprints
             git_hash = fetch_git_hash()
             if git_hash is not None:
                 metadata["git_hash"] = git_hash
