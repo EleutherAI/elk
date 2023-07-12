@@ -69,7 +69,6 @@ class Elicit(Run):
             disable_cache=self.disable_cache,
         )
 
-
     def apply_to_layer(
         self,
         layer: int,
