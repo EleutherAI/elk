@@ -160,8 +160,6 @@ class Sweep:
                                 if eval_dataset in train_datasets:
                                     continue
 
-                                assert elicit.out_dir is not None
-
                                 eval = elicit.make_eval(model, eval_dataset)
                                 eval.execute(highlight_color="green")
 
