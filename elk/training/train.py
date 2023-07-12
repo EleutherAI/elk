@@ -50,6 +50,7 @@ class Elicit(Run):
         return reporter_dir, lr_dir
 
     def make_eval(self, model, eval_dataset):
+        assert self.out_dir is not None
         return Eval(
             data=replace(
                 self.data,
