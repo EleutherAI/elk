@@ -146,12 +146,12 @@ class Elicit(Run):
             )
 
             train_credences = reporter(train_h)
-            for ensembling in PromptEnsembling.all():
+            for prompt_ensembling in PromptEnsembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,
-                        "ensembling": ensembling.value,
-                        **evaluate_preds(val_gt, val_credences, ensembling).to_dict(),
+                        "prompt_ensembling": prompt_ensembling.value,
+                        **evaluate_preds(val_gt, val_credences, prompt_ensembling).to_dict(),
                         "pseudo_auroc": pseudo_auroc,
                         "train_loss": train_loss,
                     }
@@ -160,9 +160,9 @@ class Elicit(Run):
                 row_bufs["train_eval"].append(
                     {
                         **meta,
-                        "ensembling": ensembling.value,
+                        "prompt_ensembling": prompt_ensembling.value,
                         **evaluate_preds(
-                            train_gt, train_credences, ensembling
+                            train_gt, train_credences, prompt_ensembling
                         ).to_dict(),
                         "train_loss": train_loss,
                     }
@@ -172,9 +172,9 @@ class Elicit(Run):
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": ensembling.value,
+                            "prompt_ensembling": prompt_ensembling.value,
                             **evaluate_preds(
-                                val_gt, val_lm_preds, ensembling
+                                val_gt, val_lm_preds, prompt_ensembling
                             ).to_dict(),
                         }
                     )
@@ -183,9 +183,9 @@ class Elicit(Run):
                     row_bufs["train_lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": ensembling.value,
+                            "prompt_ensembling": prompt_ensembling.value,
                             **evaluate_preds(
-                                train_gt, train_lm_preds, ensembling
+                                train_gt, train_lm_preds, prompt_ensembling
                             ).to_dict(),
                         }
                     )
@@ -194,10 +194,10 @@ class Elicit(Run):
                     row_bufs["lr_eval"].append(
                         {
                             **meta,
-                            "ensembling": ensembling.value,
+                            "prompt_ensembling": prompt_ensembling.value,
                             "inlp_iter": i,
                             **evaluate_preds(
-                                val_gt, model(val_h), ensembling
+                                val_gt, model(val_h), prompt_ensembling
                             ).to_dict(),
                         }
                     )
