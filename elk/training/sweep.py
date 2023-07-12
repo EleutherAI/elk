@@ -133,19 +133,19 @@ class Sweep:
                         data = replace(
                             self.run_template.data, model=model, datasets=train_datasets
                         )
-                        run = replace(self.run_template, data=data, out_dir=out_dir)
+                        elicit = replace(self.run_template, data=data, out_dir=out_dir)
                         if var_weight is not None and neg_cov_weight is not None:
-                            assert isinstance(run.net, EigenFitterConfig)
-                            run.net.var_weight = var_weight
-                            run.net.neg_cov_weight = neg_cov_weight
+                            assert isinstance(elicit.net, EigenFitterConfig)
+                            elicit.net.var_weight = var_weight
+                            elicit.net.neg_cov_weight = neg_cov_weight
 
                             # Add hyperparameter values to output directory if needed
-                            assert run.out_dir is not None
-                            run.out_dir /= f"var_weight={var_weight:.2f}"
-                            run.out_dir /= f"neg_cov_weight={neg_cov_weight:.2f}"
+                            assert elicit.out_dir is not None
+                            elicit.out_dir /= f"var_weight={var_weight:.2f}"
+                            elicit.out_dir /= f"neg_cov_weight={neg_cov_weight:.2f}"
 
                         try:
-                            run.execute()
+                            elicit.execute()
                         except torch.linalg.LinAlgError as e:
                             print(colorize(f"LinAlgError: {e}", "red"))
                             continue
@@ -160,10 +160,10 @@ class Sweep:
                                 if eval_dataset in train_datasets:
                                     continue
 
-                                assert run.out_dir is not None
+                                assert elicit.out_dir is not None
                                 # TODO we should fix this so that this isn't needed
 
-                                eval = run.make_eval(model, eval_dataset)
+                                eval = elicit.make_eval(model, eval_dataset)
                                 eval.execute(highlight_color="green")
 
         if self.visualize:
