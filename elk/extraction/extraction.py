@@ -192,6 +192,7 @@ def extract_hiddens(
         template_path=cfg.template_path,
         rank=rank,
         world_size=world_size,
+        seed=cfg.seed,
     )
 
     # Add one to the number of layers to account for the embedding layer
