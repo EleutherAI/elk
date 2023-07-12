@@ -5,7 +5,6 @@ import torch
 from datasets import get_dataset_config_info
 from transformers import AutoConfig
 
-from ..evaluation import Eval
 from ..extraction import Extract
 from ..files import memorably_named_dir, sweeps_dir
 from ..plotting.visualize import visualize_sweep

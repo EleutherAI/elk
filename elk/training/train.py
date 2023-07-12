@@ -51,8 +51,8 @@ class Elicit(Run):
 
     def make_eval(self, model, eval_dataset):
         return Eval(
-            extract=replace(
-                self.extract,
+            data=replace(
+                self.data,
                 model=model,
                 datasets=(eval_dataset,),
             ),
