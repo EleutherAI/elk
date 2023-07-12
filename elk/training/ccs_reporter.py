@@ -145,7 +145,7 @@ class CcsReporter(nn.Module, PlattMixin):
             theta = torch.randn(1, probe.in_features + 1, device=probe.weight.device)
             theta /= theta.norm()
             probe.weight.data = theta[:, :-1]
-            probe.bias.extract = theta[:, -1]
+            probe.bias.data = theta[:, -1]
 
         elif self.config.init == "default":
             for layer in self.probe:
@@ -219,7 +219,7 @@ class CcsReporter(nn.Module, PlattMixin):
             if self.config.init == "pca":
                 diffs = torch.flatten(x_pos - x_neg, 0, 1)
                 _, __, V = torch.pca_lowrank(diffs, q=i + 1)
-                self.probe[0].weight.extract = V[:, -1, None].T
+                self.probe[0].weight.data = V[:, -1, None].T
 
             if self.config.optimizer == "lbfgs":
                 loss = self.train_loop_lbfgs(x_neg, x_pos)

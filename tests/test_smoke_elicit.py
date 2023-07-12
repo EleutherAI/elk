@@ -10,7 +10,7 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
     model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024**2
     dataset_name = "imdb"
     elicit = Elicit(
-        extract=Extract(
+        data=Extract(
             model=model_path,
             datasets=(dataset_name,),
             max_examples=(10, 10),
@@ -41,7 +41,7 @@ def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
     model_path, min_mem = "sshleifer/tiny-gpt2", 10 * 1024**2
     dataset_name = "imdb"
     elicit = Elicit(
-        extract=Extract(
+        data=Extract(
             model=model_path,
             datasets=(dataset_name,),
             max_examples=(10, 10),
