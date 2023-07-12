@@ -4,7 +4,7 @@ import pandas as pd
 
 from elk import Extract
 from elk.evaluation import Eval
-from elk.training import CcsReporterConfig, EigenReporterConfig
+from elk.training import CcsConfig, EigenFitterConfig
 from elk.training.train import Elicit
 
 EVAL_EXPECTED_FILES = [
@@ -35,7 +35,7 @@ def setup_elicit(
         ),
         num_gpus=2,
         min_gpu_mem=min_mem,
-        net=CcsReporterConfig() if is_ccs else EigenReporterConfig(),
+        net=CcsConfig() if is_ccs else EigenFitterConfig(),
         out_dir=tmp_path,
     )
     elicit.execute()

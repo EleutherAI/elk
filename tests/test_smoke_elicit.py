@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from elk import Extract
-from elk.training import CcsReporterConfig, EigenReporterConfig
+from elk.training import CcsConfig, EigenFitterConfig
 from elk.training.train import Elicit
 
 
@@ -18,7 +18,7 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
         ),
         num_gpus=2,
         min_gpu_mem=min_mem,
-        net=CcsReporterConfig(),
+        net=CcsConfig(),
         out_dir=tmp_path,
     )
     elicit.execute()
@@ -50,7 +50,7 @@ def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
         ),
         num_gpus=2,
         min_gpu_mem=min_mem,
-        net=EigenReporterConfig(),
+        net=EigenFitterConfig(),
         out_dir=tmp_path,
     )
     elicit.execute()
