@@ -192,26 +192,26 @@ class Run(ABC, Serializable):
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
-                    df = pd.concat(dfs).sort_values(by=["layer", "ensembling"])
+                    df = pd.concat(dfs).sort_values(by=["layer", "prompt_ensembling"])
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
 
                 dfs = []
 
-                for ensembling in PromptEnsembling.all():
+                for prompt_ensembling in PromptEnsembling.all():
                     layer_ensembling_results = layer_ensembling(
-                        layer_outputs, ensembling
+                        layer_outputs, prompt_ensembling
                     )
                     df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
                     df = df.round(4)
-                    df["ensembling"] = ensembling.value
+                    df["prompt_ensembling"] = prompt_ensembling.value
                     dfs.append(df)
 
                 df_concat = pd.concat(dfs)
-                # Rearrange the columns so that ensembling is in front
-                columns = ["ensembling"] + [
-                    col for col in df_concat.columns if col != "ensembling"
+                # Rearrange the columns so that prompt_ensembling is in front
+                columns = ["prompt_ensembling"] + [
+                    col for col in df_concat.columns if col != "prompt_ensembling"
                 ]
                 df_concat = df_concat[columns]
                 df_concat.to_csv(
