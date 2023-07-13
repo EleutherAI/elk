@@ -46,6 +46,10 @@ class Run(ABC, Serializable):
     prompt_indices: tuple[int, ...] = ()
     """The indices of the prompt templates to use. If empty, all prompts are used."""
 
+    probe_per_prompt: bool = False
+    """If true, a probe is trained per prompt template. Otherwise, a single probe is
+    trained for all prompt templates."""
+
     concatenated_layer_offset: int = 0
     debug: bool = False
     min_gpu_mem: int | None = None  # in bytes
@@ -99,13 +103,16 @@ class Run(ABC, Serializable):
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
         func: Callable[[int], dict[str, pd.DataFrame]] = partial(
-            self.apply_to_layer, devices=devices, world_size=num_devices
+            self.apply_to_layer,
+            devices=devices,
+            world_size=num_devices,
+            probe_per_prompt=self.probe_per_prompt,
         )
         self.apply_to_layers(func=func, num_devices=num_devices)
 
     @abstractmethod
     def apply_to_layer(
-        self, layer: int, devices: list[str], world_size: int
+        self, layer: int, devices: list[str], world_size: int, probe_per_prompt: bool
     ) -> dict[str, pd.DataFrame]:
         """Train or eval a reporter on a single layer."""
 

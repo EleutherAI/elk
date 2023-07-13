@@ -53,6 +53,7 @@ class Elicit(Run):
         layer: int,
         devices: list[str],
         world_size: int,
+        probe_per_prompt: bool,
     ) -> dict[str, pd.DataFrame]:
         """Train a single reporter on a single layer."""
 

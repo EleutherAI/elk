@@ -30,7 +30,7 @@ class Eval(Run):
 
     @torch.inference_mode()
     def apply_to_layer(
-        self, layer: int, devices: list[str], world_size: int
+        self, layer: int, devices: list[str], world_size: int, probe_per_prompt: bool
     ) -> dict[str, pd.DataFrame]:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
