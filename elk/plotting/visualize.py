@@ -55,7 +55,9 @@ class SweepByDsMultiplot:
         color_map = dict(zip(ensemblings, qualitative.Plotly))
 
         for prompt_ensembling in ensemblings:
-            ensemble_data: pd.DataFrame = df[df["prompt_ensembling"] == prompt_ensembling.value]
+            ensemble_data: pd.DataFrame = df[
+                df["prompt_ensembling"] == prompt_ensembling.value
+            ]
             if with_transfer:  # TODO write tests
                 ensemble_data = ensemble_data.groupby(
                     ["eval_dataset", "layer", "prompt_ensembling"], as_index=False
@@ -266,7 +268,8 @@ class ModelVisualization:
         if self.is_transfer:
             for layer in range(layer_min, layer_max + 1):
                 filtered = df[
-                    (df["layer"] == layer) & (df["prompt_ensembling"] == prompt_ensembling.value)
+                    (df["layer"] == layer)
+                    & (df["prompt_ensembling"] == prompt_ensembling.value)
                 ]
                 fig = TransferEvalHeatmap(
                     layer, score_type=score_type, prompt_ensembling=prompt_ensembling

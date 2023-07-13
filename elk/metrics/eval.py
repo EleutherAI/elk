@@ -197,7 +197,8 @@ def layer_ensembling(
     layer_outputs: list, prompt_ensembling: PromptEnsembling
 ) -> EvalResult:
     """
-    Return EvalResult after prompt_ensembling the probe output of the middle to last layers
+    Return EvalResult after prompt_ensembling
+    the probe output of the middle to last layers
 
     Args:
         layer_outputs: A list of dictionaries containing the ground truth and
