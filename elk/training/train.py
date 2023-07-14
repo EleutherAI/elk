@@ -15,7 +15,6 @@ from ..evaluation import Eval
 from ..metrics import evaluate_preds, to_one_hot
 from ..run import Run
 from ..training.supervised import train_supervised
-from ..utils.typing import assert_type
 from .ccs_reporter import CcsConfig, CcsReporter
 from .common import FitterConfig, Reporter
 from .eigen_reporter import EigenFitter, EigenFitterConfig
@@ -40,6 +39,81 @@ class Elicit(Run):
     """Whether to train a supervised classifier, and if so, whether to use
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
+
+    def evaluate_and_save(
+        self,
+        train_loss,
+        reporter,
+        train_dict,
+        val_dict,
+        lr_models,
+        layer,
+        prompt_index=None,
+    ):
+        row_bufs = defaultdict(list)
+        for ds_name in val_dict:
+            val_h, val_gt, val_lm_preds = val_dict[ds_name]
+            train_h, train_gt, train_lm_preds = train_dict[ds_name]
+            meta = {"dataset": ds_name, "layer": layer}
+
+            val_credences = reporter(val_h)
+            train_credences = reporter(train_h)
+            maybe_prompt_index = (
+                {} if prompt_index is None else {"prompt_index": prompt_index}
+            )
+            for mode in ("none", "partial", "full"):
+                row_bufs["eval"].append(
+                    {
+                        **meta,
+                        "ensembling": mode,
+                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        "train_loss": train_loss,
+                        **maybe_prompt_index,
+                    }
+                )
+
+                row_bufs["train_eval"].append(
+                    {
+                        **meta,
+                        "ensembling": mode,
+                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                        "train_loss": train_loss,
+                        **maybe_prompt_index,
+                    }
+                )
+
+                if val_lm_preds is not None:
+                    row_bufs["lm_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            **maybe_prompt_index,
+                        }
+                    )
+
+                if train_lm_preds is not None:
+                    row_bufs["train_lm_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
+                            **maybe_prompt_index,
+                        }
+                    )
+
+                for i, model in enumerate(lr_models):
+                    row_bufs["lr_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            "inlp_iter": i,
+                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            **maybe_prompt_index,
+                        }
+                    )
+
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
 
     def create_models_dir(self, out_dir: Path):
         lr_dir = None
@@ -129,6 +203,7 @@ class Elicit(Run):
 
         # Save reporter checkpoint to disk
         # TODO have to change this
+        out_dir.mkdir(parents=True, exist_ok=True)
         torch.save(reporter, out_dir / f"layer_{layer}.pt")
 
         return ReporterTrainResult(reporter, train_loss)
@@ -140,6 +215,8 @@ class Elicit(Run):
                 device=device,
                 mode=self.supervised,
             )
+            # make dir if not exists
+            out_dir.mkdir(parents=True, exist_ok=True)
             with open(out_dir / f"layer_{layer}.pt", "wb") as file:
                 torch.save(lr_models, file)
         else:
@@ -153,7 +230,7 @@ class Elicit(Run):
         devices: list[str],
         world_size: int,
         probe_per_prompt: bool,
-    ) -> dict[str, pd.DataFrame]:
+    ) -> list[dict[str, pd.DataFrame]]:
         """Train a single reporter on a single layer."""
 
         self.make_reproducible(seed=self.net.seed + layer)
@@ -165,7 +242,8 @@ class Elicit(Run):
         (first_train_h, train_gt, _), *rest = train_dict.values()
         (_, v, k, d) = first_train_h.shape
 
-        reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
+        # TODO is this even needed
+        # reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
 
         probe_per_prompt = True
         if probe_per_prompt:
@@ -174,81 +252,53 @@ class Elicit(Run):
                     ds_name: (
                         train_h[:, i : i + 1, ...],
                         train_gt,
-                        lm_preds[:, i : i + 1, ...],
+                        lm_preds[:, i : i + 1, ...] if lm_preds is not None else None,
                     )
                 }
                 for ds_name, (train_h, _, lm_preds) in train_dict.items()
                 for i in range(v)  # v is number of variants
             ]
 
-            [
-                self.train_and_save_reporter(device, layer, reporter_dir, train_dict)
-                for train_dict in train_dicts
-            ]
+            res = []
+            for i, train_dict in enumerate(train_dicts):
+                reporters_path = self.out_dir / str(i) / "reporters"
+                lr_path = self.out_dir / str(i) / "lr_models"
+
+                reporter_train_result = self.train_and_save_reporter(
+                    device, layer, reporters_path, train_dict
+                )
+
+                reporter = reporter_train_result.reporter
+                train_loss = reporter_train_result.train_loss
+
+                lr_models = self.train_lr_model(train_dict, device, layer, lr_path)
+
+                res.append(
+                    self.evaluate_and_save(
+                        train_loss,
+                        reporter,
+                        train_dict,
+                        val_dict,
+                        lr_models,
+                        layer,
+                        prompt_index=i,
+                    )
+                )
+            return res
         else:
             reporter_train_result = self.train_and_save_reporter(
-                device, layer, reporter_dir, train_dict
+                device, layer, self.out_dir / "reporters", train_dict
             )
 
-        reporter = reporter_train_result.reporter
-        train_loss = reporter_train_result.train_loss
+            reporter = reporter_train_result.reporter
+            train_loss = reporter_train_result.train_loss
 
-        lr_models = self.train_lr_model(train_dict, device, layer, lr_dir)
+            lr_models = self.train_lr_model(
+                train_dict, device, layer, self.out_dir / "lr_models"
+            )
 
-        row_bufs = defaultdict(list)
-
-        for ds_name in val_dict:
-            val_h, val_gt, val_lm_preds = val_dict[ds_name]
-            train_h, train_gt, train_lm_preds = train_dict[ds_name]
-            meta = {"dataset": ds_name, "layer": layer}
-
-            val_credences = reporter(val_h)
-            train_credences = reporter(train_h)
-            for mode in ("none", "partial", "full"):
-                row_bufs["eval"].append(
-                    {
-                        **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                        "train_loss": train_loss,
-                    }
+            return [
+                self.evaluate_and_save(
+                    train_loss, reporter, train_dict, val_dict, lr_models, layer
                 )
-
-                row_bufs["train_eval"].append(
-                    {
-                        **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
-                        "train_loss": train_loss,
-                    }
-                )
-
-                if val_lm_preds is not None:
-                    row_bufs["lm_eval"].append(
-                        {
-                            **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
-                        }
-                    )
-
-                if train_lm_preds is not None:
-                    row_bufs["train_lm_eval"].append(
-                        {
-                            **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
-                        }
-                    )
-
-                for i, model in enumerate(lr_models):
-                    row_bufs["lr_eval"].append(
-                        {
-                            **meta,
-                            "ensembling": mode,
-                            "inlp_iter": i,
-                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
-                        }
-                    )
-
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+            ]

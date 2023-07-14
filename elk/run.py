@@ -187,13 +187,19 @@ class Run(ABC, Serializable):
             df_buffers = defaultdict(list)
 
             try:
-                for df_dict in tqdm(mapper(func, layers), total=len(layers)):
-                    for k, v in df_dict.items():
-                        df_buffers[k].append(v)
+                for df_dicts in tqdm(mapper(func, layers), total=len(layers)):
+                    for df_dict in df_dicts:
+                        for k, v in df_dict.items():
+                            df_buffers[k].append(v)
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
-                    df = pd.concat(dfs).sort_values(by=["layer", "ensembling"])
-                    df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
+                    sortby = ["layer", "ensembling"]
+                    if "prompt_index" in dfs[0].columns:
+                        sortby.append("prompt_index")
+                        # TODO make the prompt index third col
+                    df = pd.concat(dfs).sort_values(by=sortby)
+                    out_path = self.out_dir / f"{name}.csv"
+                    df.round(4).to_csv(out_path, index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
