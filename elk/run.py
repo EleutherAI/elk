@@ -102,7 +102,7 @@ class Run(ABC, Serializable):
 
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
-        func: Callable[[int], dict[str, pd.DataFrame]] = partial(
+        func: Callable[[int], list[dict[str, pd.DataFrame]]] = partial(
             self.apply_to_layer,
             devices=devices,
             world_size=num_devices,
@@ -113,7 +113,7 @@ class Run(ABC, Serializable):
     @abstractmethod
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int, probe_per_prompt: bool
-    ) -> dict[str, pd.DataFrame]:
+    ) -> list[dict[str, pd.DataFrame]]:
         """Train or eval a reporter on a single layer."""
 
     def make_reproducible(self, seed: int):
@@ -162,7 +162,7 @@ class Run(ABC, Serializable):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], dict[str, pd.DataFrame]],
+        func: Callable[[int], list[dict[str, pd.DataFrame]]],
         num_devices: int,
     ):
         """Apply a function to each layer of the datasets in parallel

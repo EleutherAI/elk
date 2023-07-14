@@ -232,6 +232,8 @@ class Elicit(Run):
         probe_per_prompt: bool,
     ) -> list[dict[str, pd.DataFrame]]:
         """Train a single reporter on a single layer."""
+        assert self.out_dir is not None  # TODO this is really annoying, why can it be
+        # None?
 
         self.make_reproducible(seed=self.net.seed + layer)
         device = self.get_device(devices, world_size)
