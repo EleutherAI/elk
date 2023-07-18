@@ -141,15 +141,23 @@ def evaluate_preds(
     Returns:
         dict: A dictionary containing the accuracy, AUROC, and ECE.
     """
+    y_logits, y_true, num_classes = prepare(y_logits, y_true, prompt_ensembling)
+    return calc_eval_results(y_true, y_logits, prompt_ensembling, num_classes)
+
+
+def prepare(y_logits: Tensor, y_true: Tensor, prompt_ensembling: PromptEnsembling):
+    """
+    Prepare the logits and ground truth for evaluation
+    """
     (n, num_variants, num_classes) = y_logits.shape
-    assert y_true.shape == (n,)
+    assert y_true.shape == (n,), f"y_true.shape: {y_true.shape} is not equal to n: {n}"
 
     if prompt_ensembling == PromptEnsembling.FULL:
         y_logits = y_logits.mean(dim=1)
     else:
         y_true = repeat(y_true, "n -> n v", v=num_variants)
-    return calc_eval_results(y_true, y_logits, prompt_ensembling, num_classes)
 
+    return y_logits, y_true, num_classes
 
 def calc_eval_results(
     y_true: Tensor,
@@ -210,17 +218,17 @@ def layer_ensembling(
         calibrated accuracies, calibrated errors, and AUROC.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    y_logits_means = []
+    y_logits_collection = []
     y_true = layer_outputs[0][0]["val_gt"].to(device)
 
     for layer_output in layer_outputs:
         y_logits = layer_output[0]["val_credences"].to(device)
-        y_logits_means.append(y_logits.mean(dim=1))  # full prompt_ensembling
+        y_logits, y_true, num_classes = prepare(y_logits, y_true, prompt_ensembling)
+        y_logits_collection.append(y_logits)
 
-    num_classes = layer_outputs[0][0]["val_credences"].shape[2]
     # get logits and ground_truth from middle to last layer
     middle_index = len(layer_outputs) // 2
-    y_logits_stacked = torch.stack(y_logits_means[middle_index:])
+    y_logits_stacked = torch.stack(y_logits_collection[middle_index:])
     # layer prompt_ensembling of the stacked logits
     y_logits_stacked_mean = torch.mean(y_logits_stacked, dim=0)
 
