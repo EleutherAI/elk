@@ -225,9 +225,9 @@ def layer_ensembling(
         # all y_trues are identical, so just get the first
         y_true = layer_outputs[0][0]["val_gt"].to(device)
         y_logits = layer_output[0]["val_credences"].to(device)
-        y_logits, y_true, num_classes = prepare(y_logits=y_logits, 
-                                                y_true=y_true, 
-                                                prompt_ensembling=prompt_ensembling)
+        y_logits, y_true, num_classes = prepare(
+            y_logits=y_logits, y_true=y_true, prompt_ensembling=prompt_ensembling
+        )
         y_logits_collection.append(y_logits)
 
     # get logits and ground_truth from middle to last layer

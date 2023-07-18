@@ -201,8 +201,7 @@ class Run(ABC, Serializable):
 
                 for prompt_ensembling in PromptEnsembling.all():
                     layer_ensembling_results = layer_ensembling(
-                        layer_outputs=layer_outputs, 
-                        prompt_ensembling=prompt_ensembling
+                        layer_outputs=layer_outputs, prompt_ensembling=prompt_ensembling
                     )
                     df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
                     df = df.round(4)
