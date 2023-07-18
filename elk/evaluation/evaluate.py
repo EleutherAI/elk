@@ -44,12 +44,12 @@ class Eval(Run):
 
         row_bufs = defaultdict(list)
 
-        layer_outputs = []
+        layer_output = []
         for ds_name, (val_h, val_gt, _) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
-            layer_outputs.append(
+            layer_output.append(
                 {**meta, "val_gt": val_gt, "val_credences": val_credences}
             )
             for prompt_ensembling in PromptEnsembling.all():
@@ -83,4 +83,4 @@ class Eval(Run):
                             }
                         )
 
-        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, layer_outputs)
+        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, layer_output)
