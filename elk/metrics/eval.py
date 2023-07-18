@@ -159,6 +159,7 @@ def prepare(y_logits: Tensor, y_true: Tensor, prompt_ensembling: PromptEnsemblin
 
     return y_logits, y_true, num_classes
 
+
 def calc_eval_results(
     y_true: Tensor,
     y_logits: Tensor,
