@@ -19,11 +19,28 @@ from .ccs_reporter import CcsConfig, CcsReporter
 from .common import FitterConfig, Reporter
 from .eigen_reporter import EigenFitter, EigenFitterConfig
 
+# declare AnyReporter as CcsReporter | Reporter type alias
+AnyReporter = CcsReporter | Reporter
+
 
 @dataclass
 class ReporterTrainResult:
-    reporter: CcsReporter | Reporter
+    reporter: AnyReporter
     train_loss: float | None
+
+
+class MultiReporter:
+    def __init__(self, reporter_results: list[ReporterTrainResult]):
+        self.reporter_results: list[ReporterTrainResult] = reporter_results
+        self.reporters = [r.reporter for r in reporter_results]
+        train_losses = [r.train_loss for r in reporter_results]
+        self.train_loss = (
+            None if train_losses[0] is None else sum(train_losses) / len(train_losses)
+        )
+
+    def __call__(self, h):
+        credences = [r(h) for r in self.reporters]
+        return torch.stack(credences).mean(dim=0)
 
 
 @dataclass
@@ -43,12 +60,11 @@ class Elicit(Run):
     def evaluate_and_save(
         self,
         train_loss,
-        reporter,
+        reporter: AnyReporter | MultiReporter,
         train_dict,
         val_dict,
         lr_models,
         layer,
-        prompt_index=None,
     ):
         row_bufs = defaultdict(list)
         for ds_name in val_dict:
@@ -56,62 +72,74 @@ class Elicit(Run):
             train_h, train_gt, train_lm_preds = train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
 
-            val_credences = reporter(val_h)
-            train_credences = reporter(train_h)
-            maybe_prompt_index = (
-                {} if prompt_index is None else {"prompt_index": prompt_index}
-            )
-            for mode in ("none", "partial", "full"):
-                row_bufs["eval"].append(
-                    {
-                        **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                        "train_loss": train_loss,
-                        **maybe_prompt_index,
-                    }
-                )
-
-                row_bufs["train_eval"].append(
-                    {
-                        **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
-                        "train_loss": train_loss,
-                        **maybe_prompt_index,
-                    }
-                )
-
-                if val_lm_preds is not None:
-                    row_bufs["lm_eval"].append(
+            def eval_all(
+                reporter: AnyReporter | MultiReporter,
+                prompt_index: int | Literal["multi"],
+            ):
+                val_credences = reporter(val_h)
+                train_credences = reporter(train_h)
+                prompt_index = {"prompt_index": prompt_index}
+                for mode in ("none", "partial", "full"):
+                    row_bufs["eval"].append(
                         {
                             **meta,
                             "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
-                            **maybe_prompt_index,
+                            **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                            "train_loss": train_loss,
+                            **prompt_index,
                         }
                     )
 
-                if train_lm_preds is not None:
-                    row_bufs["train_lm_eval"].append(
+                    row_bufs["train_eval"].append(
                         {
                             **meta,
                             "ensembling": mode,
-                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
-                            **maybe_prompt_index,
+                            **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                            "train_loss": train_loss,
+                            **prompt_index,
                         }
                     )
 
-                for i, model in enumerate(lr_models):
-                    row_bufs["lr_eval"].append(
-                        {
-                            **meta,
-                            "ensembling": mode,
-                            "inlp_iter": i,
-                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
-                            **maybe_prompt_index,
-                        }
-                    )
+                    if val_lm_preds is not None:
+                        row_bufs["lm_eval"].append(
+                            {
+                                **meta,
+                                "ensembling": mode,
+                                **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                                **prompt_index,
+                            }
+                        )
+
+                    if train_lm_preds is not None:
+                        row_bufs["train_lm_eval"].append(
+                            {
+                                **meta,
+                                "ensembling": mode,
+                                **evaluate_preds(
+                                    train_gt, train_lm_preds, mode
+                                ).to_dict(),
+                                **prompt_index,
+                            }
+                        )
+
+                    for i, model in enumerate(lr_models):
+                        row_bufs["lr_eval"].append(
+                            {
+                                **meta,
+                                "ensembling": mode,
+                                "inlp_iter": i,
+                                **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                                **prompt_index,
+                            }
+                        )
+
+            if isinstance(reporter, MultiReporter):
+                for prompt_index, reporter_result in enumerate(
+                    reporter.reporter_results
+                ):
+                    eval_all(reporter_result.reporter, prompt_index)
+
+            eval_all(reporter, "multi")
 
         return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
 
@@ -261,7 +289,7 @@ class Elicit(Run):
                 for i in range(v)  # v is number of variants
             ]
 
-            res = []
+            results = []
             for i, train_dict in enumerate(train_dicts):
                 reporters_path = self.out_dir / str(i) / "reporters"
                 lr_path = self.out_dir / str(i) / "lr_models"
@@ -269,24 +297,23 @@ class Elicit(Run):
                 reporter_train_result = self.train_and_save_reporter(
                     device, layer, reporters_path, train_dict
                 )
-
-                reporter = reporter_train_result.reporter
-                train_loss = reporter_train_result.train_loss
+                results.append(reporter_train_result)
 
                 lr_models = self.train_lr_model(train_dict, device, layer, lr_path)
 
-                res.append(
-                    self.evaluate_and_save(
-                        train_loss,
-                        reporter,
-                        train_dict,
-                        val_dict,
-                        lr_models,
-                        layer,
-                        prompt_index=i,
-                    )
+            multi_reporter = MultiReporter(results)
+            train_loss = multi_reporter.train_loss
+
+            return [
+                self.evaluate_and_save(
+                    train_loss,
+                    multi_reporter,
+                    train_dict,
+                    val_dict,
+                    lr_models,  # TODO I don't care about this right now but
+                    layer,
                 )
-            return res
+            ]
         else:
             reporter_train_result = self.train_and_save_reporter(
                 device, layer, self.out_dir / "reporters", train_dict
