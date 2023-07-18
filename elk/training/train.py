@@ -13,13 +13,13 @@ from simple_parsing.helpers.serialization import save
 
 from ..evaluation import Eval
 from ..metrics import evaluate_preds, to_one_hot
-from ..run import Run
+from ..run import PreparedData, Run
 from ..training.supervised import train_supervised
+from . import Classifier
 from .ccs_reporter import CcsConfig, CcsReporter
 from .common import FitterConfig, Reporter
 from .eigen_reporter import EigenFitter, EigenFitterConfig
 
-# declare AnyReporter as CcsReporter | Reporter type alias
 AnyReporter = CcsReporter | Reporter
 
 
@@ -33,12 +33,14 @@ class MultiReporter:
     def __init__(self, reporter_results: list[ReporterTrainResult]):
         self.reporter_results: list[ReporterTrainResult] = reporter_results
         self.reporters = [r.reporter for r in reporter_results]
-        train_losses = [r.train_loss for r in reporter_results] if reporter_results[
-                                                                       0].train_loss \
-                                                                   is not None else None
-        self.train_loss = sum(train_losses) / len(
-            train_losses
-        ) if train_losses is not None else None
+        train_losses = (
+            [r.train_loss for r in reporter_results]
+            if reporter_results[0].train_loss is not None
+            else None
+        )
+        self.train_loss = (
+            sum(train_losses) / len(train_losses) if train_losses is not None else None
+        )
 
     def __call__(self, h):
         credences = [r(h) for r in self.reporters]
@@ -46,12 +48,12 @@ class MultiReporter:
 
 
 def evaluate_and_save(
-    train_loss,
+    train_loss: float | None,
     reporter: AnyReporter | MultiReporter,
-    train_dict,
-    val_dict,
-    lr_models,
-    layer,
+    train_dict: PreparedData,
+    val_dict: PreparedData,
+    lr_models: list[Classifier],
+    layer: int,
 ):
     row_bufs = defaultdict(list)
     for ds_name in val_dict:
@@ -102,9 +104,7 @@ def evaluate_and_save(
                         {
                             **meta,
                             "ensembling": mode,
-                            **evaluate_preds(
-                                train_gt, train_lm_preds, mode
-                            ).to_dict(),
+                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
                             **prompt_index,
                         }
                     )
@@ -121,9 +121,7 @@ def evaluate_and_save(
                     )
 
         if isinstance(reporter, MultiReporter):
-            for prompt_index, reporter_result in enumerate(
-                reporter.reporter_results
-            ):
+            for prompt_index, reporter_result in enumerate(reporter.reporter_results):
                 eval_all(reporter_result.reporter, prompt_index)
 
         eval_all(reporter, "multi")
@@ -238,7 +236,7 @@ class Elicit(Run):
 
         return ReporterTrainResult(reporter, train_loss)
 
-    def train_lr_model(self, train_dict, device, layer, out_dir):
+    def train_lr_model(self, train_dict, device, layer, out_dir) -> list[Classifier]:
         if self.supervised != "none":
             lr_models = train_supervised(
                 train_dict,
@@ -281,9 +279,9 @@ class Elicit(Run):
             train_dicts = [
                 {
                     ds_name: (
-                        train_h[:, i: i + 1, ...],
+                        train_h[:, i : i + 1, ...],
                         train_gt,
-                        lm_preds[:, i: i + 1, ...] if lm_preds is not None else None,
+                        lm_preds[:, i : i + 1, ...] if lm_preds is not None else None,
                     )
                 }
                 for ds_name, (train_h, _, lm_preds) in train_dict.items()
@@ -292,8 +290,12 @@ class Elicit(Run):
 
             results = []
             for i, train_dict in enumerate(train_dicts):
-                reporters_path = self.out_dir / str(i) / "reporters"
-                lr_path = self.out_dir / str(i) / "lr_models"
+                # format i as a 2 digit string, assumes that there will never be more
+                # than 100 prompts
+                str_i = str(i).zfill(2)
+                base = self.out_dir / "reporters" / f"prompt_{str_i}"
+                reporters_path = base / "reporters"
+                lr_path = base / "lr_models"
 
                 reporter_train_result = self.train_and_save_reporter(
                     device, layer, reporters_path, train_dict
@@ -302,29 +304,23 @@ class Elicit(Run):
 
                 lr_models = self.train_lr_model(train_dict, device, layer, lr_path)
 
-            multi_reporter = MultiReporter(results)
-            train_loss = multi_reporter.train_loss
+            maybe_multi_reporter = MultiReporter(results)
+            train_loss = maybe_multi_reporter.train_loss
 
-            return evaluate_and_save(
-                train_loss,
-                multi_reporter,
-                train_dict,
-                val_dict,
-                lr_models,  # TODO I don't care about this right now but
-                layer,
-            )
+            # TODO fix lr_models
+
         else:
             reporter_train_result = self.train_and_save_reporter(
                 device, layer, self.out_dir / "reporters", train_dict
             )
 
-            reporter = reporter_train_result.reporter
+            maybe_multi_reporter = reporter_train_result.reporter
             train_loss = reporter_train_result.train_loss
 
             lr_models = self.train_lr_model(
                 train_dict, device, layer, self.out_dir / "lr_models"
             )
 
-            return evaluate_and_save(
-                train_loss, reporter, train_dict, val_dict, lr_models, layer
-            )
+        return evaluate_and_save(
+            train_loss, maybe_multi_reporter, train_dict, val_dict, lr_models, layer
+        )

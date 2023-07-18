@@ -30,6 +30,8 @@ from .utils import (
     select_usable_devices,
 )
 
+PreparedData = dict[str, tuple[Tensor, Tensor, Tensor | None]]
+
 
 @dataclass
 class Run(ABC, Serializable):
@@ -132,7 +134,7 @@ class Run(ABC, Serializable):
 
     def prepare_data(
         self, device: str, layer: int, split_type: Literal["train", "val"]
-    ) -> dict[str, tuple[Tensor, Tensor, Tensor | None]]:
+    ) -> PreparedData:
         """Prepare data for the specified layer and split type."""
         out = {}
 
@@ -196,9 +198,14 @@ class Run(ABC, Serializable):
                     sortby = ["layer", "ensembling"]
                     if "prompt_index" in dfs[0].columns:
                         sortby.append("prompt_index")
-                    # make the prompt index third col
-
                     df = pd.concat(dfs).sort_values(by=sortby)
+
+                    # Move prompt_index to the 2'th column
+                    cols = list(df.columns)
+                    cols.insert(2, cols.pop(cols.index("prompt_index")))
+                    df = df.reindex(columns=cols)
+
+                    # Save the CSV
                     out_path = self.out_dir / f"{name}.csv"
                     df.round(4).to_csv(out_path, index=False)
                 if self.debug:
