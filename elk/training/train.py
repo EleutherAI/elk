@@ -33,14 +33,102 @@ class MultiReporter:
     def __init__(self, reporter_results: list[ReporterTrainResult]):
         self.reporter_results: list[ReporterTrainResult] = reporter_results
         self.reporters = [r.reporter for r in reporter_results]
-        train_losses = [r.train_loss for r in reporter_results]
-        self.train_loss = (
-            None if train_losses[0] is None else sum(train_losses) / len(train_losses)
-        )
+        train_losses = [r.train_loss for r in reporter_results] if reporter_results[
+                                                                       0].train_loss \
+                                                                   is not None else None
+        self.train_loss = sum(train_losses) / len(
+            train_losses
+        ) if train_losses is not None else None
 
     def __call__(self, h):
         credences = [r(h) for r in self.reporters]
         return torch.stack(credences).mean(dim=0)
+
+
+def evaluate_and_save(
+    train_loss,
+    reporter: AnyReporter | MultiReporter,
+    train_dict,
+    val_dict,
+    lr_models,
+    layer,
+):
+    row_bufs = defaultdict(list)
+    for ds_name in val_dict:
+        val_h, val_gt, val_lm_preds = val_dict[ds_name]
+        train_h, train_gt, train_lm_preds = train_dict[ds_name]
+        meta = {"dataset": ds_name, "layer": layer}
+
+        def eval_all(
+            reporter: AnyReporter | MultiReporter,
+            prompt_index: int | Literal["multi"],
+        ):
+            val_credences = reporter(val_h)
+            train_credences = reporter(train_h)
+            prompt_index = {"prompt_index": prompt_index}
+            for mode in ("none", "partial", "full"):
+                row_bufs["eval"].append(
+                    {
+                        **meta,
+                        "ensembling": mode,
+                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        "train_loss": train_loss,
+                        **prompt_index,
+                    }
+                )
+
+                row_bufs["train_eval"].append(
+                    {
+                        **meta,
+                        "ensembling": mode,
+                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                        "train_loss": train_loss,
+                        **prompt_index,
+                    }
+                )
+
+                if val_lm_preds is not None:
+                    row_bufs["lm_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            **prompt_index,
+                        }
+                    )
+
+                if train_lm_preds is not None:
+                    row_bufs["train_lm_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            **evaluate_preds(
+                                train_gt, train_lm_preds, mode
+                            ).to_dict(),
+                            **prompt_index,
+                        }
+                    )
+
+                for i, model in enumerate(lr_models):
+                    row_bufs["lr_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            "inlp_iter": i,
+                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            **prompt_index,
+                        }
+                    )
+
+        if isinstance(reporter, MultiReporter):
+            for prompt_index, reporter_result in enumerate(
+                reporter.reporter_results
+            ):
+                eval_all(reporter_result.reporter, prompt_index)
+
+        eval_all(reporter, "multi")
+
+    return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
 
 
 @dataclass
@@ -56,92 +144,6 @@ class Elicit(Run):
     """Whether to train a supervised classifier, and if so, whether to use
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
-
-    def evaluate_and_save(
-        self,
-        train_loss,
-        reporter: AnyReporter | MultiReporter,
-        train_dict,
-        val_dict,
-        lr_models,
-        layer,
-    ):
-        row_bufs = defaultdict(list)
-        for ds_name in val_dict:
-            val_h, val_gt, val_lm_preds = val_dict[ds_name]
-            train_h, train_gt, train_lm_preds = train_dict[ds_name]
-            meta = {"dataset": ds_name, "layer": layer}
-
-            def eval_all(
-                reporter: AnyReporter | MultiReporter,
-                prompt_index: int | Literal["multi"],
-            ):
-                val_credences = reporter(val_h)
-                train_credences = reporter(train_h)
-                prompt_index = {"prompt_index": prompt_index}
-                for mode in ("none", "partial", "full"):
-                    row_bufs["eval"].append(
-                        {
-                            **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                            "train_loss": train_loss,
-                            **prompt_index,
-                        }
-                    )
-
-                    row_bufs["train_eval"].append(
-                        {
-                            **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(train_gt, train_credences, mode).to_dict(),
-                            "train_loss": train_loss,
-                            **prompt_index,
-                        }
-                    )
-
-                    if val_lm_preds is not None:
-                        row_bufs["lm_eval"].append(
-                            {
-                                **meta,
-                                "ensembling": mode,
-                                **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
-                                **prompt_index,
-                            }
-                        )
-
-                    if train_lm_preds is not None:
-                        row_bufs["train_lm_eval"].append(
-                            {
-                                **meta,
-                                "ensembling": mode,
-                                **evaluate_preds(
-                                    train_gt, train_lm_preds, mode
-                                ).to_dict(),
-                                **prompt_index,
-                            }
-                        )
-
-                    for i, model in enumerate(lr_models):
-                        row_bufs["lr_eval"].append(
-                            {
-                                **meta,
-                                "ensembling": mode,
-                                "inlp_iter": i,
-                                **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
-                                **prompt_index,
-                            }
-                        )
-
-            if isinstance(reporter, MultiReporter):
-                for prompt_index, reporter_result in enumerate(
-                    reporter.reporter_results
-                ):
-                    eval_all(reporter_result.reporter, prompt_index)
-
-            eval_all(reporter, "multi")
-
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
 
     def create_models_dir(self, out_dir: Path):
         lr_dir = None
@@ -258,7 +260,7 @@ class Elicit(Run):
         devices: list[str],
         world_size: int,
         probe_per_prompt: bool,
-    ) -> list[dict[str, pd.DataFrame]]:
+    ) -> dict[str, pd.DataFrame]:
         """Train a single reporter on a single layer."""
         assert self.out_dir is not None  # TODO this is really annoying, why can it be
         # None?
@@ -275,14 +277,13 @@ class Elicit(Run):
         # TODO is this even needed
         # reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
 
-        probe_per_prompt = True
         if probe_per_prompt:
             train_dicts = [
                 {
                     ds_name: (
-                        train_h[:, i : i + 1, ...],
+                        train_h[:, i: i + 1, ...],
                         train_gt,
-                        lm_preds[:, i : i + 1, ...] if lm_preds is not None else None,
+                        lm_preds[:, i: i + 1, ...] if lm_preds is not None else None,
                     )
                 }
                 for ds_name, (train_h, _, lm_preds) in train_dict.items()
@@ -304,16 +305,14 @@ class Elicit(Run):
             multi_reporter = MultiReporter(results)
             train_loss = multi_reporter.train_loss
 
-            return [
-                self.evaluate_and_save(
-                    train_loss,
-                    multi_reporter,
-                    train_dict,
-                    val_dict,
-                    lr_models,  # TODO I don't care about this right now but
-                    layer,
-                )
-            ]
+            return evaluate_and_save(
+                train_loss,
+                multi_reporter,
+                train_dict,
+                val_dict,
+                lr_models,  # TODO I don't care about this right now but
+                layer,
+            )
         else:
             reporter_train_result = self.train_and_save_reporter(
                 device, layer, self.out_dir / "reporters", train_dict
@@ -326,8 +325,6 @@ class Elicit(Run):
                 train_dict, device, layer, self.out_dir / "lr_models"
             )
 
-            return [
-                self.evaluate_and_save(
-                    train_loss, reporter, train_dict, val_dict, lr_models, layer
-                )
-            ]
+            return evaluate_and_save(
+                train_loss, reporter, train_dict, val_dict, lr_models, layer
+            )

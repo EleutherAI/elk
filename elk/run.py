@@ -102,7 +102,7 @@ class Run(ABC, Serializable):
 
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
-        func: Callable[[int], list[dict[str, pd.DataFrame]]] = partial(
+        func: Callable[[int], dict[str, pd.DataFrame]] = partial(
             self.apply_to_layer,
             devices=devices,
             world_size=num_devices,
@@ -113,7 +113,7 @@ class Run(ABC, Serializable):
     @abstractmethod
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int, probe_per_prompt: bool
-    ) -> list[dict[str, pd.DataFrame]]:
+    ) -> dict[str, pd.DataFrame]:
         """Train or eval a reporter on a single layer."""
 
     def make_reproducible(self, seed: int):
@@ -162,7 +162,7 @@ class Run(ABC, Serializable):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], list[dict[str, pd.DataFrame]]],
+        func: Callable[[int], dict[str, pd.DataFrame]],
         num_devices: int,
     ):
         """Apply a function to each layer of the datasets in parallel
@@ -187,17 +187,17 @@ class Run(ABC, Serializable):
             df_buffers = defaultdict(list)
 
             try:
-                for df_dicts in tqdm(mapper(func, layers), total=len(layers)):
-                    for df_dict in df_dicts:
-                        for k, v in df_dict.items():
-                            df_buffers[k].append(v)
+                for df_dict in tqdm(mapper(func, layers), total=len(layers)):
+                    for k, v in df_dict.items():
+                        df_buffers[k].append(v)
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
                     sortby = ["layer", "ensembling"]
                     if "prompt_index" in dfs[0].columns:
                         sortby.append("prompt_index")
-                        # TODO make the prompt index third col
+                    # make the prompt index third col
+
                     df = pd.concat(dfs).sort_values(by=sortby)
                     out_path = self.out_dir / f"{name}.csv"
                     df.round(4).to_csv(out_path, index=False)
