@@ -221,8 +221,8 @@ def layer_ensembling(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     y_logits_collection = []
 
-    num_classes = None
-    y_true = None
+    num_classes = 2
+    y_true = layer_outputs[0][0]["val_gt"].to(device)
 
     for layer_output in layer_outputs:
         # all y_trues are identical, so just get the first
