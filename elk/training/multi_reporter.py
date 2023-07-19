@@ -13,6 +13,7 @@ AnyReporter = CcsReporter | Reporter
 class ReporterTrainResult:
     reporter: AnyReporter
     train_loss: float | None
+    prompt_index: int | None
 
 
 class MultiReporter:

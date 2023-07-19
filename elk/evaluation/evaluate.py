@@ -38,6 +38,15 @@ class Eval(Run):
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
 
+        val_output = {
+            ds_name: (
+                train_h[:, self.prompt_indices, ...],
+                train_gt,
+                lm_preds[:, self.prompt_indices, ...] if lm_preds is not None else None,
+            )
+            for ds_name, (train_h, train_gt, lm_preds) in val_output.items()
+        }
+
         experiment_dir = elk_reporter_dir() / self.source
 
         def load_reporter() -> AnyReporter | MultiReporter:
