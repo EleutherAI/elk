@@ -79,7 +79,8 @@ class Extract(Serializable):
     templates are used."""
 
     layers: tuple[int, ...] = ()
-    """Indices of layers to extract hidden states from. We ignore the embedding, have only the output of the transformer layers."""
+    """Indices of layers to extract hidden states from. We ignore the embedding, 
+    have only the output of the transformer layers."""
 
     layer_stride: InitVar[int] = 1
     """Shortcut for `tuple(range(1, num_layers, stride))`."""
