@@ -1,6 +1,6 @@
 import torch
 
-from elk.training import EigenReporter, EigenReporterConfig
+from elk.training import EigenFitter, EigenFitterConfig
 from elk.utils import batch_cov, cov_mean_fused
 
 
@@ -13,8 +13,8 @@ def test_eigen_reporter():
     x1, x2 = x.chunk(2, dim=0)
     x_neg, x_pos = x.unbind(2)
 
-    reporter = EigenReporter(
-        EigenReporterConfig(),
+    reporter = EigenFitter(
+        EigenFitterConfig(),
         hidden_size,
         dtype=torch.float64,
         num_variants=num_clusters,

@@ -2,15 +2,27 @@ from dataclasses import InitVar, dataclass, replace
 
 import numpy as np
 import torch
+from datasets import get_dataset_config_info
+from transformers import AutoConfig
 
 from ..evaluation import Eval
 from ..extraction import Extract
 from ..files import memorably_named_dir, sweeps_dir
 from ..plotting.visualize import visualize_sweep
-from ..training.eigen_reporter import EigenReporterConfig
+from ..training.eigen_reporter import EigenFitterConfig
 from ..utils import colorize
 from ..utils.constants import BURNS_DATASETS
 from .train import Elicit
+
+
+def assert_models_exist(model_names):
+    for model_name in model_names:
+        AutoConfig.from_pretrained(model_name)
+
+
+def assert_datasets_exist(dataset_names):
+    for dataset_name in dataset_names:
+        get_dataset_config_info(dataset_name)
 
 
 @dataclass
@@ -54,9 +66,9 @@ class Sweep:
             raise ValueError("No models specified")
         # can only use hparam_step if we're using an eigen net
         if self.hparam_step > 0 and not isinstance(
-            self.run_template.net, EigenReporterConfig
+            self.run_template.net, EigenFitterConfig
         ):
-            raise ValueError("Can only use hparam_step with EigenReporterConfig")
+            raise ValueError("Can only use hparam_step with EigenFitterConfig")
         elif self.hparam_step > 1:
             raise ValueError("hparam_step must be in [0, 1]")
 
@@ -81,7 +93,9 @@ class Sweep:
     def execute(self):
         M, D = len(self.models), len(self.datasets)
         print(f"Starting sweep over {M} models and {D} datasets ({M * D} runs)")
+        assert_models_exist(self.models)
         print(f"Models: {self.models}")
+        assert_datasets_exist(self.datasets)
         print(f"Datasets: {self.datasets}")
 
         root_dir = sweeps_dir()
@@ -122,7 +136,7 @@ class Sweep:
                         )
                         run = replace(self.run_template, data=data, out_dir=out_dir)
                         if var_weight is not None and neg_cov_weight is not None:
-                            assert isinstance(run.net, EigenReporterConfig)
+                            assert isinstance(run.net, EigenFitterConfig)
                             run.net.var_weight = var_weight
                             run.net.neg_cov_weight = neg_cov_weight
 
