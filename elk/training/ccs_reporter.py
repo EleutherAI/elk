@@ -109,10 +109,11 @@ class CcsReporter(Reporter):
         self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
+
         if self.config.norm == "burns":
-            self.norm: nn.module = BurnsNorm()
+            self.norm = BurnsNorm()
         else:
-            self.norm: nn.module = ConceptEraser(
+            self.norm = ConceptEraser(
                 in_features,
                 2 * num_variants,
                 device=device,
@@ -265,8 +266,7 @@ class CcsReporter(Reporter):
         # One-hot indicators for each prompt template
         n, v, _ = x_neg.shape
         prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
-
-        if self.config.norm == "leace":
+        if isinstance(self.norm, ConceptEraser):
             self.norm.update(
                 x=x_neg,
                 # Independent indicator for each (template, pseudo-label) pair
