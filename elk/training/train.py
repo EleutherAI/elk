@@ -17,34 +17,9 @@ from ..run import PreparedData, Run
 from ..training.supervised import train_supervised
 from . import Classifier
 from .ccs_reporter import CcsConfig, CcsReporter
-from .common import FitterConfig, Reporter
+from .common import FitterConfig
 from .eigen_reporter import EigenFitter, EigenFitterConfig
-
-AnyReporter = CcsReporter | Reporter
-
-
-@dataclass
-class ReporterTrainResult:
-    reporter: AnyReporter
-    train_loss: float | None
-
-
-class MultiReporter:
-    def __init__(self, reporter_results: list[ReporterTrainResult]):
-        self.reporter_results: list[ReporterTrainResult] = reporter_results
-        self.reporters = [r.reporter for r in reporter_results]
-        train_losses = (
-            [r.train_loss for r in reporter_results]
-            if reporter_results[0].train_loss is not None
-            else None
-        )
-        self.train_loss = (
-            sum(train_losses) / len(train_losses) if train_losses is not None else None
-        )
-
-    def __call__(self, h):
-        credences = [r(h) for r in self.reporters]
-        return torch.stack(credences).mean(dim=0)
+from .multi_reporter import AnyReporter, MultiReporter, ReporterTrainResult
 
 
 def evaluate_and_save(
