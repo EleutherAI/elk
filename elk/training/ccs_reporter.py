@@ -164,7 +164,7 @@ class CcsReporter(nn.Module, PlattMixin):
     def forward(self, x: Tensor) -> Tensor:
         """Return the credence assigned to the hidden state `x`."""
         assert self.norm is not None, "Must call fit() before forward()"
-        
+
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
