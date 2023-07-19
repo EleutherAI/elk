@@ -13,7 +13,6 @@ from torch import Tensor
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
 from .burns_norm import BurnsNorm
-from .classifier import Classifier
 from .common import FitterConfig
 from .losses import LOSSES
 from .platt_scaling import PlattMixin
