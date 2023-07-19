@@ -12,14 +12,10 @@ class BurnsNorm(nn.Module):
         current shape of input x: {x.shape}"
 
         x_mean: Tensor = x - torch.mean(x, dim=0)
-        if torch.all(x_mean == 0):
-            # input embeddings entries are identical, which leads to x_mean having only zero entries.
-            return x
-        else:
-            norm = torch.linalg.norm(x_mean, dim=2)
-            avg_norm = torch.mean(norm)
-            return (
-                x_mean
-                / avg_norm
-                * torch.sqrt(torch.tensor(x_mean.shape[2], dtype=torch.float32))
-            )
+        norm = torch.linalg.norm(x_mean, dim=2)
+        avg_norm = torch.mean(norm)
+        return (
+            x_mean
+            / avg_norm
+            * torch.sqrt(torch.tensor(x_mean.shape[2], dtype=torch.float32))
+        )
