@@ -42,10 +42,9 @@ def evaluate_and_save(
             i: int = 0,
         ):
             if isinstance(prompt_index, int):
-                val_credences = reporter(val_h[:, [prompt_index], :, :])
-                train_credences = reporter(train_h[:, [prompt_index], :, :])
+                val_credences = reporter(val_h[:, [i], :, :])
+                train_credences = reporter(train_h[:, [i], :, :])
             else:
-                # TODO implement diagonal
                 val_credences = reporter(val_h)
                 train_credences = reporter(train_h)
             prompt_index = {"prompt_index": prompt_index}
@@ -90,20 +89,20 @@ def evaluate_and_save(
                         }
                     )
 
-                for i, model in enumerate(lr_models):
+                for lr_model_num, model in enumerate(lr_models):
                     row_bufs["lr_eval"].append(
                         {
                             **meta,
                             "ensembling": mode,
-                            "inlp_iter": i,
+                            "inlp_iter": lr_model_num,
                             **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
                             **prompt_index,
                         }
                     )
 
         if isinstance(reporter, MultiReporter):
-            for reporter_result in reporter.reporter_results:
-                eval_all(reporter_result.reporter, reporter_result.prompt_index)
+            for i, reporter_result in enumerate(reporter.reporter_results):
+                eval_all(reporter_result.reporter, reporter_result.prompt_index, i)
             eval_all(reporter, prompt_index="multi")
         else:
             eval_all(reporter, prompt_index=None)
@@ -164,7 +163,6 @@ class Elicit(Run):
         self, device, layer, out_dir, train_dict, prompt_index=None
     ) -> ReporterTrainResult:
         (first_train_h, train_gt, _), *rest = train_dict.values()  # TODO can remove?
-        breakpoint()
         (_, v, k, d) = first_train_h.shape
         if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
             raise ValueError("All datasets must have the same hidden state size")
@@ -264,15 +262,13 @@ class Elicit(Run):
             prompt_train_dicts = [
                 {
                     ds_name: (
-                        train_h[:, [prompt_index], ...],
+                        train_h[:, [i], ...],
                         train_gt,
-                        lm_preds[:, [prompt_index], ...]
-                        if lm_preds is not None
-                        else None,
+                        lm_preds[:, [i], ...] if lm_preds is not None else None,
                     )
                 }
                 for ds_name, (train_h, _, lm_preds) in train_dict.items()
-                for prompt_index in prompt_indices  # v is number of variants
+                for i, _ in enumerate(prompt_indices)
             ]
 
             results = []

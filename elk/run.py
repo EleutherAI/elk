@@ -33,6 +33,17 @@ from .utils import (
 PreparedData = dict[str, tuple[Tensor, Tensor, Tensor | None]]
 
 
+def select_data(prepared_data: PreparedData, prompt_indices: list[int]):
+    return {
+        ds_name: (
+            train_h[:, prompt_indices, ...],
+            train_gt,
+            lm_preds[:, prompt_indices, ...] if lm_preds is not None else None,
+        )
+        for ds_name, (train_h, train_gt, lm_preds) in prepared_data.items()
+    }
+
+
 @dataclass
 class Run(ABC, Serializable):
     data: Extract
@@ -143,6 +154,8 @@ class Run(ABC, Serializable):
             split = ds[key].with_format("torch", device=device, dtype=torch.int16)
             labels = assert_type(Tensor, split["label"])
             hiddens = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
+            if self.prompt_indices:
+                hiddens = hiddens[:, self.prompt_indices, ...]
 
             with split.formatted_as("torch", device=device):
                 has_preds = "model_logits" in split.features

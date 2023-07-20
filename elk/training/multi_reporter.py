@@ -30,8 +30,12 @@ class MultiReporter:
         )
 
     def __call__(self, h):
-        credences = [r(h) for r in self.reporters]
-        return t.stack(credences).mean(dim=0)
+        num_variants = h.shape[1]
+        assert len(self.reporters) == num_variants
+        credences = []
+        for i, reporter in enumerate(self.reporters):
+            credences.append(reporter(h[:, [i], :, :]))
+        return t.stack(credences, dim=0).mean(dim=0)
 
     @staticmethod
     def load(path: Path, layer: int, device: str):

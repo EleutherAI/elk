@@ -9,7 +9,7 @@ from simple_parsing.helpers import field
 
 from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
-from ..run import Run
+from ..run import Run, select_data
 from ..training.multi_reporter import AnyReporter, MultiReporter
 from ..utils import Color
 
@@ -38,14 +38,7 @@ class Eval(Run):
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
 
-        val_output = {
-            ds_name: (
-                train_h[:, self.prompt_indices, ...],
-                train_gt,
-                lm_preds[:, self.prompt_indices, ...] if lm_preds is not None else None,
-            )
-            for ds_name, (train_h, train_gt, lm_preds) in val_output.items()
-        }
+        val_output = select_data(val_output, self.prompt_indices)
 
         experiment_dir = elk_reporter_dir() / self.source
 
