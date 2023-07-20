@@ -60,7 +60,7 @@ class Eval(Run):
             prompt_index: int | Literal["multi"] | None = None,
             i: int = 0,
         ):
-            prompt_index = (
+            prompt_index_dict = (
                 {"prompt_index": prompt_index} if prompt_index is not None else {}
             )
             for ds_name, (val_h, val_gt, _) in val_output.items():
@@ -73,7 +73,7 @@ class Eval(Run):
                             **meta,
                             "ensembling": mode,
                             **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                            **prompt_index,
+                            **prompt_index_dict,
                         }
                     )
 

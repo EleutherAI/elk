@@ -263,7 +263,6 @@ class Elicit(Run):
                 str_i = str(prompt_index).zfill(2)
                 base = self.out_dir / "reporters" / f"prompt_{str_i}"
                 reporters_path = base / "reporters"
-                base / "lr_models"
 
                 reporter_train_result = self.train_and_save_reporter(
                     device, layer, reporters_path, prompt_train_dict, prompt_index

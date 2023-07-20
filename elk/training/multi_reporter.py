@@ -27,8 +27,11 @@ class MultiReporter:
             if reporter[0].train_loss is not None
             else None
         )
+
         self.train_loss = (
-            sum(train_losses) / len(train_losses) if train_losses is not None else None
+            sum(train_losses) / len(train_losses)
+            if train_losses is not None  # type: ignore
+            else None
         )
 
     def __call__(self, h):
