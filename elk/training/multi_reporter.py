@@ -45,6 +45,7 @@ class MultiReporter:
         for folder in prompt_folders:
             path = folder / "reporters" / f"layer_{layer}.pt"
             reporter = t.load(path, map_location=device)
-            reporters.append(reporter)
+            prompt_index = int(folder.name.split("_")[-1])
+            reporters.append((reporter, prompt_index))
         # TODO for now I don't care about the train losses
-        return MultiReporter([ReporterTrainResult(r, None) for r in reporters])
+        return MultiReporter([ReporterTrainResult(r, None, pi) for r, pi in reporters])
