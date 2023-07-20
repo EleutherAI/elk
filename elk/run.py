@@ -43,7 +43,7 @@ def fetch_git_hash() -> str | None:
             .decode("ascii")
             .strip()
         )
-    except NotADirectoryError:
+    except (NotADirectoryError, subprocess.CalledProcessError):
         return
 
 
