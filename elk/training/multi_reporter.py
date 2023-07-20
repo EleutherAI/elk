@@ -6,24 +6,25 @@ import torch as t
 from elk.training import CcsReporter
 from elk.training.common import Reporter
 
-AnyReporter = CcsReporter | Reporter
+SingleReporter = CcsReporter | Reporter
 
 
 @dataclass
-class ReporterTrainResult:
-    reporter: AnyReporter
-    train_loss: float | None
-    prompt_index: int | None
+class ReporterWithInfo:  # I don't love this name but I have no choice because
+    # of the other Reporter
+    model: SingleReporter
+    train_loss: float | None = None
+    prompt_index: int | None = None
 
 
 class MultiReporter:
-    def __init__(self, reporter_results: list[ReporterTrainResult]):
-        assert len(reporter_results) > 0, "Must have at least one reporter"
-        self.reporter_results: list[ReporterTrainResult] = reporter_results
-        self.reporters = [r.reporter for r in reporter_results]
+    def __init__(self, reporter: list[ReporterWithInfo]):
+        assert len(reporter) > 0, "Must have at least one reporter"
+        self.reporter_w_infos: list[ReporterWithInfo] = reporter
+        self.models = [r.model for r in reporter]
         train_losses = (
-            [r.train_loss for r in reporter_results]
-            if reporter_results[0].train_loss is not None
+            [r.train_loss for r in reporter]
+            if reporter[0].train_loss is not None
             else None
         )
         self.train_loss = (
@@ -32,20 +33,21 @@ class MultiReporter:
 
     def __call__(self, h):
         num_variants = h.shape[1]
-        assert len(self.reporters) == num_variants
+        assert len(self.models) == num_variants
         credences = []
-        for i, reporter in enumerate(self.reporters):
+        for i, reporter in enumerate(self.models):
             credences.append(reporter(h[:, [i], :, :]))
         return t.stack(credences, dim=0).mean(dim=0)
 
     @staticmethod
     def load(path: Path, layer: int, device: str):
         prompt_folders = [p for p in path.iterdir() if p.is_dir()]
-        reporters = []
-        for folder in prompt_folders:
-            path = folder / "reporters" / f"layer_{layer}.pt"
-            reporter = t.load(path, map_location=device)
-            prompt_index = int(folder.name.split("_")[-1])
-            reporters.append((reporter, prompt_index))
-        # TODO for now I don't care about the train losses
-        return MultiReporter([ReporterTrainResult(r, None, pi) for r, pi in reporters])
+        reporters = [
+            (
+                t.load(folder / "reporters" / f"layer_{layer}.pt", map_location=device),
+                int(folder.name.split("_")[-1]),  # prompt index
+            )
+            for folder in prompt_folders
+        ]
+        # we don't care about the train losses for evaluating
+        return MultiReporter([ReporterWithInfo(r, None, pi) for r, pi in reporters])

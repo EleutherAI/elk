@@ -10,7 +10,7 @@ from simple_parsing.helpers import field
 from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
 from ..run import Run, select_data
-from ..training.multi_reporter import AnyReporter, MultiReporter
+from ..training.multi_reporter import MultiReporter, SingleReporter
 from ..utils import Color
 
 
@@ -42,7 +42,7 @@ class Eval(Run):
 
         experiment_dir = elk_reporter_dir() / self.source
 
-        def load_reporter() -> AnyReporter | MultiReporter:
+        def load_reporter() -> SingleReporter | MultiReporter:
             # check if experiment_dir / "reporters" has .pt files
             first = next((experiment_dir / "reporters").iterdir())
             if not first.suffix == ".pt":
@@ -58,16 +58,17 @@ class Eval(Run):
         row_bufs = defaultdict(list)
 
         def eval_all(
-            reporter: AnyReporter | MultiReporter,
+            reporter: SingleReporter | MultiReporter,
             prompt_index: int | Literal["multi"] | None = None,
+            i: int = 0,
         ):
             prompt_index = (
                 {"prompt_index": prompt_index} if prompt_index is not None else {}
             )
             for ds_name, (val_h, val_gt, _) in val_output.items():
                 meta = {"dataset": ds_name, "layer": layer}
+                val_credences = reporter(val_h[:, [i], :, :])
 
-                val_credences = reporter(val_h)
                 for mode in ("none", "partial", "full"):
                     row_bufs["eval"].append(
                         {
@@ -101,8 +102,8 @@ class Eval(Run):
                             )
 
         if isinstance(reporter, MultiReporter):
-            for prompt_index, single_reporter in enumerate(reporter.reporters):
-                eval_all(single_reporter, prompt_index)
+            for i, res in enumerate(reporter.reporter_w_infos):
+                eval_all(res.model, res.prompt_index, i)
             eval_all(reporter, "multi")
         else:
             eval_all(reporter)

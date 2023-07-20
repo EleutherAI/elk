@@ -17,12 +17,12 @@ from . import Classifier
 from .ccs_reporter import CcsConfig, CcsReporter
 from .common import FitterConfig
 from .eigen_reporter import EigenFitter, EigenFitterConfig
-from .multi_reporter import AnyReporter, MultiReporter, ReporterTrainResult
+from .multi_reporter import MultiReporter, ReporterWithInfo, SingleReporter
 
 
 def evaluate_and_save(
     train_loss: float | None,
-    reporter: AnyReporter | MultiReporter,
+    reporter: SingleReporter | MultiReporter,
     train_dict: PreparedData,
     val_dict: PreparedData,
     lr_models: list[Classifier],
@@ -35,7 +35,7 @@ def evaluate_and_save(
         meta = {"dataset": ds_name, "layer": layer}
 
         def eval_all(
-            reporter: AnyReporter | MultiReporter,
+            reporter: SingleReporter | MultiReporter,
             prompt_index: int | Literal["multi"] | None = None,
             i: int = 0,
         ):
@@ -45,7 +45,9 @@ def evaluate_and_save(
             else:
                 val_credences = reporter(val_h)
                 train_credences = reporter(train_h)
-            prompt_index = {"prompt_index": prompt_index}
+            prompt_index_dict = (
+                {"prompt_index": prompt_index} if prompt_index is not None else {}
+            )
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
                     {
@@ -53,7 +55,7 @@ def evaluate_and_save(
                         "ensembling": mode,
                         **evaluate_preds(val_gt, val_credences, mode).to_dict(),
                         "train_loss": train_loss,
-                        **prompt_index,
+                        **prompt_index_dict,
                     }
                 )
 
@@ -63,7 +65,7 @@ def evaluate_and_save(
                         "ensembling": mode,
                         **evaluate_preds(train_gt, train_credences, mode).to_dict(),
                         "train_loss": train_loss,
-                        **prompt_index,
+                        **prompt_index_dict,
                     }
                 )
 
@@ -73,7 +75,7 @@ def evaluate_and_save(
                             **meta,
                             "ensembling": mode,
                             **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
-                            **prompt_index,
+                            **prompt_index_dict,
                         }
                     )
 
@@ -83,7 +85,7 @@ def evaluate_and_save(
                             **meta,
                             "ensembling": mode,
                             **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
-                            **prompt_index,
+                            **prompt_index_dict,
                         }
                     )
 
@@ -94,13 +96,13 @@ def evaluate_and_save(
                             "ensembling": mode,
                             "inlp_iter": lr_model_num,
                             **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
-                            **prompt_index,
+                            **prompt_index_dict,
                         }
                     )
 
         if isinstance(reporter, MultiReporter):
-            for i, reporter_result in enumerate(reporter.reporter_results):
-                eval_all(reporter_result.reporter, reporter_result.prompt_index, i)
+            for i, reporter_result in enumerate(reporter.reporter_w_infos):
+                eval_all(reporter_result.model, reporter_result.prompt_index, i)
             eval_all(reporter, prompt_index="multi")
         else:
             eval_all(reporter, prompt_index=None)
@@ -145,7 +147,7 @@ class Elicit(Run):
     # Create a separate function to handle the reporter training.
     def train_and_save_reporter(
         self, device, layer, out_dir, train_dict, prompt_index=None
-    ) -> ReporterTrainResult:
+    ) -> ReporterWithInfo:
         (first_train_h, train_gt, _), *rest = train_dict.values()  # TODO can remove?
         (_, v, k, d) = first_train_h.shape
         if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
@@ -199,7 +201,7 @@ class Elicit(Run):
         out_dir.mkdir(parents=True, exist_ok=True)
         torch.save(reporter, out_dir / f"layer_{layer}.pt")
 
-        return ReporterTrainResult(reporter, train_loss, prompt_index)
+        return ReporterWithInfo(reporter, train_loss, prompt_index)
 
     def train_lr_model(self, train_dict, device, layer, out_dir) -> list[Classifier]:
         if self.supervised != "none":
@@ -231,14 +233,14 @@ class Elicit(Run):
         self.make_reproducible(seed=self.net.seed + layer)
         device = self.get_device(devices, world_size)
 
-        train_dict = self.prepare_data(device, layer, "train")  # prepare data no
-        # longer does anything on prompt indices
+        train_dict = self.prepare_data(device, layer, "train")
         val_dict = self.prepare_data(device, layer, "val")
 
         (first_train_h, train_gt, _), *rest = train_dict.values()
         (_, v, k, d) = first_train_h.shape
 
         if probe_per_prompt:
+            # self.prompt_indices being () actually means "all prompts"
             prompt_indices = self.prompt_indices if self.prompt_indices else range(v)
             prompt_train_dicts = [
                 {
@@ -261,33 +263,27 @@ class Elicit(Run):
                 str_i = str(prompt_index).zfill(2)
                 base = self.out_dir / "reporters" / f"prompt_{str_i}"
                 reporters_path = base / "reporters"
-                lr_path = base / "lr_models"
+                base / "lr_models"
 
                 reporter_train_result = self.train_and_save_reporter(
                     device, layer, reporters_path, prompt_train_dict, prompt_index
                 )
                 results.append(reporter_train_result)
 
-                lr_models = self.train_lr_model(
-                    prompt_train_dict, device, layer, lr_path
-                )
-
+            # it is called maybe_multi_reporter because it might be a single reporter
             maybe_multi_reporter = MultiReporter(results)
             train_loss = maybe_multi_reporter.train_loss
-
-            # TODO fix lr_models
-
         else:
             reporter_train_result = self.train_and_save_reporter(
                 device, layer, self.out_dir / "reporters", train_dict
             )
 
-            maybe_multi_reporter = reporter_train_result.reporter
+            maybe_multi_reporter = reporter_train_result.model
             train_loss = reporter_train_result.train_loss
 
-            lr_models = self.train_lr_model(
-                train_dict, device, layer, self.out_dir / "lr_models"
-            )
+        lr_models = self.train_lr_model(
+            train_dict, device, layer, self.out_dir / "lr_models"
+        )
 
         return evaluate_and_save(
             train_loss, maybe_multi_reporter, train_dict, val_dict, lr_models, layer
