@@ -10,7 +10,7 @@ from ..extraction import Extract
 from ..extraction.dataset_name import parse_dataset_string
 from ..files import memorably_named_dir, sweeps_dir
 from ..plotting.visualize import visualize_sweep
-from ..training.eigen_reporter import EigenReporterConfig
+from ..training.eigen_reporter import EigenFitterConfig
 from ..utils import colorize
 from ..utils.constants import BURNS_DATASETS
 from .train import Elicit
@@ -69,9 +69,9 @@ class Sweep:
             raise ValueError("No models specified")
         # can only use hparam_step if we're using an eigen net
         if self.hparam_step > 0 and not isinstance(
-            self.run_template.net, EigenReporterConfig
+            self.run_template.net, EigenFitterConfig
         ):
-            raise ValueError("Can only use hparam_step with EigenReporterConfig")
+            raise ValueError("Can only use hparam_step with EigenFitterConfig")
         elif self.hparam_step > 1:
             raise ValueError("hparam_step must be in [0, 1]")
 
@@ -139,7 +139,7 @@ class Sweep:
                         )
                         run = replace(self.run_template, data=data, out_dir=out_dir)
                         if var_weight is not None and neg_cov_weight is not None:
-                            assert isinstance(run.net, EigenReporterConfig)
+                            assert isinstance(run.net, EigenFitterConfig)
                             run.net.var_weight = var_weight
                             run.net.neg_cov_weight = neg_cov_weight
 

@@ -9,7 +9,6 @@ from simple_parsing.helpers import field
 from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
 from ..run import Run
-from ..training import Reporter
 from ..utils import Color
 from ..utils.types import PromptEnsembling
 
@@ -41,8 +40,7 @@ class Eval(Run):
         experiment_dir = elk_reporter_dir() / self.source
 
         reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
-        reporter = Reporter.load(reporter_path, map_location=device)
-        reporter.eval()
+        reporter = torch.load(reporter_path, map_location=device)
 
         row_bufs = defaultdict(list)
 
