@@ -29,8 +29,8 @@ class MultiReporter:
         )
 
         self.train_loss = (
-            sum(train_losses) / len(train_losses)
-            if train_losses is not None  # type: ignore
+            sum(train_losses) / len(train_losses)  # type: ignore
+            if train_losses is not None
             else None
         )
 
