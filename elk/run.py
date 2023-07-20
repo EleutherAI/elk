@@ -199,10 +199,10 @@ class Run(ABC, Serializable):
                         sortby.append("prompt_index")
                     df = pd.concat(dfs).sort_values(by=sortby)
 
-                    # Move prompt_index to the 2'th column
-                    cols = list(df.columns)
-                    cols.insert(2, cols.pop(cols.index("prompt_index")))
-                    df = df.reindex(columns=cols)
+                    if "prompt_index" in df.columns:
+                        cols = list(df.columns)
+                        cols.insert(2, cols.pop(cols.index("prompt_index")))
+                        df = df.reindex(columns=cols)
 
                     # Save the CSV
                     out_path = self.out_dir / f"{name}.csv"
