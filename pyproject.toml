@@ -12,6 +12,9 @@ license = { text = "MIT License" }
 dependencies = [
     # Allows us to use device_map in from_pretrained. Also needed for 8bit
     "accelerate",
+    # For pseudolabel and prompt normalization. We're picky about the version because
+    # the package isn't guaranteed to be stable yet.
+    "concept-erasure==0.1.0",
     # Added distributed.split_dataset_by_node for IterableDatasets
     "datasets>=2.9.0",
     "einops",
@@ -62,8 +65,11 @@ reportPrivateImportUsage = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.setuptools.package-data]
+elk = ["*.json", "*.yaml"]
+
 [tool.setuptools.packages.find]
-include = ["elk*"]
+include = ["elk"]
 
 [tool.ruff]
 # Enable pycodestyle (`E`), Pyflakes (`F`), and isort (`I`) codes

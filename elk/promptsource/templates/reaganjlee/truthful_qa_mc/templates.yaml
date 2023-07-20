@@ -1,0 +1,195 @@
+dataset: truthful_qa_mc
+binarize: true
+templates:
+  00fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 00fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: 'Answer the following question: {{ question }}
+
+      Choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}. Choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. Between choice 1 and choice 2,
+      the answer of this question is ||| {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_1
+    reference: Burns et al.
+  01fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 01fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: 'Answer the following question: {{ question }}
+
+      Choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}. Choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}. Between choice 1 and choice 2,
+      what is the answer to this question? |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_2
+    reference: Burns et al.
+  02fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 02fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: 'Answer the following question: {{ question }}
+
+      Which is the answer of this question, choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}, or
+      choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
+
+      {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_3
+    reference: Burns et al.
+  04fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 04fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: '{{ question }}
+
+      Choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}. Choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}}.Between choice 1 and choice 2,
+      the topic of this example is |||  {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_5
+    reference: Burns et al.
+  05fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 05fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: '{{ question }}
+
+      Which is the answer to this question, choice 1: {{''. ''.join([answer_choices[label], choices[label]])}}, or
+      choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
+
+      {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_6
+    reference: Burns et al.
+  06fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 06fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: '{{ question }}
+
+      What is the answer to the question, choice 1: {{''. ''.join([answer_choices[label], choices[label]])}},
+      or choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
+
+      {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_7
+    reference: Burns et al.
+  07fa401f-3329-48fa-be4a-1b6725292ee6: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 07fa401f-3329-48fa-be4a-1b6725292ee6
+    jinja: '{{ question }}
+
+      What choice best answers this question, choice 1: {{''. ''.join([answer_choices[label], choices[label]])}},
+      or choice 2: {{''. ''.join([answer_choices[1 - label], choices[1 - label]])}} |||
+
+      {{answer_choices[label]}}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics: []
+      original_task: true
+    name: burns_8
+    reference: Burns et al.
+  824ecb55-ecad-40c2-8033-f2fa0add2ddf: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 824ecb55-ecad-40c2-8033-f2fa0add2ddf
+    jinja: '{{ question }} Given a list of choices:
+      {% for k in range(choices | length) %}
+
+      {{''. ''.join([answer_choices[k], choices[k]])}}
+
+      {% endfor %}
+
+      what choice best answers the question? ||| {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: given_list_what_category_does_the_paragraph_belong_to
+    reference: ''
+  8eda7e71-6734-486f-b883-e99d3f14c0bf: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 8eda7e71-6734-486f-b883-e99d3f14c0bf
+    jinja: 'Pick one answer for the following question. The options are -
+      {% for k in range(choices | length) %}
+
+      {{''. ''.join([answer_choices[k], choices[k]])}}
+
+      {% endfor %}.
+      {{ question }} |||
+
+      {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: pick_one_category_for_the_following_text
+    reference: ''
+  9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: 9dfa5d15-96bc-41ee-ad89-4f8df5c4ff67
+    jinja: '{{ question }} Given a choice of answers
+      {% for k in range(choices | length) %}
+
+      {{''. ''.join([answer_choices[k], choices[k]])}}
+
+      {% endfor %}, the question
+      is best answered by which one? ||| {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: 'given_a_choice_of_categories '
+    reference: ''
+  f72fa410-3278-4f62-91f0-f9edf4a4e792: !Template
+    answer_choices: A ||| B ||| C ||| D
+    id: f72fa410-3278-4f62-91f0-f9edf4a4e792
+    jinja: '"{{ question }}", given a list of choices:
+      {% for k in range(choices | length) %}
+
+      {{''. ''.join([answer_choices[k], choices[k]])}}
+
+      {% endfor %}, what answer belongs
+      to the question? ||| {{ answer_choices[label] }}'
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: given_a_list_of_category_what_does_the_title_belong_to
+    reference: ''

@@ -14,14 +14,14 @@ repos:
     rev: 23.3.0
     hooks:
     -   id: black
--   repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: 'v0.0.267'
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 'v0.0.277'
     hooks:
         - id: ruff
           args: [--fix, --exit-non-zero-on-fix]
 -   repo: https://github.com/codespell-project/codespell
-    rev: v2.2.4
+    rev: v2.2.5
     hooks:
     -   id: codespell
         # The promptsource templates spuriously get flagged without this
-        args: ["-L fpr", "--skip=*.yaml"]
+        args: ["-L fpr,leace", "--skip=*.yaml"]

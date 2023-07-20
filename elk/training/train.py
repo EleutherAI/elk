@@ -15,17 +15,17 @@ from ..metrics import evaluate_preds, to_one_hot
 from ..run import Run
 from ..training.supervised import train_supervised
 from ..utils.typing import assert_type
-from .ccs_reporter import CcsReporter, CcsReporterConfig
-from .eigen_reporter import EigenReporter, EigenReporterConfig
-from .reporter import ReporterConfig
+from .ccs_reporter import CcsConfig, CcsReporter
+from .common import FitterConfig
+from .eigen_reporter import EigenFitter, EigenFitterConfig
 
 
 @dataclass
 class Elicit(Run):
     """Full specification of a reporter training run."""
 
-    net: ReporterConfig = subgroups(
-        {"ccs": CcsReporterConfig, "eigen": EigenReporterConfig}, default="eigen"
+    net: FitterConfig = subgroups(
+        {"ccs": CcsConfig, "eigen": EigenFitterConfig}, default="eigen"
     )
     """Config for building the reporter network."""
 
@@ -75,19 +75,13 @@ class Elicit(Run):
             raise ValueError("All datasets must have the same number of classes")
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
-        if isinstance(self.net, CcsReporterConfig):
+        train_loss = None
+
+        if isinstance(self.net, CcsConfig):
             assert len(train_dict) == 1, "CCS only supports single-task training"
 
             reporter = CcsReporter(self.net, d, device=device, num_variants=v)
             train_loss = reporter.fit(first_train_h)
-
-            (val_h, val_gt, _) = next(iter(val_dict.values()))
-            x0, x1 = first_train_h.unbind(2)
-            val_x0, val_x1 = val_h.unbind(2)
-            pseudo_auroc = reporter.check_separability(
-                train_pair=(x0, x1),
-                val_pair=(val_x0, val_x1),
-            )
 
             (_, v, k, _) = first_train_h.shape
             reporter.platt_scale(
@@ -95,8 +89,8 @@ class Elicit(Run):
                 rearrange(first_train_h, "n v k d -> (n v k) d"),
             )
 
-        elif isinstance(self.net, EigenReporterConfig):
-            reporter = EigenReporter(
+        elif isinstance(self.net, EigenFitterConfig):
+            fitter = EigenFitter(
                 self.net, d, num_classes=k, num_variants=v, device=device
             )
 
@@ -110,10 +104,9 @@ class Elicit(Run):
                 label_list.append(
                     to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten()
                 )
-                reporter.update(train_h)
+                fitter.update(train_h)
 
-            pseudo_auroc = None
-            train_loss = reporter.fit_streaming()
+            reporter = fitter.fit_streaming()
             reporter.platt_scale(
                 torch.cat(label_list),
                 torch.cat(hidden_list),
@@ -122,7 +115,7 @@ class Elicit(Run):
             raise ValueError(f"Unknown reporter config type: {type(self.net)}")
 
         # Save reporter checkpoint to disk
-        reporter.save(reporter_dir / f"layer_{layer}.pt")
+        torch.save(reporter, reporter_dir / f"layer_{layer}.pt")
 
         # Fit supervised logistic regression model
         if self.supervised != "none":
@@ -150,7 +143,6 @@ class Elicit(Run):
                         **meta,
                         "ensembling": mode,
                         **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                        "pseudo_auroc": pseudo_auroc,
                         "train_loss": train_loss,
                     }
                 )
