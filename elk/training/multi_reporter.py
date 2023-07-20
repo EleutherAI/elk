@@ -18,6 +18,7 @@ class ReporterTrainResult:
 
 class MultiReporter:
     def __init__(self, reporter_results: list[ReporterTrainResult]):
+        assert len(reporter_results) > 0, "Must have at least one reporter"
         self.reporter_results: list[ReporterTrainResult] = reporter_results
         self.reporters = [r.reporter for r in reporter_results]
         train_losses = (
