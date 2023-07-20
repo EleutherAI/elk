@@ -9,7 +9,7 @@ from simple_parsing.helpers import field
 
 from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
-from ..run import Run, select_data
+from ..run import Run
 from ..training.multi_reporter import MultiReporter, SingleReporter
 from ..utils import Color
 
@@ -37,8 +37,6 @@ class Eval(Run):
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
-
-        val_output = select_data(val_output, self.prompt_indices)
 
         experiment_dir = elk_reporter_dir() / self.source
 

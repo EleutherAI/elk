@@ -33,17 +33,6 @@ from .utils import (
 PreparedData = dict[str, tuple[Tensor, Tensor, Tensor | None]]
 
 
-def select_data(prepared_data: PreparedData, prompt_indices: list[int]):
-    return {
-        ds_name: (
-            train_h[:, prompt_indices, ...],
-            train_gt,
-            lm_preds[:, prompt_indices, ...] if lm_preds is not None else None,
-        )
-        for ds_name, (train_h, train_gt, lm_preds) in prepared_data.items()
-    }
-
-
 @dataclass
 class Run(ABC, Serializable):
     data: Extract
