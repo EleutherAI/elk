@@ -1,6 +1,5 @@
 import os
 import random
-import subprocess
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -18,8 +17,6 @@ from simple_parsing.helpers.serialization import save
 from torch import Tensor
 from tqdm import tqdm
 
-import elk
-
 from .debug_logging import save_debug_log
 from .extraction import Extract, extract
 from .extraction.dataset_name import DatasetDictWithName
@@ -32,19 +29,6 @@ from .utils import (
     select_split,
     select_usable_devices,
 )
-
-
-def fetch_git_hash() -> str | None:
-    try:
-        return (
-            subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=Path(elk.__file__).parent.parent
-            )
-            .decode("ascii")
-            .strip()
-        )
-    except (NotADirectoryError, subprocess.CalledProcessError):
-        return
 
 
 @dataclass
@@ -102,7 +86,15 @@ class Run(ABC, Serializable):
         # properly without this flag enabled.
         save(self, self.out_dir / "cfg.yaml", save_dc_types=True)
 
-        self.write_metadata()
+        path = self.out_dir / "fingerprints.yaml"
+        with open(path, "w") as meta_f:
+            yaml.dump(
+                {
+                    ds_name: {split: ds[split]._fingerprint for split in ds.keys()}
+                    for ds_name, ds in self.datasets
+                },
+                meta_f,
+            )
 
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
@@ -198,21 +190,3 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
-
-    def write_metadata(self):
-        """Write metadata about the run to a yaml file."""
-        assert self.out_dir is not None
-        with open(self.out_dir / "metadata.yaml", "w") as meta_f:
-            dataset_fingerprints = {
-                ds_name: {split: ds[split]._fingerprint for split in ds.keys()}
-                for ds_name, ds in self.datasets
-            }
-            metadata = dict()
-            metadata["datasets"] = dataset_fingerprints
-            git_hash = fetch_git_hash()
-            if git_hash is not None:
-                metadata["git_hash"] = git_hash
-            yaml.dump(
-                metadata,
-                meta_f,
-            )

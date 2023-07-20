@@ -27,7 +27,7 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
     created_file_names = {file.name for file in files}
     expected_files = [
         "cfg.yaml",
-        "metadata.yaml",
+        "fingerprints.yaml",
         "lr_models",
         "reporters",
         "eval.csv",
@@ -58,7 +58,7 @@ def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
     created_file_names = {file.name for file in files}
     expected_files = [
         "cfg.yaml",
-        "metadata.yaml",
+        "fingerprints.yaml",
         "lr_models",
         "reporters",
         "eval.csv",
