@@ -65,8 +65,11 @@ reportPrivateImportUsage = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.setuptools.package-data]
+elk = ["*.json.", "*.yaml"]
+
 [tool.setuptools.packages.find]
-include = ["elk*"]
+include = ["elk"]
 
 [tool.ruff]
 # Enable pycodestyle (`E`), Pyflakes (`F`), and isort (`I`) codes
