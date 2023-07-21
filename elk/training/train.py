@@ -13,6 +13,7 @@ from ..evaluation import Eval
 from ..metrics import evaluate_preds, to_one_hot
 from ..run import PreparedData, Run
 from ..training.supervised import train_supervised
+from ..utils.types import PromptEnsembling
 from . import Classifier
 from .ccs_reporter import CcsConfig, CcsReporter
 from .common import FitterConfig
@@ -49,21 +50,22 @@ def evaluate_and_save(
             prompt_index_dict = (
                 {"prompt_index": prompt_index} if prompt_index is not None else {}
             )
-            layer_outputs.append(
-                {
-                    **meta,
-                    "val_gt": val_gt.detach(),
-                    "val_credences": val_credences.detach(),
-                    **prompt_index_dict,
-                }
-            )
+            if prompt_index == "multi":
+                layer_outputs.append(
+                    {
+                        **meta,
+                        "val_gt": val_gt.detach(),
+                        "val_credences": val_credences.detach(),
+                        **prompt_index_dict,
+                    }
+                )
 
-            for mode in ("none", "partial", "full"):
+            for ensembling in PromptEnsembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        "ensembling": ensembling.value,
+                        **evaluate_preds(val_gt, val_credences, ensembling).to_dict(),
                         "train_loss": train_loss,
                         **prompt_index_dict,
                     }
@@ -72,8 +74,10 @@ def evaluate_and_save(
                 row_bufs["train_eval"].append(
                     {
                         **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                        "ensembling": ensembling.value,
+                        **evaluate_preds(
+                            train_gt, train_credences, ensembling
+                        ).to_dict(),
                         "train_loss": train_loss,
                         **prompt_index_dict,
                     }
@@ -83,8 +87,10 @@ def evaluate_and_save(
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            "ensembling": ensembling.value,
+                            **evaluate_preds(
+                                val_gt, val_lm_preds, ensembling
+                            ).to_dict(),
                             **prompt_index_dict,
                         }
                     )
@@ -93,8 +99,10 @@ def evaluate_and_save(
                     row_bufs["train_lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
+                            "ensembling": ensembling.value,
+                            **evaluate_preds(
+                                train_gt, train_lm_preds, ensembling
+                            ).to_dict(),
                             **prompt_index_dict,
                         }
                     )
@@ -103,22 +111,21 @@ def evaluate_and_save(
                     row_bufs["lr_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
+                            "ensembling": ensembling.value,
                             "inlp_iter": lr_model_num,
-                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            **evaluate_preds(
+                                val_gt, model(val_h), ensembling
+                            ).to_dict(),
                             **prompt_index_dict,
                         }
                     )
 
         if isinstance(reporter, MultiReporter):
             for i, reporter_result in enumerate(reporter.reporter_w_infos):
-                layer_outputs.append(
-                    eval_all(reporter_result.model, reporter_result.prompt_index, i)
-                )
-            layer_outputs.append(eval_all(reporter, prompt_index="multi"))
+                eval_all(reporter_result.model, reporter_result.prompt_index, i)
+            eval_all(reporter, prompt_index="multi")
         else:
-            layer_outputs.append(eval_all(reporter, prompt_index=None))
-        return layer_outputs
+            eval_all(reporter, prompt_index=None)
 
     return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, layer_outputs
 
@@ -238,7 +245,7 @@ class Elicit(Run):
         devices: list[str],
         world_size: int,
         probe_per_prompt: bool,
-    ) -> dict[str, pd.DataFrame]:
+    ) -> list[None] | tuple[dict, list[None]]:
         """Train a single reporter on a single layer."""
         assert self.out_dir is not None  # TODO this is really annoying, why can it be
         # None?
