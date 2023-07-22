@@ -50,7 +50,7 @@ def evaluate_and_save(
             prompt_index_dict = (
                 {"prompt_index": prompt_index} if prompt_index is not None else {}
             )
-            if prompt_index == "multi":
+            if not isinstance(prompt_index, int):
                 layer_outputs.append(
                     {
                         **meta,

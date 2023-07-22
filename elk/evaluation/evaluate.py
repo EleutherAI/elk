@@ -68,7 +68,11 @@ class Eval(Run):
             layer_outputs = []
             for ds_name, (val_h, val_gt, _) in val_output.items():
                 meta = {"dataset": ds_name, "layer": layer}
-                val_credences = reporter(val_h[:, [i], :, :])
+                if isinstance(prompt_index, int):
+                    val_credences = reporter(val_h[:, [i], :, :])
+                else:
+                    val_credences = reporter(val_h)
+
                 layer_outputs.append(
                     {**meta, "val_gt": val_gt, "val_credences": val_credences}
                 )
@@ -110,6 +114,9 @@ class Eval(Run):
 
         layer_outputs = []
         if isinstance(reporter, MultiReporter):
+            # eg.
+            # prompt_indices       = 0 1 5 9
+            # i of the data passed = 0 1 2 3
             for i, res in enumerate(reporter.reporter_w_infos):
                 layer_outputs.append(eval_all(res.model, res.prompt_index, i))
             layer_outputs.append(eval_all(reporter, "multi"))
