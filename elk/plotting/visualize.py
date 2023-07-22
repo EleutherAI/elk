@@ -57,11 +57,13 @@ class SweepByDsMultiplot:
         )
         color_map = dict(zip(ensemblings, qualitative.Plotly))
 
-        for ensembling in ensemblings:
-            ensemble_data: pd.DataFrame = df[df["ensembling"] == ensembling.value]
+        for prompt_ensembling in ensemblings:
+            ensemble_data: pd.DataFrame = df[
+                df["prompt_ensembling"] == prompt_ensembling.value
+            ]
             if with_transfer:  # TODO write tests
                 ensemble_data = ensemble_data.groupby(
-                    ["eval_dataset", "layer", "ensembling"], as_index=False
+                    ["eval_dataset", "layer", "prompt_ensembling"], as_index=False
                 ).agg({"auroc_estimate": "mean"})
             else:
                 ensemble_data = ensemble_data[
@@ -83,11 +85,11 @@ class SweepByDsMultiplot:
                         x=dataset_data["layer"],
                         y=dataset_data["auroc_estimate"],
                         mode="lines",
-                        name=ensembling.value,
+                        name=prompt_ensembling.value,
                         showlegend=False
                         if dataset_name != unique_datasets[0]
                         else True,
-                        line=dict(color=color_map[ensembling]),
+                        line=dict(color=color_map[prompt_ensembling]),
                     ),
                     row=row,
                     col=col,
@@ -99,7 +101,7 @@ class SweepByDsMultiplot:
 
         fig.update_layout(
             legend=dict(
-                title="Ensembling",
+                title="prompt_ensembling",
             ),
             title=f"AUROC Trend: {self.model_name}",
         )
@@ -121,7 +123,7 @@ class TransferEvalHeatmap:
 
     layer: int
     score_type: str = "auroc_estimate"
-    ensembling: PromptEnsembling = PromptEnsembling.FULL
+    prompt_ensembling: PromptEnsembling = PromptEnsembling.FULL
 
     def render(self, df: pd.DataFrame) -> go.Figure:
         """Render the heatmap visualization.
@@ -264,7 +266,7 @@ class ModelVisualization:
         sweep: "SweepVisualization",
         dataset_names: list[str] | None = None,
         score_type="auroc_estimate",
-        ensembling=PromptEnsembling.FULL,
+        prompt_ensembling=PromptEnsembling.FULL,
     ) -> None:
         """Render and save the visualization for the model.
 
@@ -272,7 +274,7 @@ class ModelVisualization:
             sweep: The SweepVisualization instance.
             dataset_names: List of dataset names to include in the visualization.
             score_type: The type of score to display.
-            ensembling: The ensembling option to consider.
+            prompt_ensembling: The prompt_ensembling option to consider.
         """
         df = self.df
         model_name = self.model_name
@@ -282,10 +284,11 @@ class ModelVisualization:
         if self.is_transfer:
             for layer in range(layer_min, layer_max + 1):
                 filtered = df[
-                    (df["layer"] == layer) & (df["ensembling"] == ensembling.value)
+                    (df["layer"] == layer)
+                    & (df["prompt_ensembling"] == prompt_ensembling.value)
                 ]
                 fig = TransferEvalHeatmap(
-                    layer, score_type=score_type, ensembling=ensembling
+                    layer, score_type=score_type, prompt_ensembling=prompt_ensembling
                 ).render(filtered)
                 fig.write_image(file=model_path / f"{layer}.png")
         fig = TransferEvalTrend(dataset_names).render(df)
@@ -396,11 +399,13 @@ class SweepVisualization:
         for model in self.models.values():
             # model.render_and_save(self)
             pass
-        for ensembling in PromptEnsembling.all():
+        for prompt_ensembling in PromptEnsembling.all():
             score_type = "auroc_estimate"
-            self.render_table(ensembling=ensembling, score_type=score_type, write=True)
+            self.render_table(
+                prompt_ensembling=prompt_ensembling, score_type=score_type, write=True
+            )
             self.render_layer_ensembling_table(
-                ensembling=ensembling, score_type=score_type, write=True
+                prompt_ensembling=prompt_ensembling, score_type=score_type, write=True
             )
         self.render_multiplots(write=True)
 
@@ -417,7 +422,7 @@ class SweepVisualization:
 
     def render_layer_ensembling_table(
         self,
-        ensembling: PromptEnsembling,
+        prompt_ensembling: PromptEnsembling,
         score_type: str,
         display=True,
         write=False,
@@ -426,7 +431,7 @@ class SweepVisualization:
         Render and optionally write the layer ensembling table.
 
         Args:
-            ensembling: The ensembling type to consider.
+            prompt_ensembling: The ensembling type to consider.
             display: Flag indicating whether to display the table to stdout.
             write: Flag indicating whether to write the table to a file.
         Returns:
@@ -444,15 +449,15 @@ class SweepVisualization:
                 The generated layer ensembling table as a pandas DataFrame.
             """
 
-        # if column ensembling doesn't exist, change column called
-        # ensemble to ensembling
-        if "ensemble" in self.layer_ensembling_df.columns:
+        # if column prompt_ensembling doesn't exist, change column called
+        # ensemble to prompt_ensembling
+        if "prompt_ensembling" in self.layer_ensembling_df.columns:
             self.layer_ensembling_df.rename(
-                columns={"ensemble": "ensembling"}, inplace=True
+                columns={"prompt_ensembling": "prompt_ensembling"}, inplace=True
             )
 
         layer_ensembling_df = self.layer_ensembling_df[
-            self.layer_ensembling_df["ensembling"] == ensembling.value
+            self.layer_ensembling_df["prompt_ensembling"] == prompt_ensembling.value
         ]
 
         # Pivot the layer ensembling df
@@ -463,7 +468,7 @@ class SweepVisualization:
             margins=True,
             margins_name="Mean",
         )
-        key = f"layer-{ensembling.value}"
+        key = f"layer-{prompt_ensembling.value}"
         val = pivot_table["Mean"]["Mean"]
         summary_dict[key] = val
 
@@ -483,13 +488,13 @@ class SweepVisualization:
             console.print(
                 f"[blue bold]Layer Ensembling[/blue bold]\nEnsembling Type: ["
                 f"blue"
-                f"]{ensembling.value}["
+                f"]{prompt_ensembling.value}["
                 f"/blue]"
             )
             console.print(table)
 
         if write:
-            filename = f"{score_type}_withlayerensembling_{ensembling.value}.csv"
+            filename = f"{score_type}_withlayerensembling_{prompt_ensembling.value}.csv"
             print(f"Writing to: [{filename}]")
             pivot_table.to_csv(self.path / filename)
         return pivot_table
@@ -497,7 +502,7 @@ class SweepVisualization:
     def render_table(
         self,
         score_type="auroc_estimate",
-        ensembling=PromptEnsembling.FULL,
+        prompt_ensembling=PromptEnsembling.FULL,
         display=True,
         write=False,
     ) -> None:
@@ -506,7 +511,7 @@ class SweepVisualization:
         Args:
             layer: The layer number (from last layer) to include in the score table.
             score_type: The type of score to include in the table.
-            ensembling: The ensembling option to consider.
+            prompt_ensembling: The ensembling option to consider.
             display: Flag indicating whether to display the table to stdout.
             write: Flag indicating whether to write the table to a file.
 
@@ -514,7 +519,7 @@ class SweepVisualization:
             The generated score table as a pandas DataFrame.
         """
         df = self.df[
-            (self.df["ensembling"] == ensembling.value)
+            (self.df["prompt_ensembling"] == prompt_ensembling.value)
             & (self.df["eval_dataset"] == self.df["train_dataset"])
         ]
 
@@ -542,7 +547,7 @@ class SweepVisualization:
                 margins=True,
                 margins_name="Mean",
             )
-            key = f"{name}-{ensembling.value}"
+            key = f"{name}-{prompt_ensembling.value}"
             val = pivot_table["Mean"]["Mean"]
             summary_dict[key] = val
 
@@ -565,13 +570,15 @@ class SweepVisualization:
                     f"bold]\nEnsembling "
                     f"Type: ["
                     f"yellow"
-                    f"]{ensembling.value}["
+                    f"]{prompt_ensembling.value}["
                     f"/yellow]"
                 )
                 console.print(table)
 
             if write:
-                filename = f"{score_type}_promptensemblingonly_{ensembling.value}.csv"
+                filename = (
+                    f"{score_type}_promptensemblingonly_{prompt_ensembling.value}.csv"
+                )
                 print(f"Writing to: {filename}\n")
                 pivot_table.to_csv(self.path / filename)
 

@@ -59,12 +59,14 @@ def evaluate_and_save(
                     }
                 )
 
-            for ensembling in PromptEnsembling.all():
+            for prompt_ensembling in PromptEnsembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,
-                        "ensembling": ensembling.value,
-                        **evaluate_preds(val_gt, val_credences, ensembling).to_dict(),
+                        "prompt_ensembling": prompt_ensembling.value,
+                        **evaluate_preds(
+                            val_gt, val_credences, prompt_ensembling
+                        ).to_dict(),
                         "train_loss": train_loss,
                         **prompt_index_dict,
                     }
@@ -73,9 +75,9 @@ def evaluate_and_save(
                 row_bufs["train_eval"].append(
                     {
                         **meta,
-                        "ensembling": ensembling.value,
+                        "prompt_ensembling": prompt_ensembling.value,
                         **evaluate_preds(
-                            train_gt, train_credences, ensembling
+                            train_gt, train_credences, prompt_ensembling
                         ).to_dict(),
                         "train_loss": train_loss,
                         **prompt_index_dict,
@@ -86,9 +88,9 @@ def evaluate_and_save(
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": ensembling.value,
+                            "prompt_ensembling": prompt_ensembling.value,
                             **evaluate_preds(
-                                val_gt, val_lm_preds, ensembling
+                                val_gt, val_lm_preds, prompt_ensembling
                             ).to_dict(),
                             **prompt_index_dict,
                         }
@@ -98,9 +100,9 @@ def evaluate_and_save(
                     row_bufs["train_lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": ensembling.value,
+                            "prompt_ensembling": prompt_ensembling.value,
                             **evaluate_preds(
-                                train_gt, train_lm_preds, ensembling
+                                train_gt, train_lm_preds, prompt_ensembling
                             ).to_dict(),
                             **prompt_index_dict,
                         }
@@ -110,10 +112,10 @@ def evaluate_and_save(
                     row_bufs["lr_eval"].append(
                         {
                             **meta,
-                            "ensembling": ensembling.value,
+                            "prompt_ensembling": prompt_ensembling.value,
                             "inlp_iter": lr_model_num,
                             **evaluate_preds(
-                                val_gt, model(val_h), ensembling
+                                val_gt, model(val_h), prompt_ensembling
                             ).to_dict(),
                             **prompt_index_dict,
                         }
@@ -148,7 +150,7 @@ class Elicit(Run):
         layer: int,
         devices: list[str],
         world_size: int,
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], list[dict]]:
         """Train a single reporter on a single layer."""
 
     # Create a separate function to handle the reporter training.

@@ -218,19 +218,19 @@ class Run(ABC, Serializable):
 
                 dfs = []
 
-                for ensembling in PromptEnsembling.all():
+                for prompt_ensembling in PromptEnsembling.all():
                     layer_ensembling_results = layer_ensembling(
-                        layer_outputs, ensembling
+                        layer_outputs=layer_outputs, prompt_ensembling=prompt_ensembling
                     )
                     df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
                     df = df.round(4)
-                    df["ensembling"] = ensembling.value
+                    df["prompt_ensembling"] = prompt_ensembling.value
                     dfs.append(df)
 
                 df_concat = pd.concat(dfs)
-                # Rearrange the columns so that ensembling is in front
-                columns = ["ensembling"] + [
-                    col for col in df_concat.columns if col != "ensembling"
+                # Rearrange the columns so that prompt_ensembling is in front
+                columns = ["prompt_ensembling"] + [
+                    col for col in df_concat.columns if col != "prompt_ensembling"
                 ]
                 df_concat = df_concat[columns]
                 df_concat.to_csv(self.out_dir / "layer_ensembling.csv", index=False)
