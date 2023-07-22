@@ -81,7 +81,7 @@ def load_prompts(
     if num_shots > 0:
         train_name = select_split(ds_dict, "train")
         fewshot = FewShotSampler(
-            ds_dict[train_name].shuffle(seed=seed),  # TODO: not iterator
+            ds_dict[train_name].shuffle(seed=seed),
             num_shots=num_shots,
             rng=rng,
         )

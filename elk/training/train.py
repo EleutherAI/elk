@@ -135,7 +135,7 @@ class Elicit(Run):
     """Full specification of a reporter training run."""
 
     net: FitterConfig = subgroups(
-        {"ccs": CcsConfig, "eigen": EigenFitterConfig}, default="eigen"
+        {"ccs": CcsConfig, "eigen": EigenFitterConfig}, default="eigen"  # type: ignore
     )
     """Config for building the reporter network."""
 

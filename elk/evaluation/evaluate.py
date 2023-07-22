@@ -66,7 +66,7 @@ class Eval(Run):
                 {"prompt_index": prompt_index} if prompt_index is not None else {}
             )
             layer_outputs = []
-            for ds_name, (val_h, val_gt, _) in val_output.items():
+            for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
                 meta = {"dataset": ds_name, "layer": layer}
                 if isinstance(prompt_index, int):
                     val_credences = reporter(val_h[:, [i], :, :])
@@ -89,14 +89,23 @@ class Eval(Run):
                         }
                     )
 
-                    lr_dir = experiment_dir / "lr_models"
-                    if not self.skip_supervised and lr_dir.exists():
-                        with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
-                            lr_models = torch.load(f, map_location=device)
-                            if not isinstance(
-                                lr_models, list
-                            ):  # backward compatibility
-                                lr_models = [lr_models]
+                    if val_lm_preds is not None:
+                        row_bufs["lm_eval"].append(
+                            {
+                                **meta,
+                                "ensembling": ensembling.value,
+                                **evaluate_preds(
+                                    val_gt, val_lm_preds, ensembling.value
+                                ).to_dict(),
+                            }
+                        )
+
+                lr_dir = experiment_dir / "lr_models"
+                if not self.skip_supervised and lr_dir.exists():
+                    with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
+                        lr_models = torch.load(f, map_location=device)
+                        if not isinstance(lr_models, list):  # backward compatibility
+                            lr_models = [lr_models]
 
                         for i, model in enumerate(lr_models):
                             model.eval()
