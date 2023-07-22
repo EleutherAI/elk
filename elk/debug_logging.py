@@ -25,13 +25,19 @@ def save_debug_log(datasets: list[DatasetDictWithName], out_dir: Path) -> None:
             "========================================="
         )
 
-        train_split, val_split = select_train_val_splits(ds)
+        if len(ds) == 1:
+            train_split = None
+            val_split = list(ds.keys())[0]
+        else:
+            train_split, val_split = select_train_val_splits(ds)
+
         text_questions = ds[val_split][0]["text_questions"]
         template_ids = ds[val_split][0]["variant_ids"]
         label = ds[val_split][0]["label"]
 
         # log the train size and val size
-        logging.info(f"Train size: {len(ds[train_split])}")
+        if train_split is not None:
+            logging.info(f"Train size: {len(ds[train_split])}")
         logging.info(f"Val size: {len(ds[val_split])}")
 
         templates_text = f"{len(text_questions)} templates used:\n"

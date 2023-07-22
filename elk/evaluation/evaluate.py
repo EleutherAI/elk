@@ -45,7 +45,7 @@ class Eval(Run):
         row_bufs = defaultdict(list)
 
         layer_output = []
-        for ds_name, (val_h, val_gt, _) in val_output.items():
+        for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
@@ -62,6 +62,15 @@ class Eval(Run):
                         ).to_dict(),
                     }
                 )
+
+                if val_lm_preds is not None:
+                    row_bufs["lm_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                        }
+                    )
 
                 lr_dir = experiment_dir / "lr_models"
                 if not self.skip_supervised and lr_dir.exists():
