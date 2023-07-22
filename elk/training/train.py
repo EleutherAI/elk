@@ -1,7 +1,7 @@
 """Main training loop."""
 
 from collections import defaultdict
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Literal
 
 import pandas as pd
@@ -9,7 +9,6 @@ import torch
 from einops import rearrange, repeat
 from simple_parsing import subgroups
 
-from ..evaluation import Eval
 from ..metrics import evaluate_preds, to_one_hot
 from ..run import PreparedData, Run
 from ..training.supervised import train_supervised
@@ -144,25 +143,13 @@ class Elicit(Run):
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
 
-    def make_eval(self, model, eval_dataset):
-        assert self.out_dir is not None
-        return Eval(
-            data=replace(
-                self.data,
-                model=model,
-                datasets=(eval_dataset,),
-            ),
-            source=self.out_dir,
-            out_dir=self.out_dir / "transfer" / eval_dataset,
-            num_gpus=self.num_gpus,
-            min_gpu_mem=self.min_gpu_mem,
-            skip_supervised=self.supervised == "none",
-            prompt_indices=self.prompt_indices,
-            concatenated_layer_offset=self.concatenated_layer_offset,
-            # datasets isn't needed because it's immediately overwritten
-            debug=self.debug,
-            disable_cache=self.disable_cache,
-        )
+    def apply_to_layer(
+        self,
+        layer: int,
+        devices: list[str],
+        world_size: int,
+    ) -> dict[str, pd.DataFrame]:
+        """Train a single reporter on a single layer."""
 
     # Create a separate function to handle the reporter training.
     def train_and_save_reporter(
