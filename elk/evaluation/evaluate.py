@@ -100,25 +100,27 @@ class Eval(Run):
                             }
                         )
 
-                lr_dir = experiment_dir / "lr_models"
-                if not self.skip_supervised and lr_dir.exists():
-                    with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
-                        lr_models = torch.load(f, map_location=device)
-                        if not isinstance(lr_models, list):  # backward compatibility
-                            lr_models = [lr_models]
+                    lr_dir = experiment_dir / "lr_models"
+                    if not self.skip_supervised and lr_dir.exists():
+                        with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
+                            lr_models = torch.load(f, map_location=device)
+                            if not isinstance(
+                                lr_models, list
+                            ):  # backward compatibility
+                                lr_models = [lr_models]
 
-                        for i, model in enumerate(lr_models):
-                            model.eval()
-                            row_bufs["lr_eval"].append(
-                                {
-                                    "ensembling": ensembling.value,
-                                    "inlp_iter": i,
-                                    **meta,
-                                    **evaluate_preds(
-                                        val_gt, model(val_h), ensembling
-                                    ).to_dict(),
-                                }
-                            )
+                            for i, model in enumerate(lr_models):
+                                model.eval()
+                                row_bufs["lr_eval"].append(
+                                    {
+                                        "ensembling": ensembling.value,
+                                        "inlp_iter": i,
+                                        **meta,
+                                        **evaluate_preds(
+                                            val_gt, model(val_h), ensembling
+                                        ).to_dict(),
+                                    }
+                                )
                 return layer_outputs
 
         layer_outputs = []

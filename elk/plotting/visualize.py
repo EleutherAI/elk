@@ -500,7 +500,7 @@ class SweepVisualization:
         ensembling=PromptEnsembling.FULL,
         display=True,
         write=False,
-    ) -> pd.DataFrame:
+    ) -> None:
         """Render and optionally write the score table.
 
         Args:
@@ -574,7 +574,6 @@ class SweepVisualization:
                 filename = f"{score_type}_promptensemblingonly_{ensembling.value}.csv"
                 print(f"Writing to: {filename}\n")
                 pivot_table.to_csv(self.path / filename)
-        return pivot_table
 
 
 def visualize_sweep(sweep_path: Path):
