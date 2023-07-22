@@ -97,10 +97,9 @@ class CcsReporter(nn.Module, PlattMixin):
         self.scale = nn.Parameter(torch.ones(1, device=device, dtype=dtype))
 
         hidden_size = cfg.hidden_size or 4 * in_features // 3
-        if self.config.norm == "burns":
-            self.norm: nn.module = BurnsNorm()
-        else:
-            self.norm: nn.module = None
+
+        self.norm = None
+
         self.probe = nn.Sequential(
             nn.Linear(
                 in_features,
@@ -166,7 +165,7 @@ class CcsReporter(nn.Module, PlattMixin):
         """Return the credence assigned to the hidden state `x`."""
         assert self.norm is not None, "Must call fit() before forward()"
 
-        raw_scores = self.probe(x).squeeze(-1)
+        raw_scores = self.probe(self.norm(x)).squeeze(-1)
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
     def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
@@ -197,18 +196,21 @@ class CcsReporter(nn.Module, PlattMixin):
         n, v, d = x_neg.shape
         prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
 
-        fitter = LeaceFitter(d, 2 * v, dtype=x_neg.dtype, device=x_neg.device)
-        fitter.update(
-            x=x_neg,
-            # Independent indicator for each (template, pseudo-label) pair
-            z=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
-        )
-        fitter.update(
-            x=x_pos,
-            # Independent indicator for each (template, pseudo-label) pair
-            z=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
-        )
-        self.norm = fitter.eraser
+        if self.config.norm == "burns":
+            self.norm = BurnsNorm()
+        else:
+            fitter = LeaceFitter(d, 2 * v, dtype=x_neg.dtype, device=x_neg.device)
+            fitter.update(
+                x=x_neg,
+                # Independent indicator for each (template, pseudo-label) pair
+                z=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
+            )
+            fitter.update(
+                x=x_pos,
+                # Independent indicator for each (template, pseudo-label) pair
+                z=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
+            )
+            self.norm = fitter.eraser
 
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
