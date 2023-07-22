@@ -67,8 +67,8 @@ class Eval(Run):
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            "ensembling": prompt_ensembling.value,
+                            **evaluate_preds(val_gt, val_lm_preds, prompt_ensembling.value).to_dict(),
                         }
                     )
 
