@@ -222,6 +222,11 @@ def layer_ensembling(
     y_logits_collection = []
 
     num_classes = 2
+    try:
+        layer_outputs[0][0]["val_gt"]
+    except:
+        layer_outputs[0][0][0]["val_gt"]
+        breakpoint()
     y_true = layer_outputs[0][0]["val_gt"].to(device)
 
     for layer_output in layer_outputs:

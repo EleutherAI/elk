@@ -200,7 +200,7 @@ class Run(ABC, Serializable):
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
-                    sortby = ["layer", "ensembling"]
+                    sortby = ["layer", "prompt_ensembling"]
                     if "prompt_index" in dfs[0].columns:
                         sortby.append("prompt_index")
                     df = pd.concat(dfs).sort_values(by=sortby)

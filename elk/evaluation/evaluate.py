@@ -77,13 +77,13 @@ class Eval(Run):
                     {**meta, "val_gt": val_gt, "val_credences": val_credences}
                 )
 
-                for ensembling in PromptEnsembling.all():
+                for prompt_ensembling in PromptEnsembling.all():
                     row_bufs["eval"].append(
                         {
                             **meta,
-                            "ensembling": ensembling.value,
+                            "prompt_ensembling": prompt_ensembling.value,
                             **evaluate_preds(
-                                val_gt, val_credences, ensembling.value
+                                val_gt, val_credences, prompt_ensembling
                             ).to_dict(),
                             **prompt_index_dict,
                         }
@@ -93,9 +93,9 @@ class Eval(Run):
                         row_bufs["lm_eval"].append(
                             {
                                 **meta,
-                                "ensembling": ensembling.value,
+                                "prompt_ensembling": prompt_ensembling.value,
                                 **evaluate_preds(
-                                    val_gt, val_lm_preds, ensembling.value
+                                    val_gt, val_lm_preds, prompt_ensembling
                                 ).to_dict(),
                             }
                         )
@@ -113,11 +113,11 @@ class Eval(Run):
                                 model.eval()
                                 row_bufs["lr_eval"].append(
                                     {
-                                        "ensembling": ensembling.value,
+                                        "prompt_ensembling": prompt_ensembling.value,
                                         "inlp_iter": i,
                                         **meta,
                                         **evaluate_preds(
-                                            val_gt, model(val_h), ensembling
+                                            val_gt, model(val_h), prompt_ensembling
                                         ).to_dict(),
                                     }
                                 )
