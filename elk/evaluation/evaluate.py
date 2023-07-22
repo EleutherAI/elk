@@ -56,6 +56,7 @@ class Eval(Run):
         reporter = load_reporter()
 
         row_bufs = defaultdict(list)
+        layer_outputs = []
 
         def eval_all(
             reporter: SingleReporter | MultiReporter,
@@ -65,7 +66,6 @@ class Eval(Run):
             prompt_index_dict = (
                 {"prompt_index": prompt_index} if prompt_index is not None else {}
             )
-            layer_outputs = []
             for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
                 meta = {"dataset": ds_name, "layer": layer}
                 if isinstance(prompt_index, int):
@@ -73,9 +73,15 @@ class Eval(Run):
                 else:
                     val_credences = reporter(val_h)
 
-                layer_outputs.append(
-                    {**meta, "val_gt": val_gt, "val_credences": val_credences}
-                )
+                if not isinstance(prompt_index, int):
+                    layer_outputs.append(
+                        {
+                            **meta,
+                            "val_gt": val_gt,
+                            "val_credences": val_credences,
+                            **prompt_index_dict,
+                        }
+                    )
 
                 for prompt_ensembling in PromptEnsembling.all():
                     row_bufs["eval"].append(
@@ -121,56 +127,15 @@ class Eval(Run):
                                         ).to_dict(),
                                     }
                                 )
-                return layer_outputs
 
-        layer_output = []
-        for ds_name, (val_h, val_gt, _) in val_output.items():
-            meta = {"dataset": ds_name, "layer": layer}
-
-            val_credences = reporter(val_h)
-            layer_output.append(
-                {**meta, "val_gt": val_gt, "val_credences": val_credences}
-            )
-            for prompt_ensembling in PromptEnsembling.all():
-                row_bufs["eval"].append(
-                    {
-                        **meta,
-                        "prompt_ensembling": prompt_ensembling.value,
-                        **evaluate_preds(
-                            val_gt, val_credences, prompt_ensembling
-                        ).to_dict(),
-                    }
-                )
-
-                lr_dir = experiment_dir / "lr_models"
-                if not self.skip_supervised and lr_dir.exists():
-                    with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
-                        lr_models = torch.load(f, map_location=device)
-                        if not isinstance(lr_models, list):  # backward compatibility
-                            lr_models = [lr_models]
-
-                    for i, model in enumerate(lr_models):
-                        model.eval()
-                        row_bufs["lr_eval"].append(
-                            {
-                                "prompt_ensembling": prompt_ensembling.value,
-                                "inlp_iter": i,
-                                **meta,
-                                **evaluate_preds(
-                                    val_gt, model(val_h), prompt_ensembling
-                                ).to_dict(),
-                            }
-                        )
-
-        layer_outputs = []
         if isinstance(reporter, MultiReporter):
             # eg.
             # prompt_indices       = 0 1 5 9
             # i of the data passed = 0 1 2 3
             for i, res in enumerate(reporter.reporter_w_infos):
-                layer_outputs.append(eval_all(res.model, res.prompt_index, i))
-            layer_outputs.append(eval_all(reporter, "multi"))
+                eval_all(res.model, res.prompt_index, i)
+            eval_all(reporter, "multi")
         else:
-            layer_outputs.append(eval_all(reporter))
+            eval_all(reporter)
 
         return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, layer_outputs
