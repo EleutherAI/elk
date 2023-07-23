@@ -69,7 +69,7 @@ class Eval(Run):
                             **meta,
                             "ensembling": prompt_ensembling.value,
                             **evaluate_preds(
-                                val_gt, val_lm_preds, prompt_ensembling.value
+                                val_gt, val_lm_preds, prompt_ensembling
                             ).to_dict(),
                         }
                     )
