@@ -12,6 +12,7 @@ from torch import Tensor
 
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
+from .burns_norm import BurnsNorm
 from .common import FitterConfig
 from .losses import LOSSES
 from .platt_scaling import PlattMixin
@@ -41,6 +42,7 @@ class CcsConfig(FitterConfig):
     function 1.0*consistency_squared + 0.5*prompt_var.
     """
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
+    norm: Literal["leace", "burns"] = "leace"
     num_layers: int = 1
     """The number of layers in the MLP."""
     pre_ln: bool = False
@@ -97,6 +99,7 @@ class CcsReporter(nn.Module, PlattMixin):
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
         self.norm = None
+
         self.probe = nn.Sequential(
             nn.Linear(
                 in_features,
@@ -193,18 +196,21 @@ class CcsReporter(nn.Module, PlattMixin):
         n, v, d = x_neg.shape
         prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
 
-        fitter = LeaceFitter(d, 2 * v, dtype=x_neg.dtype, device=x_neg.device)
-        fitter.update(
-            x=x_neg,
-            # Independent indicator for each (template, pseudo-label) pair
-            z=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
-        )
-        fitter.update(
-            x=x_pos,
-            # Independent indicator for each (template, pseudo-label) pair
-            z=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
-        )
-        self.norm = fitter.eraser
+        if self.config.norm == "burns":
+            self.norm = BurnsNorm()
+        else:
+            fitter = LeaceFitter(d, 2 * v, dtype=x_neg.dtype, device=x_neg.device)
+            fitter.update(
+                x=x_neg,
+                # Independent indicator for each (template, pseudo-label) pair
+                z=torch.cat([torch.zeros_like(prompt_ids), prompt_ids], dim=-1),
+            )
+            fitter.update(
+                x=x_pos,
+                # Independent indicator for each (template, pseudo-label) pair
+                z=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
+            )
+            self.norm = fitter.eraser
 
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
