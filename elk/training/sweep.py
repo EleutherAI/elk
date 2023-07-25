@@ -22,7 +22,8 @@ def assert_models_exist(model_names):
 
 def assert_datasets_exist(dataset_names):
     for dataset_name in dataset_names:
-        get_dataset_config_info(dataset_name)
+        ds_name, _, config_name = dataset_name.partition(":")
+        get_dataset_config_info(ds_name, config_name=config_name)
 
 
 @dataclass
