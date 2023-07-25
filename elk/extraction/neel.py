@@ -5,9 +5,9 @@ import time
 from dataclasses import dataclass
 from sys import argv
 
-import openai
 import datasets
-from datasets import IterableDatasetDict, load_dataset, Dataset, DatasetDict
+import openai
+from datasets import Dataset, DatasetDict, IterableDatasetDict, load_dataset
 from rich import print
 from tqdm import tqdm
 
@@ -100,7 +100,7 @@ def invert_example(example):
     )
 
 
-def get_neel_examples():
+def get_dumb_nots():
     # Load the Counterfact-Tracing dataset
     dataset = load_dataset("NeelNanda/counterfact-tracing")
     examples = [row_to_example(row, i) for (i, row) in enumerate(dataset["train"])]
@@ -111,46 +111,53 @@ def get_neel_examples():
 
     return examples
 
+
 def get_lm_negated_examples():
     from rich import print
+
     dataset_dict: DatasetDict = load_dataset("derpyplops/counterfact-lm-neg")
     # read lines skipping header
     # concatenate train and test splits
     dataset = datasets.concatenate_datasets(list(dataset_dict.values()))
     examples = []
     for row in dataset:
-        try: # has 5 errors, blank inverted_prompt_false
-            original_prompt = row['original_prompt']
-            original_target_true = row['original_target_true']
-            original_target_false = row['original_target_false']
-            inverted_prompt_true = row['inverted_prompt_true']
-            inverted_prompt_false = row['inverted_prompt_false']
-        
+        try:  # has 5 errors, blank inverted_prompt_false
+            original_prompt = row["original_prompt"]
+            original_target_true = row["original_target_true"]
+            original_target_false = row["original_target_false"]
+            inverted_prompt_true = row["inverted_prompt_true"]
+            inverted_prompt_false = row["inverted_prompt_false"]
 
             true_eg = Example(
-                    label=0,
-                    prompts=[
-                        Prompt(
-                            choices=[
-                                Choice(question=f"{original_prompt}{original_target_true}", answer=""),
-                                Choice(question=inverted_prompt_true, answer=""),
-                            ]
-                        )
-                    ],
-                    template_names=["template_null"],
-                )
-            false_eg = Example(
-                        label=1,
-                        prompts=[
-                            Prompt(
-                                choices=[
-                                    Choice(question=f"{original_prompt}{original_target_false}", answer=""),
-                                    Choice(question=inverted_prompt_false.strip(), answer=""),
-                                ]
-                            )
-                        ],
-                        template_names=["template_null"],
+                label=0,
+                prompts=[
+                    Prompt(
+                        choices=[
+                            Choice(
+                                question=f"{original_prompt}{original_target_true}",
+                                answer="",
+                            ),
+                            Choice(question=inverted_prompt_true, answer=""),
+                        ]
                     )
+                ],
+                template_names=["template_null"],
+            )
+            false_eg = Example(
+                label=1,
+                prompts=[
+                    Prompt(
+                        choices=[
+                            Choice(
+                                question=f"{original_prompt}{original_target_false}",
+                                answer="",
+                            ),
+                            Choice(question=inverted_prompt_false.strip(), answer=""),
+                        ]
+                    )
+                ],
+                template_names=["template_null"],
+            )
             for eg in [true_eg, false_eg]:
                 if random.choice([True, False]):
                     examples.append(eg)
@@ -160,14 +167,14 @@ def get_lm_negated_examples():
             print(f"Exception {e}")
     return examples
 
+
 def upload_to_huggingface(tsv_path):
     # Load the TSV file as a Dataset
-    dataset = Dataset.from_csv(tsv_path, delimiter='\t')
+    dataset = Dataset.from_csv(tsv_path, delimiter="\t")
     # split into train test
     dd = dataset.train_test_split(test_size=0.5)
     # save to huggingface
     dd.push_to_hub("derpyplops/counterfact-lm-neg")
-
 
 
 def generate_inverted_prompts(args):
@@ -298,8 +305,9 @@ def get_and_save_neel_inverted_by_lm():
                             )
                             f.flush()
 
+
 if __name__ == "__main__":
     # get_and_save_neel_inverted_by_lm()
-    xs = get_lm_negated_examples()
+    xs = get_dumb_nots()
+    print(xs)
     # upload_to_huggingface('filterdots.tsv')
-    
