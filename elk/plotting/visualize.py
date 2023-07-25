@@ -273,8 +273,6 @@ class ModelVisualization:
     @staticmethod
     def _read_eval_csv(path, eval_dataset, train_dataset):
         file = path / "eval.csv"
-        # if not os.path.exists(file):
-        # file = path / train_dataset / "eval.csv"
         eval_df = pd.read_csv(file)
         eval_df["eval_dataset"] = eval_dataset
         eval_df["train_dataset"] = train_dataset
