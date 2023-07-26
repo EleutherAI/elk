@@ -19,7 +19,7 @@ class BurnsNorm(nn.Module):
                 x_normalized: Tensor = x - x.mean(dim=0)
                 
                 # the following code block is taken from the original Burns code 
-                # and uses a strange for calculating the std 
+                # and uses a strange way of calculating the std 
                 std = torch.linalg.norm(x_normalized, axis=0) / torch.sqrt(
                     torch.tensor(x_normalized.shape[0], dtype=torch.float32)
                 )
