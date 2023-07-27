@@ -110,7 +110,7 @@ class Run(ABC, Serializable):
 
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
-        func: Callable[[int], dict[str, pd.DataFrame]] = partial(
+        func: Callable[[int], LayerApplied] = partial(
             self.apply_to_layer, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)
@@ -167,7 +167,7 @@ class Run(ABC, Serializable):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], dict[str, pd.DataFrame]],
+        func: Callable[[int], LayerApplied],
         num_devices: int,
     ):
         """Apply a function to each layer of the datasets in parallel
@@ -192,11 +192,9 @@ class Run(ABC, Serializable):
             df_buffers = defaultdict(list)
             layer_outputs = []
             try:
-                for df_dict, layer_output in tqdm(
-                    mapper(func, layers), total=len(layers)
-                ):
-                    layer_outputs.append(layer_output)
-                    for k, v in df_dict.items():  # type: ignore
+                for res in tqdm(mapper(func, layers), total=len(layers)):
+                    layer_outputs.append(res.layer_output)
+                    for k, v in res.df_dict.items():  # type: ignore
                         df_buffers[k].append(v)
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
