@@ -8,7 +8,7 @@ from simple_parsing.helpers import field
 
 from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
-from ..run import Run
+from ..run import LayerApplied, Run
 from ..utils import Color
 from ..utils.types import PromptEnsembling
 
@@ -32,7 +32,7 @@ class Eval(Run):
     @torch.inference_mode()
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> tuple[dict[str, pd.DataFrame], list[dict]]:
+    ) -> LayerApplied:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
@@ -44,7 +44,7 @@ class Eval(Run):
 
         row_bufs = defaultdict(list)
 
-        layer_output = []
+        layer_output: list[dict] = []
         for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
@@ -93,5 +93,6 @@ class Eval(Run):
                                 ).to_dict(),
                             }
                         )
-
-        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, layer_output)
+        return LayerApplied(
+            layer_output, {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        )

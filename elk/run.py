@@ -34,6 +34,15 @@ from .utils import (
 from .utils.types import PromptEnsembling
 
 
+@dataclass(frozen=True)
+class LayerApplied:
+    layer_output: list[dict]
+    """The output of the reporter on the layer, should contain credences and ground
+    truth labels."""
+    df_dict: dict[str, pd.DataFrame]
+    """The evaluation results for the layer."""
+
+
 @dataclass
 class Run(ABC, Serializable):
     data: Extract
@@ -109,7 +118,7 @@ class Run(ABC, Serializable):
     @abstractmethod
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> dict[str, pd.DataFrame]:
+    ) -> LayerApplied:
         """Train or eval a reporter on a single layer."""
 
     def make_reproducible(self, seed: int):

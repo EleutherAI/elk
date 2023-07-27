@@ -12,7 +12,7 @@ from simple_parsing import subgroups
 from simple_parsing.helpers.serialization import save
 
 from ..metrics import evaluate_preds, to_one_hot
-from ..run import Run
+from ..run import LayerApplied, Run
 from ..training.supervised import train_supervised
 from ..utils.types import PromptEnsembling
 from ..utils.typing import assert_type
@@ -54,7 +54,7 @@ class Elicit(Run):
         layer: int,
         devices: list[str],
         world_size: int,
-    ) -> tuple[dict[str, pd.DataFrame], list[dict]]:
+    ) -> LayerApplied:
         """Train a single reporter on a single layer."""
 
         self.make_reproducible(seed=self.net.seed + layer)
@@ -205,4 +205,6 @@ class Elicit(Run):
                         }
                     )
 
-        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, layer_output)
+        return LayerApplied(
+            layer_output, {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        )
