@@ -12,6 +12,7 @@ from simple_parsing import subgroups
 from simple_parsing.helpers.serialization import save
 
 from ..metrics import evaluate_preds, to_one_hot
+from ..metrics.eval import LayerOutput
 from ..run import LayerApplied, Run
 from ..training.supervised import train_supervised
 from ..utils.types import PromptEnsembling
@@ -139,12 +140,20 @@ class Elicit(Run):
 
             val_credences = reporter(val_h)
 
+            # layer_output.append(
+            #     {
+            #         **meta,
+            #         "val_gt": val_gt.detach(),
+            #         "val_credences": val_credences.detach(),
+            #     }
+            # )
+            # Using the class
             layer_output.append(
-                {
-                    **meta,
-                    "val_gt": val_gt.detach(),
-                    "val_credences": val_credences.detach(),
-                }
+                LayerOutput(
+                    val_gt=val_gt.detach(),
+                    val_credences=val_credences.detach(),
+                    meta=meta,
+                )
             )
 
             train_credences = reporter(train_h)

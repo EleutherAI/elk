@@ -8,7 +8,7 @@ from simple_parsing.helpers import field
 
 from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
-from ..run import LayerApplied, Run
+from ..run import LayerApplied, LayerOutput, Run
 from ..utils import Color
 from ..utils.types import PromptEnsembling
 
@@ -44,14 +44,14 @@ class Eval(Run):
 
         row_bufs = defaultdict(list)
 
-        layer_output: list[dict] = []
+        layer_outputs: list[LayerOutput] = []
+
         for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
-            layer_output.append(
-                {**meta, "val_gt": val_gt, "val_credences": val_credences}
-            )
+
+            layer_outputs.append(LayerOutput(val_gt, val_credences, meta))
             for prompt_ensembling in PromptEnsembling.all():
                 row_bufs["eval"].append(
                     {
@@ -94,5 +94,5 @@ class Eval(Run):
                             }
                         )
         return LayerApplied(
-            layer_output, {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+            layer_outputs, {k: pd.DataFrame(v) for k, v in row_bufs.items()}
         )

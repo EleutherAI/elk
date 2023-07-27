@@ -17,12 +17,11 @@ from simple_parsing.helpers.serialization import save
 from torch import Tensor
 from tqdm import tqdm
 
-from elk.metrics.eval import layer_ensembling
-
 from .debug_logging import save_debug_log
 from .extraction import Extract, extract
 from .extraction.dataset_name import DatasetDictWithName
 from .files import elk_reporter_dir, memorably_named_dir
+from .metrics.eval import LayerOutput, layer_ensembling
 from .utils import (
     Color,
     assert_type,
@@ -36,7 +35,7 @@ from .utils.types import PromptEnsembling
 
 @dataclass(frozen=True)
 class LayerApplied:
-    layer_output: list[dict]
+    layer_outputs: list[LayerOutput]
     """The output of the reporter on the layer, should contain credences and ground
     truth labels."""
     df_dict: dict[str, pd.DataFrame]
@@ -190,37 +189,48 @@ class Run(ABC, Serializable):
         with ctx.Pool(num_devices) as pool:
             mapper = pool.imap_unordered if num_devices > 1 else map
             df_buffers = defaultdict(list)
-            layer_outputs = []
+            layer_outputs: list[LayerOutput] = []
             try:
                 for res in tqdm(mapper(func, layers), total=len(layers)):
-                    layer_outputs.append(res.layer_output)
+                    layer_outputs.extend(res.layer_outputs)
                     for k, v in res.df_dict.items():  # type: ignore
                         df_buffers[k].append(v)
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
-                    df = pd.concat(dfs).sort_values(by=["layer", "prompt_ensembling"])
+                    PROMPT_ENSEMBLING = "prompt_ensembling"
+                    df = pd.concat(dfs).sort_values(by=["layer", PROMPT_ENSEMBLING])
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
 
                 dfs = []
+                # groupby layer_outputs by their dataset name
+                grouped_layer_outputs = {}
+                # Group the LayerOutput objects by dataset name
+                for layer_output in layer_outputs:
+                    dataset_name = layer_output.meta["dataset"]
+                    if dataset_name in grouped_layer_outputs:
+                        grouped_layer_outputs[dataset_name].append(layer_output)
+                    else:
+                        grouped_layer_outputs[dataset_name] = [layer_output]
 
-                for prompt_ensembling in PromptEnsembling.all():
-                    layer_ensembling_results = layer_ensembling(
-                        layer_outputs=layer_outputs, prompt_ensembling=prompt_ensembling
-                    )
-                    df = pd.DataFrame(layer_ensembling_results.to_dict(), index=[0])
-                    df = df.round(4)
-                    df["prompt_ensembling"] = prompt_ensembling.value
-                    dfs.append(df)
+                for dataset_name, layer_outputs in grouped_layer_outputs.items():
+                    for prompt_ensembling in PromptEnsembling.all():
+                        res = layer_ensembling(
+                            layer_outputs=layer_outputs,
+                            prompt_ensembling=prompt_ensembling,
+                        )
+                        df = pd.DataFrame(res.to_dict(), index=[0])
+                        df = df.round(4)
+                        df[PROMPT_ENSEMBLING] = prompt_ensembling.value
+                        df["dataset"] = dataset_name
+                        dfs.append(df)
 
                 df_concat = pd.concat(dfs)
                 # Rearrange the columns so that prompt_ensembling is in front
-                columns = ["prompt_ensembling"] + [
-                    col for col in df_concat.columns if col != "prompt_ensembling"
+                columns = [PROMPT_ENSEMBLING] + [
+                    col for col in df_concat.columns if col != PROMPT_ENSEMBLING
                 ]
                 df_concat = df_concat[columns]
-                df_concat.to_csv(
-                    self.out_dir / "layer_ensembling_results.csv", index=False
-                )
+                df_concat.to_csv(self.out_dir / "layer_ensembling.csv", index=False)
