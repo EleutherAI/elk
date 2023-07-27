@@ -139,15 +139,6 @@ class Elicit(Run):
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
-
-            # layer_output.append(
-            #     {
-            #         **meta,
-            #         "val_gt": val_gt.detach(),
-            #         "val_credences": val_credences.detach(),
-            #     }
-            # )
-            # Using the class
             layer_output.append(
                 LayerOutput(
                     val_gt=val_gt.detach(),

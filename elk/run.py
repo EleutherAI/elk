@@ -32,6 +32,8 @@ from .utils import (
 )
 from .utils.types import PromptEnsembling
 
+PROMPT_ENSEMBLING = "prompt_ensembling"
+
 
 @dataclass(frozen=True)
 class LayerApplied:
@@ -40,6 +42,36 @@ class LayerApplied:
     truth labels."""
     df_dict: dict[str, pd.DataFrame]
     """The evaluation results for the layer."""
+
+
+def calculate_layer_outputs(layer_outputs, out_path):
+    grouped_layer_outputs = {}
+    for layer_output in layer_outputs:
+        dataset_name = layer_output.meta["dataset"]
+        if dataset_name in grouped_layer_outputs:
+            grouped_layer_outputs[dataset_name].append(layer_output)
+        else:
+            grouped_layer_outputs[dataset_name] = [layer_output]
+
+    dfs = []
+    for dataset_name, layer_outputs in grouped_layer_outputs.items():
+        for prompt_ensembling in PromptEnsembling.all():
+            res = layer_ensembling(
+                layer_outputs=layer_outputs,
+                prompt_ensembling=prompt_ensembling,
+            )
+            df = pd.DataFrame(
+                {
+                    "dataset": dataset_name,
+                    PROMPT_ENSEMBLING: prompt_ensembling.value,
+                    **res.to_dict(),
+                },
+                index=[0],
+            ).round(4)
+            dfs.append(df)
+
+    df_concat = pd.concat(dfs)
+    df_concat.to_csv(out_path, index=False)
 
 
 @dataclass
@@ -198,39 +230,12 @@ class Run(ABC, Serializable):
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
-                    PROMPT_ENSEMBLING = "prompt_ensembling"
                     df = pd.concat(dfs).sort_values(by=["layer", PROMPT_ENSEMBLING])
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
 
-                dfs = []
-                # groupby layer_outputs by their dataset name
-                grouped_layer_outputs = {}
-                # Group the LayerOutput objects by dataset name
-                for layer_output in layer_outputs:
-                    dataset_name = layer_output.meta["dataset"]
-                    if dataset_name in grouped_layer_outputs:
-                        grouped_layer_outputs[dataset_name].append(layer_output)
-                    else:
-                        grouped_layer_outputs[dataset_name] = [layer_output]
-
-                for dataset_name, layer_outputs in grouped_layer_outputs.items():
-                    for prompt_ensembling in PromptEnsembling.all():
-                        res = layer_ensembling(
-                            layer_outputs=layer_outputs,
-                            prompt_ensembling=prompt_ensembling,
-                        )
-                        df = pd.DataFrame(res.to_dict(), index=[0])
-                        df = df.round(4)
-                        df[PROMPT_ENSEMBLING] = prompt_ensembling.value
-                        df["dataset"] = dataset_name
-                        dfs.append(df)
-
-                df_concat = pd.concat(dfs)
-                # Rearrange the columns so that prompt_ensembling is in front
-                columns = [PROMPT_ENSEMBLING] + [
-                    col for col in df_concat.columns if col != PROMPT_ENSEMBLING
-                ]
-                df_concat = df_concat[columns]
-                df_concat.to_csv(self.out_dir / "layer_ensembling.csv", index=False)
+                calculate_layer_outputs(
+                    layer_outputs=layer_outputs,
+                    out_path=self.out_dir / "layer_ensembling.csv",
+                )
