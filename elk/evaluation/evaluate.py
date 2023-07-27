@@ -12,6 +12,8 @@ from ..run import LayerApplied, LayerOutput, Run
 from ..utils import Color
 from ..utils.types import PromptEnsembling
 
+PROMPT_ENSEMBLING = "prompt_ensembling"
+
 
 @dataclass(kw_only=True)
 class Eval(Run):
@@ -56,7 +58,7 @@ class Eval(Run):
                 row_bufs["eval"].append(
                     {
                         **meta,
-                        "prompt_ensembling": prompt_ensembling.value,
+                        PROMPT_ENSEMBLING: prompt_ensembling.value,
                         **evaluate_preds(
                             val_gt, val_credences, prompt_ensembling
                         ).to_dict(),
@@ -67,7 +69,7 @@ class Eval(Run):
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": prompt_ensembling.value,
+                            PROMPT_ENSEMBLING: prompt_ensembling.value,
                             **evaluate_preds(
                                 val_gt, val_lm_preds, prompt_ensembling
                             ).to_dict(),
@@ -85,7 +87,7 @@ class Eval(Run):
                         model.eval()
                         row_bufs["lr_eval"].append(
                             {
-                                "prompt_ensembling": prompt_ensembling.value,
+                                PROMPT_ENSEMBLING: prompt_ensembling.value,
                                 "inlp_iter": i,
                                 **meta,
                                 **evaluate_preds(
