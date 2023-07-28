@@ -100,14 +100,25 @@ class CcsReporter(nn.Module, PlattMixin):
 
         self.norm = None
 
-        self.probe = nn.Sequential(
-            nn.Linear(
-                in_features,
-                1 if cfg.num_layers < 2 else hidden_size,
-                bias=cfg.bias,
-                device=device,
-            ),
-        )
+        if self.cfg.norm == "burns":
+            self.probe = nn.Sequential(
+                nn.Linear(
+                    in_features,
+                    1 if cfg.num_layers < 2 else hidden_size,
+                    bias=cfg.bias,
+                    device=device,
+                ),
+                nn.Sigmoid()
+            )
+        else:
+            self.probe = nn.Sequential(
+                nn.Linear(
+                    in_features,
+                    1 if cfg.num_layers < 2 else hidden_size,
+                    bias=cfg.bias,
+                    device=device,
+                )
+            )            
         if cfg.pre_ln:
             self.probe.insert(0, nn.LayerNorm(in_features, elementwise_affine=False))
 
@@ -164,8 +175,10 @@ class CcsReporter(nn.Module, PlattMixin):
     def forward(self, x: Tensor) -> Tensor:
         """Return the credence assigned to the hidden state `x`."""
         assert self.norm is not None, "Must call fit() before forward()"
-
+ 
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
+        return raw_scores
+        breakpoint()
         return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
 
     def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
