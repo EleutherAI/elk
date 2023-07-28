@@ -100,7 +100,7 @@ class CcsReporter(nn.Module, PlattMixin):
 
         self.norm = None
 
-        if self.cfg.norm == "burns":
+        if self.config.norm == "burns":
             self.probe = nn.Sequential(
                 nn.Linear(
                     in_features,
