@@ -100,7 +100,7 @@ class CcsReporter(nn.Module, PlattMixin):
 
         self.norm = None
 
-        layers: list[nn.Module] = [
+        probe_layers: list[nn.Module] = [
             nn.Linear(
                 in_features,
                 1 if cfg.num_layers < 2 else hidden_size,
@@ -110,9 +110,9 @@ class CcsReporter(nn.Module, PlattMixin):
         ]
 
         if self.config.norm == "burns":
-            layers.append(nn.Sigmoid())
+            probe_layers.append(nn.Sigmoid())
 
-        self.probe = nn.Sequential(*layers)
+        self.probe = nn.Sequential(*probe_layers)
 
         if cfg.pre_ln:
             self.probe.insert(0, nn.LayerNorm(in_features, elementwise_affine=False))
