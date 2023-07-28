@@ -172,9 +172,10 @@ class CcsReporter(nn.Module, PlattMixin):
         assert self.norm is not None, "Must call fit() before forward()"
 
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
-        return raw_scores
-        breakpoint()
-        return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
+        if self.config.norm == "leace":
+            return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
+        else:
+            return raw_scores
 
     def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         """Return the loss of the reporter on the contrast pair (x0, x1).
