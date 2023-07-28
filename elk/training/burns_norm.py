@@ -3,8 +3,7 @@ from torch import Tensor, nn
 
 
 class BurnsNorm(nn.Module):
-    """Burns et al. style normalization. Minimal changes from the original code.
-    """
+    """Burns et al. style normalization. Minimal changes from the original code."""
 
     def __init__(self, scale: bool = True):
         super().__init__()
@@ -12,7 +11,7 @@ class BurnsNorm(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         """Normalizes per template
-        Args: 
+        Args:
             x: input of dimension (n, v, c, d) or (n, v, d)
         Returns:
             x_normalized: normalized output
@@ -30,7 +29,7 @@ class BurnsNorm(nn.Module):
 
             # Compute the dimensions over which
             # we want to compute the mean standard deviation
-            # exclude the first dimension v, 
+            # exclude the first dimension v,
             # which is the template dimension
             dims = tuple(range(1, std.dim()))
 
