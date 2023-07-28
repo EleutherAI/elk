@@ -100,7 +100,7 @@ class CcsReporter(nn.Module, PlattMixin):
 
         self.norm = None
 
-        layers: list[nn.Module] = [
+        layers = [
             nn.Linear(
                 in_features,
                 1 if cfg.num_layers < 2 else hidden_size,
