@@ -1,16 +1,16 @@
-from dataclasses import dataclass
 import torch
 from torch import Tensor, nn
 
+
 class BurnsNorm(nn.Module):
     """Burns et al. style normalization. Minimal changes from the original code."""
-    
-    def __init__(self, scale:bool=True):
+
+    def __init__(self, scale: bool = True):
         super().__init__()
         self.scale: bool = scale
 
     def forward(self, x: Tensor) -> Tensor:
-        num_elements = x.shape[0]        
+        num_elements = x.shape[0]
         x_normalized: Tensor = x - x.mean(dim=0) if num_elements > 1 else x
 
         if not self.scale:
@@ -21,12 +21,14 @@ class BurnsNorm(nn.Module):
             )
             assert std.dim() == x.dim() - 1
 
-            # Compute the dimensions over which we want to compute the mean standard deviation
-            dims = tuple(range(1, std.dim())) # exclude the first dimension (v)
+            # Compute the dimensions over which
+            # we want to compute the mean standard deviation
+            # exclude the first dimension (v)
+            dims = tuple(range(1, std.dim()))
 
             avg_norm = std.mean(dim=dims)
 
-            # Add a singleton dimension at the beginning to allow broadcasting. 
+            # Add a singleton dimension at the beginning to allow broadcasting.
             # This compensates for the dimension we lost when computing the norm.
             avg_norm = avg_norm.unsqueeze(0)
 

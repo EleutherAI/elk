@@ -11,7 +11,7 @@ def correct_but_slow_normalization(x_all: Tensor, scale=True) -> Tensor:
     for x in xs:
         num_elements = x.shape[0]
         x_mean: Tensor = x - x.mean(dim=0) if num_elements > 1 else x
-        if scale == True:
+        if scale is True:
             std = torch.linalg.norm(x_mean, axis=0) / torch.sqrt(
                 torch.tensor(x_mean.shape[0], dtype=torch.float32)
             )
@@ -21,6 +21,7 @@ def correct_but_slow_normalization(x_all: Tensor, scale=True) -> Tensor:
 
     return torch.stack(res, dim=1)
 
+
 def test_BurnsNorm_3d_input():
     x_all_3d = torch.randn((2, 13, 768))
     expected_output_3d = correct_but_slow_normalization(x_all_3d)
@@ -28,6 +29,7 @@ def test_BurnsNorm_3d_input():
     output_3d = bn(x_all_3d)
     diff = output_3d - expected_output_3d
     assert (diff == torch.zeros_like(diff)).all()
+
 
 def test_BurnsNorm_4d_input():
     x_all_4d = torch.randn((2, 13, 2, 768))
