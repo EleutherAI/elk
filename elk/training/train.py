@@ -82,7 +82,7 @@ class Elicit(Run):
 
             reporter = CcsReporter(self.net, d, device=device, num_variants=v)
             train_loss = reporter.fit(first_train_h)
-            
+
             if self.net.norm == "leace":
                 (_, v, k, _) = first_train_h.shape
                 reporter.platt_scale(
