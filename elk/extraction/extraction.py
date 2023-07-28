@@ -79,11 +79,11 @@ class Extract(Serializable):
     templates are used."""
 
     layers: tuple[int, ...] = ()
-    """Indices of layers to extract hidden states from. We follow the HF convention, so
-    0 is the embedding, and 1 is the output of the first transformer layer."""
+    """Indices of layers to extract hidden states from. We ignore the embedding,
+    have only the output of the transformer layers."""
 
     layer_stride: InitVar[int] = 1
-    """Shortcut for `layers = (0,) + tuple(range(1, num_layers + 1, stride))`."""
+    """Shortcut for `tuple(range(1, num_layers, stride))`."""
 
     seed: int = 42
     """Seed to use for prompt randomization. Defaults to 42."""
@@ -134,9 +134,8 @@ class Extract(Serializable):
             config = assert_type(
                 PretrainedConfig, AutoConfig.from_pretrained(self.model)
             )
-            # Note that we always include 0 which is the embedding layer
-            layer_range = range(1, config.num_hidden_layers + 1, layer_stride)
-            self.layers = (0,) + tuple(layer_range)
+            layer_range = range(1, config.num_hidden_layers, layer_stride)
+            self.layers = tuple(layer_range)
 
     def explode(self) -> list["Extract"]:
         """Explode this config into a list of configs, one for each layer."""
@@ -195,8 +194,7 @@ def extract_hiddens(
         seed=cfg.seed,
     )
 
-    # Add one to the number of layers to account for the embedding layer
-    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
+    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
 
     global_max_examples = cfg.max_examples[0 if split_type == "train" else 1]
 
@@ -373,8 +371,7 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
             dtype="int16",
             shape=(num_variants, num_classes, model_cfg.hidden_size),
         )
-        # Add 1 to include the embedding layer
-        for layer in cfg.layers or range(model_cfg.num_hidden_layers + 1)
+        for layer in cfg.layers or range(model_cfg.num_hidden_layers)
     }
     other_cols = {
         "variant_ids": Sequence(
