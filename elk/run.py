@@ -44,7 +44,15 @@ class LayerApplied:
     """The evaluation results for the layer."""
 
 
-def calculate_layer_outputs(layer_outputs, out_path):
+def calculate_layer_outputs(layer_outputs: list[LayerOutput], out_path: Path):
+    """
+    Calculate the layer ensembling results for each dataset 
+    and prompt ensembling and save them to a CSV file.
+    
+    Args:
+        layer_outputs: The layer outputs to calculate the results for.
+        out_path: The path to save the results to.
+    """
     grouped_layer_outputs = {}
     for layer_output in layer_outputs:
         dataset_name = layer_output.meta["dataset"]
@@ -230,7 +238,6 @@ class Run(ABC, Serializable):
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
-                    print(dfs[0].columns)
                     df = pd.concat(dfs).sort_values(by=["layer", PROMPT_ENSEMBLING])
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
