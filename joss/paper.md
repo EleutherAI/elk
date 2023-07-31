@@ -10,27 +10,37 @@ authors:
   - name: Nora Belrose
     affiliation: 1 
   - name: Walter Laurito
-    corresponding: true # (This is how to denote the corresponding author)
+    corresponding: true
     affiliation: 2
   - name: Alex Mallen
     affiliation: 1
-  - name: Author with no affiliation
+  - name: Fabien Roger
     affiliation: 3
+  - name: Kay Kozaronek
+    affiliation: 4
+  - name: Christy Koh
+    affiliation: 5
+  - name: Jonathan NG
+    affiliation: 6
+  - name: Reagan Lee
+    affiliation: 7
+  - name: Alex Wan
+    affiliation: 8
 affiliations:
  - name: EleutherAI
    index: 1
  - name: FZI Research Center for Information Technology, Germany
    index: 2
- - name: EleutherAI
+ - name: Redwood Research
    index: 3
-date: 13 August 2017
+date: 31 July 2023
 bibliography: paper.bib
 
 ---
 
 # Summary
 
-`elk` is a library designed to elicit latent knowledge ([elk](`https://docs.google.com/document/d/1WwsnJQstPq91_Yh-Ch2XRL8H_EpsnjrC1dwZXR37PC8/`) [@author:elk]) from language models. It includes implementations of both the original and an enhanced version of the CSS method, as well as an approach based on the CRC method. Designed for researchers, `elk` offers features such as multi-GPU support, integration with Huggingface, and continuous improvement by a dedicated team. The Eleuther AI Discord's `elk` channel provides a platform for collaboration and discussion related to the library and associated research.
+`elk` is a library designed to elicit latent knowledge ([elk](`https://docs.google.com/document/d/1WwsnJQstPq91_Yh-Ch2XRL8H_EpsnjrC1dwZXR37PC8/`) [@author:elk]) from language models. It includes implementations of both the original and an enhanced version of the CSS method, as well as an approach based on the CRC method [@author:burns]. Designed for researchers, `elk` offers features such as multi-GPU support, integration with Huggingface, and continuous improvement by a dedicated group of people. The Eleuther AI Discord's `elk` channel provides a platform for collaboration and discussion related to the library and associated research.
 
 # Statement of need
 
@@ -47,6 +57,4 @@ Language models are proficient at predicting successive tokens in a sequence of 
 For collaboration, discussion, and support, the [Eleuther AI Discord's elk channel](https://discord.com/channels/729741769192767510/1070194752785489991) provides a platform for engaging with others interested in the library or related research projects.
 
 # Acknowledgements
-We want to thank [SERI MATS](https://www.serimats.org/) and [EleutherAI](https://www.eleuther.ai/) for supporting this work.
-
-# References
+We would like to thank [SERI MATS](https://www.serimats.org/) and [EleutherAI](https://www.eleuther.ai/) for supporting our work.
