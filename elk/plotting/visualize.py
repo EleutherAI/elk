@@ -216,26 +216,26 @@ class ModelVisualization:
         model_name = model_path.name
         is_transfer = False
 
-        def get_train_dirs(model_path):
+        def get_eval_dirs(model_path):
             # toplevel is either repo/dataset or dataset
             for toplevel in model_path.iterdir():
                 if (toplevel / "eval.csv").exists():
                     yield toplevel
                 else:
-                    for train_dir in toplevel.iterdir():
-                        yield train_dir
+                    for eval_dir in toplevel.iterdir():
+                        yield eval_dir
 
-        for train_dir in get_train_dirs(model_path):
+        for train_dir in get_eval_dirs(model_path):
             eval_df = cls._read_eval_csv(train_dir, train_dir.name, train_dir.name)
             df = pd.concat([df, eval_df], ignore_index=True)
             transfer_dir = train_dir / "transfer"
             if transfer_dir.exists():
                 is_transfer = True
-                for eval_ds_dir in transfer_dir.iterdir():
-                    eval_df = cls._read_eval_csv(
-                        eval_ds_dir, eval_ds_dir.name, train_dir.name
+                for tfr_ds_dir in get_eval_dirs(transfer_dir):
+                    tfr_df = cls._read_eval_csv(
+                        tfr_ds_dir, tfr_ds_dir.name, train_dir.name
                     )
-                    df = pd.concat([df, eval_df], ignore_index=True)
+                    df = pd.concat([df, tfr_df], ignore_index=True)
 
         df["model_name"] = model_name
         return cls(df, model_name, is_transfer)
