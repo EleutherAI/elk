@@ -57,4 +57,4 @@ Language models are proficient at predicting successive tokens in a sequence of 
 For collaboration, discussion, and support, the [Eleuther AI Discord's elk channel](https://discord.com/channels/729741769192767510/1070194752785489991) provides a platform for engaging with others interested in the library or related research projects.
 
 # Acknowledgements
-We would like to thank [SERI MATS](https://www.serimats.org/) and [EleutherAI](https://www.eleuther.ai/) for supporting our work.
+We would like to thank [EleutherAI](https://www.eleuther.ai/) and [SERI MATS](https://www.serimats.org/) for supporting our work.
