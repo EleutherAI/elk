@@ -46,9 +46,9 @@ class LayerApplied:
 
 def calculate_layer_outputs(layer_outputs: list[LayerOutput], out_path: Path):
     """
-    Calculate the layer ensembling results for each dataset 
+    Calculate the layer ensembling results for each dataset
     and prompt ensembling and save them to a CSV file.
-    
+
     Args:
         layer_outputs: The layer outputs to calculate the results for.
         out_path: The path to save the results to.
