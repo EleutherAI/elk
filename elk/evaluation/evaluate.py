@@ -8,9 +8,11 @@ from simple_parsing.helpers import field
 
 from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
-from ..run import Run
+from ..run import LayerApplied, LayerOutput, Run
 from ..utils import Color
 from ..utils.types import PromptEnsembling
+
+PROMPT_ENSEMBLING = "prompt_ensembling"
 
 
 @dataclass(kw_only=True)
@@ -32,7 +34,7 @@ class Eval(Run):
     @torch.inference_mode()
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> tuple[dict[str, pd.DataFrame], list[dict]]:
+    ) -> LayerApplied:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
@@ -44,19 +46,19 @@ class Eval(Run):
 
         row_bufs = defaultdict(list)
 
-        layer_output = []
+        layer_outputs: list[LayerOutput] = []
+
         for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
-            layer_output.append(
-                {**meta, "val_gt": val_gt, "val_credences": val_credences}
-            )
+
+            layer_outputs.append(LayerOutput(val_gt, val_credences, meta))
             for prompt_ensembling in PromptEnsembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,
-                        "prompt_ensembling": prompt_ensembling.value,
+                        PROMPT_ENSEMBLING: prompt_ensembling.value,
                         **evaluate_preds(
                             val_gt, val_credences, prompt_ensembling
                         ).to_dict(),
@@ -67,7 +69,7 @@ class Eval(Run):
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": prompt_ensembling.value,
+                            PROMPT_ENSEMBLING: prompt_ensembling.value,
                             **evaluate_preds(
                                 val_gt, val_lm_preds, prompt_ensembling
                             ).to_dict(),
@@ -85,7 +87,7 @@ class Eval(Run):
                         model.eval()
                         row_bufs["lr_eval"].append(
                             {
-                                "prompt_ensembling": prompt_ensembling.value,
+                                PROMPT_ENSEMBLING: prompt_ensembling.value,
                                 "inlp_iter": i,
                                 **meta,
                                 **evaluate_preds(
@@ -93,5 +95,6 @@ class Eval(Run):
                                 ).to_dict(),
                             }
                         )
-
-        return ({k: pd.DataFrame(v) for k, v in row_bufs.items()}, layer_output)
+        return LayerApplied(
+            layer_outputs, {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        )

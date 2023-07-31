@@ -31,7 +31,7 @@ def test_smoke_elicit_run_tiny_gpt2_ccs(tmp_path: Path):
         "lr_models",
         "reporters",
         "eval.csv",
-        "layer_ensembling_results.csv",
+        "layer_ensembling.csv",
     ]
     for file in expected_files:
         assert file in created_file_names
@@ -63,7 +63,7 @@ def test_smoke_elicit_run_tiny_gpt2_eigen(tmp_path: Path):
         "lr_models",
         "reporters",
         "eval.csv",
-        "layer_ensembling_results.csv",
+        "layer_ensembling.csv",
     ]
     for file in expected_files:
         assert file in created_file_names

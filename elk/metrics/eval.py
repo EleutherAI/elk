@@ -10,6 +10,13 @@ from .calibration import CalibrationError, CalibrationEstimate
 from .roc_auc import RocAucResult, roc_auc_ci
 
 
+@dataclass
+class LayerOutput:
+    val_gt: Tensor
+    val_credences: Tensor
+    meta: dict
+
+
 @dataclass(frozen=True)
 class EvalResult:
     """The result of evaluating a classifier."""
@@ -202,15 +209,30 @@ def calc_eval_results(
     return EvalResult(acc, cal_acc, cal_err, auroc)
 
 
+def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
+    """
+    Convert a tensor of class labels to a one-hot representation.
+
+    Args:
+        labels (Tensor): A tensor of class labels of shape (N,).
+        n_classes (int): The total number of unique classes.
+
+    Returns:
+        Tensor: A one-hot representation tensor of shape (N, n_classes).
+    """
+    one_hot_labels = labels.new_zeros(*labels.shape, n_classes)
+    return one_hot_labels.scatter_(-1, labels.unsqueeze(-1).long(), 1)
+
+
 def layer_ensembling(
-    layer_outputs: list, prompt_ensembling: PromptEnsembling
+    layer_outputs: list[LayerOutput], prompt_ensembling: PromptEnsembling
 ) -> EvalResult:
     """
     Return EvalResult after prompt_ensembling
     the probe output of the middle to last layers
 
     Args:
-        layer_outputs: A list of dictionaries containing the ground truth and
+        layer_outputs: A list of LayerOutput containing the ground truth and
         predicted class tensor of shape (n, num_variants, num_classes).
         prompt_ensembling: The prompt_ensembling mode.
 
@@ -222,14 +244,14 @@ def layer_ensembling(
     y_logits_collection = []
 
     num_classes = 2
-    y_true = layer_outputs[0][0]["val_gt"].to(device)
+    y_true = layer_outputs[0].val_gt.to(device)
 
     for layer_output in layer_outputs:
         # all y_trues are identical, so just get the first
-        y_logits = layer_output[0]["val_credences"].to(device)
+        y_logits = layer_output.val_credences.to(device)
         y_logits, y_true, num_classes = prepare(
             y_logits=y_logits,
-            y_true=layer_outputs[0][0]["val_gt"].to(device),
+            y_true=layer_outputs[0].val_gt.to(device),
             prompt_ensembling=prompt_ensembling,
         )
         y_logits_collection.append(y_logits)
@@ -246,18 +268,3 @@ def layer_ensembling(
         prompt_ensembling=prompt_ensembling,
         num_classes=num_classes,
     )
-
-
-def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
-    """
-    Convert a tensor of class labels to a one-hot representation.
-
-    Args:
-        labels (Tensor): A tensor of class labels of shape (N,).
-        n_classes (int): The total number of unique classes.
-
-    Returns:
-        Tensor: A one-hot representation tensor of shape (N, n_classes).
-    """
-    one_hot_labels = labels.new_zeros(*labels.shape, n_classes)
-    return one_hot_labels.scatter_(-1, labels.unsqueeze(-1).long(), 1)
