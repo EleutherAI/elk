@@ -98,6 +98,10 @@ class Extract(Serializable):
     """Whether to extract hidden states from the encoder instead of the decoder in the
     case of encoder-decoder models."""
 
+    hiddens_save_dir: str | None = None
+    """Directory to save the extracted hiddens to with save_to_disk. If None,
+    the hiddens are not saved other than in the cache."""
+
     def __post_init__(self, layer_stride: int):
         if self.num_variants != -1:
             print("WARNING: num_variants is deprecated; use prompt_indices instead.")
@@ -469,6 +473,11 @@ def extract(
         ds[split] = builder.as_dataset(split=split)
 
     dataset_dict = DatasetDict(ds)
+
+    # TODO: pyarrow not implemented :((
+    if cfg.hiddens_save_dir:
+        dataset_dict.save_to_disk(cfg.hiddens_save_dir)
+
     return DatasetDictWithName(
         name=cfg.datasets[0],
         dataset=dataset_dict,
