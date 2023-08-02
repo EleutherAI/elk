@@ -44,19 +44,19 @@ class EvalResult:
 def evaluate_preds(
     y_true: Tensor,
     y_logits: Tensor,
-    ensembling: Literal["none", "partial", "full"] = "none",
+    ensembling: Literal["none", "full"] = "none",
 ) -> EvalResult:
     """
     Evaluate the performance of a classification model.
 
     Args:
         y_true: Ground truth tensor of shape (N,).
-        y_logits: Predicted class tensor of shape (N, variants, n_classes).
+        y_logits: Predicted class tensor of shape (N, variants).
 
     Returns:
         dict: A dictionary containing the accuracy, AUROC, and ECE.
     """
-    (n, v, c) = y_logits.shape
+    (n, v) = y_logits.shape
     assert y_true.shape == (n,)
 
     if ensembling == "full":
@@ -64,46 +64,19 @@ def evaluate_preds(
     else:
         y_true = repeat(y_true, "n -> n v", v=v)
 
-    y_pred = y_logits.argmax(dim=-1)
-    if ensembling == "none":
-        auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(1), y_logits.flatten(1))
-    elif ensembling in ("partial", "full"):
-        # Pool together the negative and positive class logits
-        if c == 2:
-            auroc = roc_auc_ci(y_true, y_logits[..., 1] - y_logits[..., 0])
-        else:
-            auroc = roc_auc_ci(to_one_hot(y_true, c).long(), y_logits)
-    else:
-        raise ValueError(f"Unknown mode: {ensembling}")
+    y_pred = y_logits > 0
 
+    auroc = roc_auc_ci(y_true.long(), y_logits)
     acc = accuracy_ci(y_true, y_pred)
-    cal_acc = None
-    cal_err = None
 
-    if c == 2:
-        pos_probs = torch.sigmoid(y_logits[..., 1] - y_logits[..., 0])
+    pos_probs = torch.sigmoid(y_logits)
 
-        # Calibrated accuracy
-        cal_thresh = pos_probs.float().quantile(y_true.float().mean())
-        cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
-        cal_acc = accuracy_ci(y_true, cal_preds)
+    # Calibrated accuracy
+    cal_thresh = pos_probs.float().quantile(y_true.float().mean())
+    cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
+    cal_acc = accuracy_ci(y_true, cal_preds)
 
-        cal = CalibrationError().update(y_true.flatten(), pos_probs.flatten())
-        cal_err = cal.compute()
+    cal = CalibrationError().update(y_true.flatten(), pos_probs.flatten())
+    cal_err = cal.compute()
 
     return EvalResult(acc, cal_acc, cal_err, auroc)
-
-
-def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
-    """
-    Convert a tensor of class labels to a one-hot representation.
-
-    Args:
-        labels (Tensor): A tensor of class labels of shape (N,).
-        n_classes (int): The total number of unique classes.
-
-    Returns:
-        Tensor: A one-hot representation tensor of shape (N, n_classes).
-    """
-    one_hot_labels = labels.new_zeros(*labels.shape, n_classes)
-    return one_hot_labels.scatter_(-1, labels.unsqueeze(-1).long(), 1)

@@ -20,7 +20,7 @@ class SweepByDsMultiplot:
         self,
         sweep: "SweepVisualization",
         with_transfer=False,
-        ensembles=["full", "partial", "none"],
+        ensembles=["full", "none"],
         write=False,
     ) -> go.Figure:
         """Render the multiplot visualization.
@@ -382,7 +382,7 @@ class SweepVisualization:
         Returns:
             The generated score table as a pandas DataFrame.
         """
-        df = self.df[self.df["ensembling"] == "partial"]
+        df = self.df[self.df["ensembling"] == "full"]
 
         # For each model, we use the layer whose mean AUROC is the highest
         best_layers, model_dfs = [], []

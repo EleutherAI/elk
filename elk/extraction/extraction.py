@@ -10,7 +10,6 @@ from warnings import filterwarnings
 import torch
 from datasets import (
     Array2D,
-    Array3D,
     DatasetDict,
     DatasetInfo,
     DownloadMode,
@@ -31,11 +30,8 @@ from ..utils import (
     assert_type,
     colorize,
     float_to_int16,
-    infer_label_column,
-    infer_num_classes,
     instantiate_model,
     instantiate_tokenizer,
-    is_autoregressive,
     prevent_name_conflicts,
     select_split,
     select_train_val_splits,
@@ -97,10 +93,6 @@ class Extract(Serializable):
     use_encoder_states: bool = False
     """Whether to extract hidden states from the encoder instead of the decoder in the
     case of encoder-decoder models."""
-
-    hiddens_save_dir: str | None = None
-    """Directory to save the extracted hiddens to with save_to_disk. If None,
-    the hiddens are not saved other than in the cache."""
 
     def __post_init__(self, layer_stride: int):
         if self.num_variants != -1:
@@ -184,13 +176,8 @@ def extract_hiddens(
         model = assert_type(PreTrainedModel, model.get_encoder())
         is_enc_dec = False
 
-    has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
-    if has_lm_preds and rank == 0:
-        print("Model has language model head, will store predictions.")
-
     prompt_ds = load_prompts(
         ds_names[0],
-        binarize=cfg.binarize,
         num_shots=cfg.num_shots,
         split_type=split_type,
         template_path=cfg.template_path,
@@ -223,106 +210,61 @@ def extract_hiddens(
             break
 
         num_variants = len(example["prompts"])
-        num_choices = len(example["prompts"][0])
 
         hidden_dict = {
             f"hidden_{layer_idx}": torch.empty(
                 num_variants,
-                num_choices,
                 model.config.hidden_size,
                 device=device,
                 dtype=torch.int16,
             )
             for layer_idx in layer_indices
         }
-        lm_logits = torch.empty(
-            num_variants,
-            num_choices,
-            device=device,
-            dtype=torch.float32,
-        )
+
         text_questions = []
 
         # Iterate over variants
         for i, record in enumerate(example["prompts"]):
-            variant_questions = []
+            text = record["statement"]
 
-            # Iterate over answers
-            for j, choice in enumerate(record):
-                text = choice["question"]
+            encoding = tokenizer(
+                text,
+                # Keep [CLS] and [SEP] for BERT-style models
+                add_special_tokens=True,
+                return_tensors="pt",
+            ).to(device)
 
-                # Only feed question, not the answer, to the encoder for enc-dec models
-                target = choice["answer"] if is_enc_dec else None
-                encoding = tokenizer(
-                    text,
-                    # Keep [CLS] and [SEP] for BERT-style models
-                    add_special_tokens=True,
-                    return_tensors="pt",
-                    text_target=target,  # type: ignore[arg-type]
-                ).to(device)
+            ids = assert_type(Tensor, encoding.input_ids)
 
-                ids = assert_type(Tensor, encoding.input_ids)
-                if is_enc_dec:
-                    answer = labels = assert_type(Tensor, encoding.labels)
-                else:
-                    encoding2 = tokenizer(
-                        choice["answer"],
-                        # Don't include [CLS] and [SEP] in the answer
-                        add_special_tokens=False,
-                        return_tensors="pt",
-                    ).to(device)
-
-                    answer = assert_type(Tensor, encoding2.input_ids)
-                    labels = (
-                        # -100 is the mask token
-                        torch.cat([torch.full_like(ids, -100), answer], dim=-1)
-                        if has_lm_preds
-                        else None
-                    )
-                    ids = torch.cat([ids, answer], -1)
-
-                # If this input is too long, skip it
-                if ids.shape[-1] > max_length:
-                    break
-                else:
-                    # Record the EXACT question we fed to the model
-                    variant_questions.append(text)
-
-                inputs: dict[str, Tensor | None] = dict(input_ids=ids.long())
-                if is_enc_dec or has_lm_preds:
-                    inputs["labels"] = labels
-                outputs = model(**inputs, output_hidden_states=True)
-
-                # Compute the log probability of the answer tokens if available
-                if has_lm_preds:
-                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss)
-
-                hiddens = (
-                    outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-                )
-                # Throw out layers we don't care about
-                hiddens = [hiddens[i] for i in layer_indices]
-
-                # Current shape of each element: (batch_size, seq_len, hidden_size)
-                if cfg.token_loc == "first":
-                    hiddens = [h[..., 0, :] for h in hiddens]
-                elif cfg.token_loc == "last":
-                    hiddens = [h[..., -1, :] for h in hiddens]
-                elif cfg.token_loc == "mean":
-                    hiddens = [h.mean(dim=-2) for h in hiddens]
-                else:
-                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
-
-                for layer_idx, hidden in zip(layer_indices, hiddens):
-                    hidden_dict[f"hidden_{layer_idx}"][i, j] = float_to_int16(hidden)
-
-            # We skipped a pseudolabel because it was too long; break out of this whole
-            # example and move on to the next one
-            if len(variant_questions) != num_choices:
+            # If this input is too long, skip it
+            if ids.shape[-1] > max_length:
                 break
+            else:
+                # Record the EXACT question we fed to the model
+                variant_question = text
+
+            inputs: dict[str, Tensor | None] = dict(input_ids=ids.long())
+            outputs = model(**inputs, output_hidden_states=True)
+
+            hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+            # Throw out layers we don't care about
+            hiddens = [hiddens[i] for i in layer_indices]
+
+            # Current shape of each element: (batch_size, seq_len, hidden_size)
+            if cfg.token_loc == "first":
+                hiddens = [h[..., 0, :] for h in hiddens]
+            elif cfg.token_loc == "last":
+                hiddens = [h[..., -1, :] for h in hiddens]
+            elif cfg.token_loc == "mean":
+                hiddens = [h.mean(dim=-2) for h in hiddens]
+            else:
+                raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+
+            for layer_idx, hidden in zip(layer_indices, hiddens):
+                hidden_dict[f"hidden_{layer_idx}"][i] = float_to_int16(hidden)
 
             # Usual case: we have the expected number of pseudolabels
-            text_questions.append(variant_questions)
+            text_questions.append(variant_question)
 
         # We skipped a variant because it was too long; move on to the next example
         if len(text_questions) != num_variants:
@@ -334,8 +276,6 @@ def extract_hiddens(
             text_questions=text_questions,
             **hidden_dict,
         )
-        if has_lm_preds:
-            out_record["model_logits"] = lm_logits
 
         num_yielded += 1
         yield out_record
@@ -359,13 +299,7 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
     else:
         prompter = DatasetTemplates(cfg.template_path)
 
-    ds_features = assert_type(Features, info.features)
-    label_col = prompter.label_column or infer_label_column(ds_features)
-    num_classes = (
-        2
-        if cfg.binarize or prompter.binarize
-        else infer_num_classes(ds_features[label_col])
-    )
+    assert_type(Features, info.features)
 
     num_dropped = prompter.drop_non_mc_templates()
     num_variants = len(prompter.templates)
@@ -373,9 +307,9 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
         print(f"Dropping {num_dropped} non-multiple choice templates")
 
     layer_cols = {
-        f"hidden_{layer}": Array3D(
+        f"hidden_{layer}": Array2D(
             dtype="int16",
-            shape=(num_variants, num_classes, model_cfg.hidden_size),
+            shape=(num_variants, model_cfg.hidden_size),
         )
         # Add 1 to include the embedding layer
         for layer in cfg.layers or range(model_cfg.num_hidden_layers + 1)
@@ -387,19 +321,10 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
         ),
         "label": Value(dtype="int64"),
         "text_questions": Sequence(
-            Sequence(
-                Value(dtype="string"),
-            ),
+            Value(dtype="string"),
             length=num_variants,
         ),
     }
-
-    # Only add model_logits if the model is an autoregressive model
-    if is_autoregressive(model_cfg, not cfg.use_encoder_states):
-        other_cols["model_logits"] = Array2D(
-            shape=(num_variants, num_classes),
-            dtype="float32",
-        )
 
     return info, Features({**layer_cols, **other_cols})
 
@@ -473,10 +398,6 @@ def extract(
         ds[split] = builder.as_dataset(split=split)
 
     dataset_dict = DatasetDict(ds)
-
-    # TODO: pyarrow not implemented :((
-    if cfg.hiddens_save_dir:
-        dataset_dict.save_to_disk(cfg.hiddens_save_dir)
 
     return DatasetDictWithName(
         name=cfg.datasets[0],

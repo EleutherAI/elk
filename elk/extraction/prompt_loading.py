@@ -16,7 +16,6 @@ from .balanced_sampler import BalancedSampler, FewShotSampler
 def load_prompts(
     ds_string: str,
     *,
-    binarize: bool = False,
     num_shots: int = 0,
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
@@ -54,9 +53,8 @@ def load_prompts(
     else:
         prompter = DatasetTemplates(template_path)
 
-    # If the prompt template says to binarize, we should
-    binarize = binarize or prompter.binarize
-    prompter.drop_non_mc_templates()
+    # TODO: allow for optionally using contrast pair templates so people
+    # don't have to rewrite them
 
     num_templates = len(prompter.templates)
     assert num_templates > 0
@@ -103,7 +101,6 @@ def load_prompts(
     for example in ds:
         yield _convert_to_prompts(
             example,
-            binarize=binarize,
             label_column=label_column,
             label_choices=label_choices,  # type: ignore[arg-type]
             prompter=prompter,
@@ -115,7 +112,6 @@ def load_prompts(
 def _convert_to_prompts(
     example: dict[str, Any],
     prompter: DatasetTemplates,
-    binarize: bool,
     label_column: str,
     label_choices: list[bool | int | str],
     rng: Random,
@@ -125,53 +121,21 @@ def _convert_to_prompts(
     prompts = []
     templates = list(prompter.templates.values())
 
-    def qa_cat(q: str, a: str) -> str:
-        # if the jinja template already adds whitespace, don't add more
-        sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
-        return f"{q}{sep}{a}" if a and not a.isspace() else q
-
     # For sanity checking that prompts are unique
     prompt_counter = Counter()
     label = example[label_column]
 
-    if binarize:
-        # Replace the full list of possibilities with a randomly sampled false label
-        # and the correct label, as done in the DLK paper. Note that this does add some
-        # "supervision" by stacking the deck in favor of the correct answer.
-        label_choices = [
-            rng.choice([c for c in label_choices if c != label]),
-            label,
-        ]
-        rng.shuffle(label_choices)
-
     for template in templates:
-        choices = []
+        statement = template.apply(example)
+        prompt_counter[statement] += 1
 
-        for pseudo_label in label_choices:
-            fake_example = example.copy()
-            fake_example[label_column] = pseudo_label
+        if fewshot_iter is not None:
+            # Infinite iterator so we don't need to worry about StopIteration
+            fewshot_examples = next(fewshot_iter)
+            fewshot_texts = list(map(template.apply, fewshot_examples))
+            statement = "\n\n".join(fewshot_texts) + "\n\n" + statement
 
-            q, a = template.apply(fake_example)
-            prompt_counter[(q, a)] += 1
-
-            if fewshot_iter is not None:
-                # Infinite iterator so we don't need to worry about StopIteration
-                fewshot_examples = next(fewshot_iter)
-                fewshot_texts = [
-                    qa_cat(q, a) for q, a in map(template.apply, fewshot_examples)
-                ]
-                q = "\n\n".join(fewshot_texts) + "\n\n" + q
-
-            choices.append(
-                dict(
-                    # Strip whitespace from the answer to make it easier to
-                    # compare with the model's output
-                    answer=a.strip(),
-                    question=q,
-                )
-            )
-
-        prompts.append(choices)
+        prompts.append(dict(statement=statement))
 
     # Sanity check: variants should be unique
     ((maybe_dup, dup_count),) = prompt_counter.most_common(1)

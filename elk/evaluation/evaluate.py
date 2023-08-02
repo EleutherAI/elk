@@ -17,7 +17,6 @@ class Eval(Run):
     """Full specification of a reporter evaluation run."""
 
     source: Path = field(positional=True)
-    skip_supervised: bool = False
 
     def __post_init__(self):
         # Set our output directory before super().execute() does
@@ -38,48 +37,25 @@ class Eval(Run):
 
         experiment_dir = elk_reporter_dir() / self.source
 
-        reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
-        reporter = torch.load(reporter_path, map_location=device)
+        lr_dir = experiment_dir / "lr_models"
+        with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
+            lr_models = torch.load(f, map_location=device)
+            if not isinstance(lr_models, list):  # backward compatibility
+                lr_models = [lr_models]
 
         row_bufs = defaultdict(list)
-        for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
+        for ds_name, (val_h, val_gt) in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
-
-            val_credences = reporter(val_h)
-            for mode in ("none", "partial", "full"):
-                row_bufs["eval"].append(
-                    {
-                        **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                    }
-                )
-
-                if val_lm_preds is not None:
-                    row_bufs["lm_eval"].append(
+            for mode in ("none", "full"):
+                for i, model in enumerate(lr_models):
+                    model.eval()
+                    row_bufs["lr_eval"].append(
                         {
-                            **meta,
                             "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            "inlp_iter": i,
+                            **meta,
+                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
                         }
                     )
-
-                lr_dir = experiment_dir / "lr_models"
-                if not self.skip_supervised and lr_dir.exists():
-                    with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
-                        lr_models = torch.load(f, map_location=device)
-                        if not isinstance(lr_models, list):  # backward compatibility
-                            lr_models = [lr_models]
-
-                    for i, model in enumerate(lr_models):
-                        model.eval()
-                        row_bufs["lr_eval"].append(
-                            {
-                                "ensembling": mode,
-                                "inlp_iter": i,
-                                **meta,
-                                **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
-                            }
-                        )
 
         return {k: pd.DataFrame(v) for k, v in row_bufs.items()}

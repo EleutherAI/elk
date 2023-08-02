@@ -156,6 +156,7 @@ class Template(yaml.YAMLObject):
             jinja = jinja.replace("}}", " | highlight }}")
 
         rtemplate = env.from_string(jinja)
+
         protected_example = self._escape_pipe(example)
 
         # Adds in answer_choices variable
@@ -169,10 +170,12 @@ class Template(yaml.YAMLObject):
 
         # Splits on the separator, and then replaces back any occurrences of the
         # separator in the original example
-        return [
-            Template._strip_spaces(self._unescape_pipe(part))
-            for part in rendered_example.split("|||")
-        ]
+        return " ".join(
+            [
+                Template._strip_spaces(self._unescape_pipe(part))
+                for part in rendered_example.split("|||")
+            ]
+        )
 
     @staticmethod
     def _strip_spaces(string):

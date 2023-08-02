@@ -125,7 +125,7 @@ class Run(ABC, Serializable):
 
     def prepare_data(
         self, device: str, layer: int, split_type: Literal["train", "val"]
-    ) -> dict[str, tuple[Tensor, Tensor, Tensor | None]]:
+    ) -> dict[str, tuple[Tensor, Tensor]]:
         """Prepare data for the specified layer and split type."""
         out = {}
 
@@ -134,15 +134,12 @@ class Run(ABC, Serializable):
 
             split = ds[key].with_format("torch", device=device, dtype=torch.int16)
             labels = assert_type(Tensor, split["label"])
+            # hiddens shape: (num_examples, num_variants, hidden_d)
             hiddens = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
             if self.prompt_indices:
                 hiddens = hiddens[:, self.prompt_indices]
 
-            with split.formatted_as("torch", device=device):
-                has_preds = "model_logits" in split.features
-                lm_preds = split["model_logits"] if has_preds else None
-
-            out[ds_name] = (hiddens, labels.to(hiddens.device), lm_preds)
+            out[ds_name] = (hiddens, labels.to(hiddens.device))
 
         return out
 
