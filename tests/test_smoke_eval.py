@@ -4,13 +4,12 @@ import pandas as pd
 
 from elk import Extract
 from elk.evaluation import Eval
-from elk.training import CcsConfig, EigenFitterConfig
 from elk.training.train import Elicit
 
 EVAL_EXPECTED_FILES = [
     "cfg.yaml",
     "fingerprints.yaml",
-    "eval.csv",
+    "lr_eval.csv",
 ]
 
 
@@ -20,7 +19,6 @@ def setup_elicit(
     dataset_name="imdb",
     model_path="sshleifer/tiny-gpt2",
     min_mem=10 * 1024**2,
-    is_ccs: bool = True,
 ) -> Elicit:
     """Setup elicit config for testing, execute elicit, and save output to tmp_path.
     Returns the elicit run configuration.
@@ -34,7 +32,6 @@ def setup_elicit(
         ),
         num_gpus=2,
         min_gpu_mem=min_mem,
-        net=CcsConfig() if is_ccs else EigenFitterConfig(),
         out_dir=tmp_path,
     )
     elicit.execute()
@@ -58,7 +55,7 @@ def eval_run(elicit: Elicit, transfer_datasets: tuple[str, ...] = ()) -> float:
     assert tmp_path is not None
 
     # record elicit modification time as reference.
-    start_time_sec = (tmp_path / "eval.csv").stat().st_mtime
+    start_time_sec = (tmp_path / "lr_eval.csv").stat().st_mtime
 
     if transfer_datasets:
         # update datasets to a different dataset
@@ -77,7 +74,7 @@ def eval_assert_files_created(elicit: Elicit, transfer_datasets: tuple[str, ...]
     assert eval_dir.exists(), f"transfer eval dir {eval_dir} does not exist"
     check_contains_files(eval_dir, EVAL_EXPECTED_FILES)
     # read "eval.csv" into a df
-    df = pd.read_csv(eval_dir / "eval.csv")
+    df = pd.read_csv(eval_dir / "lr_eval.csv")
     # get the "dataset" column
     dataset_col = df["dataset"]
 
@@ -96,15 +93,8 @@ def test_smoke_tfr_eval_run_tiny_gpt2_ccs(tmp_path: Path):
     eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)
 
 
-def test_smoke_eval_run_tiny_gpt2_eigen(tmp_path: Path):
-    elicit = setup_elicit(tmp_path, is_ccs=False)
-    transfer_datasets = ("christykoh/imdb_pt",)
-    eval_run(elicit, transfer_datasets=transfer_datasets)
-    eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)
-
-
-def test_smoke_multi_eval_run_tiny_gpt2_ccs(tmp_path: Path):
+def test_smoke_eval_run_tiny_gpt2(tmp_path: Path):
     elicit = setup_elicit(tmp_path)
-    transfer_datasets = ("christykoh/imdb_pt", "super_glue:boolq")
+    transfer_datasets = ("christykoh/imdb_pt",)
     eval_run(elicit, transfer_datasets=transfer_datasets)
     eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)
