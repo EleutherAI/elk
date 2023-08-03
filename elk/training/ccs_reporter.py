@@ -99,20 +99,14 @@ class CcsReporter(nn.Module, PlattMixin):
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
         self.norm = None
-
-        probe_layers: list[nn.Module] = [
+        self.probe: nn.Sequential(
             nn.Linear(
                 in_features,
                 1 if cfg.num_layers < 2 else hidden_size,
                 bias=cfg.bias,
                 device=device,
-            )
-        ]
-
-        if self.config.norm == "burns":
-            probe_layers.append(nn.Sigmoid())
-
-        self.probe = nn.Sequential(*probe_layers)
+            ),
+        )
 
         if cfg.pre_ln:
             self.probe.insert(0, nn.LayerNorm(in_features, elementwise_affine=False))
@@ -174,8 +168,11 @@ class CcsReporter(nn.Module, PlattMixin):
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
         if self.config.norm == "leace":
             return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
-        else:
+
+        elif self.config.norm == "burns":
             return raw_scores
+        else:
+            raise ValueError(f"Unknown normalization {self.config.norm}.")
 
     def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         """Return the loss of the reporter on the contrast pair (x0, x1).
