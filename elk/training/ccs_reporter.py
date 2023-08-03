@@ -99,7 +99,7 @@ class CcsReporter(nn.Module, PlattMixin):
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
         self.norm = None
-        self.probe: nn.Sequential(
+        self.probe = nn.Sequential(
             nn.Linear(
                 in_features,
                 1 if cfg.num_layers < 2 else hidden_size,
