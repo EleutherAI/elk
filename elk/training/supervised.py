@@ -8,6 +8,9 @@ from .classifier import Classifier
 def train_supervised(
     data: dict[str, tuple], device: str, mode: str, erase_paraphrases: bool = False
 ) -> list[Classifier]:
+    assert not (
+        erase_paraphrases and len(data) > 1
+    ), "Erasing paraphrases is only supported for single dataset."
     Xs, train_labels = [], []
 
     leace = None
