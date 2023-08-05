@@ -87,7 +87,7 @@ class Extract(Serializable):
     template_path: str | None = None
     """Path to pass into `DatasetTemplates`. By default we use the dataset name."""
 
-    token_loc: Literal["first", "last", "mean"] = "last"
+    token_loc: Literal["first", "last", "penultimate", "mean"] = "last"
     """The location of the token to extract hidden states from."""
 
     use_encoder_states: bool = False
@@ -255,6 +255,8 @@ def extract_hiddens(
                 hiddens = [h[..., 0, :] for h in hiddens]
             elif cfg.token_loc == "last":
                 hiddens = [h[..., -1, :] for h in hiddens]
+            elif cfg.token_loc == "penultimate":
+                hiddens = [h[..., -2, :] for h in hiddens]
             elif cfg.token_loc == "mean":
                 hiddens = [h.mean(dim=-2) for h in hiddens]
             else:
@@ -301,10 +303,10 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
 
     assert_type(Features, info.features)
 
-    num_dropped = prompter.drop_non_mc_templates()
+    # num_dropped = prompter.drop_non_mc_templates()
     num_variants = len(prompter.templates)
-    if num_dropped:
-        print(f"Dropping {num_dropped} non-multiple choice templates")
+    # if num_dropped:
+    # print(f"Dropping {num_dropped} non-multiple choice templates")
 
     layer_cols = {
         f"hidden_{layer}": Array2D(

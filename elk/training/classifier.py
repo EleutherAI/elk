@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 import torch
+from concept_erasure import LeaceEraser
 from torch import Tensor
 from torch.nn.functional import (
     binary_cross_entropy_with_logits as bce_with_logits,
@@ -43,6 +44,7 @@ class Classifier(torch.nn.Module):
         self,
         input_dim: int,
         num_classes: int = 2,
+        eraser: LeaceEraser | None = None,
         device: str | torch.device | None = None,
         dtype: torch.dtype | None = None,
     ):
@@ -53,8 +55,11 @@ class Classifier(torch.nn.Module):
         )
         self.linear.bias.data.zero_()
         self.linear.weight.data.zero_()
+        self.eraser = eraser
 
     def forward(self, x: Tensor) -> Tensor:
+        if self.eraser is not None:
+            x = self.eraser(x)
         return self.linear(x).squeeze(-1)
 
     @torch.enable_grad()
@@ -185,7 +190,12 @@ class Classifier(torch.nn.Module):
 
     @classmethod
     def inlp(
-        cls, x: Tensor, y: Tensor, max_iter: int | None = None, tol: float = 0.01
+        cls,
+        x: Tensor,
+        y: Tensor,
+        eraser: LeaceEraser | None = None,
+        max_iter: int | None = None,
+        tol: float = 0.01,
     ) -> InlpResult:
         """Iterative Nullspace Projection (INLP) <https://arxiv.org/abs/2004.07667>.
 
@@ -194,6 +204,7 @@ class Classifier(torch.nn.Module):
                 the input dimension.
             y: Target tensor of shape (N,) for binary classification or (N, C) for
                 multiclass classification, where C is the number of classes.
+            eraser: Concept erasure function to use. If `None`, no erasure is performed.
             max_iter: Maximum number of iterations to run. If `None`, run for the full
                 dimension of the input.
             tol: Tolerance for the loss function. The algorithm will stop when the loss
@@ -216,9 +227,10 @@ class Classifier(torch.nn.Module):
             d = min(d, max_iter)
 
         # Iterate until the loss is within epsilon of the entropy
+        # meaning LR is not able to find a useful classifier anymore
         result = InlpResult()
         for _ in range(d):
-            clf = cls(d, device=x.device, dtype=x.dtype)
+            clf = cls(d, eraser=eraser, device=x.device, dtype=x.dtype)
             loss = clf.fit(x, y)
             result.classifiers.append(clf)
             result.losses.append(loss)

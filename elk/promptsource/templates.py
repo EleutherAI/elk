@@ -163,7 +163,11 @@ class Template(yaml.YAMLObject):
         if "answer_choices" in protected_example:
             raise ValueError("Example contains the restricted key 'answer_choices'.")
 
-        protected_example["answer_choices"] = self.get_answer_choices_list(example)
+        try:
+            protected_example["answer_choices"] = self.get_answer_choices_list(example)
+        except AttributeError:
+            # there's no answer_choices field
+            pass
 
         # Renders the Jinja template
         rendered_example = rtemplate.render(**protected_example)

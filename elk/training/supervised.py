@@ -1,17 +1,34 @@
 import torch
+from concept_erasure import LeaceFitter
 from einops import rearrange, repeat
 
 from .classifier import Classifier
 
 
 def train_supervised(
-    data: dict[str, tuple], device: str, mode: str
+    data: dict[str, tuple], device: str, mode: str, erase_paraphrases: bool = False
 ) -> list[Classifier]:
     Xs, train_labels = [], []
 
+    leace = None
+
     for train_h, labels in data.values():
-        (_, v, _) = train_h.shape
+        (n, v, d) = train_h.shape
         train_h = rearrange(train_h, "n v d -> (n v) d")
+
+        if erase_paraphrases:
+            if leace is None:
+                leace = LeaceFitter(
+                    d,
+                    v,
+                    device=device,
+                    dtype=train_h.dtype,
+                )
+            # indicators = [0, 1, ..., v-1, 0, 1, ..., v-1, ...] to one-hot
+            indicators = torch.eye(v, device=device, dtype=train_h.dtype).repeat(
+                n, 1
+            )  # (n * v, v)
+            leace = leace.update(train_h, indicators)
 
         labels = repeat(labels, "n -> (n v)", v=v)
 
@@ -19,14 +36,16 @@ def train_supervised(
         train_labels.append(labels)
 
     X, train_labels = torch.cat(Xs), torch.cat(train_labels)
+    eraser = leace.eraser if leace is not None else None
+
     if mode == "cv":
-        lr_model = Classifier(X.shape[-1], device=device)
+        lr_model = Classifier(X.shape[-1], device=device, eraser=eraser)
         lr_model.fit_cv(X, train_labels)
         return [lr_model]
     elif mode == "inlp":
-        return Classifier.inlp(X, train_labels).classifiers
+        return Classifier.inlp(X, train_labels, eraser=eraser).classifiers
     elif mode == "single":
-        lr_model = Classifier(X.shape[-1], device=device)
+        lr_model = Classifier(X.shape[-1], device=device, eraser=eraser)
         lr_model.fit(X, train_labels)
         return [lr_model]
     else:
