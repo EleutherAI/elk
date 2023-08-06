@@ -5,61 +5,43 @@ from torch import Tensor, nn
 class BurnsNorm(nn.Module):
     """Burns et al. style normalization. Minimal changes from the original code."""
 
-    # TODO: Clean this up... + write test
-    def forward(self, x_all: Tensor) -> Tensor:
-        assert len(x_all.shape) in [3, 4]
-        if x_all.dim() == 3:
-            return self.three_dims(x_all)
+    def __init__(self, scale: bool = True):
+        super().__init__()
+        self.scale: bool = scale
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Normalizes per template
+        Args:
+            x: input of dimension (n, v, c, d) or (n, v, d)
+        Returns:
+            x_normalized: normalized output
+        """
+        num_elements = x.shape[0]
+        x_normalized: Tensor = x - x.mean(dim=0) if num_elements > 1 else x
+
+        if not self.scale:
+            return x_normalized
         else:
-            return self.four_dims(x_all)
-
-    def three_dims(self, x_all: Tensor) -> Tensor:
-        """Normalize the input tensor.
-        x_all: Tensor of shape (n, v, d)
-        """
-        x_normalized: Tensor = x_all - x_all.mean(dim=0)
-
-        std = torch.linalg.norm(x_normalized, axis=0) / torch.sqrt(
-            torch.tensor(x_normalized.shape[0], dtype=torch.float32)
-        )
-        assert len(std.shape) == 2
-        # We want to mean over everything except the v dimension, which is dim=0
-        # dim=0 is v, since after doing torch.linalg.norm we end up with a tensor
-        # missing the first dimension n
-        avg_norm = std.mean(dim=(1))
-
-        # add singleton dimension at beginnign and end to allow broadcasting
-        return x_normalized / avg_norm.unsqueeze(0).unsqueeze(-1)
-
-    def four_dims(self, x_all: Tensor) -> Tensor:
-        """Normalize the input tensor.
-        x_all: Tensor of shape (n, v, k, d)
-        """
-        x_normalized: Tensor = x_all - x_all.mean(dim=0)
-
-        std = torch.linalg.norm(x_normalized, axis=0) / torch.sqrt(
-            torch.tensor(x_normalized.shape[0], dtype=torch.float32)
-        )
-        assert len(std.shape) == 3
-        # We want to mean over everything except the v dimension, which is dim=0
-        # dim=0 is v, since after doing torch.linalg.norm we end up with a tensor
-        # missing the first dimension n
-        avg_norm = std.mean(dim=(1, 2))
-
-        # add singleton dimension at beginning and end to allow broadcasting
-        return x_normalized / avg_norm.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
-
-    def correct_but_slow_normalization(self, x_all: Tensor) -> Tensor:
-        # TODO: Remove this once everything is cleandup
-        res = []
-        xs = x_all.unbind(dim=1)
-
-        for x in xs:
-            x_mean: Tensor = x - x.mean(dim=0)
-            std = torch.linalg.norm(x_mean, axis=0) / torch.sqrt(
-                torch.tensor(x_mean.shape[0], dtype=torch.float32)
+            std = torch.linalg.norm(x_normalized, dim=0) / torch.sqrt(
+                torch.tensor(x_normalized.shape[0], dtype=torch.float32)
             )
-            avg_norm = std.mean()
-            res.append(x_mean / avg_norm)
+            assert std.dim() == x.dim() - 1
 
-        return torch.stack(res, dim=1)
+            # Compute the dimensions over which
+            # we want to compute the mean standard deviation
+            # exclude the first dimension v,
+            # which is the template dimension
+            dims = tuple(range(1, std.dim()))
+
+            avg_norm = std.mean(dim=dims)
+
+            # Add a singleton dimension at the beginning to allow broadcasting.
+            # This compensates for the dimension we lost when computing the norm.
+            avg_norm = avg_norm.unsqueeze(0)
+
+            # Add singleton dimensions at the end to allow broadcasting.
+            # This compensates for the dimensions we lost when computing the mean.
+            for _ in range(1, x.dim() - 1):
+                avg_norm = avg_norm.unsqueeze(-1)
+
+            return x_normalized / avg_norm

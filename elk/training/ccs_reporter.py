@@ -99,7 +99,6 @@ class CcsReporter(nn.Module, PlattMixin):
         hidden_size = cfg.hidden_size or 4 * in_features // 3
 
         self.norm = None
-
         self.probe = nn.Sequential(
             nn.Linear(
                 in_features,
@@ -107,8 +106,8 @@ class CcsReporter(nn.Module, PlattMixin):
                 bias=cfg.bias,
                 device=device,
             ),
-            nn.Sigmoid()
         )
+
         if cfg.pre_ln:
             self.probe.insert(0, nn.LayerNorm(in_features, elementwise_affine=False))
 
@@ -165,11 +164,14 @@ class CcsReporter(nn.Module, PlattMixin):
     def forward(self, x: Tensor) -> Tensor:
         """Return the credence assigned to the hidden state `x`."""
         assert self.norm is not None, "Must call fit() before forward()"
- 
+
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
-        return raw_scores
-        breakpoint()
-        return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
+        if self.config.norm == "leace":
+            return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
+        elif self.config.norm == "burns":
+            return raw_scores
+        else:
+            raise ValueError(f"Unknown normalization {self.config.norm}.")
 
     def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         """Return the loss of the reporter on the contrast pair (x0, x1).
@@ -197,7 +199,6 @@ class CcsReporter(nn.Module, PlattMixin):
 
         # One-hot indicators for each prompt template
         n, v, d = x_neg.shape
-
         prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
 
         if self.config.norm == "burns":
