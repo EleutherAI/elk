@@ -226,19 +226,17 @@ class ModelVisualization:
         model_name = model_path.name
         is_transfer = False
 
-        def get_train_dirs(model_path):
+        def get_eval_dirs(model_path):
             # toplevel is either repo/dataset or dataset
             for toplevel in model_path.iterdir():
                 if (toplevel / "eval.csv").exists():
                     yield toplevel
                 else:
-                    for train_dir in toplevel.iterdir():
-                        yield train_dir
+                    for eval_dir in toplevel.iterdir():
+                        yield eval_dir
 
-        for train_dir in get_train_dirs(model_path):
-            eval_df, layer_ensembling_df = cls._read_csvs(
-                train_dir, train_dir.name, train_dir.name
-            )
+        for train_dir in get_eval_dirs(model_path):
+            eval_df, layer_ensembling_df = cls._read_eval_csv(train_dir, train_dir.name, train_dir.name)
             df_sum = pd.concat([df_sum, eval_df], ignore_index=True)
             layer_ensembling_df_sum = pd.concat(
                 [layer_ensembling_df_sum, layer_ensembling_df],
@@ -247,15 +245,15 @@ class ModelVisualization:
             transfer_dir = train_dir / "transfer"
             if transfer_dir.exists():
                 is_transfer = True
-                for eval_ds_dir in transfer_dir.iterdir():
-                    eval_df, layer_ensembling_df = cls._read_csvs(
-                        eval_ds_dir, eval_ds_dir.name, train_dir.name
+                for tfr_ds_dir in get_eval_dirs(transfer_dir):
+                    tfr_df = cls._read_eval_csv(
+                        tfr_ds_dir, tfr_ds_dir.name, train_dir.name
                     )
-                    df_sum = pd.concat([df_sum, eval_df], ignore_index=True)
+                    df_sum = pd.concat([df_sum, tfr_df], ignore_index=True)
                     layer_ensembling_df_sum = pd.concat(
                         [layer_ensembling_df_sum, layer_ensembling_df],
                         ignore_index=True,
-                    )  # TODO fold into function
+                    )
 
         df_sum["model_name"] = model_name
         layer_ensembling_df_sum["model_name"] = model_name

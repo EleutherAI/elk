@@ -147,7 +147,6 @@ class EigenFitter:
         if self.config.erase_prompts:
             # Independent indicator for each (template, pseudo-label) pair
             indicators = torch.eye(k * v, device=hiddens.device).expand(n, -1, -1)
-            self.leace.update(x=hiddens, z=indicators)
         else:
             # Only use indicators for each pseudo-label
             indicators = torch.eye(k, device=hiddens.device).expand(n, v, -1, -1)
