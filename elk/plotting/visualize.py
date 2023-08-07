@@ -236,7 +236,9 @@ class ModelVisualization:
                         yield eval_dir
 
         for train_dir in get_eval_dirs(model_path):
-            eval_df, layer_ensembling_df = cls._read_eval_csv(train_dir, train_dir.name, train_dir.name)
+            eval_df, layer_ensembling_df = cls._read_csvs(
+                train_dir, train_dir.name, train_dir.name
+            )
             df_sum = pd.concat([df_sum, eval_df], ignore_index=True)
             layer_ensembling_df_sum = pd.concat(
                 [layer_ensembling_df_sum, layer_ensembling_df],
@@ -246,7 +248,7 @@ class ModelVisualization:
             if transfer_dir.exists():
                 is_transfer = True
                 for tfr_ds_dir in get_eval_dirs(transfer_dir):
-                    tfr_df = cls._read_eval_csv(
+                    tfr_df, layer_ensembling_df = cls._read_csvs(
                         tfr_ds_dir, tfr_ds_dir.name, train_dir.name
                     )
                     df_sum = pd.concat([df_sum, tfr_df], ignore_index=True)
@@ -299,7 +301,7 @@ class ModelVisualization:
         eval_df["eval_dataset"] = eval_dataset
         eval_df["train_dataset"] = train_dataset
 
-        layer_ensembling_file = path / "layer_ensembling_results.csv"
+        layer_ensembling_file = path / "layer_ensembling.csv"
         layer_ensembling_df = pd.read_csv(layer_ensembling_file)
         layer_ensembling_df["eval_dataset"] = eval_dataset
         layer_ensembling_df["train_dataset"] = train_dataset
@@ -308,7 +310,7 @@ class ModelVisualization:
 
     @staticmethod
     def _read_layer_ensembling_csv(path, eval_dataset, train_dataset):
-        file = path / "layer_ensembling_results.csv"
+        file = path / "layer_ensembling.csv"
         eval_df = pd.read_csv(file)
         eval_df["eval_dataset"] = eval_dataset
         eval_df["train_dataset"] = train_dataset
