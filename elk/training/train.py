@@ -59,12 +59,13 @@ def evaluate_and_save(
             prompt_index_dict = (
                 {"prompt_index": prompt_index} if prompt_index is not None else {}
             )
-            for mode in ("none", "partial", "full"):
+            PROMPT_ENSEMBLING = "prompt_ensembling"
+            for prompt_ensembling in PromptEnsembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        PROMPT_ENSEMBLING: prompt_ensembling.value,
+                        **evaluate_preds(val_gt, val_credences, prompt_ensembling).to_dict(),
                         "train_loss": train_loss,
                         **prompt_index_dict,
                     }
@@ -73,8 +74,8 @@ def evaluate_and_save(
                 row_bufs["train_eval"].append(
                     {
                         **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                        PROMPT_ENSEMBLING: prompt_ensembling.value,
+                        **evaluate_preds(train_gt, train_credences, prompt_ensembling).to_dict(),
                         "train_loss": train_loss,
                         **prompt_index_dict,
                     }
@@ -84,8 +85,8 @@ def evaluate_and_save(
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            PROMPT_ENSEMBLING: prompt_ensembling.value,
+                            **evaluate_preds(val_gt, val_lm_preds, prompt_ensembling).to_dict(),
                             **prompt_index_dict,
                         }
                     )
@@ -94,8 +95,8 @@ def evaluate_and_save(
                     row_bufs["train_lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
+                            PROMPT_ENSEMBLING: prompt_ensembling.value,
+                            **evaluate_preds(train_gt, train_lm_preds, prompt_ensembling).to_dict(),
                             **prompt_index_dict,
                         }
                     )
@@ -104,9 +105,9 @@ def evaluate_and_save(
                     row_bufs["lr_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
+                            PROMPT_ENSEMBLING: prompt_ensembling.value,
                             "inlp_iter": lr_model_num,
-                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            **evaluate_preds(val_gt, model(val_h), prompt_ensembling).to_dict(),
                             **prompt_index_dict,
                         }
                     )

@@ -248,7 +248,7 @@ class Run(ABC, Serializable):
                 for name, dfs in df_buffers.items():
                     df = pd.concat(dfs).sort_values(by=["layer", PROMPT_ENSEMBLING])
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
-                    sortby = ["layer", "ensembling"]
+                    sortby = ["layer", "prompt_ensembling"]
                     if "prompt_index" in dfs[0].columns:
                         sortby.append("prompt_index")
                     df = pd.concat(dfs).sort_values(by=sortby)
