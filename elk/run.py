@@ -21,6 +21,7 @@ from .debug_logging import save_debug_log
 from .extraction import Extract, extract
 from .extraction.dataset_name import DatasetDictWithName
 from .files import elk_reporter_dir, memorably_named_dir
+from .metrics.eval import LayerOutput, layer_ensembling
 from .utils import (
     Color,
     assert_type,
@@ -29,6 +30,56 @@ from .utils import (
     select_split,
     select_usable_devices,
 )
+from .utils.types import PromptEnsembling
+
+PROMPT_ENSEMBLING = "prompt_ensembling"
+
+
+@dataclass(frozen=True)
+class LayerApplied:
+    layer_outputs: list[LayerOutput]
+    """The output of the reporter on the layer, should contain credences and ground
+    truth labels."""
+    df_dict: dict[str, pd.DataFrame]
+    """The evaluation results for the layer."""
+
+
+def calculate_layer_outputs(layer_outputs: list[LayerOutput], out_path: Path):
+    """
+    Calculate the layer ensembling results for each dataset
+    and prompt ensembling and save them to a CSV file.
+
+    Args:
+        layer_outputs: The layer outputs to calculate the results for.
+        out_path: The path to save the results to.
+    """
+    grouped_layer_outputs = {}
+    for layer_output in layer_outputs:
+        dataset_name = layer_output.meta["dataset"]
+        if dataset_name in grouped_layer_outputs:
+            grouped_layer_outputs[dataset_name].append(layer_output)
+        else:
+            grouped_layer_outputs[dataset_name] = [layer_output]
+
+    dfs = []
+    for dataset_name, layer_outputs in grouped_layer_outputs.items():
+        for prompt_ensembling in PromptEnsembling.all():
+            res = layer_ensembling(
+                layer_outputs=layer_outputs,
+                prompt_ensembling=prompt_ensembling,
+            )
+            df = pd.DataFrame(
+                {
+                    "dataset": dataset_name,
+                    PROMPT_ENSEMBLING: prompt_ensembling.value,
+                    **res.to_dict(),
+                },
+                index=[0],
+            ).round(4)
+            dfs.append(df)
+
+    df_concat = pd.concat(dfs)
+    df_concat.to_csv(out_path, index=False)
 
 
 @dataclass
@@ -98,7 +149,7 @@ class Run(ABC, Serializable):
 
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
-        func: Callable[[int], dict[str, pd.DataFrame]] = partial(
+        func: Callable[[int], LayerApplied] = partial(
             self.apply_to_layer, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)
@@ -106,7 +157,7 @@ class Run(ABC, Serializable):
     @abstractmethod
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> dict[str, pd.DataFrame]:
+    ) -> LayerApplied:
         """Train or eval a reporter on a single layer."""
 
     def make_reproducible(self, seed: int):
@@ -155,7 +206,7 @@ class Run(ABC, Serializable):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], dict[str, pd.DataFrame]],
+        func: Callable[[int], LayerApplied],
         num_devices: int,
     ):
         """Apply a function to each layer of the datasets in parallel
@@ -178,15 +229,21 @@ class Run(ABC, Serializable):
         with ctx.Pool(num_devices) as pool:
             mapper = pool.imap_unordered if num_devices > 1 else map
             df_buffers = defaultdict(list)
-
+            layer_outputs: list[LayerOutput] = []
             try:
-                for df_dict in tqdm(mapper(func, layers), total=len(layers)):
-                    for k, v in df_dict.items():
+                for res in tqdm(mapper(func, layers), total=len(layers)):
+                    layer_outputs.extend(res.layer_outputs)
+                    for k, v in res.df_dict.items():  # type: ignore
                         df_buffers[k].append(v)
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
-                    df = pd.concat(dfs).sort_values(by=["layer", "ensembling"])
+                    df = pd.concat(dfs).sort_values(by=["layer", PROMPT_ENSEMBLING])
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
+
+                calculate_layer_outputs(
+                    layer_outputs=layer_outputs,
+                    out_path=self.out_dir / "layer_ensembling.csv",
+                )

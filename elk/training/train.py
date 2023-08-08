@@ -12,8 +12,10 @@ from simple_parsing import subgroups
 from simple_parsing.helpers.serialization import save
 
 from ..metrics import evaluate_preds, to_one_hot
-from ..run import Run
+from ..metrics.eval import LayerOutput
+from ..run import LayerApplied, Run
 from ..training.supervised import train_supervised
+from ..utils.types import PromptEnsembling
 from ..utils.typing import assert_type
 from .ccs_reporter import CcsConfig, CcsReporter
 from .common import FitterConfig
@@ -53,7 +55,7 @@ class Elicit(Run):
         layer: int,
         devices: list[str],
         world_size: int,
-    ) -> dict[str, pd.DataFrame]:
+    ) -> LayerApplied:
         """Train a single reporter on a single layer."""
 
         self.make_reproducible(seed=self.net.seed + layer)
@@ -131,19 +133,30 @@ class Elicit(Run):
             lr_models = []
 
         row_bufs = defaultdict(list)
+        layer_output = []
         for ds_name in val_dict:
             val_h, val_gt, val_lm_preds = val_dict[ds_name]
             train_h, train_gt, train_lm_preds = train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
 
             val_credences = reporter(val_h)
+            layer_output.append(
+                LayerOutput(
+                    val_gt=val_gt.detach(),
+                    val_credences=val_credences.detach(),
+                    meta=meta,
+                )
+            )
+
             train_credences = reporter(train_h)
-            for mode in ("none", "partial", "full"):
+            for prompt_ensembling in PromptEnsembling.all():
                 row_bufs["eval"].append(
                     {
                         **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        "prompt_ensembling": prompt_ensembling.value,
+                        **evaluate_preds(
+                            val_gt, val_credences, prompt_ensembling
+                        ).to_dict(),
                         "train_loss": train_loss,
                     }
                 )
@@ -151,8 +164,10 @@ class Elicit(Run):
                 row_bufs["train_eval"].append(
                     {
                         **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                        "prompt_ensembling": prompt_ensembling.value,
+                        **evaluate_preds(
+                            train_gt, train_credences, prompt_ensembling
+                        ).to_dict(),
                         "train_loss": train_loss,
                     }
                 )
@@ -161,8 +176,10 @@ class Elicit(Run):
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            "prompt_ensembling": prompt_ensembling.value,
+                            **evaluate_preds(
+                                val_gt, val_lm_preds, prompt_ensembling
+                            ).to_dict(),
                         }
                     )
 
@@ -170,8 +187,10 @@ class Elicit(Run):
                     row_bufs["train_lm_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
-                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
+                            "prompt_ensembling": prompt_ensembling.value,
+                            **evaluate_preds(
+                                train_gt, train_lm_preds, prompt_ensembling
+                            ).to_dict(),
                         }
                     )
 
@@ -179,10 +198,14 @@ class Elicit(Run):
                     row_bufs["lr_eval"].append(
                         {
                             **meta,
-                            "ensembling": mode,
+                            "prompt_ensembling": prompt_ensembling.value,
                             "inlp_iter": i,
-                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            **evaluate_preds(
+                                val_gt, model(val_h), prompt_ensembling
+                            ).to_dict(),
                         }
                     )
 
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        return LayerApplied(
+            layer_output, {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        )
