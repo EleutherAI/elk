@@ -81,6 +81,8 @@ def calculate_layer_outputs(layer_outputs: list[LayerOutput], out_path: Path):
     df_concat = pd.concat(dfs)
     df_concat.to_csv(out_path, index=False)
 
+PreparedData = dict[str, tuple[Tensor, Tensor, Tensor | None]]
+
 
 @dataclass
 class Run(ABC, Serializable):
@@ -97,11 +99,14 @@ class Run(ABC, Serializable):
     prompt_indices: tuple[int, ...] = ()
     """The indices of the prompt templates to use. If empty, all prompts are used."""
 
+    probe_per_prompt: bool = False
+    """If true, a probe is trained per prompt template. Otherwise, a single probe is
+    trained for all prompt templates."""
+
     concatenated_layer_offset: int = 0
     debug: bool = False
     min_gpu_mem: int | None = None  # in bytes
     num_gpus: int = -1
-    out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
 
     def execute(
@@ -150,13 +155,16 @@ class Run(ABC, Serializable):
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
         func: Callable[[int], LayerApplied] = partial(
-            self.apply_to_layer, devices=devices, world_size=num_devices
+            self.apply_to_layer,
+            devices=devices,
+            world_size=num_devices,
+            probe_per_prompt=self.probe_per_prompt,
         )
         self.apply_to_layers(func=func, num_devices=num_devices)
 
     @abstractmethod
     def apply_to_layer(
-        self, layer: int, devices: list[str], world_size: int
+        self, layer: int, devices: list[str], world_size: int, probe_per_prompt: bool
     ) -> LayerApplied:
         """Train or eval a reporter on a single layer."""
 
@@ -176,7 +184,7 @@ class Run(ABC, Serializable):
 
     def prepare_data(
         self, device: str, layer: int, split_type: Literal["train", "val"]
-    ) -> dict[str, tuple[Tensor, Tensor, Tensor | None]]:
+    ) -> PreparedData:
         """Prepare data for the specified layer and split type."""
         out = {}
 
@@ -187,7 +195,7 @@ class Run(ABC, Serializable):
             labels = assert_type(Tensor, split["label"])
             hiddens = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
             if self.prompt_indices:
-                hiddens = hiddens[:, self.prompt_indices]
+                hiddens = hiddens[:, self.prompt_indices, ...]
 
             with split.formatted_as("torch", device=device):
                 has_preds = "model_logits" in split.features
@@ -240,6 +248,19 @@ class Run(ABC, Serializable):
                 for name, dfs in df_buffers.items():
                     df = pd.concat(dfs).sort_values(by=["layer", PROMPT_ENSEMBLING])
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
+                    sortby = ["layer", "ensembling"]
+                    if "prompt_index" in dfs[0].columns:
+                        sortby.append("prompt_index")
+                    df = pd.concat(dfs).sort_values(by=sortby)
+
+                    if "prompt_index" in df.columns:
+                        cols = list(df.columns)
+                        cols.insert(2, cols.pop(cols.index("prompt_index")))
+                        df = df.reindex(columns=cols)
+
+                    # Save the CSV
+                    out_path = self.out_dir / f"{name}.csv"
+                    df.round(4).to_csv(out_path, index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
 

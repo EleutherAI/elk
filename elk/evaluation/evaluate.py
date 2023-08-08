@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 import torch
@@ -9,6 +10,7 @@ from simple_parsing.helpers import field
 from ..files import elk_reporter_dir
 from ..metrics import evaluate_preds
 from ..run import LayerApplied, LayerOutput, Run
+from ..training.multi_reporter import MultiReporter, SingleReporter
 from ..utils import Color
 from ..utils.types import PromptEnsembling
 
@@ -33,7 +35,7 @@ class Eval(Run):
 
     @torch.inference_mode()
     def apply_to_layer(
-        self, layer: int, devices: list[str], world_size: int
+        self, layer: int, devices: list[str], world_size: int, probe_per_prompt: bool
     ) -> LayerApplied:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
@@ -41,60 +43,85 @@ class Eval(Run):
 
         experiment_dir = elk_reporter_dir() / self.source
 
-        reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
-        reporter = torch.load(reporter_path, map_location=device)
+        def load_reporter() -> SingleReporter | MultiReporter:
+            # check if experiment_dir / "reporters" has .pt files
+            first = next((experiment_dir / "reporters").iterdir())
+            if not first.suffix == ".pt":
+                return MultiReporter.load(
+                    experiment_dir / "reporters", layer, device=device
+                )
+            else:
+                path = experiment_dir / "reporters" / f"layer_{layer}.pt"
+                return torch.load(path, map_location=device)
+
+        reporter = load_reporter()
 
         row_bufs = defaultdict(list)
 
         layer_outputs: list[LayerOutput] = []
 
-        for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
-            meta = {"dataset": ds_name, "layer": layer}
-
-            val_credences = reporter(val_h)
-
-            layer_outputs.append(LayerOutput(val_gt, val_credences, meta))
-            for prompt_ensembling in PromptEnsembling.all():
-                row_bufs["eval"].append(
-                    {
-                        **meta,
-                        PROMPT_ENSEMBLING: prompt_ensembling.value,
-                        **evaluate_preds(
-                            val_gt, val_credences, prompt_ensembling
-                        ).to_dict(),
-                    }
-                )
-
-                if val_lm_preds is not None:
-                    row_bufs["lm_eval"].append(
+        def eval_all(
+            reporter: SingleReporter | MultiReporter,
+            prompt_index: int | Literal["multi"] | None = None,
+            i: int = 0,
+        ):
+            prompt_index_dict = (
+                {"prompt_index": prompt_index} if prompt_index is not None else {}
+            )
+            for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
+                meta = {"dataset": ds_name, "layer": layer}
+                val_credences = reporter(val_h[:, [i], :, :])
+                layer_outputs.append(LayerOutput(val_gt, val_credences, meta))
+                for prompt_ensembling in PromptEnsembling.all():
+                    row_bufs["eval"].append(
                         {
                             **meta,
                             PROMPT_ENSEMBLING: prompt_ensembling.value,
-                            **evaluate_preds(
-                                val_gt, val_lm_preds, prompt_ensembling
-                            ).to_dict(),
+                            **evaluate_preds(val_gt, val_credences, prompt_ensembling).to_dict(),
+                            **prompt_index_dict,
                         }
                     )
 
-                lr_dir = experiment_dir / "lr_models"
-                if not self.skip_supervised and lr_dir.exists():
-                    with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
-                        lr_models = torch.load(f, map_location=device)
-                        if not isinstance(lr_models, list):  # backward compatibility
-                            lr_models = [lr_models]
-
-                    for i, model in enumerate(lr_models):
-                        model.eval()
-                        row_bufs["lr_eval"].append(
+                    if val_lm_preds is not None:
+                        row_bufs["lm_eval"].append(
                             {
-                                PROMPT_ENSEMBLING: prompt_ensembling.value,
-                                "inlp_iter": i,
                                 **meta,
+                                PROMPT_ENSEMBLING: prompt_ensembling.value,
                                 **evaluate_preds(
-                                    val_gt, model(val_h), prompt_ensembling
+                                    val_gt, val_lm_preds, prompt_ensembling
                                 ).to_dict(),
                             }
                         )
+
+                    lr_dir = experiment_dir / "lr_models"
+                    if not self.skip_supervised and lr_dir.exists():
+                        with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
+                            lr_models = torch.load(f, map_location=device)
+                            if not isinstance(
+                                lr_models, list
+                            ):  # backward compatibility
+                                lr_models = [lr_models]
+
+                        for i, model in enumerate(lr_models):
+                            model.eval()
+                            row_bufs["lr_eval"].append(
+                                {
+                                    PROMPT_ENSEMBLING: prompt_ensembling.value,
+                                    "inlp_iter": i,
+                                    **meta,
+                                    **evaluate_preds(
+                                        val_gt, model(val_h), prompt_ensembling
+                                    ).to_dict(),
+                                }
+                            )
+
+        if isinstance(reporter, MultiReporter):
+            for i, res in enumerate(reporter.reporter_w_infos):
+                eval_all(res.model, res.prompt_index, i)
+            eval_all(reporter, "multi")
+        else:
+            eval_all(reporter)
+
         return LayerApplied(
             layer_outputs, {k: pd.DataFrame(v) for k, v in row_bufs.items()}
         )
