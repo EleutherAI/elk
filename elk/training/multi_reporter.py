@@ -35,11 +35,12 @@ class MultiReporter:
         )
 
     def __call__(self, h):
-        num_variants = h.shape[1]
-        assert len(self.models) == num_variants
-        credences = []
-        for i, reporter in enumerate(self.models):
-            credences.append(reporter(h[:, [i], :, :]))
+        n_eval_prompts = h.shape[1]
+        credences = [
+            reporter(h[:, [prompt_index], :, :])
+            for reporter in self.models
+            for prompt_index in range(n_eval_prompts)
+        ]
         return t.stack(credences, dim=0).mean(dim=0)
 
     @staticmethod

@@ -149,8 +149,6 @@ def evaluate_preds(
         dict: A dictionary containing the accuracy, AUROC, and ECE.
     """
     y_logits, y_true, num_classes = prepare(y_logits, y_true, prompt_ensembling)
-    print('hi')
-    print(prompt_ensembling)
     return calc_eval_results(y_true, y_logits, prompt_ensembling, num_classes)
 
 

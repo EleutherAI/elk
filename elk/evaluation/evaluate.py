@@ -61,16 +61,11 @@ class Eval(Run):
         layer_outputs: list[LayerOutput] = []
 
         def eval_all(
-            reporter: SingleReporter | MultiReporter,
-            prompt_index: int | Literal["multi"] | None = None,
-            i: int = 0,
+            reporter: SingleReporter | MultiReporter
         ):
-            prompt_index_dict = (
-                {"prompt_index": prompt_index} if prompt_index is not None else {}
-            )
             for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
                 meta = {"dataset": ds_name, "layer": layer}
-                val_credences = reporter(val_h[:, [i], :, :])
+                val_credences = reporter(val_h)
                 layer_outputs.append(LayerOutput(val_gt, val_credences, meta))
                 for prompt_ensembling in PromptEnsembling.all():
                     row_bufs["eval"].append(
@@ -78,7 +73,6 @@ class Eval(Run):
                             **meta,
                             PROMPT_ENSEMBLING: prompt_ensembling.value,
                             **evaluate_preds(val_gt, val_credences, prompt_ensembling).to_dict(),
-                            **prompt_index_dict,
                         }
                     )
 
@@ -115,12 +109,7 @@ class Eval(Run):
                                 }
                             )
 
-        if isinstance(reporter, MultiReporter):
-            for i, res in enumerate(reporter.reporter_w_infos):
-                eval_all(res.model, res.prompt_index, i)
-            eval_all(reporter, "multi")
-        else:
-            eval_all(reporter)
+        eval_all(reporter)
 
         return LayerApplied(
             layer_outputs, {k: pd.DataFrame(v) for k, v in row_bufs.items()}

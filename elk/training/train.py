@@ -39,25 +39,16 @@ def evaluate_and_save(
         meta = {"dataset": ds_name, "layer": layer}
 
         def eval_all(
-            reporter: SingleReporter | MultiReporter,
-            prompt_index: int | Literal["multi"] | None = None,
-            i: int = 0,
+            reporter: SingleReporter | MultiReporter
         ):
-            if isinstance(prompt_index, int):
-                val_credences = reporter(val_h[:, [i], :, :])
-                train_credences = reporter(train_h[:, [i], :, :])
-            else:
-                val_credences = reporter(val_h)
-                train_credences = reporter(train_h)
+            val_credences = reporter(val_h)
+            train_credences = reporter(train_h)
             layer_output.append(
                 LayerOutput(
                     val_gt=val_gt.detach(),
                     val_credences=val_credences.detach(),
                     meta=meta,
                 )
-            )
-            prompt_index_dict = (
-                {"prompt_index": prompt_index} if prompt_index is not None else {}
             )
             PROMPT_ENSEMBLING = "prompt_ensembling"
             for prompt_ensembling in PromptEnsembling.all():
@@ -67,7 +58,6 @@ def evaluate_and_save(
                         PROMPT_ENSEMBLING: prompt_ensembling.value,
                         **evaluate_preds(val_gt, val_credences, prompt_ensembling).to_dict(),
                         "train_loss": train_loss,
-                        **prompt_index_dict,
                     }
                 )
 
@@ -77,7 +67,6 @@ def evaluate_and_save(
                         PROMPT_ENSEMBLING: prompt_ensembling.value,
                         **evaluate_preds(train_gt, train_credences, prompt_ensembling).to_dict(),
                         "train_loss": train_loss,
-                        **prompt_index_dict,
                     }
                 )
 
@@ -87,7 +76,6 @@ def evaluate_and_save(
                             **meta,
                             PROMPT_ENSEMBLING: prompt_ensembling.value,
                             **evaluate_preds(val_gt, val_lm_preds, prompt_ensembling).to_dict(),
-                            **prompt_index_dict,
                         }
                     )
 
@@ -97,7 +85,6 @@ def evaluate_and_save(
                             **meta,
                             PROMPT_ENSEMBLING: prompt_ensembling.value,
                             **evaluate_preds(train_gt, train_lm_preds, prompt_ensembling).to_dict(),
-                            **prompt_index_dict,
                         }
                     )
 
@@ -108,16 +95,10 @@ def evaluate_and_save(
                             PROMPT_ENSEMBLING: prompt_ensembling.value,
                             "inlp_iter": lr_model_num,
                             **evaluate_preds(val_gt, model(val_h), prompt_ensembling).to_dict(),
-                            **prompt_index_dict,
                         }
                     )
 
-        if isinstance(reporter, MultiReporter):
-            for i, reporter_result in enumerate(reporter.reporter_w_infos):
-                eval_all(reporter_result.model, reporter_result.prompt_index, i)
-            eval_all(reporter, prompt_index="multi")
-        else:
-            eval_all(reporter, prompt_index=None)
+        eval_all(reporter)
 
     return LayerApplied(
             layer_output, {k: pd.DataFrame(v) for k, v in row_bufs.items()}
@@ -137,20 +118,6 @@ class Elicit(Run):
     """Whether to train a supervised classifier, and if so, whether to use
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
-
-    def create_models_dir(self, out_dir: Path):
-        lr_dir = None
-        lr_dir = out_dir / "lr_models"
-        reporter_dir = out_dir / "reporters"
-
-        lr_dir.mkdir(parents=True, exist_ok=True)
-        reporter_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save the reporter config separately in the reporter directory
-        # for convenient loading of reporters later.
-        save(self.net, reporter_dir / "cfg.yaml", save_dc_types=True)
-
-        return reporter_dir, lr_dir
 
     def make_eval(self, model, eval_dataset):
         assert self.out_dir is not None
@@ -231,77 +198,6 @@ class Elicit(Run):
 
         return ReporterWithInfo(reporter, train_loss, prompt_index)
 
-    def apply_to_layer(
-        self,
-        layer: int,
-        devices: list[str],
-        world_size: int,
-        probe_per_prompt: bool,
-    ) -> LayerApplied:
-        """Train a single reporter on a single layer."""
-
-        self.make_reproducible(seed=self.net.seed + layer)
-        device = self.get_device(devices, world_size)
-
-        train_dict = self.prepare_data(device, layer, "train")
-        val_dict = self.prepare_data(device, layer, "val")
-
-        (first_train_h, train_gt, _), *rest = train_dict.values()
-        (_, v, k, d) = first_train_h.shape
-        if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
-            raise ValueError("All datasets must have the same hidden state size")
-
-        # For a while we did support datasets with different numbers of classes, but
-        # we reverted this once we switched to ConceptEraser. There are a few options
-        # for re-enabling it in the future but they are somewhat complex and it's not
-        # clear that it's worth it.
-        if not all(other_h.shape[-2] == k for other_h, _, _ in rest):
-            raise ValueError("All datasets must have the same number of classes")
-
-        train_loss = None
-        if isinstance(self.net, CcsConfig):
-            assert len(train_dict) == 1, "CCS only supports single-task training"
-            reporter = CcsReporter(self.net, d, device=device, num_variants=v)
-            train_loss = reporter.fit(first_train_h)
-
-            if not self.net.norm == "burns":
-                (_, v, k, _) = first_train_h.shape
-                reporter.platt_scale(
-                    to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
-                    rearrange(first_train_h, "n v k d -> (n v k) d"),
-                )
-
-        elif isinstance(self.net, EigenFitterConfig):
-            fitter = EigenFitter(
-                self.net, d, num_classes=k, num_variants=v, device=device
-            )
-
-            hidden_list, label_list = [], []
-            for ds_name, (train_h, train_gt, _) in train_dict.items():
-                (_, v, _, _) = train_h.shape
-
-                # Datasets can have different numbers of variants, so we need to
-                # flatten them here before concatenating
-                hidden_list.append(rearrange(train_h, "n v k d -> (n v k) d"))
-                label_list.append(
-                    to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten()
-                )
-                fitter.update(train_h)
-
-            reporter = fitter.fit_streaming()
-            reporter.platt_scale(
-                torch.cat(label_list),
-                torch.cat(hidden_list),
-            )
-        else:
-            raise ValueError(f"Unknown reporter config type: {type(self.net)}")
-
-        # Save reporter checkpoint to disk
-        # TODO have to change this
-        out_dir.mkdir(parents=True, exist_ok=True)
-        torch.save(reporter, out_dir / f"layer_{layer}.pt")
-
-        return ReporterWithInfo(reporter, train_loss, prompt_index)
 
     def train_lr_model(self, train_dict, device, layer, out_dir) -> list[Classifier]:
         if self.supervised != "none":
@@ -325,7 +221,7 @@ class Elicit(Run):
         devices: list[str],
         world_size: int,
         probe_per_prompt: bool,
-    ) -> dict[str, pd.DataFrame]:
+    ) -> LayerApplied:
         """Train a single reporter on a single layer."""
         assert self.out_dir is not None  # TODO this is really annoying, why can it be
         # None?

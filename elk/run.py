@@ -263,7 +263,6 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(out_path, index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
-
                 calculate_layer_outputs(
                     layer_outputs=layer_outputs,
                     out_path=self.out_dir / "layer_ensembling.csv",
