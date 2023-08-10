@@ -1,4 +1,4 @@
-from dataclasses import InitVar, dataclass, replace
+from dataclasses import InitVar, asdict, dataclass, replace
 
 import numpy as np
 import torch
@@ -162,7 +162,12 @@ class Sweep:
                                     continue
 
                                 eval = elicit.make_eval(model, eval_dataset)
-                                eval.execute(highlight_color="green")
+                                try:
+                                    eval.execute(highlight_color="green")
+                                except Exception as e:
+                                    print(e)
+                                    print(asdict(eval))
+                                    continue
 
         if self.visualize:
             visualize_sweep(sweep_dir)

@@ -2,9 +2,12 @@
 *.npy
 elk/models/*
 elk/trained/*
+elk/credences
 nohup.out
 .idea
 *.pkl
+visual_llama.ipynb
+visual_llama.py
 
 # scripts for experiments in progress
 my_*.sh
