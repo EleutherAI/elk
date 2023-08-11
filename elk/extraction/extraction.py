@@ -194,7 +194,7 @@ def extract_hiddens(
         seed=cfg.seed,
     )
 
-    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers))
+    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers)[1:])
 
     global_max_examples = cfg.max_examples[0 if split_type == "train" else 1]
 
@@ -366,12 +366,13 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
     if num_dropped:
         print(f"Dropping {num_dropped} non-multiple choice templates")
 
+    layer_indices = cfg.layers or tuple(range(model_cfg.num_hidden_layers)[1:])
     layer_cols = {
         f"hidden_{layer}": Array3D(
             dtype="int16",
             shape=(num_variants, num_classes, model_cfg.hidden_size),
         )
-        for layer in cfg.layers or range(model_cfg.num_hidden_layers)
+        for layer in layer_indices
     }
     other_cols = {
         "variant_ids": Sequence(
