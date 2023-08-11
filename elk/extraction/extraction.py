@@ -196,7 +196,6 @@ def extract_hiddens(
 
     layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers)[1:])
 
-
     global_max_examples = cfg.max_examples[0 if split_type == "train" else 1]
 
     # break `max_examples` among the processes roughly equally
