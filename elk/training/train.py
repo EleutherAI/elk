@@ -1,7 +1,7 @@
 """Main training loop."""
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -11,6 +11,7 @@ from einops import rearrange, repeat
 from simple_parsing import subgroups
 from simple_parsing.helpers.serialization import save
 
+from ..evaluation import Eval
 from ..metrics import evaluate_preds, to_one_hot
 from ..run import Run
 from ..training.supervised import train_supervised
@@ -47,6 +48,26 @@ class Elicit(Run):
         save(self.net, reporter_dir / "cfg.yaml", save_dc_types=True)
 
         return reporter_dir, lr_dir
+
+    def make_eval(self, model, eval_dataset):
+        assert self.out_dir is not None
+        return Eval(
+            data=replace(
+                self.data,
+                model=model,
+                datasets=(eval_dataset,),
+            ),
+            source=self.out_dir,
+            out_dir=self.out_dir / "transfer" / eval_dataset,
+            num_gpus=self.num_gpus,
+            min_gpu_mem=self.min_gpu_mem,
+            skip_supervised=self.supervised == "none",
+            prompt_indices=self.prompt_indices,
+            concatenated_layer_offset=self.concatenated_layer_offset,
+            # datasets isn't needed because it's immediately overwritten
+            debug=self.debug,
+            disable_cache=self.disable_cache,
+        )
 
     def apply_to_layer(
         self,
