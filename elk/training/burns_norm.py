@@ -10,7 +10,7 @@ class BurnsNorm(nn.Module):
         self.scale: bool = scale
 
     def forward(self, x: Tensor) -> Tensor:
-        """Normalizes per template
+        """Normalizes per prompt template
         Args:
             x: input of dimension (n, v, c, d) or (n, v, d)
         Returns:
