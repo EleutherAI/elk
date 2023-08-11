@@ -22,9 +22,7 @@ class BurnsNorm(nn.Module):
         if not self.scale:
             return x_normalized
         else:
-            std = torch.linalg.norm(x_normalized, dim=0) / torch.sqrt(
-                torch.tensor(x_normalized.shape[0], dtype=torch.float32)
-            )
+            std = torch.linalg.norm(x_normalized, dim=0) / x_normalized.shape[0] ** 0.5
             assert std.dim() == x.dim() - 1
 
             # Compute the dimensions over which
