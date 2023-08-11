@@ -460,7 +460,6 @@ def extract(
     mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
 
     ds = dict()
-    breakpoint()
     for split, builder in builders.items():
         builder.download_and_prepare(
             download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
