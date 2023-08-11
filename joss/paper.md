@@ -11,27 +11,27 @@ authors:
     affiliation: 1 
   - name: Walter Laurito
     corresponding: true
-    affiliation: [2, 5]
+    affiliation: "2, 3"
   - name: Alex Mallen
-    affiliation: [1, 7]
+    affiliation: "1, 7"
   - name: Fabien Roger
-    affiliation: 3
-  - name: Kay Kozaronek
-    affiliation: 5
-  - name: Christy Koh
     affiliation: 4
+  - name: Kay Kozaronek
+    affiliation: 2
+  - name: Christy Koh
+    affiliation: 5
   - name: Jonathan NG
-    affiliation: 6
+    affiliation: 2
   - name: James Chua
     affiliation: 1
   - name: Alexander Wan
-    affiliation: 4
+    affiliation: 5
   - name: Reagan Lee
-    affiliation: 4
+    affiliation: 5
   - name: Ben W.
     affiliation: 1
   - name: Kyle O'Brien
-    affiliation: [1, 6]
+    affiliation: "1, 6"
   - name: Augustas Macijauskas
     affiliation: 8
   - name: Waree Sethapun
@@ -41,13 +41,13 @@ authors:
 affiliations:
  - name: EleutherAI
    index: 1
- - name: FZI Research Center for Information Technology
-   index: 2
- - name: Redwood Research
-   index: 3
- - name: UC Berkeley
-   index: 4
  - name: NotodAI Research
+   index: 2
+ - name: FZI Research Center for Information Technology
+   index: 3
+ - name: Redwood Research
+   index: 4
+ - name: UC Berkeley
    index: 5
  - name: Microsoft
    index: 6
