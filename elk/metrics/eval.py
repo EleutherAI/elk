@@ -1,13 +1,20 @@
 from dataclasses import asdict, dataclass
-from typing import Literal
 
 import torch
 from einops import repeat
 from torch import Tensor
 
+from ..utils.types import PromptEnsembling
 from .accuracy import AccuracyResult, accuracy_ci
 from .calibration import CalibrationError, CalibrationEstimate
 from .roc_auc import RocAucResult, roc_auc_ci
+
+
+@dataclass
+class LayerOutput:
+    val_gt: Tensor
+    val_credences: Tensor
+    meta: dict
 
 
 @dataclass(frozen=True)
@@ -41,55 +48,163 @@ class EvalResult:
         return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
 
 
+def calc_auroc(
+    y_logits: Tensor,
+    y_true: Tensor,
+    prompt_ensembling: PromptEnsembling,
+    num_classes: int,
+) -> RocAucResult:
+    """
+    Calculate the AUROC
+
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+        prompt_ensembling: The prompt_ensembling mode.
+        num_classes: The number of classes.
+
+    Returns:
+        RocAucResult: A dictionary containing the AUROC and confidence interval.
+    """
+    if prompt_ensembling == PromptEnsembling.NONE:
+        auroc = roc_auc_ci(
+            to_one_hot(y_true, num_classes).long().flatten(1), y_logits.flatten(1)
+        )
+    elif prompt_ensembling in (PromptEnsembling.PARTIAL, PromptEnsembling.FULL):
+        # Pool together the negative and positive class logits
+        if num_classes == 2:
+            auroc = roc_auc_ci(y_true, y_logits[..., 1] - y_logits[..., 0])
+        else:
+            auroc = roc_auc_ci(to_one_hot(y_true, num_classes).long(), y_logits)
+    else:
+        raise ValueError(f"Unknown mode: {prompt_ensembling}")
+
+    return auroc
+
+
+def calc_calibrated_accuracies(y_true, pos_probs) -> AccuracyResult:
+    """
+    Calculate the calibrated accuracies
+
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        pos_probs: Predicted class tensor of shape (n, num_variants, num_classes).
+
+    Returns:
+        AccuracyResult: A dictionary containing the accuracy and confidence interval.
+    """
+
+    cal_thresh = pos_probs.float().quantile(y_true.float().mean())
+    cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
+    cal_acc = accuracy_ci(y_true, cal_preds)
+    return cal_acc
+
+
+def calc_calibrated_errors(y_true, pos_probs) -> CalibrationEstimate:
+    """
+    Calculate the expected calibration error.
+
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+
+    Returns:
+        CalibrationEstimate:
+    """
+
+    cal = CalibrationError().update(y_true.flatten(), pos_probs.flatten())
+    cal_err = cal.compute()
+    return cal_err
+
+
+def calc_accuracies(y_logits, y_true) -> AccuracyResult:
+    """
+    Calculate the accuracy
+
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+
+    Returns:
+        AccuracyResult: A dictionary containing the accuracy and confidence interval.
+    """
+    y_pred = y_logits.argmax(dim=-1)
+    return accuracy_ci(y_true, y_pred)
+
+
 def evaluate_preds(
     y_true: Tensor,
     y_logits: Tensor,
-    ensembling: Literal["none", "partial", "full"] = "none",
+    prompt_ensembling: PromptEnsembling = PromptEnsembling.NONE,
 ) -> EvalResult:
     """
     Evaluate the performance of a classification model.
 
     Args:
-        y_true: Ground truth tensor of shape (N,).
-        y_logits: Predicted class tensor of shape (N, variants, n_classes).
+        y_true: Ground truth tensor of shape (n,).
+        y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+        prompt_ensembling: The prompt_ensembling mode.
 
     Returns:
         dict: A dictionary containing the accuracy, AUROC, and ECE.
     """
-    (n, v, c) = y_logits.shape
-    assert y_true.shape == (n,)
+    y_logits, y_true, num_classes = prepare(y_logits, y_true, prompt_ensembling)
+    return calc_eval_results(y_true, y_logits, prompt_ensembling, num_classes)
 
-    if ensembling == "full":
+
+def prepare(y_logits: Tensor, y_true: Tensor, prompt_ensembling: PromptEnsembling):
+    """
+    Prepare the logits and ground truth for evaluation
+    """
+    (n, num_variants, num_classes) = y_logits.shape
+    assert y_true.shape == (n,), f"y_true.shape: {y_true.shape} is not equal to n: {n}"
+
+    if prompt_ensembling == PromptEnsembling.FULL:
         y_logits = y_logits.mean(dim=1)
     else:
-        y_true = repeat(y_true, "n -> n v", v=v)
+        y_true = repeat(y_true, "n -> n v", v=num_variants)
 
-    y_pred = y_logits.argmax(dim=-1)
-    if ensembling == "none":
-        auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(1), y_logits.flatten(1))
-    elif ensembling in ("partial", "full"):
-        # Pool together the negative and positive class logits
-        if c == 2:
-            auroc = roc_auc_ci(y_true, y_logits[..., 1] - y_logits[..., 0])
-        else:
-            auroc = roc_auc_ci(to_one_hot(y_true, c).long(), y_logits)
-    else:
-        raise ValueError(f"Unknown mode: {ensembling}")
+    return y_logits, y_true, num_classes
 
-    acc = accuracy_ci(y_true, y_pred)
-    cal_acc = None
-    cal_err = None
 
-    if c == 2:
-        pos_probs = torch.sigmoid(y_logits[..., 1] - y_logits[..., 0])
+def calc_eval_results(
+    y_true: Tensor,
+    y_logits: Tensor,
+    prompt_ensembling: PromptEnsembling,
+    num_classes: int,
+) -> EvalResult:
+    """
+    Calculate the evaluation results
 
-        # Calibrated accuracy
-        cal_thresh = pos_probs.float().quantile(y_true.float().mean())
-        cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
-        cal_acc = accuracy_ci(y_true, cal_preds)
+    Args:
+        y_true: Ground truth tensor of shape (n,).
+        y_logits: Predicted class tensor of shape (n, num_variants, num_classes).
+        prompt_ensembling: The prompt_ensembling mode.
 
-        cal = CalibrationError().update(y_true.flatten(), pos_probs.flatten())
-        cal_err = cal.compute()
+    Returns:
+        EvalResult: The result of evaluating a classifier containing the accuracy,
+        calibrated accuracies, calibrated errors, and AUROC.
+    """
+    acc = calc_accuracies(y_logits=y_logits, y_true=y_true)
+
+    pos_probs = torch.sigmoid(y_logits[..., 1] - y_logits[..., 0])
+    cal_acc = (
+        calc_calibrated_accuracies(y_true=y_true, pos_probs=pos_probs)
+        if num_classes == 2
+        else None
+    )
+    cal_err = (
+        calc_calibrated_errors(y_true=y_true, pos_probs=pos_probs)
+        if num_classes == 2
+        else None
+    )
+
+    auroc = calc_auroc(
+        y_logits=y_logits,
+        y_true=y_true,
+        prompt_ensembling=prompt_ensembling,
+        num_classes=num_classes,
+    )
 
     return EvalResult(acc, cal_acc, cal_err, auroc)
 
@@ -107,3 +222,49 @@ def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
     """
     one_hot_labels = labels.new_zeros(*labels.shape, n_classes)
     return one_hot_labels.scatter_(-1, labels.unsqueeze(-1).long(), 1)
+
+
+def layer_ensembling(
+    layer_outputs: list[LayerOutput], prompt_ensembling: PromptEnsembling
+) -> EvalResult:
+    """
+    Return EvalResult after prompt_ensembling
+    the probe output of the middle to last layers
+
+    Args:
+        layer_outputs: A list of LayerOutput containing the ground truth and
+        predicted class tensor of shape (n, num_variants, num_classes).
+        prompt_ensembling: The prompt_ensembling mode.
+
+    Returns:
+        EvalResult: The result of evaluating a classifier containing the accuracy,
+        calibrated accuracies, calibrated errors, and AUROC.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    y_logits_collection = []
+
+    num_classes = 2
+    y_true = layer_outputs[0].val_gt.to(device)
+
+    for layer_output in layer_outputs:
+        # all y_trues are identical, so just get the first
+        y_logits = layer_output.val_credences.to(device)
+        y_logits, y_true, num_classes = prepare(
+            y_logits=y_logits,
+            y_true=layer_outputs[0].val_gt.to(device),
+            prompt_ensembling=prompt_ensembling,
+        )
+        y_logits_collection.append(y_logits)
+
+    # get logits and ground_truth from middle to last layer
+    middle_index = len(layer_outputs) // 2
+    y_logits_stacked = torch.stack(y_logits_collection[middle_index:])
+    # layer prompt_ensembling of the stacked logits
+    y_logits_stacked_mean = torch.mean(y_logits_stacked, dim=0)
+
+    return calc_eval_results(
+        y_true=y_true,
+        y_logits=y_logits_stacked_mean,
+        prompt_ensembling=prompt_ensembling,
+        num_classes=num_classes,
+    )

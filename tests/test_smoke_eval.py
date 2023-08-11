@@ -11,6 +11,7 @@ EVAL_EXPECTED_FILES = [
     "cfg.yaml",
     "fingerprints.yaml",
     "eval.csv",
+    "layer_ensembling.csv",
 ]
 
 
