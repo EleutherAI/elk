@@ -31,15 +31,6 @@ class BurnsNorm(nn.Module):
             # which is the template dimension
             dims = tuple(range(1, std.dim()))
 
-            avg_norm = std.mean(dim=dims)
-
-            # Add a singleton dimension at the beginning to allow broadcasting.
-            # This compensates for the dimension we lost when computing the norm.
-            avg_norm = avg_norm.unsqueeze(0)
-
-            # Add singleton dimensions at the end to allow broadcasting.
-            # This compensates for the dimensions we lost when computing the mean.
-            for _ in range(1, x.dim() - 1):
-                avg_norm = avg_norm.unsqueeze(-1)
+            avg_norm = std.mean(dim=dims, keepdim=True)
 
             return x_normalized / avg_norm
