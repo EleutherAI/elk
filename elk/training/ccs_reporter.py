@@ -60,6 +60,8 @@ class CcsConfig(FitterConfig):
     """The optimizer to use."""
     weight_decay: float = 0.01
     """The weight decay or L2 penalty to use."""
+    erase_prompts: bool = True
+    """Whether to apply concept erasure on the prompt template IDs."""
 
     def __post_init__(self):
         self.loss_dict = parse_loss(self.loss)
@@ -205,7 +207,8 @@ class CcsReporter(nn.Module, PlattMixin):
         if self.config.norm == "burns":
             self.norm = BurnsNorm()
         else:
-            fitter = LeaceFitter(d, 2 * v, dtype=x_neg.dtype, device=x_neg.device)
+            z_dim = 2 * v if self.config.erase_prompts else 2
+            fitter = LeaceFitter(d, z_dim, dtype=x_neg.dtype, device=x_neg.device)
             fitter.update(
                 x=x_neg,
                 # Independent indicator for each (template, pseudo-label) pair
