@@ -22,6 +22,9 @@ class Plot:
     overwrite: bool = False
     """Whether to overwrite existing plots."""
 
+    metrics: list[str] = field(default_factory=list)
+    """Name of metric to plot"""
+
     def execute(self):
         root_dir = sweeps_dir()
 
@@ -35,6 +38,9 @@ class Plot:
         else:
             sweep_paths = [root_dir / sweep for sweep in self.sweeps]
 
+        if not self.metrics:
+            self.metrics = ["auroc_estimate"]
+
         for sweep_path in sweep_paths:
             if not sweep_path.exists():
                 pretty_error(f"No sweep with name {{{sweep_path}}} found in {root_dir}")
@@ -47,4 +53,6 @@ class Plot:
                 if self.overwrite:
                     shutil.rmtree(sweep_path / "viz")
 
-                visualize_sweep(sweep_path)
+                assert len(self.metrics) == 1, "Multiple metrics at a time aren't supported yet. Re-run plot for each metric separately."
+
+                visualize_sweep(sweep_path, self.metrics)
