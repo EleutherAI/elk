@@ -34,14 +34,25 @@ class MultiReporter:
             else None
         )
 
-    def __call__(self, h):
-        n_eval_prompts = h.shape[1]
-        credences = [
-            reporter(h[:, [prompt_index], :, :])
-            for reporter in self.models
-            for prompt_index in range(n_eval_prompts)
-        ]
-        return t.stack(credences, dim=0).mean(dim=0)
+    def __call__(self, h, super_full=False):
+        if super_full:
+            n_eval_prompts = h.shape[1]
+            credences_by_eval_prompt = [
+                t.cat([reporter(h[:, [j], :, :])
+                       for j in range(n_eval_prompts)], dim=1)
+                for reporter in self.models
+            ]  # self.models * (n, n_eval_prompts, c)
+            credences = t.stack(credences_by_eval_prompt, dim=0).mean(dim=0)
+            assert credences.shape == (h.shape[0], n_eval_prompts, h.shape[2])
+            return credences
+        else:
+            assert h.shape[1] == len(self.models)  # somewhat weak check but better than nothing
+            credences = t.cat([
+                reporter(h[:, [i], :, :])
+                for i, reporter in enumerate(self.models)
+            ], dim=1)  # credences: (n, v, c)
+            assert credences.shape == h.shape[:-1]
+            return credences
 
     @staticmethod
     def load(path: Path, layer: int, device: str):

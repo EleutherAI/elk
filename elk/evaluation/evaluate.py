@@ -65,7 +65,11 @@ class Eval(Run):
         ):
             for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
                 meta = {"dataset": ds_name, "layer": layer}
-                val_credences = reporter(val_h)
+                val_credences = (
+                    reporter(val_h)
+                    if isinstance(reporter, SingleReporter)
+                    else reporter(val_h, super_full=True)
+                )
                 layer_outputs.append(LayerOutput(val_gt, val_credences, meta))
                 for prompt_ensembling in PromptEnsembling.all():
                     row_bufs["eval"].append(
