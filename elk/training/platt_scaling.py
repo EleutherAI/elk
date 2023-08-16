@@ -29,11 +29,11 @@ class PlattMixin(ABC):
         from elk.training import CcsReporter
         norm = None
         try:
-            if self.config.norm == "burns":
-                norm = "burns"
+            if self.config.platt_burns == "hack":
+                norm = "hack"
         except Exception:
-            raise ValueError("norm must be specified in config")
-        if norm == "burns":
+            print('not hack')
+        if norm == "hack":
             n, v, k, d = hiddens.shape
             original_hiddens = hiddens
             original_labels = labels
@@ -49,7 +49,7 @@ class PlattMixin(ABC):
         )
 
         def closure():
-            if norm == "burns":
+            if norm == "hack":
                 opt.zero_grad()
                 res = self(original_hiddens)
                 loss = nn.functional.binary_cross_entropy_with_logits(
@@ -67,3 +67,4 @@ class PlattMixin(ABC):
                 return float(loss)
 
         opt.step(closure)
+

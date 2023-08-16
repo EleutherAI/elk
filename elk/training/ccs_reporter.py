@@ -169,7 +169,7 @@ class CcsReporter(nn.Module, PlattMixin):
         assert self.norm is not None, "Must call fit() before forward()"
 
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
-        if self.config.norm == "leace" or (self.config.norm == "burns" and self.config.platt_burns == "justdoit"):
+        if self.config.norm == "leace" or (self.config.norm == "burns" and (self.config.platt_burns == "justdoit" or self.config.platt_burns == "hack")):
             return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
         elif self.config.norm == "burns":
             return raw_scores
