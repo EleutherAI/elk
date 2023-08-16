@@ -160,12 +160,7 @@ class Elicit(Run):
             assert len(train_dict) == 1, "CCS only supports single-task training"
             reporter = CcsReporter(self.net, d, device=device, num_variants=v)
             train_loss = reporter.fit(first_train_h)
-
-            reporter.platt_scale(
-                to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
-                rearrange(first_train_h, "n v k d -> (n v k) d"),
-            )
-
+            reporter.platt_scale(train_gt, first_train_h)
         elif isinstance(self.net, EigenFitterConfig):
             fitter = EigenFitter(
                 self.net, d, num_classes=k, num_variants=v, device=device
@@ -184,6 +179,8 @@ class Elicit(Run):
                 fitter.update(train_h)
 
             reporter = fitter.fit_streaming()
+            # print("label_list", len(label_list), label_list[0].shape)
+            # print("hidden_list", len(hidden_list), hidden_list[0].shape)
             reporter.platt_scale(
                 torch.cat(label_list),
                 torch.cat(hidden_list),
