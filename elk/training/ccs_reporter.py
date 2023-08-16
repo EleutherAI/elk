@@ -62,6 +62,7 @@ class CcsConfig(FitterConfig):
     """The weight decay or L2 penalty to use."""
     erase_prompts: bool = True
     """Whether to apply concept erasure on the prompt template IDs."""
+    platt_burns: str | None = None
 
     def __post_init__(self):
         self.loss_dict = parse_loss(self.loss)
@@ -168,9 +169,8 @@ class CcsReporter(nn.Module, PlattMixin):
         assert self.norm is not None, "Must call fit() before forward()"
 
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
-        if self.config.norm == "leace":
+        if self.config.norm == "leace" or (self.config.norm == "burns" and self.config.platt_burns == "justdoit"):
             return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
-
         elif self.config.norm == "burns":
             return raw_scores
         else:
