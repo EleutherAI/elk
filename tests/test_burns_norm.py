@@ -21,6 +21,7 @@ def correct_but_slow_normalization(x_all: Tensor, scale=True) -> Tensor:
 
     return torch.stack(res, dim=1)
 
+
 def test_BurnsNorm_2d_input():
     x_all_2d = torch.randn((4, 13 * 768))
     expected_output_2d = correct_but_slow_normalization(x_all_2d)

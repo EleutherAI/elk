@@ -2,7 +2,6 @@
 
 from collections import defaultdict
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import Literal
 
 import pandas as pd
@@ -12,8 +11,8 @@ from simple_parsing import subgroups
 
 from ..evaluation import Eval
 from ..metrics import evaluate_preds, to_one_hot
-from ..run import PreparedData, Run, LayerApplied
 from ..metrics.eval import LayerOutput
+from ..run import LayerApplied, PreparedData, Run
 from ..training.supervised import train_supervised
 from ..utils.types import PromptEnsembling
 from . import Classifier
@@ -38,9 +37,7 @@ def evaluate_and_save(
         train_h, train_gt, train_lm_preds = train_dict[ds_name]
         meta = {"dataset": ds_name, "layer": layer}
 
-        def eval_all(
-            reporter: SingleReporter | MultiReporter
-        ):
+        def eval_all(reporter: SingleReporter | MultiReporter):
             val_credences = reporter(val_h)
             train_credences = reporter(train_h)
             layer_output.append(
@@ -56,7 +53,9 @@ def evaluate_and_save(
                     {
                         **meta,
                         PROMPT_ENSEMBLING: prompt_ensembling.value,
-                        **evaluate_preds(val_gt, val_credences, prompt_ensembling).to_dict(),
+                        **evaluate_preds(
+                            val_gt, val_credences, prompt_ensembling
+                        ).to_dict(),
                         "train_loss": train_loss,
                     }
                 )
@@ -65,7 +64,9 @@ def evaluate_and_save(
                     {
                         **meta,
                         PROMPT_ENSEMBLING: prompt_ensembling.value,
-                        **evaluate_preds(train_gt, train_credences, prompt_ensembling).to_dict(),
+                        **evaluate_preds(
+                            train_gt, train_credences, prompt_ensembling
+                        ).to_dict(),
                         "train_loss": train_loss,
                     }
                 )
@@ -75,7 +76,9 @@ def evaluate_and_save(
                         {
                             **meta,
                             PROMPT_ENSEMBLING: prompt_ensembling.value,
-                            **evaluate_preds(val_gt, val_lm_preds, prompt_ensembling).to_dict(),
+                            **evaluate_preds(
+                                val_gt, val_lm_preds, prompt_ensembling
+                            ).to_dict(),
                         }
                     )
 
@@ -84,7 +87,9 @@ def evaluate_and_save(
                         {
                             **meta,
                             PROMPT_ENSEMBLING: prompt_ensembling.value,
-                            **evaluate_preds(train_gt, train_lm_preds, prompt_ensembling).to_dict(),
+                            **evaluate_preds(
+                                train_gt, train_lm_preds, prompt_ensembling
+                            ).to_dict(),
                         }
                     )
 
@@ -94,15 +99,15 @@ def evaluate_and_save(
                             **meta,
                             PROMPT_ENSEMBLING: prompt_ensembling.value,
                             "inlp_iter": lr_model_num,
-                            **evaluate_preds(val_gt, model(val_h), prompt_ensembling).to_dict(),
+                            **evaluate_preds(
+                                val_gt, model(val_h), prompt_ensembling
+                            ).to_dict(),
                         }
                     )
 
         eval_all(reporter)
 
-    return LayerApplied(
-            layer_output, {k: pd.DataFrame(v) for k, v in row_bufs.items()}
-        )
+    return LayerApplied(layer_output, {k: pd.DataFrame(v) for k, v in row_bufs.items()})
 
 
 @dataclass
@@ -194,7 +199,6 @@ class Elicit(Run):
         torch.save(reporter, out_dir / f"layer_{layer}.pt")
 
         return ReporterWithInfo(reporter, train_loss, prompt_index)
-
 
     def train_lr_model(self, train_dict, device, layer, out_dir) -> list[Classifier]:
         if self.supervised != "none":

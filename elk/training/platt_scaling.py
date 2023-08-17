@@ -26,13 +26,12 @@ class PlattMixin(ABC):
             hiddens: Hidden states of shape [batch, dim].
             max_iter: Maximum number of iterations for LBFGS.
         """
-        from elk.training import CcsReporter
-        norm = None
+
         try:
             if self.config.platt_burns == "hack":
-                norm = "hack"
+                pass
         except Exception:
-            print('not hack')
+            print("not hack")
 
         n, v, k, d = hiddens.shape
         original_hiddens = hiddens
@@ -58,6 +57,5 @@ class PlattMixin(ABC):
             )
             loss.backward()
             return float(loss)
-        
-        opt.step(closure)
 
+        opt.step(closure)

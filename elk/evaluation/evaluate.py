@@ -1,7 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 import pandas as pd
 import torch
@@ -60,9 +59,7 @@ class Eval(Run):
 
         layer_outputs: list[LayerOutput] = []
 
-        def eval_all(
-            reporter: SingleReporter | MultiReporter
-        ):
+        def eval_all(reporter: SingleReporter | MultiReporter):
             for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
                 meta = {"dataset": ds_name, "layer": layer}
                 val_credences = (
@@ -76,7 +73,9 @@ class Eval(Run):
                         {
                             **meta,
                             PROMPT_ENSEMBLING: prompt_ensembling.value,
-                            **evaluate_preds(val_gt, val_credences, prompt_ensembling).to_dict(),
+                            **evaluate_preds(
+                                val_gt, val_credences, prompt_ensembling
+                            ).to_dict(),
                         }
                     )
 

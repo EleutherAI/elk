@@ -81,6 +81,7 @@ def calculate_layer_outputs(layer_outputs: list[LayerOutput], out_path: Path):
     df_concat = pd.concat(dfs)
     df_concat.to_csv(out_path, index=False)
 
+
 PreparedData = dict[str, tuple[Tensor, Tensor, Tensor | None]]
 
 

@@ -18,11 +18,15 @@ class BurnsNorm(nn.Module):
         """
         # rearrange(first_train_h, "n v c d -> (n v c) d"),
         num_elements = x.shape[0]
-        x_normalized: Tensor = x - x.mean(dim=0) if num_elements > 1 else x  # n v d vs (nvc) d
+        x_normalized: Tensor = (
+            x - x.mean(dim=0) if num_elements > 1 else x
+        )  # n v d vs (nvc) d
         if not self.scale:
             return x_normalized
         else:
-            std = torch.linalg.norm(x_normalized, dim=0) / x_normalized.shape[0] ** 0.5  # v d vs d
+            std = (
+                torch.linalg.norm(x_normalized, dim=0) / x_normalized.shape[0] ** 0.5
+            )  # v d vs d
             assert std.dim() == x.dim() - 1
 
             # Compute the dimensions over which
