@@ -47,7 +47,7 @@ class SweepByDsMultiplot:
             shared_yaxes=True,
             vertical_spacing=0.1,
             x_title="Layer",
-            y_title="AUROC",
+            y_title=f"{sweep.metric_type}",
         )
         color_map = dict(zip(ensembles, qualitative.Plotly))
 
@@ -371,13 +371,12 @@ class SweepVisualization:
         ]
 
     def render_table(
-        self, metric_type="auroc_estimate", display=True, write=False
+        self, display=True, write=False
     ) -> pd.DataFrame:
         """Render and optionally write the score table.
 
         Args:
             layer: The layer number (from last layer) to include in the score table.
-            metric_type: The type of score to include in the table.
             display: Flag indicating whether to display the table to stdout.
             write: Flag indicating whether to write the table to a file.
 
@@ -389,7 +388,7 @@ class SweepVisualization:
         # For each model, we use the layer whose mean AUROC is the highest
         best_layers, model_dfs = [], []
         for _, model_df in df.groupby("model_name"):
-            best_layer = model_df.groupby("layer").auroc_estimate.mean().argmax()
+            best_layer = model_df.groupby("layer")[self.metric_type].mean().argmax()
 
             best_layers.append(best_layer)
             model_dfs.append(model_df[model_df["layer"] == best_layer])
@@ -397,7 +396,7 @@ class SweepVisualization:
         pivot_table = pd.concat(model_dfs).pivot_table(
             index="eval_dataset",
             columns="model_name",
-            values=metric_type,
+            values=self.metric_type,
             margins=True,
             margins_name="Mean",
         )
@@ -418,7 +417,7 @@ class SweepVisualization:
             console.print(table)
 
         if write:
-            pivot_table.to_csv(f"score_table_{metric_type}.csv")
+            pivot_table.to_csv(f"score_table_{self.metric_type}.csv")
         return pivot_table
 
 
