@@ -33,38 +33,43 @@ class PlattMixin(ABC):
                 norm = "hack"
         except Exception:
             print('not hack')
-        if norm == "hack":
-            n, v, k, d = hiddens.shape
-            original_hiddens = hiddens
-            original_labels = labels
-            labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k).flatten()
-            hiddens = rearrange(hiddens, "n v k d -> (n v k) d")
+
+        n, v, k, d = hiddens.shape
+        original_hiddens = hiddens
+        original_labels = labels
+        squashed_labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k).flatten()
+        squashed_hiddens = rearrange(hiddens, "n v k d -> (n v k) d")
 
         opt = optim.LBFGS(
             [self.bias, self.scale],
             line_search_fn="strong_wolfe",
             max_iter=max_iter,
-            tolerance_change=torch.finfo(hiddens.dtype).eps,
-            tolerance_grad=torch.finfo(hiddens.dtype).eps,
+            tolerance_change=torch.finfo(squashed_hiddens.dtype).eps,
+            tolerance_grad=torch.finfo(squashed_hiddens.dtype).eps,
         )
 
         def closure():
             if norm == "hack":
                 opt.zero_grad()
                 res = self(original_hiddens)
+                print("res", res.shape)
+                print('rearrange(res, "n v c -> (n v c)")', rearrange(res, "n v c -> (n v c)").shape)
                 loss = nn.functional.binary_cross_entropy_with_logits(
-                    rearrange(res, "n v c -> (n v c)"), labels.float()
+                    rearrange(res, "n v c -> (n v c)"), squashed_labels.float()
                 )
                 loss.backward()
                 return float(loss)
             else:
                 opt.zero_grad()
+                # reporter (***, d) -> (***)
+                # (nvk, d) -> (nvk)
+                print("squashed_hiddens", squashed_hiddens.shape)
+                print("self(squashed_hiddens)", self(squashed_hiddens).shape)
                 loss = nn.functional.binary_cross_entropy_with_logits(
-                    self(hiddens), labels.float()
+                    self(squashed_hiddens), squashed_labels.float()
                 )
-
                 loss.backward()
-                return float(loss)
+                return float(loss)  
 
         opt.step(closure)
 
