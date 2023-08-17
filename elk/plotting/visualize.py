@@ -56,7 +56,7 @@ class SweepByDsMultiplot:
             if with_transfer:  # TODO write tests
                 ensemble_data = ensemble_data.groupby(
                     ["eval_dataset", "layer", "ensembling"], as_index=False
-                ).agg({"auroc_estimate": "mean"})
+                ).agg({f"{sweep.metric_type}": "mean"})
             else:
                 ensemble_data = ensemble_data[
                     ensemble_data["eval_dataset"] == ensemble_data["train_dataset"]
@@ -75,7 +75,7 @@ class SweepByDsMultiplot:
                 fig.add_trace(
                     go.Scatter(
                         x=dataset_data["layer"],
-                        y=dataset_data["auroc_estimate"],
+                        y=dataset_data[f"{sweep.metric_type}"],
                         mode="lines",
                         name=ensemble,
                         showlegend=False
@@ -95,7 +95,7 @@ class SweepByDsMultiplot:
             legend=dict(
                 title="Ensembling",
             ),
-            title=f"AUROC Trend: {self.model_name}",
+            title=f"{sweep.metric_type} Trend: {self.model_name}",
         )
         if write:
             fig.write_image(
@@ -114,7 +114,7 @@ class TransferEvalHeatmap:
     """Class for generating heatmaps for transfer evaluation results."""
 
     layer: int
-    metric_type: str = "auroc_estimate"
+    metric_type: str = None
     ensembling: str = "full"
 
     def render(self, df: pd.DataFrame) -> go.Figure:
@@ -145,11 +145,11 @@ class TransferEvalHeatmap:
 
 @dataclass
 class TransferEvalTrend:
-    """Class for generating line plots for the trend of AUROC scores in transfer
+    """Class for generating line plots for the trend of metric scores in transfer
     evaluation."""
 
     dataset_names: list[str] | None
-    metric_type: str = "auroc_estimate"
+    metric_type: str = None
 
     def render(self, df: pd.DataFrame) -> go.Figure:
         """Render the trend plot visualization.
@@ -244,7 +244,6 @@ class ModelVisualization:
         self,
         sweep: "SweepVisualization",
         dataset_names: list[str] | None = None,
-        metric_type="auroc_estimate",
         ensembling="full",
     ) -> None:
         """Render and save the visualization for the model.
@@ -252,7 +251,6 @@ class ModelVisualization:
         Args:
             sweep: The SweepVisualization instance.
             dataset_names: List of dataset names to include in the visualization.
-            metric_type: The type of score to display.
             ensembling: The ensembling option to consider.
         """
         metric_type = sweep.metric_type 
