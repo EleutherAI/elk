@@ -36,7 +36,6 @@ class PlattMixin(ABC):
 
         n, v, k, d = hiddens.shape
         original_hiddens = hiddens
-        original_labels = labels
         squashed_labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k).flatten()
         squashed_hiddens = rearrange(hiddens, "n v k d -> (n v k) d")
 
@@ -49,27 +48,16 @@ class PlattMixin(ABC):
         )
 
         def closure():
-            if norm == "hack":
-                opt.zero_grad()
-                res = self(original_hiddens)
-                print("res", res.shape)
-                print('rearrange(res, "n v c -> (n v c)")', rearrange(res, "n v c -> (n v c)").shape)
-                loss = nn.functional.binary_cross_entropy_with_logits(
-                    rearrange(res, "n v c -> (n v c)"), squashed_labels.float()
-                )
-                loss.backward()
-                return float(loss)
+            opt.zero_grad()
+            if "hack":
+                res = self(original_hiddens).flatten()
             else:
-                opt.zero_grad()
-                # reporter (***, d) -> (***)
-                # (nvk, d) -> (nvk)
-                print("squashed_hiddens", squashed_hiddens.shape)
-                print("self(squashed_hiddens)", self(squashed_hiddens).shape)
-                loss = nn.functional.binary_cross_entropy_with_logits(
-                    self(squashed_hiddens), squashed_labels.float()
-                )
-                loss.backward()
-                return float(loss)  
-
+                res = self(squashed_hiddens)
+            loss = nn.functional.binary_cross_entropy_with_logits(
+                res, squashed_labels.float()
+            )
+            loss.backward()
+            return float(loss)
+        
         opt.step(closure)
 
