@@ -22,7 +22,7 @@ class Plot:
     overwrite: bool = False
     """Whether to overwrite existing plots."""
 
-    metric_type: str = None
+    metric_type: str = "auroc_estimate"
     """Name of metric to plot"""
 
     def execute(self):
@@ -37,10 +37,6 @@ class Plot:
             )  # bold
         else:
             sweep_paths = [root_dir / sweep for sweep in self.sweeps]
-
-        if not self.metric_type:
-            # ArgumentParser maps cli input --metric to metric_type
-            self.metric_type = "auroc_estimate"
 
         for sweep_path in sweep_paths:
             if not sweep_path.exists():

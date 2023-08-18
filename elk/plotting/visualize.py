@@ -114,7 +114,7 @@ class TransferEvalHeatmap:
     """Class for generating heatmaps for transfer evaluation results."""
 
     layer: int
-    metric_type: str = None
+    metric_type: str = ""
     ensembling: str = "full"
 
     def render(self, df: pd.DataFrame) -> go.Figure:
@@ -149,7 +149,7 @@ class TransferEvalTrend:
     evaluation."""
 
     dataset_names: list[str] | None
-    metric_type: str = None
+    metric_type: str = ""
 
     def render(self, df: pd.DataFrame) -> go.Figure:
         """Render the trend plot visualization.
