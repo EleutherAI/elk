@@ -3,11 +3,10 @@ from typing import Any
 
 import torch
 from einops import rearrange, repeat
+from rich import print
 from torch import Tensor, nn, optim
 
 from elk.metrics import to_one_hot
-
-from rich import print
 
 
 class PlattMixin(ABC):
@@ -58,9 +57,8 @@ class PlattMixin(ABC):
             return float(loss)
 
         opt.step(closure)
-        
-        from elk.utils.write_print_all import write_print_all
+
+
         print("platt losses", losses)
         print("scale", self.scale.item())
         print("bias", self.bias.item())
-        
