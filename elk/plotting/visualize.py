@@ -254,7 +254,7 @@ class ModelVisualization:
             dataset_names: List of dataset names to include in the visualization.
             ensembling: The ensembling option to consider.
         """
-        metric_type = sweep.metric_type 
+        metric_type = sweep.metric_type
         df = self.df
         model_name = self.model_name
         layer_min, layer_max = df["layer"].min(), df["layer"].max()
@@ -349,7 +349,9 @@ class SweepVisualization:
         }
         df = pd.concat([model.df for model in models.values()], ignore_index=True)
         datasets = list(df["eval_dataset"].unique())
-        return cls(sweep_name, df, sweep_viz_path, datasets, models, metric_type=metric_type)
+        return cls(
+            sweep_name, df, sweep_viz_path, datasets, models, metric_type=metric_type
+        )
 
     def render_and_save(self):
         """Render and save all visualizations for the sweep."""
@@ -369,9 +371,7 @@ class SweepVisualization:
             for model in self.models
         ]
 
-    def render_table(
-        self, display=True, write=False
-    ) -> pd.DataFrame:
+    def render_table(self, display=True, write=False) -> pd.DataFrame:
         """Render and optionally write the score table.
 
         Args:
