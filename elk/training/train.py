@@ -171,7 +171,7 @@ class Elicit(Run):
                 reporter = CcsReporter(net, d, device=device, num_variants=v)
                 train_loss = reporter.fit(first_train_h)
                 reporter.platt_scale(train_gt, first_train_h)
-                
+
                 def eval_stats(gt, h):
                     cred = reporter(h)
                     stats = evaluate_preds(gt, cred, PromptEnsembling.FULL).to_dict()
@@ -179,8 +179,13 @@ class Elicit(Run):
                     stats["scale"] = reporter.scale.item()
                     stats["bias"] = reporter.bias.item()
                     return stats
-                return reporter, eval_stats(train_gt, first_train_h), eval_stats(val_gt, first_val_h)
-            
+
+                return (
+                    reporter,
+                    eval_stats(train_gt, first_train_h),
+                    eval_stats(val_gt, first_val_h),
+                )
+
             cpy_net = replace(self.net, platt_burns="hack")
             vanilla_net = replace(self.net, platt_burns="vanilla")
 

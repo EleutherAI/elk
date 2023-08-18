@@ -58,7 +58,6 @@ class PlattMixin(ABC):
 
         opt.step(closure)
 
-
         print("platt losses", losses)
         print("scale", self.scale.item())
         print("bias", self.bias.item())
