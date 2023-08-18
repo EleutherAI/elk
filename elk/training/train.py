@@ -21,6 +21,8 @@ from .common import FitterConfig
 from .eigen_reporter import EigenFitter, EigenFitterConfig
 from .multi_reporter import MultiReporter, ReporterWithInfo, SingleReporter
 
+from rich import print
+
 
 def evaluate_and_save(
     train_loss: float | None,
@@ -163,9 +165,27 @@ class Elicit(Run):
         train_loss = None
         if isinstance(self.net, CcsConfig):
             assert len(train_dict) == 1, "CCS only supports single-task training"
-            reporter = CcsReporter(self.net, d, device=device, num_variants=v)
-            train_loss = reporter.fit(first_train_h)
-            reporter.platt_scale(train_gt, first_train_h)
+            def train_rep(net):
+                print(f"train and eval ({net.platt_burns})")
+                reporter = CcsReporter(net, d, device=device, num_variants=v)
+                train_loss = reporter.fit(first_train_h)
+                reporter.platt_scale(train_gt, first_train_h)
+                cred = reporter(first_train_h)
+                stats = evaluate_preds(train_gt, cred, PromptEnsembling.FULL).to_dict()
+                stats['train_loss'] = train_loss
+                return reporter, stats
+            jdi_reporter, jdi_stats = train_rep(self.net)
+            cpy_net = replace(self.net, platt_burns="hack")
+            hack_reporter, hack_stats = train_rep(cpy_net)
+
+            # diff between jdi and hack
+            diff_stats = {}
+            for k in jdi_stats:
+                diff_stats[k] = (jdi_stats[k] - hack_stats[k], jdi_stats[k] / hack_stats[k])
+
+            print(diff_stats)
+
+            reporter = jdi_reporter
         elif isinstance(self.net, EigenFitterConfig):
             fitter = EigenFitter(
                 self.net, d, num_classes=k, num_variants=v, device=device

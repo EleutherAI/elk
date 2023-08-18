@@ -7,6 +7,8 @@ from torch import Tensor, nn, optim
 
 from elk.metrics import to_one_hot
 
+from rich import print
+
 
 class PlattMixin(ABC):
     """Mixin for classifier-like objects that can be Platt scaled."""
@@ -27,12 +29,6 @@ class PlattMixin(ABC):
             max_iter: Maximum number of iterations for LBFGS.
         """
 
-        try:
-            if self.config.platt_burns == "hack":
-                pass
-        except Exception:
-            print("not hack")
-
         n, v, k, d = hiddens.shape
         original_hiddens = hiddens
         squashed_labels = to_one_hot(repeat(labels, "n -> (n v)", v=v), k).flatten()
@@ -46,9 +42,11 @@ class PlattMixin(ABC):
             tolerance_grad=torch.finfo(squashed_hiddens.dtype).eps,
         )
 
+        losses = []
+
         def closure():
             opt.zero_grad()
-            if "hack":
+            if self.config.platt_burns == "hack":
                 res = self(original_hiddens).flatten()
             else:
                 res = self(squashed_hiddens)
@@ -56,6 +54,16 @@ class PlattMixin(ABC):
                 res, squashed_labels.float()
             )
             loss.backward()
+            losses.append(float(loss))
             return float(loss)
 
         opt.step(closure)
+        
+        from elk.utils.write_print_all import write_print_all
+        # write_print_all("platt_losses", losses)
+        # write_print_all("scale", self.scale.item())
+        # write_print_all("bias", self.bias.item())
+        print("platt losses", losses)
+        print("scale", self.scale.item())
+        print("bias", self.bias.item())
+        # exit()
