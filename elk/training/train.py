@@ -173,18 +173,22 @@ class Elicit(Run):
                 cred = reporter(first_train_h)
                 stats = evaluate_preds(train_gt, cred, PromptEnsembling.FULL).to_dict()
                 stats['train_loss'] = train_loss
+                stats['scale'] = reporter.scale.item()
+                stats['bias'] = reporter.bias.item()
+                print(stats)
                 return reporter, stats
             jdi_reporter, jdi_stats = train_rep(self.net)
             cpy_net = replace(self.net, platt_burns="hack")
             hack_reporter, hack_stats = train_rep(cpy_net)
+            vanilla_net = replace(self.net, platt_burns="")
+            vanilla_reporter, vanilla_stats = train_rep(vanilla_net)
 
-            # diff between jdi and hack
-            diff_stats = {}
-            for k in jdi_stats:
-                diff_stats[k] = (jdi_stats[k] - hack_stats[k], jdi_stats[k] / hack_stats[k])
-
-            print(diff_stats)
-
+            df_b = pd.DataFrame([jdi_stats], index=['jdi_stats'])
+            df_c = pd.DataFrame([hack_stats], index=['hack_stats'])
+            df_a = pd.DataFrame([vanilla_stats], index=['vanilla_stats'])
+            df = pd.concat([df_a, df_b, df_c])
+            print(df)
+            df.to_csv(out_dir / f"stats_layer_{layer}.csv")
             reporter = jdi_reporter
         elif isinstance(self.net, EigenFitterConfig):
             fitter = EigenFitter(

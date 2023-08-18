@@ -60,10 +60,7 @@ class PlattMixin(ABC):
         opt.step(closure)
         
         from elk.utils.write_print_all import write_print_all
-        # write_print_all("platt_losses", losses)
-        # write_print_all("scale", self.scale.item())
-        # write_print_all("bias", self.bias.item())
         print("platt losses", losses)
         print("scale", self.scale.item())
         print("bias", self.bias.item())
-        # exit()
+        
