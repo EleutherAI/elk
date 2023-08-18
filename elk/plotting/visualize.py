@@ -137,7 +137,8 @@ class TransferEvalHeatmap:
         fig.update_layout(
             xaxis_title="Train Dataset",
             yaxis_title="Transfer Dataset",
-            title=f"{self.metric_type} Score Heatmap: {model_name} | Layer {self.layer}",
+            title=f"{self.metric_type} Score Heatmap: {model_name} \
+                | Layer {self.layer}",
         )
 
         return fig
