@@ -180,14 +180,13 @@ class Elicit(Run):
                     stats["bias"] = reporter.bias.item()
                     return stats
                 return reporter, eval_stats(train_gt, first_train_h), eval_stats(val_gt, first_val_h)
-            
-            cpy_net = replace(self.net, platt_burns="hack")
-            vanilla_net = replace(self.net, platt_burns="vanilla")
+
+            nets = [replace(self.net, platt_burns=pb) for pb in ["justdoit", "hack", "vanilla"]]
 
             trains = []
             vals = []
-            reporters = []
-            for net in [self.net, cpy_net, vanilla_net]:
+            reporters: list[CcsReporter] = []
+            for net in nets:
                 reporter, train_stats, val_stats = train_rep(net)
                 train_df = pd.DataFrame([train_stats], index=[net.platt_burns])
                 val_df = pd.DataFrame([val_stats], index=[net.platt_burns])
@@ -199,7 +198,7 @@ class Elicit(Run):
             out_dir.mkdir(parents=True, exist_ok=True)
             dfs[0].to_csv(out_dir / f"stats_train_layer_{layer}.csv")
             dfs[1].to_csv(out_dir / f"stats_val_layer_{layer}.csv")
-            reporter = reporters[0]
+            reporter = next(reporter for reporter in reporters if reporter.config.platt_burns == self.net.platt_burns)
         elif isinstance(self.net, EigenFitterConfig):
             fitter = EigenFitter(
                 self.net, d, num_classes=k, num_variants=v, device=device
