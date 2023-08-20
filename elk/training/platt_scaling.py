@@ -8,9 +8,6 @@ from torch import Tensor, nn, optim
 class PlattMixin(ABC):
     """Mixin for classifier-like objects that can be Platt scaled."""
 
-    bias: nn.Parameter
-    scale: nn.Parameter
-
     @abstractmethod
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         ...

@@ -42,7 +42,7 @@ class CcsConfig(FitterConfig):
     function 1.0*consistency_squared + 0.5*prompt_var.
     """
     loss_dict: dict[str, float] = field(default_factory=dict, init=False)
-    norm: Literal["leace", "burns"] = "leace"
+    norm: Literal["leace", "burns", "platt_burns", "platt_burns_broken"] = "leace"
     num_layers: int = 1
     """The number of layers in the MLP."""
     pre_ln: bool = False
@@ -91,6 +91,7 @@ class CcsReporter(nn.Module, PlattMixin):
         self.config = cfg
         self.in_features = in_features
         self.num_variants = num_variants
+        print("init self.config.norm", self.config.norm)
 
         # Learnable Platt scaling parameters
         self.bias = nn.Parameter(torch.zeros(1, device=device, dtype=dtype))
@@ -168,9 +169,12 @@ class CcsReporter(nn.Module, PlattMixin):
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
         if self.config.norm == "leace":
             return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
-
         elif self.config.norm == "burns":
             return raw_scores
+        elif self.config.norm == "platt_burns":
+            return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
+        elif self.config.norm == "platt_burns_broken":
+            return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
         else:
             raise ValueError(f"Unknown normalization {self.config.norm}.")
 
@@ -202,8 +206,13 @@ class CcsReporter(nn.Module, PlattMixin):
         n, v, d = x_neg.shape
         prompt_ids = torch.eye(v, device=x_neg.device).expand(n, -1, -1)
 
-        if self.config.norm == "burns":
+        if (
+            self.config.norm == "burns"
+            or self.config.norm == "platt_burns"
+            or self.config.norm == "platt_burns_broken"
+        ):
             self.norm = BurnsNorm()
+            print("self.norm", "buurns")
         else:
             fitter = LeaceFitter(d, 2 * v, dtype=x_neg.dtype, device=x_neg.device)
             fitter.update(
@@ -217,6 +226,7 @@ class CcsReporter(nn.Module, PlattMixin):
                 z=torch.cat([prompt_ids, torch.zeros_like(prompt_ids)], dim=-1),
             )
             self.norm = fitter.eraser
+            print("self.norm", "fitter")
 
         x_neg, x_pos = self.norm(x_neg), self.norm(x_pos)
 
