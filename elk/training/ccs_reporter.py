@@ -170,7 +170,7 @@ class CcsReporter(nn.Module, PlattMixin):
         if self.config.norm == "leace":
             return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
         elif self.config.norm == "burns":
-            return raw_scores
+            return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
         elif self.config.norm == "platt_burns":
             return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
         elif self.config.norm == "platt_burns_broken":
