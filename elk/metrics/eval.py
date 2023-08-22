@@ -59,12 +59,18 @@ def evaluate_preds(
     (n, v, c) = y_logits.shape
     assert y_true.shape == (n,)
 
+    acc = accuracy_ci(y_true, y_logits, ensembling)
+    cal_acc = None
+    cal_err = None
+
+    # (n, v, c) = y_logits.shape
+    # assert y_true.shape == (n,)
+
     if ensembling == "full":
         y_logits = y_logits.mean(dim=1)
     else:
         y_true = repeat(y_true, "n -> n v", v=v)
-
-    y_pred = y_logits.argmax(dim=-1)
+    
     if ensembling == "none":
         auroc = roc_auc_ci(to_one_hot(y_true, c).long().flatten(1), y_logits.flatten(1))
     elif ensembling in ("partial", "full"):
@@ -76,17 +82,14 @@ def evaluate_preds(
     else:
         raise ValueError(f"Unknown mode: {ensembling}")
 
-    acc = accuracy_ci(y_true, y_pred)
-    cal_acc = None
-    cal_err = None
 
-    if c == 2:
+    if False:
         pos_probs = torch.sigmoid(y_logits[..., 1] - y_logits[..., 0])
 
         # Calibrated accuracy
         cal_thresh = pos_probs.float().quantile(y_true.float().mean())
         cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
-        cal_acc = accuracy_ci(y_true, cal_preds)
+        cal_acc = accuracy_ci(y_true, cal_preds, ensembling)
 
         cal = CalibrationError().update(y_true.flatten(), pos_probs.flatten())
         cal_err = cal.compute()
