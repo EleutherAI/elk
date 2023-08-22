@@ -21,6 +21,7 @@ def load_prompts(
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
     template_path: str | None = None,
+    balance: bool = True,
     rank: int = 0,
     world_size: int = 1,
 ) -> Iterator[dict]:
@@ -89,14 +90,14 @@ def load_prompts(
     else:
         fewshot_iter = None
 
-    if label_column in ds.features:
+    if label_column in ds.features and balance:
         ds = BalancedSampler(
             ds.to_iterable_dataset(),
             set(label_choices),
             label_col=label_column,
         )
     else:
-        if rank == 0:
+        if rank == 0 and balance:
             print("No label column found, not balancing")
         ds = ds.to_iterable_dataset()
 

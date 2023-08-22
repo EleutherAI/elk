@@ -65,6 +65,9 @@ class Extract(Serializable):
     binarize: bool = False
     """Whether to binarize the dataset labels for multi-class datasets."""
 
+    no_balance: bool = False
+    """Whether to disable balancing the dataset by label."""
+
     int8: bool = False
     """Whether to perform inference in mixed int8 precision with `bitsandbytes`."""
 
@@ -189,6 +192,7 @@ def extract_hiddens(
         num_shots=cfg.num_shots,
         split_type=split_type,
         template_path=cfg.template_path,
+        balance=not cfg.no_balance,
         rank=rank,
         world_size=world_size,
         seed=cfg.seed,
