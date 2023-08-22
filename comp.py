@@ -16,6 +16,12 @@ df_diff = df.select_dtypes(include=["float64"]) - df_with_params.select_dtypes(
 # reinsert the non-float columns at the front
 df_diff = pd.concat([df.select_dtypes(include=["object", "int"]), df_diff], axis=1)
 
+# only include the columns dataset layer ensembling auroc_estimate acc_estimate
+df_diff = df_diff.filter(
+    ["dataset", "layer", "ensembling", "auroc_estimate", "acc_estimate"]
+)
+
+
 import rich
 
 rich.print(df_diff)
