@@ -6,7 +6,7 @@ from .classifier import Classifier
 
 
 def train_supervised(
-    data: dict[str, tuple], device: str, mode: str
+    data: dict[str, tuple], device: str, mode: str, max_inlp_iter: int | None = None
 ) -> list[Classifier]:
     Xs, train_labels = [], []
 
@@ -26,7 +26,7 @@ def train_supervised(
         lr_model.fit_cv(X, train_labels)
         return [lr_model]
     elif mode == "inlp":
-        return Classifier.inlp(X, train_labels).classifiers
+        return Classifier.inlp(X, train_labels, max_inlp_iter).classifiers
     elif mode == "single":
         lr_model = Classifier(X.shape[-1], device=device)
         lr_model.fit(X, train_labels)

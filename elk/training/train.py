@@ -34,6 +34,9 @@ class Elicit(Run):
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
 
+    max_inlp_iter: int | None = None
+    """Maximum number of iterations for Iterative Nullspace Projection (INLP)."""
+
     def create_models_dir(self, out_dir: Path):
         lr_dir = None
         lr_dir = out_dir / "lr_models"
@@ -123,6 +126,7 @@ class Elicit(Run):
                 train_dict,
                 device=device,
                 mode=self.supervised,
+                max_inlp_iter=self.max_inlp_iter,
             )
             with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
                 torch.save(lr_models, file)

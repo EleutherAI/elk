@@ -194,8 +194,8 @@ class Classifier(torch.nn.Module):
                 the input dimension.
             y: Target tensor of shape (N,) for binary classification or (N, C) for
                 multiclass classification, where C is the number of classes.
-            max_iter: Maximum number of iterations to run. If `None`, run for the full
-                dimension of the input.
+            max_iter: Maximum number of iterations to run. If `None`, run until the data
+                is linearly guarded (no linear classifier can extract information).
             tol: Tolerance for the loss function. The algorithm will stop when the loss
                 is within `tol` of the entropy of the labels.
 
@@ -212,12 +212,11 @@ class Classifier(torch.nn.Module):
         p = y.float().mean()
         H = -p * torch.log(p) - (1 - p) * torch.log(1 - p)
 
-        if max_iter is not None:
-            d = min(d, max_iter)
+        max_iter = max_iter or d
 
         # Iterate until the loss is within epsilon of the entropy
         result = InlpResult()
-        for _ in range(d):
+        for _ in range(max_iter):
             clf = cls(d, device=x.device, dtype=x.dtype)
             loss = clf.fit(x, y)
             result.classifiers.append(clf)
