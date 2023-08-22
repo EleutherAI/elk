@@ -47,6 +47,7 @@ def accuracy_ci(
 
     THRESHOLD = 0.5  # after platt_scaling
     # print("ensembling", ensembling)
+    y_logits = y_logits.detach().clone()  # if we don't do this the original logits get modified
     def pool_logits(logits):
         return (logits[..., 1] - (logits[..., 0] - 1)) / 2
     if ensembling == "full":
@@ -61,10 +62,11 @@ def accuracy_ci(
         y_logits_pooled = pool_logits(y_logits)
         y_pred = y_logits_pooled.flatten().gt(THRESHOLD)
     elif ensembling == "none":
-        # y_logits [1000, 13, 2] but uhhh... we take just the positive?
+        # y_logits [1000, 13, 2]
         v, c = y_logits.shape[-2:]
-        y_true_rep = repeat(y_true, "n -> (n v)", v=v)
-        y_pred = y_logits[..., 1].flatten().gt(THRESHOLD)
+        y_true_rep = repeat(y_true, "n -> (n v c)", v=v, c=c)
+        y_logits[..., 0] = 1 - y_logits[..., 0]
+        y_pred = y_logits.flatten().gt(THRESHOLD)
     elif ensembling == "old":
         rest_vals = y_logits.shape[1:-1] # skipping first (n) and last (c)
         rest_labels = " ".join([f"v{i}" for i in range(len(rest_vals))])
