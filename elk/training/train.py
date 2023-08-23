@@ -34,6 +34,9 @@ class Elicit(Run):
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
 
+    scale: float = 1
+    bias: float = 0
+
     def create_models_dir(self, out_dir: Path):
         lr_dir = None
         lr_dir = out_dir / "lr_models"
@@ -142,8 +145,9 @@ class Elicit(Run):
             val_h, val_gt, val_lm_preds = val_dict[ds_name]
             train_h, train_gt, train_lm_preds = train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
-
-            val_credences = reporter(val_h)
+            print("scale", self.scale)
+            print("bias", self.bias)
+            val_credences = reporter(val_h).mul(self.scale).add(self.bias)
             train_credences = reporter(train_h)
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
