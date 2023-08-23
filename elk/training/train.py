@@ -84,6 +84,7 @@ class Elicit(Run):
             train_loss = reporter.fit(first_train_h)
             labels = to_one_hot(train_gt, k)
             labels = repeat(labels, "n k -> n v k", v=v)
+            reporter.platt_scale(labels, first_train_h)
 
         elif isinstance(self.net, EigenFitterConfig):
             fitter = EigenFitter(
