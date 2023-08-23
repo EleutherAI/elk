@@ -170,6 +170,7 @@ class CcsReporter(nn.Module, PlattMixin):
         if self._is_training:
             return raw_scores
         else:
+            # only do platt scaling after training the reporters
             platt_scaled_scores = raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
             return platt_scaled_scores
 
