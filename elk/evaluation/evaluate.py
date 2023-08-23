@@ -42,25 +42,29 @@ class Eval(Run):
         reporter = torch.load(reporter_path, map_location=device)
 
         row_bufs = defaultdict(list)
-        for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
+        for ds_name, val_data in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
-            val_credences = reporter(val_h)
+            val_credences = reporter(val_data.hiddens)
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
                     {
                         **meta,
                         "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        **evaluate_preds(
+                            val_data.labels, val_credences, mode
+                        ).to_dict(),
                     }
                 )
 
-                if val_lm_preds is not None:
+                if val_data.lm_preds is not None:
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
                             "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            **evaluate_preds(
+                                val_data.labels, val_data.lm_preds, mode
+                            ).to_dict(),
                         }
                     )
 
@@ -78,7 +82,9 @@ class Eval(Run):
                                 "ensembling": mode,
                                 "inlp_iter": i,
                                 **meta,
-                                **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                                **evaluate_preds(
+                                    val_data.labels, model(val_data.hiddens), mode
+                                ).to_dict(),
                             }
                         )
 

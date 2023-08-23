@@ -32,6 +32,14 @@ from .utils import (
 
 
 @dataclass
+class LayerData:
+    hiddens: Tensor
+    labels: Tensor
+    lm_preds: Tensor | None
+    text_questions: list[list[tuple[str, str]]]  # (n, v, 2)
+
+
+@dataclass
 class Run(ABC, Serializable):
     data: Extract
     out_dir: Path | None = None
@@ -125,7 +133,7 @@ class Run(ABC, Serializable):
 
     def prepare_data(
         self, device: str, layer: int, split_type: Literal["train", "val"]
-    ) -> dict[str, tuple[Tensor, Tensor, Tensor | None]]:
+    ) -> dict[str, LayerData]:
         """Prepare data for the specified layer and split type."""
         out = {}
 
@@ -140,9 +148,13 @@ class Run(ABC, Serializable):
 
             with split.formatted_as("torch", device=device):
                 has_preds = "model_logits" in split.features
-                lm_preds = split["model_logits"] if has_preds else None
+                lm_preds = (
+                    assert_type(Tensor, split["model_logits"]) if has_preds else None
+                )
 
-            out[ds_name] = (hiddens, labels.to(hiddens.device), lm_preds)
+            text_questions = split["text_questions"]
+
+            out[ds_name] = LayerData(hiddens, labels, lm_preds, text_questions)
 
         return out
 

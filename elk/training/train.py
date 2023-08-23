@@ -62,16 +62,16 @@ class Elicit(Run):
         train_dict = self.prepare_data(device, layer, "train")
         val_dict = self.prepare_data(device, layer, "val")
 
-        (first_train_h, train_gt, _), *rest = train_dict.values()
-        (_, v, k, d) = first_train_h.shape
-        if not all(other_h.shape[-1] == d for other_h, _, _ in rest):
+        first_train_data, *rest = train_dict.values()
+        (_, v, k, d) = first_train_data.hiddens.shape
+        if not all(other_data.hiddens.shape[-1] == d for other_data in rest):
             raise ValueError("All datasets must have the same hidden state size")
 
         # For a while we did support datasets with different numbers of classes, but
         # we reverted this once we switched to ConceptEraser. There are a few options
         # for re-enabling it in the future but they are somewhat complex and it's not
         # clear that it's worth it.
-        if not all(other_h.shape[-2] == k for other_h, _, _ in rest):
+        if not all(other_data.hiddens.shape[-2] == k for other_data in rest):
             raise ValueError("All datasets must have the same number of classes")
 
         reporter_dir, lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
@@ -81,13 +81,15 @@ class Elicit(Run):
             assert len(train_dict) == 1, "CCS only supports single-task training"
 
             reporter = CcsReporter(self.net, d, device=device, num_variants=v)
-            train_loss = reporter.fit(first_train_h)
+            train_loss = reporter.fit(first_train_data.hiddens)
 
             if not self.net.norm == "burns":
-                (_, v, k, _) = first_train_h.shape
+                (_, v, k, _) = first_train_data.hiddens.shape
                 reporter.platt_scale(
-                    to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
-                    rearrange(first_train_h, "n v k d -> (n v k) d"),
+                    to_one_hot(
+                        repeat(first_train_data.labels, "n -> (n v)", v=v), k
+                    ).flatten(),
+                    rearrange(first_train_data.hiddens, "n v k d -> (n v k) d"),
                 )
 
         elif isinstance(self.net, EigenFitterConfig):
@@ -96,16 +98,20 @@ class Elicit(Run):
             )
 
             hidden_list, label_list = [], []
-            for ds_name, (train_h, train_gt, _) in train_dict.items():
-                (_, v, _, _) = train_h.shape
+            for ds_name, train_data in train_dict.items():
+                (_, v, _, _) = train_data.hiddens.shape
 
                 # Datasets can have different numbers of variants, so we need to
                 # flatten them here before concatenating
-                hidden_list.append(rearrange(train_h, "n v k d -> (n v k) d"))
-                label_list.append(
-                    to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten()
+                hidden_list.append(
+                    rearrange(train_data.hiddens, "n v k d -> (n v k) d")
                 )
-                fitter.update(train_h)
+                label_list.append(
+                    to_one_hot(
+                        repeat(train_data.labels, "n -> (n v)", v=v), k
+                    ).flatten()
+                )
+                fitter.update(train_data.hiddens)
 
             reporter = fitter.fit_streaming()
             reporter.platt_scale(
@@ -132,18 +138,17 @@ class Elicit(Run):
 
         row_bufs = defaultdict(list)
         for ds_name in val_dict:
-            val_h, val_gt, val_lm_preds = val_dict[ds_name]
-            train_h, train_gt, train_lm_preds = train_dict[ds_name]
+            val, train = val_dict[ds_name], train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
 
-            val_credences = reporter(val_h)
-            train_credences = reporter(train_h)
+            val_credences = reporter(val.hiddens)
+            train_credences = reporter(train.hiddens)
             for mode in ("none", "partial", "full"):
                 row_bufs["eval"].append(
                     {
                         **meta,
                         "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
+                        **evaluate_preds(val.labels, val_credences, mode).to_dict(),
                         "train_loss": train_loss,
                     }
                 )
@@ -152,26 +157,28 @@ class Elicit(Run):
                     {
                         **meta,
                         "ensembling": mode,
-                        **evaluate_preds(train_gt, train_credences, mode).to_dict(),
+                        **evaluate_preds(train.labels, train_credences, mode).to_dict(),
                         "train_loss": train_loss,
                     }
                 )
 
-                if val_lm_preds is not None:
+                if val.lm_preds is not None:
                     row_bufs["lm_eval"].append(
                         {
                             **meta,
                             "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            **evaluate_preds(val.labels, val.lm_preds, mode).to_dict(),
                         }
                     )
 
-                if train_lm_preds is not None:
+                if train.lm_preds is not None:
                     row_bufs["train_lm_eval"].append(
                         {
                             **meta,
                             "ensembling": mode,
-                            **evaluate_preds(train_gt, train_lm_preds, mode).to_dict(),
+                            **evaluate_preds(
+                                train.labels, train.lm_preds, mode
+                            ).to_dict(),
                         }
                     )
 
@@ -181,7 +188,9 @@ class Elicit(Run):
                             **meta,
                             "ensembling": mode,
                             "inlp_iter": i,
-                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            **evaluate_preds(
+                                val.labels, model(val.hiddens), mode
+                            ).to_dict(),
                         }
                     )
 
