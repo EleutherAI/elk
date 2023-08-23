@@ -82,10 +82,8 @@ class Elicit(Run):
 
             reporter = CcsReporter(self.net, d, device=device, num_variants=v)
             train_loss = reporter.fit(first_train_h)
-
             labels = to_one_hot(train_gt, k)
-            labels = repeat(train_gt, "n -> n v k", v=v, k=k)
-            reporter.platt_scale(labels, first_train_h)
+            labels = repeat(labels, "n k -> n v k", v=v)
 
         elif isinstance(self.net, EigenFitterConfig):
             fitter = EigenFitter(
