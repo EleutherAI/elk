@@ -11,7 +11,7 @@ from einops import rearrange, repeat
 from simple_parsing import subgroups
 from simple_parsing.helpers.serialization import save
 
-from ..metrics import evaluate_preds, to_one_hot
+from ..metrics import evaluate_preds, get_probs, to_one_hot
 from ..run import Run
 from ..training.supervised import train_supervised
 from ..utils.typing import assert_type
@@ -53,7 +53,7 @@ class Elicit(Run):
         layer: int,
         devices: list[str],
         world_size: int,
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], dict]:
         """Train a single reporter on a single layer."""
 
         self.make_reproducible(seed=self.net.seed + layer)
@@ -137,13 +137,31 @@ class Elicit(Run):
             lr_models = []
 
         row_bufs = defaultdict(list)
+        out_probs = defaultdict(dict)
         for ds_name in val_dict:
             val, train = val_dict[ds_name], train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
 
+            if self.save_probs:
+                out_probs[ds_name]["texts"] = val.text_questions
+                out_probs[ds_name]["labels"] = val.labels
+                out_probs[ds_name]["reporter"] = dict()
+                out_probs[ds_name]["lr"] = dict()
+                out_probs[ds_name]["lm"] = dict()
+
             val_credences = reporter(val.hiddens)
             train_credences = reporter(train.hiddens)
             for mode in ("none", "partial", "full"):
+                if self.save_probs:
+                    out_probs[ds_name]["reporter"][mode] = get_probs(
+                        val_credences, mode
+                    ).cpu()
+                    out_probs[ds_name]["lm"][mode] = (
+                        get_probs(val.lm_preds, mode).cpu()
+                        if val.lm_preds is not None
+                        else None
+                    )
+
                 row_bufs["eval"].append(
                     {
                         **meta,
@@ -182,16 +200,38 @@ class Elicit(Run):
                         }
                     )
 
-                for i, model in enumerate(lr_models):
-                    row_bufs["lr_eval"].append(
-                        {
-                            **meta,
-                            "ensembling": mode,
-                            "inlp_iter": i,
-                            **evaluate_preds(
-                                val.labels, model(val.hiddens), mode
-                            ).to_dict(),
-                        }
-                    )
+                if self.supervised != "none":
+                    if self.save_probs:
+                        out_probs[ds_name]["lr"][mode] = dict()
 
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+                    for i, model in enumerate(lr_models):
+                        model.eval()
+                        val_lr_credences = model(val.hiddens)
+                        train_lr_credences = model(train.hiddens)
+                        if self.save_probs:
+                            out_probs[ds_name]["lr"][mode][i] = get_probs(
+                                val_lr_credences, mode
+                            ).cpu()
+
+                        row_bufs["train_lr_eval"].append(
+                            {
+                                **meta,
+                                "ensembling": mode,
+                                "inlp_iter": i,
+                                **evaluate_preds(
+                                    train.labels, train_lr_credences, mode
+                                ).to_dict(),
+                            }
+                        )
+                        row_bufs["lr_eval"].append(
+                            {
+                                **meta,
+                                "ensembling": mode,
+                                "inlp_iter": i,
+                                **evaluate_preds(
+                                    val.labels, val_lr_credences, mode
+                                ).to_dict(),
+                            }
+                        )
+
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, out_probs

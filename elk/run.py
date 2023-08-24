@@ -60,6 +60,13 @@ class Run(ABC, Serializable):
     num_gpus: int = -1
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
+    save_probs: bool = field(default=False, to_dict=False)
+    """ saves probs.pt containing {<dsname>: {"texts": [n, v], "labels": [n,]
+            "lm": {"none": [n, v, 2], "partial": [n, v], "full": [n,]},
+            "reporter": {<layer>: {"none": [n, v, 2], "partial": [n, v], "full": [n,]}},
+            "lr": {<layer>: {<inlp_iter>: {"none": ..., "partial": ..., "full": ...}}}
+            }}}
+    """
 
     def execute(
         self,
@@ -106,7 +113,7 @@ class Run(ABC, Serializable):
 
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
-        func: Callable[[int], dict[str, pd.DataFrame]] = partial(
+        func: Callable[[int], tuple[dict[str, pd.DataFrame], dict]] = partial(
             self.apply_to_layer, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)
@@ -114,12 +121,11 @@ class Run(ABC, Serializable):
     @abstractmethod
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], dict]:
         """Train or eval a reporter on a single layer."""
 
     def make_reproducible(self, seed: int):
         """Make the run reproducible by setting the random seed."""
-
         np.random.seed(seed)
         random.seed(seed)
         torch.manual_seed(seed)
@@ -167,7 +173,7 @@ class Run(ABC, Serializable):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], dict[str, pd.DataFrame]],
+        func: Callable[[int], tuple[dict[str, pd.DataFrame], dict]],
         num_devices: int,
     ):
         """Apply a function to each layer of the datasets in parallel
@@ -190,11 +196,16 @@ class Run(ABC, Serializable):
         with ctx.Pool(num_devices) as pool:
             mapper = pool.imap_unordered if num_devices > 1 else map
             df_buffers = defaultdict(list)
+            probs_dicts = defaultdict(dict)
 
             try:
-                for df_dict in tqdm(mapper(func, layers), total=len(layers)):
+                for layer, (df_dict, probs_dict) in tqdm(
+                    zip(layers, mapper(func, layers)), total=len(layers)
+                ):
                     for k, v in df_dict.items():
                         df_buffers[k].append(v)
+                    for k, v in probs_dict.items():
+                        probs_dicts[k][layer] = probs_dict[k]
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
@@ -202,3 +213,15 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
+                if self.save_probs:
+                    save_dict = defaultdict(dict)
+                    for ds_name, probs_dict in probs_dicts.items():
+                        save_dict[ds_name]["texts"] = probs_dict[layers[0]]["texts"]
+                        save_dict[ds_name]["labels"] = probs_dict[layers[0]]["labels"]
+                        save_dict[ds_name]["lm"] = probs_dict[layers[0]]["lm"]
+                        for layer, probs_dict_by_mode in probs_dict.items():
+                            save_dict[ds_name]["reporter"][layer] = probs_dict_by_mode[
+                                "reporter"
+                            ]
+                            save_dict[ds_name]["lr"][layer] = probs_dict_by_mode["lr"]
+                    torch.save(save_dict, self.out_dir / "probs.pt")

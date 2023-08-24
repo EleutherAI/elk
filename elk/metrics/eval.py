@@ -41,6 +41,32 @@ class EvalResult:
         return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
 
 
+def get_probs(
+    y_logits: Tensor, ensembling: Literal["none", "partial", "full"] = "none"
+) -> Tensor:
+    """
+    Get the class probabilities from a tensor of logits.
+
+    Args:
+        y_logits: Predicted class tensor of shape (N, variants, 2).
+
+    Returns:
+        Tensor: If ensemble is "none", a tensor of shape (N, variants, 2).
+            If ensemble is "partial", a tensor of shape (N, n_variants).
+            If ensemble is "full", a tensor of shape (N,).
+    """
+    assert y_logits.shape[-1] == 2, "Save probs only supported for binary labels"
+    if ensembling == "none":
+        return torch.softmax(y_logits, dim=-1)
+    elif ensembling == "partial":
+        return torch.softmax(y_logits[:, :, 1] - y_logits[:, :, 0], dim=-1)
+    elif ensembling == "full":
+        y_logits = y_logits.mean(dim=1)
+        return torch.softmax(y_logits[:, 1] - y_logits[:, 0], dim=-1)
+    else:
+        raise ValueError(f"Unknown mode: {ensembling}")
+
+
 def evaluate_preds(
     y_true: Tensor,
     y_logits: Tensor,

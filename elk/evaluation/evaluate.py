@@ -7,7 +7,7 @@ import torch
 from simple_parsing.helpers import field
 
 from ..files import elk_reporter_dir
-from ..metrics import evaluate_preds
+from ..metrics import evaluate_preds, get_probs
 from ..run import Run
 from ..utils import Color
 
@@ -31,7 +31,7 @@ class Eval(Run):
     @torch.inference_mode()
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], dict]:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
@@ -41,12 +41,30 @@ class Eval(Run):
         reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
         reporter = torch.load(reporter_path, map_location=device)
 
+        out_probs = defaultdict(dict)
         row_bufs = defaultdict(list)
         for ds_name, val_data in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
+            if self.save_probs:
+                out_probs[ds_name]["texts"] = val_data.text_questions
+                out_probs[ds_name]["labels"] = val_data.labels
+                out_probs[ds_name]["reporter"] = dict()
+                out_probs[ds_name]["lr"] = dict()
+                out_probs[ds_name]["lm"] = dict()
+
             val_credences = reporter(val_data.hiddens)
             for mode in ("none", "partial", "full"):
+                if self.save_probs:
+                    out_probs[ds_name]["reporter"][mode] = get_probs(
+                        val_credences, mode
+                    ).cpu()
+                    out_probs[ds_name]["lm"][mode] = (
+                        get_probs(val_data.lm_preds, mode).cpu()
+                        if val_data.lm_preds is not None
+                        else None
+                    )
+
                 row_bufs["eval"].append(
                     {
                         **meta,
@@ -70,6 +88,9 @@ class Eval(Run):
 
                 lr_dir = experiment_dir / "lr_models"
                 if not self.skip_supervised and lr_dir.exists():
+                    if self.save_probs:
+                        out_probs[ds_name]["lr"][mode] = dict()
+
                     with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
                         lr_models = torch.load(f, map_location=device)
                         if not isinstance(lr_models, list):  # backward compatibility
@@ -77,15 +98,20 @@ class Eval(Run):
 
                     for i, model in enumerate(lr_models):
                         model.eval()
+                        val_lr_credences = model(val_data.hiddens)
+                        if self.save_probs:
+                            out_probs[ds_name]["lr"][mode][i] = get_probs(
+                                val_lr_credences, mode
+                            ).cpu()
                         row_bufs["lr_eval"].append(
                             {
                                 "ensembling": mode,
                                 "inlp_iter": i,
                                 **meta,
                                 **evaluate_preds(
-                                    val_data.labels, model(val_data.hiddens), mode
+                                    val_data.labels, val_lr_credences, mode
                                 ).to_dict(),
                             }
                         )
 
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, out_probs
