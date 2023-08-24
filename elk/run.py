@@ -219,6 +219,8 @@ class Run(ABC, Serializable):
                         save_dict[ds_name]["texts"] = probs_dict[layers[0]]["texts"]
                         save_dict[ds_name]["labels"] = probs_dict[layers[0]]["labels"]
                         save_dict[ds_name]["lm"] = probs_dict[layers[0]]["lm"]
+                        save_dict[ds_name]["reporter"] = dict()
+                        save_dict[ds_name]["lr"] = dict()
                         for layer, probs_dict_by_mode in probs_dict.items():
                             save_dict[ds_name]["reporter"][layer] = probs_dict_by_mode[
                                 "reporter"
