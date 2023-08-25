@@ -63,7 +63,7 @@ class Classifier(torch.nn.Module):
         x: Tensor,
         y: Tensor,
         *,
-        l2_penalty: float = 0.0,
+        l2_penalty: float = 0.001,
         max_iter: int = 10_000,
     ) -> float:
         """Fits the model to the input data using L-BFGS with L2 regularization.
@@ -180,6 +180,7 @@ class Classifier(torch.nn.Module):
 
         # Refit with the best penalty
         best_penalty = l2_penalties[best_idx]
+        print(f"Best L2 penalty: {best_penalty}")
         self.fit(x, y, l2_penalty=best_penalty, max_iter=max_iter)
         return RegularizationPath(l2_penalties, mean_losses.tolist())
 
