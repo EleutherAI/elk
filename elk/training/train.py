@@ -11,7 +11,7 @@ from einops import rearrange, repeat
 from simple_parsing import subgroups
 from simple_parsing.helpers.serialization import save
 
-from ..metrics import evaluate_preds, get_probs, to_one_hot
+from ..metrics import evaluate_preds, get_logprobs, to_one_hot
 from ..run import Run
 from ..training.supervised import train_supervised
 from ..utils.typing import assert_type
@@ -144,7 +144,7 @@ class Elicit(Run):
 
             if self.save_probs:
                 out_probs[ds_name]["texts"] = val.text_questions
-                out_probs[ds_name]["labels"] = val.labels
+                out_probs[ds_name]["labels"] = val.labels.cpu()
                 out_probs[ds_name]["reporter"] = dict()
                 out_probs[ds_name]["lr"] = dict()
                 out_probs[ds_name]["lm"] = dict()
@@ -153,11 +153,11 @@ class Elicit(Run):
             train_credences = reporter(train.hiddens)
             for mode in ("none", "partial", "full"):
                 if self.save_probs:
-                    out_probs[ds_name]["reporter"][mode] = get_probs(
-                        val_credences, mode
-                    ).cpu()
+                    out_probs[ds_name]["reporter"][mode] = (
+                        get_logprobs(val_credences, mode).detach().cpu()
+                    )
                     out_probs[ds_name]["lm"][mode] = (
-                        get_probs(val.lm_preds, mode).cpu()
+                        get_logprobs(val.lm_preds, mode).detach().cpu()
                         if val.lm_preds is not None
                         else None
                     )
@@ -209,9 +209,9 @@ class Elicit(Run):
                         val_lr_credences = model(val.hiddens)
                         train_lr_credences = model(train.hiddens)
                         if self.save_probs:
-                            out_probs[ds_name]["lr"][mode][i] = get_probs(
-                                val_lr_credences, mode
-                            ).cpu()
+                            out_probs[ds_name]["lr"][mode][i] = (
+                                get_logprobs(val_lr_credences, mode).detach().cpu()
+                            )
 
                         row_bufs["train_lr_eval"].append(
                             {

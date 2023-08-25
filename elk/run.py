@@ -61,7 +61,7 @@ class Run(ABC, Serializable):
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
     save_probs: bool = field(default=False, to_dict=False)
-    """ saves probs.pt containing {<dsname>: {"texts": [n, v], "labels": [n,]
+    """ saves probs.pt containing {<dsname>: {"texts": [n, v, 2], "labels": [n,]
             "lm": {"none": [n, v, 2], "partial": [n, v], "full": [n,]},
             "reporter": {<layer>: {"none": [n, v, 2], "partial": [n, v], "full": [n,]}},
             "lr": {<layer>: {<inlp_iter>: {"none": ..., "partial": ..., "full": ...}}}

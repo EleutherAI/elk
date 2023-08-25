@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass
 from typing import Literal
 
 import torch
+import torch.nn.functional as F
 from einops import repeat
 from torch import Tensor
 
@@ -41,7 +42,7 @@ class EvalResult:
         return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
 
 
-def get_probs(
+def get_logprobs(
     y_logits: Tensor, ensembling: Literal["none", "partial", "full"] = "none"
 ) -> Tensor:
     """
@@ -57,12 +58,12 @@ def get_probs(
     """
     assert y_logits.shape[-1] == 2, "Save probs only supported for binary labels"
     if ensembling == "none":
-        return torch.softmax(y_logits, dim=-1)
+        return F.logsigmoid(y_logits)
     elif ensembling == "partial":
-        return torch.softmax(y_logits[:, :, 1] - y_logits[:, :, 0], dim=-1)
+        return F.logsigmoid(y_logits[:, :, 1] - y_logits[:, :, 0])
     elif ensembling == "full":
         y_logits = y_logits.mean(dim=1)
-        return torch.softmax(y_logits[:, 1] - y_logits[:, 0], dim=-1)
+        return F.logsigmoid(y_logits[:, 1] - y_logits[:, 0])
     else:
         raise ValueError(f"Unknown mode: {ensembling}")
 

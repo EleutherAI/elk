@@ -7,7 +7,7 @@ import torch
 from simple_parsing.helpers import field
 
 from ..files import elk_reporter_dir
-from ..metrics import evaluate_preds, get_probs
+from ..metrics import evaluate_preds, get_logprobs
 from ..run import Run
 from ..utils import Color
 
@@ -48,7 +48,7 @@ class Eval(Run):
 
             if self.save_probs:
                 out_probs[ds_name]["texts"] = val_data.text_questions
-                out_probs[ds_name]["labels"] = val_data.labels
+                out_probs[ds_name]["labels"] = val_data.labels.cpu()
                 out_probs[ds_name]["reporter"] = dict()
                 out_probs[ds_name]["lr"] = dict()
                 out_probs[ds_name]["lm"] = dict()
@@ -56,11 +56,11 @@ class Eval(Run):
             val_credences = reporter(val_data.hiddens)
             for mode in ("none", "partial", "full"):
                 if self.save_probs:
-                    out_probs[ds_name]["reporter"][mode] = get_probs(
+                    out_probs[ds_name]["reporter"][mode] = get_logprobs(
                         val_credences, mode
                     ).cpu()
                     out_probs[ds_name]["lm"][mode] = (
-                        get_probs(val_data.lm_preds, mode).cpu()
+                        get_logprobs(val_data.lm_preds, mode).cpu()
                         if val_data.lm_preds is not None
                         else None
                     )
@@ -100,7 +100,7 @@ class Eval(Run):
                         model.eval()
                         val_lr_credences = model(val_data.hiddens)
                         if self.save_probs:
-                            out_probs[ds_name]["lr"][mode][i] = get_probs(
+                            out_probs[ds_name]["lr"][mode][i] = get_logprobs(
                                 val_lr_credences, mode
                             ).cpu()
                         row_bufs["lr_eval"].append(
