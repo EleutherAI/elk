@@ -30,6 +30,8 @@ class EvalResult:
     roc_auc: RocAucResult
     """Area under the ROC curve. For multi-class classification, each class is treated
     as a one-vs-rest binary classification problem."""
+    cal_thresh: float | None = None
+    """The threshold used to calibrate the predictions."""
 
     def to_dict(self, prefix: str = "") -> dict[str, float]:
         """Convert the result to a dictionary."""
@@ -45,14 +47,14 @@ class EvalResult:
             else {}
         )
         auroc_dict = {f"{prefix}auroc_{k}": v for k, v in asdict(self.roc_auc).items()}
-        return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
+        return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict, f"{prefix}cal_thresh": self.cal_thresh}
 
 
 def calc_auroc(
-    y_logits: Tensor,
-    y_true: Tensor,
-    prompt_ensembling: PromptEnsembling,
-    num_classes: int,
+        y_logits: Tensor,
+        y_true: Tensor,
+        prompt_ensembling: PromptEnsembling,
+        num_classes: int,
 ) -> RocAucResult:
     """
     Calculate the AUROC
@@ -82,7 +84,7 @@ def calc_auroc(
     return auroc
 
 
-def calc_calibrated_accuracies(y_true, pos_probs) -> AccuracyResult:
+def calc_calibrated_accuracies(y_true, pos_probs) -> tuple[AccuracyResult, float]:
     """
     Calculate the calibrated accuracies
 
@@ -97,7 +99,7 @@ def calc_calibrated_accuracies(y_true, pos_probs) -> AccuracyResult:
     cal_thresh = pos_probs.float().quantile(y_true.float().mean())
     cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
     cal_acc = accuracy_ci(y_true, cal_preds)
-    return cal_acc
+    return cal_acc, cal_thresh
 
 
 def calc_calibrated_errors(y_true, pos_probs) -> CalibrationEstimate:
@@ -117,7 +119,7 @@ def calc_calibrated_errors(y_true, pos_probs) -> CalibrationEstimate:
     return cal_err
 
 
-def calc_accuracies(y_logits, y_true) -> AccuracyResult:
+def calc_accuracies(y_logits, y_true, ensembling) -> AccuracyResult:
     """
     Calculate the accuracy
 
@@ -128,14 +130,18 @@ def calc_accuracies(y_logits, y_true) -> AccuracyResult:
     Returns:
         AccuracyResult: A dictionary containing the accuracy and confidence interval.
     """
-    y_pred = y_logits.argmax(dim=-1)
+    THRESHOLD = 0.5
+    if ensembling == PromptEnsembling.NONE:
+        y_pred = y_logits[..., 1].gt(THRESHOLD).to(torch.int)
+    else:
+        y_pred = y_logits.argmax(dim=-1)
     return accuracy_ci(y_true, y_pred)
 
 
 def evaluate_preds(
-    y_true: Tensor,
-    y_logits: Tensor,
-    prompt_ensembling: PromptEnsembling = PromptEnsembling.NONE,
+        y_true: Tensor,
+        y_logits: Tensor,
+        prompt_ensembling: PromptEnsembling = PromptEnsembling.NONE,
 ) -> EvalResult:
     """
     Evaluate the performance of a classification model.
@@ -168,10 +174,10 @@ def prepare(y_logits: Tensor, y_true: Tensor, prompt_ensembling: PromptEnsemblin
 
 
 def calc_eval_results(
-    y_true: Tensor,
-    y_logits: Tensor,
-    prompt_ensembling: PromptEnsembling,
-    num_classes: int,
+        y_true: Tensor,
+        y_logits: Tensor,
+        prompt_ensembling: PromptEnsembling,
+        num_classes: int,
 ) -> EvalResult:
     """
     Calculate the evaluation results
@@ -185,10 +191,12 @@ def calc_eval_results(
         EvalResult: The result of evaluating a classifier containing the accuracy,
         calibrated accuracies, calibrated errors, and AUROC.
     """
-    acc = calc_accuracies(y_logits=y_logits, y_true=y_true)
-
-    pos_probs = torch.sigmoid(y_logits[..., 1] - y_logits[..., 0])
-    cal_acc = (
+    acc = calc_accuracies(y_logits, y_true, prompt_ensembling)
+    pooled_logits = (y_logits[..., 1]
+                     if prompt_ensembling == PromptEnsembling.NONE
+                     else y_logits[..., 1] - y_logits[..., 0])
+    pos_probs = torch.sigmoid(pooled_logits)
+    cal_acc, cal_thresh = (
         calc_calibrated_accuracies(y_true=y_true, pos_probs=pos_probs)
         if num_classes == 2
         else None
@@ -206,7 +214,7 @@ def calc_eval_results(
         num_classes=num_classes,
     )
 
-    return EvalResult(acc, cal_acc, cal_err, auroc)
+    return EvalResult(acc, cal_acc, cal_err, auroc, cal_thresh)
 
 
 def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
@@ -225,7 +233,7 @@ def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
 
 
 def layer_ensembling(
-    layer_outputs: list[LayerOutput], prompt_ensembling: PromptEnsembling
+        layer_outputs: list[LayerOutput], prompt_ensembling: PromptEnsembling
 ) -> EvalResult:
     """
     Return EvalResult after prompt_ensembling
