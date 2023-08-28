@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 from concept_erasure import LeaceFitter
 from torch import Tensor
+from typing_extensions import override
 
 from ..parsing import parse_loss
 from ..utils.typing import assert_type
@@ -90,6 +91,7 @@ class CcsReporter(nn.Module, PlattMixin):
         num_variants: int = 1,
     ):
         super().__init__()
+
         self.config = cfg
         self.in_features = in_features
         self.num_variants = num_variants
@@ -130,6 +132,15 @@ class CcsReporter(nn.Module, PlattMixin):
                 )
             )
 
+    @override
+    def parameters(self, recurse=True):
+        parameters = super(CcsReporter, self).parameters(recurse=recurse)
+        for param in parameters:
+            # exclude the platt scaling parameters
+            # kind of a hack for now, we should find probably a cleaner way
+            if param is not self.scale and param is not self.bias:
+                yield param
+
     def reset_parameters(self):
         """Reset the parameters of the probe.
 
@@ -166,15 +177,9 @@ class CcsReporter(nn.Module, PlattMixin):
     def forward(self, x: Tensor) -> Tensor:
         """Return the credence assigned to the hidden state `x`."""
         assert self.norm is not None, "Must call fit() before forward()"
-
         raw_scores = self.probe(self.norm(x)).squeeze(-1)
-        if self.config.norm == "leace":
-            return raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
-
-        elif self.config.norm == "burns":
-            return raw_scores
-        else:
-            raise ValueError(f"Unknown normalization {self.config.norm}.")
+        platt_scaled_scores = raw_scores.mul(self.scale).add(self.bias).squeeze(-1)
+        return platt_scaled_scores
 
     def loss(self, logit0: Tensor, logit1: Tensor) -> Tensor:
         """Return the loss of the reporter on the contrast pair (x0, x1).
@@ -251,6 +256,7 @@ class CcsReporter(nn.Module, PlattMixin):
             raise RuntimeError("Got NaN/infinite loss during training")
 
         self.load_state_dict(best_state)
+
         return best_loss
 
     def train_loop_adam(self, x_neg: Tensor, x_pos: Tensor) -> float:
