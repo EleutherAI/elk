@@ -233,7 +233,7 @@ def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
 
 
 def layer_ensembling(
-        layer_outputs: list[LayerOutput], prompt_ensembling: PromptEnsembling
+    layer_outputs: list[LayerOutput], prompt_ensembling: PromptEnsembling
 ) -> EvalResult:
     """
     Return EvalResult after prompt_ensembling
@@ -252,6 +252,10 @@ def layer_ensembling(
     print("layer_ensembling", device)
     print("layer_ensembling layer_outputs[0].val_gt.device", layer_outputs[0].val_gt.device)
     y_logits_collection = []
+
+    for layer_output in layer_outputs:
+        layer_output.val_credences = layer_output.val_credences.to('cpu')
+        layer_output.val_gt = layer_output.val_gt.to('cpu')
 
     num_classes = 2
     y_true = layer_outputs[0].val_gt
