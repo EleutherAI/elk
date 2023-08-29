@@ -143,6 +143,7 @@ class Elicit(Run):
     def train_and_save_reporter(
         self, device, layer, out_dir, train_dict, prompt_index=None
     ) -> ReporterWithInfo:
+        print(f"train_and_save_reporter device {device}")
         (first_train_h, train_gt, _), *rest = train_dict.values()  # TODO can remove?
         (_, v, k, d) = first_train_h.shape
         if not all(other_h.shape[-1] == d for other_h, _, _ in rest):

@@ -37,8 +37,12 @@ def roc_auc(y_true: Tensor, y_pred: Tensor) -> Tensor:
             f"y_true and y_pred should have the same shape; "
             f"got {y_true.shape} and {y_pred.shape}"
         )
+    
     if y_true.dim() not in (1, 2):
         raise ValueError("y_true and y_pred should be 1D or 2D tensors")
+
+    print("y_true roc_auc", y_true.device)
+    print("y_pred roc_auc", y_pred.device)
 
     # Sort y_pred in descending order and get indices
     indices = y_pred.argsort(descending=True, dim=-1)
@@ -105,6 +109,7 @@ def roc_auc_ci(
     # Either the number of samples (1D) or the number of clusters (2D)
     N = y_true.shape[0]
     device = y_true.device
+    print("roc_auc_ci y_true.device", y_true.device)
 
     # Generate random indices for bootstrap samples (shape: [num_bootstraps, N])
     rng = torch.Generator(device=device).manual_seed(seed)
@@ -113,6 +118,8 @@ def roc_auc_ci(
     # Create bootstrap samples of true labels and predicted probabilities
     y_true_bootstraps = y_true[indices]
     y_pred_bootstraps = y_pred[indices]
+
+    print("roc_auc_ci y_true_bootstraps.device", y_true_bootstraps.device)
 
     # Compute ROC AUC scores for bootstrap samples. If the inputs were 2D, the
     # bootstrapped tensors are now 3D [num_bootstraps, N, cluster_size], so we

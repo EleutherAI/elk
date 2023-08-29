@@ -249,17 +249,19 @@ def layer_ensembling(
         calibrated accuracies, calibrated errors, and AUROC.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("layer_ensembling", device)
+    print("layer_ensembling layer_outputs[0].val_gt.device", layer_outputs[0].val_gt.device)
     y_logits_collection = []
 
     num_classes = 2
-    y_true = layer_outputs[0].val_gt.to(device)
+    y_true = layer_outputs[0].val_gt
 
     for layer_output in layer_outputs:
         # all y_trues are identical, so just get the first
-        y_logits = layer_output.val_credences.to(device)
+        y_logits = layer_output.val_credences
         y_logits, y_true, num_classes = prepare(
             y_logits=y_logits,
-            y_true=layer_outputs[0].val_gt.to(device),
+            y_true=layer_outputs[0].val_gt,
             prompt_ensembling=prompt_ensembling,
         )
         y_logits_collection.append(y_logits)
@@ -269,6 +271,8 @@ def layer_ensembling(
     y_logits_stacked = torch.stack(y_logits_collection[middle_index:])
     # layer prompt_ensembling of the stacked logits
     y_logits_stacked_mean = torch.mean(y_logits_stacked, dim=0)
+
+    print(y_true.device)
 
     return calc_eval_results(
         y_true=y_true,
