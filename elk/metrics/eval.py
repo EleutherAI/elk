@@ -96,7 +96,7 @@ def calc_calibrated_accuracies(y_true, pos_probs) -> tuple[AccuracyResult, float
         AccuracyResult: A dictionary containing the accuracy and confidence interval.
     """
 
-    cal_thresh = pos_probs.float().quantile(y_true.float().mean())
+    cal_thresh = pos_probs.float().quantile(y_true.float().mean()).item()
     cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
     cal_acc = accuracy_ci(y_true, cal_preds)
     return cal_acc, cal_thresh
