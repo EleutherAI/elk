@@ -329,7 +329,7 @@ def extract_hiddens(
             **hidden_dict,
         )
         if has_lm_preds:
-            out_record["model_logits"] = lm_logits
+            out_record["model_logits"] = lm_logits.log_softmax(dim=-1)
 
         num_yielded += 1
         yield out_record
