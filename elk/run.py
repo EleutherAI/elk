@@ -97,6 +97,8 @@ class Run(ABC, Serializable):
             )
 
         devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
+        if devices == ['mps']:
+            devices = ['cpu']
         num_devices = len(devices)
         func: Callable[[int], dict[str, pd.DataFrame]] = partial(
             self.apply_to_layer, devices=devices, world_size=num_devices
