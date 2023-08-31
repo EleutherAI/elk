@@ -55,7 +55,10 @@ def select_usable_devices(
     # Trivial case: no GPUs requested or available
     num_visible = torch.cuda.device_count()
     if num_gpus == 0 or num_visible == 0:
-        return ["cpu"]
+        if torch.backends.mps.is_available():
+            return ["mps"]
+        else:
+            return ["cpu"]
 
     # Sanity checks
     if num_gpus > num_visible:

@@ -47,7 +47,7 @@ def instantiate_model(
             kwargs["torch_dtype"] = torch.float16
 
         # CPUs generally don't support anything other than fp32.
-        elif device.type == "cpu":
+        elif device.type in ("cpu", "mps"):
             kwargs["torch_dtype"] = torch.float32
 
         # If the model is fp32 but bf16 is available, convert to bf16.
