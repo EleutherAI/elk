@@ -41,25 +41,25 @@ class Eval(Run):
         reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
         reporter = torch.load(reporter_path, map_location=device)
 
-        out_probs = defaultdict(dict)
+        out_logprobs = defaultdict(dict)
         row_bufs = defaultdict(list)
         for ds_name, val_data in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
-            if self.save_probs:
-                out_probs[ds_name]["texts"] = val_data.text_questions
-                out_probs[ds_name]["labels"] = val_data.labels.cpu()
-                out_probs[ds_name]["reporter"] = dict()
-                out_probs[ds_name]["lr"] = dict()
-                out_probs[ds_name]["lm"] = dict()
+            if self.save_logprobs:
+                out_logprobs[ds_name]["texts"] = val_data.text_questions
+                out_logprobs[ds_name]["labels"] = val_data.labels.cpu()
+                out_logprobs[ds_name]["reporter"] = dict()
+                out_logprobs[ds_name]["lr"] = dict()
+                out_logprobs[ds_name]["lm"] = dict()
 
             val_credences = reporter(val_data.hiddens)
             for mode in ("none", "partial", "full"):
-                if self.save_probs:
-                    out_probs[ds_name]["reporter"][mode] = get_logprobs(
+                if self.save_logprobs:
+                    out_logprobs[ds_name]["reporter"][mode] = get_logprobs(
                         val_credences, mode
                     ).cpu()
-                    out_probs[ds_name]["lm"][mode] = (
+                    out_logprobs[ds_name]["lm"][mode] = (
                         get_logprobs(val_data.lm_preds, mode).cpu()
                         if val_data.lm_preds is not None
                         else None
@@ -88,8 +88,8 @@ class Eval(Run):
 
                 lr_dir = experiment_dir / "lr_models"
                 if not self.skip_supervised and lr_dir.exists():
-                    if self.save_probs:
-                        out_probs[ds_name]["lr"][mode] = dict()
+                    if self.save_logprobs:
+                        out_logprobs[ds_name]["lr"][mode] = dict()
 
                     with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
                         lr_models = torch.load(f, map_location=device)
@@ -99,8 +99,8 @@ class Eval(Run):
                     for i, model in enumerate(lr_models):
                         model.eval()
                         val_lr_credences = model(val_data.hiddens)
-                        if self.save_probs:
-                            out_probs[ds_name]["lr"][mode][i] = get_logprobs(
+                        if self.save_logprobs:
+                            out_logprobs[ds_name]["lr"][mode][i] = get_logprobs(
                                 val_lr_credences, mode
                             ).cpu()
                         row_bufs["lr_eval"].append(
@@ -114,4 +114,4 @@ class Eval(Run):
                             }
                         )
 
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, out_probs
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, out_logprobs

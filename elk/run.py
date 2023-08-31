@@ -60,8 +60,8 @@ class Run(ABC, Serializable):
     num_gpus: int = -1
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
-    save_probs: bool = field(default=False, to_dict=False)
-    """ saves probs.pt containing {<dsname>: {"texts": [n, v, 2], "labels": [n,]
+    save_logprobs: bool = field(default=False, to_dict=False)
+    """ saves logprobs.pt containing {<dsname>: {"texts": [n, v, 2], "labels": [n,]
             "lm": {"none": [n, v, 2], "partial": [n, v], "full": [n,]},
             "reporter": {<layer>: {"none": [n, v, 2], "partial": [n, v], "full": [n,]}},
             "lr": {<layer>: {<inlp_iter>: {"none": ..., "partial": ..., "full": ...}}}
@@ -196,16 +196,16 @@ class Run(ABC, Serializable):
         with ctx.Pool(num_devices) as pool:
             mapper = pool.imap_unordered if num_devices > 1 else map
             df_buffers = defaultdict(list)
-            probs_dicts = defaultdict(dict)
+            logprobs_dicts = defaultdict(dict)
 
             try:
-                for layer, (df_dict, probs_dict) in tqdm(
+                for layer, (df_dict, logprobs_dict) in tqdm(
                     zip(layers, mapper(func, layers)), total=len(layers)
                 ):
                     for k, v in df_dict.items():
                         df_buffers[k].append(v)
-                    for k, v in probs_dict.items():
-                        probs_dicts[k][layer] = probs_dict[k]
+                    for k, v in logprobs_dict.items():
+                        logprobs_dicts[k][layer] = logprobs_dict[k]
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
@@ -213,17 +213,21 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
-                if self.save_probs:
+                if self.save_logprobs:
                     save_dict = defaultdict(dict)
-                    for ds_name, probs_dict in probs_dicts.items():
-                        save_dict[ds_name]["texts"] = probs_dict[layers[0]]["texts"]
-                        save_dict[ds_name]["labels"] = probs_dict[layers[0]]["labels"]
-                        save_dict[ds_name]["lm"] = probs_dict[layers[0]]["lm"]
+                    for ds_name, logprobs_dict in logprobs_dicts.items():
+                        save_dict[ds_name]["texts"] = logprobs_dict[layers[0]]["texts"]
+                        save_dict[ds_name]["labels"] = logprobs_dict[layers[0]][
+                            "labels"
+                        ]
+                        save_dict[ds_name]["lm"] = logprobs_dict[layers[0]]["lm"]
                         save_dict[ds_name]["reporter"] = dict()
                         save_dict[ds_name]["lr"] = dict()
-                        for layer, probs_dict_by_mode in probs_dict.items():
-                            save_dict[ds_name]["reporter"][layer] = probs_dict_by_mode[
-                                "reporter"
+                        for layer, logprobs_dict_by_mode in logprobs_dict.items():
+                            save_dict[ds_name]["reporter"][
+                                layer
+                            ] = logprobs_dict_by_mode["reporter"]
+                            save_dict[ds_name]["lr"][layer] = logprobs_dict_by_mode[
+                                "lr"
                             ]
-                            save_dict[ds_name]["lr"][layer] = probs_dict_by_mode["lr"]
-                    torch.save(save_dict, self.out_dir / "probs.pt")
+                    torch.save(save_dict, self.out_dir / "logprobs.pt")

@@ -137,26 +137,26 @@ class Elicit(Run):
             lr_models = []
 
         row_bufs = defaultdict(list)
-        out_probs = defaultdict(dict)
+        out_logprobs = defaultdict(dict)
         for ds_name in val_dict:
             val, train = val_dict[ds_name], train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
 
-            if self.save_probs:
-                out_probs[ds_name]["texts"] = val.text_questions
-                out_probs[ds_name]["labels"] = val.labels.cpu()
-                out_probs[ds_name]["reporter"] = dict()
-                out_probs[ds_name]["lr"] = dict()
-                out_probs[ds_name]["lm"] = dict()
+            if self.save_logprobs:
+                out_logprobs[ds_name]["texts"] = val.text_questions
+                out_logprobs[ds_name]["labels"] = val.labels.cpu()
+                out_logprobs[ds_name]["reporter"] = dict()
+                out_logprobs[ds_name]["lr"] = dict()
+                out_logprobs[ds_name]["lm"] = dict()
 
             val_credences = reporter(val.hiddens)
             train_credences = reporter(train.hiddens)
             for mode in ("none", "partial", "full"):
-                if self.save_probs:
-                    out_probs[ds_name]["reporter"][mode] = (
+                if self.save_logprobs:
+                    out_logprobs[ds_name]["reporter"][mode] = (
                         get_logprobs(val_credences, mode).detach().cpu()
                     )
-                    out_probs[ds_name]["lm"][mode] = (
+                    out_logprobs[ds_name]["lm"][mode] = (
                         get_logprobs(val.lm_preds, mode).detach().cpu()
                         if val.lm_preds is not None
                         else None
@@ -201,15 +201,15 @@ class Elicit(Run):
                     )
 
                 if self.supervised != "none":
-                    if self.save_probs:
-                        out_probs[ds_name]["lr"][mode] = dict()
+                    if self.save_logprobs:
+                        out_logprobs[ds_name]["lr"][mode] = dict()
 
                     for i, model in enumerate(lr_models):
                         model.eval()
                         val_lr_credences = model(val.hiddens)
                         train_lr_credences = model(train.hiddens)
-                        if self.save_probs:
-                            out_probs[ds_name]["lr"][mode][i] = (
+                        if self.save_logprobs:
+                            out_logprobs[ds_name]["lr"][mode][i] = (
                                 get_logprobs(val_lr_credences, mode).detach().cpu()
                             )
 
@@ -234,4 +234,4 @@ class Elicit(Run):
                             }
                         )
 
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, out_probs
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, out_logprobs
