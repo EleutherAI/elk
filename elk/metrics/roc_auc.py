@@ -106,7 +106,6 @@ def roc_auc_ci(
     # Either the number of samples (1D) or the number of clusters (2D)
     N = y_true.shape[0]
     device = y_true.device
-    print("roc_auc_ci y_true.device", y_true.device)
 
     # Generate random indices for bootstrap samples (shape: [num_bootstraps, N])
     rng = torch.Generator(device=device).manual_seed(seed)
