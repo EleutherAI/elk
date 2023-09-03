@@ -47,14 +47,20 @@ class EvalResult:
             else {}
         )
         auroc_dict = {f"{prefix}auroc_{k}": v for k, v in asdict(self.roc_auc).items()}
-        return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict, f"{prefix}cal_thresh": self.cal_thresh}
+        return {
+            **auroc_dict,
+            **cal_acc_dict,
+            **acc_dict,
+            **cal_dict,
+            f"{prefix}cal_thresh": self.cal_thresh,
+        }
 
 
 def calc_auroc(
-        y_logits: Tensor,
-        y_true: Tensor,
-        prompt_ensembling: PromptEnsembling,
-        num_classes: int,
+    y_logits: Tensor,
+    y_true: Tensor,
+    prompt_ensembling: PromptEnsembling,
+    num_classes: int,
 ) -> RocAucResult:
     """
     Calculate the AUROC
@@ -139,9 +145,9 @@ def calc_accuracies(y_logits, y_true, ensembling) -> AccuracyResult:
 
 
 def evaluate_preds(
-        y_true: Tensor,
-        y_logits: Tensor,
-        prompt_ensembling: PromptEnsembling = PromptEnsembling.NONE,
+    y_true: Tensor,
+    y_logits: Tensor,
+    prompt_ensembling: PromptEnsembling = PromptEnsembling.NONE,
 ) -> EvalResult:
     """
     Evaluate the performance of a classification model.
@@ -174,10 +180,10 @@ def prepare(y_logits: Tensor, y_true: Tensor, prompt_ensembling: PromptEnsemblin
 
 
 def calc_eval_results(
-        y_true: Tensor,
-        y_logits: Tensor,
-        prompt_ensembling: PromptEnsembling,
-        num_classes: int,
+    y_true: Tensor,
+    y_logits: Tensor,
+    prompt_ensembling: PromptEnsembling,
+    num_classes: int,
 ) -> EvalResult:
     """
     Calculate the evaluation results
@@ -192,9 +198,11 @@ def calc_eval_results(
         calibrated accuracies, calibrated errors, and AUROC.
     """
     acc = calc_accuracies(y_logits, y_true, prompt_ensembling)
-    pooled_logits = (y_logits[..., 1]
-                     if prompt_ensembling == PromptEnsembling.NONE
-                     else y_logits[..., 1] - y_logits[..., 0])
+    pooled_logits = (
+        y_logits[..., 1]
+        if prompt_ensembling == PromptEnsembling.NONE
+        else y_logits[..., 1] - y_logits[..., 0]
+    )
     pos_probs = torch.sigmoid(pooled_logits)
     cal_acc, cal_thresh = (
         calc_calibrated_accuracies(y_true=y_true, pos_probs=pos_probs)
@@ -248,14 +256,12 @@ def layer_ensembling(
         EvalResult: The result of evaluating a classifier containing the accuracy,
         calibrated accuracies, calibrated errors, and AUROC.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("layer_ensembling", device)
-    print("layer_ensembling layer_outputs[0].val_gt.device", layer_outputs[0].val_gt.device)
+    torch.device("cuda" if torch.cuda.is_available() else "cpu")
     y_logits_collection = []
 
     for layer_output in layer_outputs:
-        layer_output.val_credences = layer_output.val_credences.to('cpu')
-        layer_output.val_gt = layer_output.val_gt.to('cpu')
+        layer_output.val_credences = layer_output.val_credences.to("cpu")
+        layer_output.val_gt = layer_output.val_gt.to("cpu")
 
     num_classes = 2
     y_true = layer_outputs[0].val_gt
@@ -275,8 +281,6 @@ def layer_ensembling(
     y_logits_stacked = torch.stack(y_logits_collection[middle_index:])
     # layer prompt_ensembling of the stacked logits
     y_logits_stacked_mean = torch.mean(y_logits_stacked, dim=0)
-
-    print(y_true.device)
 
     return calc_eval_results(
         y_true=y_true,
