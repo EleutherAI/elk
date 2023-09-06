@@ -37,8 +37,9 @@ dependencies = [
     # For visualization of results
     "plotly==5.14.1",
     "kaleido==0.2.1",
-    "rich==13.3.5"
-
+    "rich==13.3.5",
+    # neeeded to instantiate tokenizer for encoder-only models
+    "sentencepiece==0.1.99"
 ]
 version = "0.1.1"
 
