@@ -31,6 +31,9 @@ def save_debug_log(datasets: list[DatasetDictWithName], out_dir: Path) -> None:
         else:
             train_split, val_split = select_train_val_splits(ds)
 
+        if len(ds[val_split]) == 0:
+            logging.warning(f"Val split '{val_split}' is empty!")
+            continue
         text_questions = ds[val_split][0]["text_questions"]
         template_ids = ds[val_split][0]["variant_ids"]
         label = ds[val_split][0]["label"]
