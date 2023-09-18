@@ -35,7 +35,7 @@ from ..utils import (
     prevent_name_conflicts,
     select_split,
     select_train_val_splits,
-    select_usable_devices,
+    select_usable_devices_split,
 )
 from .dataset_name import (
     DatasetDictWithName,
@@ -63,6 +63,10 @@ class Extract(Serializable):
 
     int8: bool = False
     """Whether to perform inference in mixed int8 precision with `bitsandbytes`."""
+
+    gpus_per_model: int = 1
+    """Number of GPUs to use per model. If >1, the model will be loaded using
+    huggingface accelerate."""
 
     max_examples: tuple[int, int] = (1000, 1000)
     """Maximum number of examples to use from each split of the dataset."""
@@ -146,7 +150,7 @@ class Extract(Serializable):
 def extract_hiddens(
     cfg: "Extract",
     *,
-    device: str | torch.device = "cpu",
+    devices: tuple[str | torch.device, ...] = ("cpu",),
     split_type: Literal["train", "val"] = "train",
     rank: int = 0,
     world_size: int = 1,
@@ -165,7 +169,7 @@ def extract_hiddens(
     # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
     # welcome message on every rank
     with redirect_stdout(None) if rank != 0 else nullcontext():
-        model = instantiate_model(cfg.model, device=device, load_in_8bit=cfg.int8)
+        model = instantiate_model(cfg.model, devices=devices, load_in_8bit=cfg.int8)
         tokenizer = instantiate_tokenizer(
             cfg.model, truncation_side="left", verbose=rank == 0
         )
@@ -215,7 +219,7 @@ def extract_hiddens(
             f"hidden_{layer_idx}": torch.empty(
                 num_variants,
                 model.config.hidden_size,
-                device=device,
+                device=devices[0],
                 dtype=torch.int16,
             )
             for layer_idx in layer_indices
@@ -232,7 +236,7 @@ def extract_hiddens(
                 # Keep [CLS] and [SEP] for BERT-style models
                 add_special_tokens=True,
                 return_tensors="pt",
-            ).to(device)
+            ).to(devices[0])
 
             ids = assert_type(Tensor, encoding.input_ids)
 
@@ -343,7 +347,9 @@ def extract(
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
     info, features = hidden_features(cfg)
 
-    devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
+    devices_by_rank = select_usable_devices_split(
+        num_gpus, cfg.gpus_per_model, min_memory=min_gpu_mem
+    )
     limits = cfg.max_examples
     splits = assert_type(SplitDict, info.splits)
 
@@ -366,6 +372,7 @@ def extract(
         else:
             print(f"{pretty_name} using '{split_name}' for validation")
 
+    world_size = len(devices_by_rank)
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,
@@ -378,11 +385,11 @@ def extract(
                 dataset_name=v.dataset_name,
             ),
             gen_kwargs=dict(
-                cfg=[cfg] * len(devices),
-                device=devices,
-                rank=list(range(len(devices))),
-                split_type=[ty] * len(devices),
-                world_size=[len(devices)] * len(devices),
+                cfg=[cfg] * world_size,
+                devices=devices_by_rank,
+                rank=list(range(world_size)),
+                split_type=[ty] * world_size,
+                world_size=[world_size] * world_size,
             ),
         )
         for limit, (split_name, v), ty in zip(limits, splits.items(), split_types)
@@ -395,7 +402,7 @@ def extract(
     for split, builder in builders.items():
         builder.download_and_prepare(
             download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
-            num_proc=len(devices),
+            num_proc=world_size,
         )
         ds[split] = builder.as_dataset(split=split)
 
