@@ -20,8 +20,6 @@ def load_prompts(
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
     template_path: str | None = None,
-    rank: int = 0,
-    world_size: int = 1,
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified dataset.
 
@@ -33,8 +31,6 @@ def load_prompts(
         seed: The seed to use for prompt randomization.
         split_type: Whether to use the train or val split of the dataset.
         template_path: Path to feed into `DatasetTemplates` for loading templates.
-        rank: The rank of the current process. Defaults to 0.
-        world_size: The number of processes. Defaults to 1.
 
     Returns:
         An iterable of prompt dictionaries.
@@ -44,10 +40,11 @@ def load_prompts(
     ds_dict = assert_type(dict, load_dataset(ds_name, config_name or None))
     split_name = select_split(ds_dict, split_type)
 
-    ds = assert_type(Dataset, ds_dict[split_name].shuffle(seed=seed))
-    if world_size > 1:
-        ds = ds.shard(world_size, rank)
-
+    ds = assert_type(Dataset, ds_dict[split_name])
+    if "row_id" not in ds.column_names:
+        ds = ds.add_column("row_id", range(len(ds)))  # type: ignore
+    ds = ds.shuffle(seed=seed)
+    
     if template_path is None:
         prompter = DatasetTemplates(ds_name, config_name)
     else:
@@ -58,8 +55,8 @@ def load_prompts(
 
     num_templates = len(prompter.templates)
     assert num_templates > 0
-    if rank == 0:
-        print(f"Extracting {num_templates} variants of each prompt")
+    
+    print(f"Extracting {num_templates} variants of each prompt")
 
     label_column = prompter.label_column or infer_label_column(ds.features)
 
@@ -72,8 +69,7 @@ def load_prompts(
         # Which classes are actually present in this split of the dataset?
         # This is shockingly fast since it uses an optimized Apache Arrow primitive.
         label_choices = sorted(ds.unique(label_column))
-        if rank == 0:
-            print(f"Using the following pseudo-labels: {label_choices}")
+        print(f"Using the following pseudo-labels: {label_choices}")
 
     rng = Random(seed)
     if num_shots > 0:
@@ -94,8 +90,7 @@ def load_prompts(
             label_col=label_column,
         )
     else:
-        if rank == 0:
-            print("No label column found, not balancing")
+        print("No label column found, not balancing")
         ds = ds.to_iterable_dataset()
 
     for example in ds:
@@ -135,7 +130,7 @@ def _convert_to_prompts(
             fewshot_texts = list(map(template.apply, fewshot_examples))
             statement = "\n\n".join(fewshot_texts) + "\n\n" + statement
 
-        prompts.append(dict(statement=statement))
+        prompts.append(dict(text=statement))
 
     # Sanity check: variants should be unique
     ((maybe_dup, dup_count),) = prompt_counter.most_common(1)
@@ -146,6 +141,7 @@ def _convert_to_prompts(
     # If they're not, we need to convert them with index(). label_choices is guaranteed
     # to be sorted (see above).
     return dict(
+        row_id=example["row_id"],
         label=label_choices.index(label),
         prompts=prompts,
         template_names=[template.name for template in templates],

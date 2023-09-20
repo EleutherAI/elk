@@ -10,6 +10,7 @@ from warnings import filterwarnings
 import torch
 from datasets import (
     Array2D,
+    Dataset,
     DatasetDict,
     DatasetInfo,
     DownloadMode,
@@ -43,7 +44,7 @@ from .dataset_name import (
 )
 from .generator import _GeneratorBuilder
 from .prompt_loading import load_prompts
-
+from .inference_server import InferenceServer
 
 @dataclass
 class Extract(Serializable):
@@ -64,9 +65,8 @@ class Extract(Serializable):
     int8: bool = False
     """Whether to perform inference in mixed int8 precision with `bitsandbytes`."""
 
-    gpus_per_model: int = 1
-    """Number of GPUs to use per model. If >1, the model will be loaded using
-    huggingface accelerate."""
+    fsdp: bool = False
+    """Whether to use FullyShardedDataParallel for inference."""
 
     max_examples: tuple[int, int] = (1000, 1000)
     """Maximum number of examples to use from each split of the dataset."""
@@ -93,10 +93,6 @@ class Extract(Serializable):
 
     token_loc: Literal["first", "last", "penultimate", "mean"] = "last"
     """The location of the token to extract hidden states from."""
-
-    use_encoder_states: bool = False
-    """Whether to extract hidden states from the encoder instead of the decoder in the
-    case of encoder-decoder models."""
 
     def __post_init__(self, layer_stride: int):
         if self.num_variants != -1:
@@ -147,149 +143,88 @@ class Extract(Serializable):
 
 
 @torch.inference_mode()
-def extract_hiddens(
+def get_encodings(
     cfg: "Extract",
-    *,
-    devices: tuple[str | torch.device, ...] = ("cpu",),
     split_type: Literal["train", "val"] = "train",
-    rank: int = 0,
-    world_size: int = 1,
-) -> Iterable[dict]:
-    """Run inference on a model with a set of prompts, yielding the hidden states."""
+) -> Dataset:
+    """Apply the prompt templates to the dataset and return the tokenized LM inputs.
+    Each dict contains the keys `input_ids`, `attention_mask`, `labels`,
+    `output_hidden_states`, `variant_id`, `row_id`, `text`, and `label`.
+    """
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-    # Silence datasets logging messages from all but the first process
-    if rank != 0:
-        filterwarnings("ignore")
-        logging.disable(logging.CRITICAL)
 
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
     # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
     # welcome message on every rank
-    with redirect_stdout(None) if rank != 0 else nullcontext():
-        model = instantiate_model(cfg.model, devices=devices, load_in_8bit=cfg.int8)
-        tokenizer = instantiate_tokenizer(
-            cfg.model, truncation_side="left", verbose=rank == 0
-        )
+    tokenizer = instantiate_tokenizer(cfg.model, truncation_side="left")
 
-    is_enc_dec = model.config.is_encoder_decoder
-    if is_enc_dec and cfg.use_encoder_states:
-        assert hasattr(model, "get_encoder") and callable(model.get_encoder)
-        model = assert_type(PreTrainedModel, model.get_encoder())
-        is_enc_dec = False
-
+    model_config = AutoConfig.from_pretrained(cfg.model)
+    # TODO: support using the encoder only of an encoder-decoder model
+    
     prompt_ds = load_prompts(
         ds_names[0],
         num_shots=cfg.num_shots,
         split_type=split_type,
         template_path=cfg.template_path,
-        rank=rank,
-        world_size=world_size,
         seed=cfg.seed,
     )
 
-    # Add one to the number of layers to account for the embedding layer
-    layer_indices = cfg.layers or tuple(range(model.config.num_hidden_layers + 1))
+    max_examples = cfg.max_examples[0 if split_type == "train" else 1]
 
-    global_max_examples = cfg.max_examples[0 if split_type == "train" else 1]
-
-    # break `max_examples` among the processes roughly equally
-    max_examples = global_max_examples // world_size
     max_length = assert_type(int, tokenizer.model_max_length)
 
-    # Keep track of the number of examples we've yielded so far. We can't do something
-    # clean like `islice` the dataset, because we skip examples that are too long, and
-    # we can't predict how many of those there will be.
-    num_yielded = 0
-
-    # the last process gets the remainder (which is usually small)
-    if rank == world_size - 1:
-        max_examples += global_max_examples % world_size
-
+    out_records = []
     for example in prompt_ds:
-        # Check if we've yielded enough examples
-        if num_yielded >= max_examples:
-            break
-
         num_variants = len(example["prompts"])
 
-        hidden_dict = {
-            f"hidden_{layer_idx}": torch.empty(
-                num_variants,
-                model.config.hidden_size,
-                device=devices[0],
-                dtype=torch.int16,
-            )
-            for layer_idx in layer_indices
-        }
+        # Check if we've yielded enough examples
+        if len(out_records) >= max_examples * num_variants:
+            break
 
-        text_questions = []
+        # Throw out all variants if any of them are too long
+        any_too_long = False
+        record_variants = []
 
         # Iterate over variants
         for i, record in enumerate(example["prompts"]):
-            text = record["statement"]
+            text = record["text"]
 
             encoding = tokenizer(
                 text,
                 # Keep [CLS] and [SEP] for BERT-style models
                 add_special_tokens=True,
                 return_tensors="pt",
-            ).to(devices[0])
+            )
 
             ids = assert_type(Tensor, encoding.input_ids)
 
             # If this input is too long, skip it
             if ids.shape[-1] > max_length:
+                any_too_long = True
                 break
-            else:
-                # Record the EXACT question we fed to the model
-                variant_question = text
 
-            inputs: dict[str, Tensor | None] = dict(input_ids=ids.long())
-            outputs = model(**inputs, output_hidden_states=True)
+            inputs: dict[str, Tensor | None | bool] = dict(input_ids=ids.long())
+            inputs["output_hidden_states"] = True
+        
+            out_record: dict[str, Any] = dict(
+                row_id=example["row_id"],
+                variant_id=example["template_names"][i],
+                label=example["label"],
+                text=text,
+                **inputs,
+            )
 
-            hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-            # Throw out layers we don't care about
-            hiddens = [hiddens[i] for i in layer_indices]
-
-            # Current shape of each element: (batch_size, seq_len, hidden_size)
-            if cfg.token_loc == "first":
-                hiddens = [h[..., 0, :] for h in hiddens]
-            elif cfg.token_loc == "last":
-                hiddens = [h[..., -1, :] for h in hiddens]
-            elif cfg.token_loc == "penultimate":
-                hiddens = [h[..., -2, :] for h in hiddens]
-            elif cfg.token_loc == "mean":
-                hiddens = [h.mean(dim=-2) for h in hiddens]
-            else:
-                raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
-
-            for layer_idx, hidden in zip(layer_indices, hiddens):
-                hidden_dict[f"hidden_{layer_idx}"][i] = float_to_int16(hidden)
-
-            # Usual case: we have the expected number of pseudolabels
-            text_questions.append(variant_question)
-
-        # We skipped a variant because it was too long; move on to the next example
-        if len(text_questions) != num_variants:
+            record_variants.append(out_record)
+        
+        if any_too_long:
             continue
-
-        out_record: dict[str, Any] = dict(
-            label=example["label"],
-            variant_ids=example["template_names"],
-            text_questions=text_questions,
-            **hidden_dict,
-        )
-
-        num_yielded += 1
-        yield out_record
-
-
-# Dataset.from_generator wraps all the arguments in lists, so we unpack them here
-def _extraction_worker(**kwargs):
-    yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
+        out_records.extend(record_variants)
+    
+    # transpose the list of dicts into a dict of lists
+    out_records = {k: [d[k] for d in out_records] for k in out_records[0]}
+    return Dataset.from_dict(out_records)
 
 
 def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
@@ -321,12 +256,13 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
         for layer in cfg.layers or range(model_cfg.num_hidden_layers + 1)
     }
     other_cols = {
+        "row_id": Value(dtype="int64"),
         "variant_ids": Sequence(
             Value(dtype="string"),
             length=num_variants,
         ),
         "label": Value(dtype="int64"),
-        "text_questions": Sequence(
+        "texts": Sequence(
             Value(dtype="string"),
             length=num_variants,
         ),
@@ -345,68 +281,134 @@ def extract(
     split_type: Literal["train", "val", None] = None,
 ) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
-    info, features = hidden_features(cfg)
+    with InferenceServer(model_str=cfg.model, num_workers=num_gpus, cpu_offload=True, fsdp=cfg.fsdp) as server:
+        print(f"Using {server.num_workers} workers for inference")
 
-    devices_by_rank = select_usable_devices_split(
-        num_gpus, cfg.gpus_per_model, min_memory=min_gpu_mem
-    )
-    limits = cfg.max_examples
-    splits = assert_type(SplitDict, info.splits)
+        info, features = hidden_features(cfg)
 
-    pretty_name = colorize(assert_type(str, cfg.datasets[0]), highlight_color)
-    if split_type is None:
-        train, val = select_train_val_splits(splits)
+        limits = cfg.max_examples
+        splits = assert_type(SplitDict, info.splits)
 
-        print(f"{pretty_name} using '{train}' for training and '{val}' for validation")
-        splits = SplitDict({train: splits[train], val: splits[val]})
-        split_types = ["train", "val"]
-    else:
-        # Remove the split we're not using
-        limits = [limits[0]] if split_type == "train" else limits
-        split_name = select_split(splits, split_type)
-        splits = SplitDict({split_name: splits[split_name]})
-        split_types = [split_type]
+        pretty_name = colorize(assert_type(str, cfg.datasets[0]), highlight_color)
+        if split_type is None:
+            train, val = select_train_val_splits(splits)
 
-        if split_type == "train":
-            print(f"{pretty_name} using '{split_name}' for training")
+            print(f"{pretty_name} using '{train}' for training and '{val}' for validation")
+            splits = SplitDict({train: splits[train], val: splits[val]})
+            split_types = ["train", "val"]
         else:
-            print(f"{pretty_name} using '{split_name}' for validation")
+            # Remove the split we're not using
+            limits = [limits[0]] if split_type == "train" else limits
+            split_name = select_split(splits, split_type)
+            splits = SplitDict({split_name: splits[split_name]})
+            split_types = [split_type]
 
-    world_size = len(devices_by_rank)
-    builders = {
-        split_name: _GeneratorBuilder(
-            cache_dir=None,
-            features=features,
-            generator=_extraction_worker,
-            split_name=split_name,
-            split_info=SplitInfo(
-                name=split_name,
-                num_examples=min(limit, v.num_examples) * len(cfg.datasets),
-                dataset_name=v.dataset_name,
-            ),
-            gen_kwargs=dict(
-                cfg=[cfg] * world_size,
-                devices=devices_by_rank,
-                rank=list(range(world_size)),
-                split_type=[ty] * world_size,
-                world_size=[world_size] * world_size,
-            ),
-        )
-        for limit, (split_name, v), ty in zip(limits, splits.items(), split_types)
-    }
-    import multiprocess as mp
+            if split_type == "train":
+                print(f"{pretty_name} using '{split_name}' for training")
+            else:
+                print(f"{pretty_name} using '{split_name}' for validation")
+        split_types = assert_type(Iterable[Literal["train", "val"]], split_types)
 
-    mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
+        # Use a map to get the encodings for each split
+        # TODO: make sure this meshes well with HF caching--if it's too slow we need
+        # to use a map from the prompt dataset
+        encodings = {
+            split_name: get_encodings(
+                cfg,
+                split_type=ty,
+            )
+            for split_name, ty in zip(splits, split_types)
+        }
 
-    ds = dict()
-    for split, builder in builders.items():
-        builder.download_and_prepare(
-            download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
-            num_proc=world_size,
-        )
-        ds[split] = builder.as_dataset(split=split)
+        # define _extraction_worker in this context to yield modified outputs from server.imap
+        def extract_hiddens(
+                encodings: Dataset,
+                cfg: Extract,
+        ) -> Iterable[dict]:
+            
+            def select_hiddens(outputs: Any) -> dict:
+                model_config = AutoConfig.from_pretrained(cfg.model)
+                # Add one to the number of layers to account for the embedding layer
+                layer_indices = cfg.layers or tuple(range(model_config.num_hidden_layers + 1))
+                
+                hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+                # Throw out layers we don't care about
+                hiddens = [hiddens[i] for i in layer_indices]
 
-    dataset_dict = DatasetDict(ds)
+                # Current shape of each element: (batch_size, seq_len, hidden_size)
+                if cfg.token_loc == "first":
+                    hiddens = [h[..., 0, :] for h in hiddens]
+                elif cfg.token_loc == "last":
+                    hiddens = [h[..., -1, :] for h in hiddens]
+                elif cfg.token_loc == "penultimate":
+                    hiddens = [h[..., -2, :] for h in hiddens]
+                elif cfg.token_loc == "mean":
+                    hiddens = [h.mean(dim=-2) for h in hiddens]
+                else:
+                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+
+                hidden_dict = dict()
+                for layer_idx, hidden in zip(layer_indices, hiddens):
+                    hidden_dict[f"hidden_{layer_idx}"] = float_to_int16(hidden).cpu()
+                
+                return hidden_dict
+
+            buffer = []
+            for encoding, hidden_dict in zip(encodings, server.imap(select_hiddens, encodings)):
+                encoding = assert_type(dict, encoding)
+                row_id = encoding["row_id"]
+                if buffer and row_id != buffer[0]["row_id"]:
+                    # we've reached a new example, so yield the previous one
+                    assert all(d["row_id"] == buffer[0]["row_id"] for d in buffer)
+                    assert all(d["label"] == buffer[0]["label"] for d in buffer)
+                    out_record = dict(
+                        variant_ids=[d["variant_id"] for d in buffer],
+                        label=buffer[0]["label"],
+                        row_id=buffer[0]["row_id"],
+                        texts=[d["text"] for d in buffer],
+                        **{k: torch.stack([d[k] for d in buffer]) for k in hidden_dict},
+                    )
+                    yield out_record
+
+                    buffer = []
+                
+                # add to buffer
+                buffer.append(dict(**encoding, **hidden_dict))
+
+        def _extraction_worker(**kwargs):
+            yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
+        
+        builders = {
+            split_name: _GeneratorBuilder(
+                cache_dir=None,
+                features=features,
+                generator=_extraction_worker,
+                split_name=split_name,
+                split_info=SplitInfo(
+                    name=split_name,
+                    num_examples=min(limit, v.num_examples) * len(cfg.datasets),
+                    dataset_name=v.dataset_name,
+                ),
+                gen_kwargs=dict(
+                    cfg=[cfg],
+                    split_type=[ty],
+                ),
+            )
+            for limit, (split_name, v), ty in zip(limits, splits.items(), split_types)
+        }
+        import multiprocess as mp
+
+        mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
+
+        ds = dict()
+        for split, builder in builders.items():
+            builder.download_and_prepare(
+                download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
+                num_proc=1,
+            )
+            ds[split] = builder.as_dataset(split=split)  # type: ignore[assignment]
+
+        dataset_dict = DatasetDict(ds)
 
     return DatasetDictWithName(
         name=cfg.datasets[0],
