@@ -306,29 +306,15 @@ def extract(
                 print(f"{pretty_name} using '{split_name}' for training")
             else:
                 print(f"{pretty_name} using '{split_name}' for validation")
-
-        print("Creating model inputs...")
-        # Use a map to get the encodings for each split
-        # TODO: make sure this meshes well with HF caching--if it's too slow we need
-        # to use a map from the prompt dataset
-        encodings_dict = {
-            split_name: get_encodings(
-                cfg,
-                split_type=ty,  # type: ignore[assignment]
-            )
-            for split_name, ty in zip(splits, split_types)
-        }
         
-        print("Extracting hidden states...")
-        num_variants = len(encodings_dict[split_types[0]].unique("variant_id"))
-
         # define _extraction_worker in this context to yield modified outputs from server.imap
         def extract_hiddens(
                 cfg: Extract,
-                split_name: str,
+                split_type: Literal["train", "val"],
         ) -> Iterable[dict]:
             
-            encodings = encodings_dict[split_name]
+            encodings = get_encodings(cfg, split_type=split_type)
+            num_variants = len(encodings.unique("variant_id"))
             def select_hiddens(outputs: Any) -> dict:
                 # Add one to the number of layers to account for the embedding layer
                 layer_indices = cfg.layers or tuple(range(model_config.num_hidden_layers + 1))
@@ -392,14 +378,11 @@ def extract(
                 ),
                 gen_kwargs=dict(
                     cfg=[cfg],
-                    split_name=[split_name],
+                    split_type=[ty],
                 ),
             )
-            for limit, (split_name, v) in zip(limits, splits.items())
+            for limit, (split_name, v), ty in zip(limits, splits.items(), split_types)
         }
-        # import multiprocess as mp
-
-        # mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
 
         ds = dict()
         for split, builder in builders.items():
