@@ -41,7 +41,6 @@ class InferenceServer:
     """
     model_str: str
     num_workers: int = -1
-
     cpu_offload: bool = False
     fsdp: bool = False
 
@@ -182,6 +181,21 @@ class InferenceServer:
         if self._process_ctx is None:
             raise RuntimeError("Can't run inference on a server that isn't running")
 
+        assert "id" in dataset.column_names, "Dataset must contain an 'id' column"
+        if self.fsdp and len(dataset) % self.num_workers != 0:
+            # FSDP requires that the dataset's length is a multiple of the world size
+            assert self.num_workers != -1
+
+            # duplicate some rows
+            num_rows = len(dataset)
+            num_needed = self.num_workers - (num_rows % self.num_workers)
+            dummy = dataset[0]
+            dummy_id = dummy["id"]
+            for _ in range(num_needed):
+                dataset = dataset.add_item(dummy)  # type: ignore
+        else:
+            dummy_id = None
+
         # We need PyTorch tensors
         dataset = dataset.with_format("torch")
 
@@ -192,7 +206,16 @@ class InferenceServer:
             q.put((closure_pkl, shard))
 
         generator = round_robin(self._result_queues)  # type: ignore[arg-type]
-        yield from tqdm(generator, total=len(dataset), disable=not use_tqdm)
+        seen_dummy = False
+        for out in tqdm(generator, total=len(dataset), disable=not use_tqdm):
+            if out[0] == dummy_id:
+                if seen_dummy:
+                    continue  # ignore any extra dummy rows
+                else:
+                    seen_dummy = True
+            yield out
+
+                    
 
 
 def get_transformer_layer_cls(model: torch.nn.Module) -> Type[torch.nn.Module] | None:
@@ -289,8 +312,12 @@ def _worker(
             forward_prefetch=True,
         )
         model = cast(PreTrainedModel, wrapped)
+        model_forward = model.module.forward  # type: ignore[union-attr]
     else:
         model.to(device)  # type: ignore[union-attr]
+        model_forward = model.forward
+    
+    param_names = set(inspect.signature(model_forward).parameters.keys())
 
     # Breaks when x is the sentinel value indicating we should shut down
     in_queue = qs[rank]
@@ -308,12 +335,11 @@ def _worker(
             assert "id" in record, "Dataset must contain an 'id' column"
             id = record.pop("id").item()
             # Only pass the arguments that the model expects
-            param_names = set(inspect.signature(model.module.forward).parameters.keys())  # type: ignore[attr-defined]
             record = {k: v for k, v in record.items() if k in param_names}
             assert "input_ids" in record, "Dataset must contain an 'input_ids' column"
             inputs_cuda = pytree_map(lambda v: v.to(device).unsqueeze(0), record)
-            # We always want to return the hidden states
-            outputs = model(**inputs_cuda, output_hidden_states=True)
+            # TODO: have model kwargs so we don't have to duplicate kwargs at each row
+            outputs = model(**inputs_cuda)
 
             if callable(closure):
                 outputs = closure(outputs)

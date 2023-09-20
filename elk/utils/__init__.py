@@ -8,7 +8,7 @@ from .data_utils import (
     select_split,
     select_train_val_splits,
 )
-from .gpu_utils import select_usable_devices, select_usable_devices_split
+from .gpu_utils import select_usable_devices
 from .hf_utils import instantiate_model, instantiate_tokenizer, is_autoregressive
 from .math_util import batch_cov, cov_mean_fused, stochastic_round_constrained
 from .pretty import Color, colorize
@@ -36,6 +36,5 @@ __all__ = [
     "select_split",
     "select_train_val_splits",
     "select_usable_devices",
-    "select_usable_devices_split",
     "stochastic_round_constrained",
 ]

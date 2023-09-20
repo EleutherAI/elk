@@ -32,6 +32,7 @@ class _GeneratorConfig(BuilderConfig):
             for k, v in config_kwargs.get("gen_kwargs", {}).items()
             if k not in ("device", "rank", "world_size")
         }
+        config_kwargs.pop("generator")  # pickling InferenceServer fails
         return super().create_config_id(config_kwargs, custom_features)
 
 

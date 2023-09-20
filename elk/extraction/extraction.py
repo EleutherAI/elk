@@ -1,6 +1,7 @@
 """Functions for extracting the hidden states of a model."""
 import logging
 import os
+from collections import defaultdict
 from contextlib import nullcontext, redirect_stdout
 from dataclasses import InitVar, dataclass, replace
 from itertools import zip_longest
@@ -23,7 +24,7 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig, PreTrainedModel
+from transformers import AutoConfig
 
 from ..promptsource import DatasetTemplates
 from ..utils import (
@@ -31,12 +32,10 @@ from ..utils import (
     assert_type,
     colorize,
     float_to_int16,
-    instantiate_model,
     instantiate_tokenizer,
     prevent_name_conflicts,
     select_split,
     select_train_val_splits,
-    select_usable_devices_split,
 )
 from .dataset_name import (
     DatasetDictWithName,
@@ -277,7 +276,6 @@ def extract(
     disable_cache: bool = False,
     highlight_color: Color = "cyan",
     num_gpus: int = -1,
-    min_gpu_mem: int | None = None,
     split_type: Literal["train", "val", None] = None,
 ) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
@@ -286,6 +284,7 @@ def extract(
 
         info, features = hidden_features(cfg)
 
+        model_config = AutoConfig.from_pretrained(cfg.model)
         limits = cfg.max_examples
         splits = assert_type(SplitDict, info.splits)
 
@@ -307,27 +306,30 @@ def extract(
                 print(f"{pretty_name} using '{split_name}' for training")
             else:
                 print(f"{pretty_name} using '{split_name}' for validation")
-        split_types = assert_type(Iterable[Literal["train", "val"]], split_types)
 
+        print("Creating model inputs...")
         # Use a map to get the encodings for each split
         # TODO: make sure this meshes well with HF caching--if it's too slow we need
         # to use a map from the prompt dataset
-        encodings = {
+        encodings_dict = {
             split_name: get_encodings(
                 cfg,
-                split_type=ty,
+                split_type=ty,  # type: ignore[assignment]
             )
             for split_name, ty in zip(splits, split_types)
         }
+        
+        print("Extracting hidden states...")
+        num_variants = len(encodings_dict[split_types[0]].unique("variant_id"))
 
         # define _extraction_worker in this context to yield modified outputs from server.imap
         def extract_hiddens(
-                encodings: Dataset,
                 cfg: Extract,
+                split_name: str,
         ) -> Iterable[dict]:
             
+            encodings = encodings_dict[split_name]
             def select_hiddens(outputs: Any) -> dict:
-                model_config = AutoConfig.from_pretrained(cfg.model)
                 # Add one to the number of layers to account for the embedding layer
                 layer_indices = cfg.layers or tuple(range(model_config.num_hidden_layers + 1))
                 
@@ -349,31 +351,30 @@ def extract(
 
                 hidden_dict = dict()
                 for layer_idx, hidden in zip(layer_indices, hiddens):
-                    hidden_dict[f"hidden_{layer_idx}"] = float_to_int16(hidden).cpu()
+                    hidden_dict[f"hidden_{layer_idx}"] = float_to_int16(hidden.flatten()).cpu()
                 
                 return hidden_dict
 
-            buffer = []
-            for encoding, hidden_dict in zip(encodings, server.imap(select_hiddens, encodings)):
-                encoding = assert_type(dict, encoding)
+            encodings = encodings.add_column("id", range(len(encodings)))  # type: ignore[attr-defined]
+            buffer = defaultdict(list)  # row_id -> list of dicts
+            for idx, hidden_dict in server.imap(select_hiddens, encodings):
+                encoding = encodings[idx]
                 row_id = encoding["row_id"]
-                if buffer and row_id != buffer[0]["row_id"]:
-                    # we've reached a new example, so yield the previous one
-                    assert all(d["row_id"] == buffer[0]["row_id"] for d in buffer)
-                    assert all(d["label"] == buffer[0]["label"] for d in buffer)
+                buffer[row_id].append(dict(**encoding, **hidden_dict))
+                if len(buffer[row_id]) == num_variants:
+                    # we have a complete example
+                    ex = buffer[row_id]
+                    assert all(d["label"] == ex[0]["label"] for d in ex)
+                    assert len(set(d["variant_id"] for d in ex)) == num_variants
                     out_record = dict(
-                        variant_ids=[d["variant_id"] for d in buffer],
-                        label=buffer[0]["label"],
-                        row_id=buffer[0]["row_id"],
-                        texts=[d["text"] for d in buffer],
-                        **{k: torch.stack([d[k] for d in buffer]) for k in hidden_dict},
+                        variant_ids=[d["variant_id"] for d in ex],
+                        label=ex[0]["label"],
+                        row_id=ex[0]["row_id"],
+                        texts=[d["text"] for d in ex],
+                        **{k: torch.stack([d[k] for d in ex]) for k in hidden_dict},
                     )
+                    del buffer[row_id]
                     yield out_record
-
-                    buffer = []
-                
-                # add to buffer
-                buffer.append(dict(**encoding, **hidden_dict))
 
         def _extraction_worker(**kwargs):
             yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
@@ -391,20 +392,20 @@ def extract(
                 ),
                 gen_kwargs=dict(
                     cfg=[cfg],
-                    split_type=[ty],
+                    split_name=[split_name],
                 ),
             )
-            for limit, (split_name, v), ty in zip(limits, splits.items(), split_types)
+            for limit, (split_name, v) in zip(limits, splits.items())
         }
-        import multiprocess as mp
+        # import multiprocess as mp
 
-        mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
+        # mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
 
         ds = dict()
         for split, builder in builders.items():
             builder.download_and_prepare(
                 download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
-                num_proc=1,
+                num_proc=None,
             )
             ds[split] = builder.as_dataset(split=split)  # type: ignore[assignment]
 

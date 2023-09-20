@@ -48,7 +48,6 @@ class Run(ABC, Serializable):
 
     concatenated_layer_offset: int = 0
     debug: bool = False
-    min_gpu_mem: int | None = None  # in bytes
     num_gpus: int = -1
     out_dir: Path | None = None
     disable_cache: bool = field(default=False, to_dict=False)
@@ -64,7 +63,6 @@ class Run(ABC, Serializable):
                 disable_cache=self.disable_cache,
                 highlight_color=highlight_color,
                 num_gpus=self.num_gpus,
-                min_gpu_mem=self.min_gpu_mem,
                 split_type=split_type,
             )
             for cfg in self.data.explode()
@@ -96,7 +94,7 @@ class Run(ABC, Serializable):
                 meta_f,
             )
 
-        devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
+        devices = select_usable_devices(self.num_gpus)
         num_devices = len(devices)
         func: Callable[[int], dict[str, pd.DataFrame]] = partial(
             self.apply_to_layer, devices=devices, world_size=num_devices

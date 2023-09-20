@@ -166,34 +166,3 @@ def select_usable_devices(
     print(f"Using {len(selection)} of {num_visible} GPUs: {selection}")
 
     return [f"cuda:{i}" for i in selection]
-
-
-def select_usable_devices_split(
-    num_gpus: int = -1,
-    gpus_per_model: int = 1,
-    *,
-    min_memory: int | None = None,
-) -> list[tuple[str, ...]]:
-    """Wrapper around `select_usable_devices` that splits the selected devices into
-    groups of `gpus_per_model` devices each."""
-    if num_gpus < gpus_per_model:
-        raise ValueError(
-            f"`num_gpus` must be at least {gpus_per_model} (gpus_per_model)"
-        )
-    num_gpus = num_gpus - num_gpus % gpus_per_model  # round down to nearest multiple
-    devices = select_usable_devices(num_gpus, min_memory=min_memory)
-    if "cpu" in devices:
-        return [("cpu",)]
-    return split_devices(devices, gpus_per_model)
-
-
-def split_devices(devices: list[str], gpus_per_model: int) -> list[tuple]:
-    """Split a list of devices into groups of `gpus_per_model` devices each."""
-    assert len(devices) % gpus_per_model == 0
-    assert len(devices) >= gpus_per_model
-    if "cpu" in devices:
-        return [("cpu",)]
-    return [
-        tuple(devices[i : i + gpus_per_model])
-        for i in range(0, len(devices), gpus_per_model)
-    ]
