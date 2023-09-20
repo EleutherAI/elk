@@ -1,8 +1,8 @@
 from .balanced_sampler import BalancedSampler, FewShotSampler
 from .extraction import Extract, extract
 from .generator import _GeneratorBuilder, _GeneratorConfig
-from .prompt_loading import load_prompts
 from .inference_server import InferenceServer
+from .prompt_loading import get_prompter, load_prompts
 
 __all__ = [
     "BalancedSampler",
@@ -13,4 +13,5 @@ __all__ = [
     "_GeneratorConfig",
     "_GeneratorBuilder",
     "load_prompts",
+    "get_prompter",
 ]

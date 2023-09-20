@@ -20,6 +20,7 @@ def load_prompts(
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
     template_path: str | None = None,
+    text_column: str | None = None,
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified dataset.
 
@@ -44,18 +45,26 @@ def load_prompts(
     if "row_id" not in ds.column_names:
         ds = ds.add_column("row_id", range(len(ds)))  # type: ignore
     ds = ds.shuffle(seed=seed)
-    
-    if template_path is None:
-        prompter = DatasetTemplates(ds_name, config_name)
-    else:
-        prompter = DatasetTemplates(template_path)
+
+    prompter, using_blank = get_prompter(ds_name, config_name, template_path)
+    if using_blank:
+        print('Using blank template "{{ text }}".')
+        text_column = text_column or "text"
+        if text_column not in ds.column_names:
+            raise ValueError(
+                f'Could not find text column "{text_column}".'
+                f" Please include the column or specify a different one with the"
+                f" `text_column` argument."
+            )
+        if text_column != "text":
+            ds = ds.rename_column(text_column, "text")
 
     # TODO: allow for optionally using contrast pair templates so people
     # don't have to rewrite them
 
     num_templates = len(prompter.templates)
     assert num_templates > 0
-    
+
     print(f"Extracting {num_templates} variants of each prompt")
 
     label_column = prompter.label_column or infer_label_column(ds.features)
@@ -146,3 +155,14 @@ def _convert_to_prompts(
         prompts=prompts,
         template_names=[template.name for template in templates],
     )
+
+
+def get_prompter(
+    ds_name: str, config_name: str | None, template_path: str | None = None
+) -> tuple[DatasetTemplates, bool]:
+    if template_path is None:
+        try:
+            return DatasetTemplates(ds_name, config_name), False
+        except ValueError:
+            return DatasetTemplates("blank_text"), True
+    return DatasetTemplates(template_path), template_path == "blank_text"

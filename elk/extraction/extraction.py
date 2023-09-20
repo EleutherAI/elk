@@ -23,7 +23,6 @@ from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import AutoConfig
 
-from ..promptsource import DatasetTemplates
 from ..utils import (
     Color,
     assert_type,
@@ -40,7 +39,7 @@ from .dataset_name import (
 )
 from .generator import _GeneratorBuilder
 from .inference_server import InferenceServer
-from .prompt_loading import load_prompts
+from .prompt_loading import get_prompter, load_prompts
 
 
 @dataclass
@@ -74,6 +73,10 @@ class Extract(Serializable):
     num_variants: int = -1
     """The number of prompt templates to use for each example. If -1, all available
     templates are used."""
+
+    text_column: str | None = None
+    """Name of the column containing the model input strings when using a built-in
+    prompt template. If None, we use the "text" column."""
 
     layers: tuple[int, ...] = ()
     """Indices of layers to extract hidden states from. We follow the HF convention, so
@@ -166,6 +169,7 @@ def get_encodings(
         split_type=split_type,
         template_path=cfg.template_path,
         seed=cfg.seed,
+        text_column=cfg.text_column,
     )
 
     max_examples = cfg.max_examples[0 if split_type == "train" else 1]
@@ -232,12 +236,9 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
     ds_name, config_name = parse_dataset_string(dataset_config_str=cfg.datasets[0])
     info = get_dataset_config_info(ds_name, config_name or None)
 
-    if not cfg.template_path:
-        prompter = DatasetTemplates(ds_name, config_name)
-    else:
-        prompter = DatasetTemplates(cfg.template_path)
-
     assert_type(Features, info.features)
+
+    prompter, _ = get_prompter(ds_name, config_name, cfg.template_path)
 
     # num_dropped = prompter.drop_non_mc_templates()
     num_variants = len(prompter.templates)
@@ -348,6 +349,7 @@ def extract(
         if not server.running:
             server.start()
         encodings = encodings.add_column("id", range(len(encodings)))  # type: ignore
+
         buffer = defaultdict(list)  # row_id -> list of dicts
         for idx, hidden_dict in server.imap(select_hiddens, encodings, use_tqdm=False):
             encoding = encodings[idx]
