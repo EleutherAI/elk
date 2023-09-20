@@ -1,44 +1,47 @@
-from dataclasses import dataclass
-from functools import partial
-from itertools import cycle
 import inspect
 import logging
 import multiprocessing as std_mp
+import os
 import socket
 import warnings
+from dataclasses import dataclass
+from functools import partial
+from itertools import cycle
+from typing import Any, Callable, Iterable, Type, cast
+
 import dill
-import os
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from datasets import Dataset
-from torch.distributed.fsdp import (
-    CPUOffload, FullyShardedDataParallel as FSDP
-)
+from torch.distributed.fsdp import CPUOffload
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
+from tqdm import tqdm
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
-from typing import Any, Callable, Iterable, Type, cast
-from tqdm import tqdm
 
-from elk.utils import (
-    instantiate_model, pytree_map, select_usable_devices
-)
+from elk.utils import instantiate_model, pytree_map, select_usable_devices
+
 
 @dataclass
 class _Sentinel:
-        """Sentinel value used to indicate that a worker is done."""
-        pass
+    """Sentinel value used to indicate that a worker is done."""
+
+    pass
+
 
 SENTINEL = _Sentinel()
+
 
 @dataclass
 class InferenceServer:
     """High-level interface for running inference on a model on multiple GPUs.
-    
+
     This is basically a glorified `multiprocessing.Pool`. The only difference is that
     each worker maintains a copy of the model on a dedicated GPU.
     """
+
     model_str: str
     num_workers: int = -1
     cpu_offload: bool = False
@@ -67,15 +70,13 @@ class InferenceServer:
         print("Loading model...")
         model = instantiate_model(self.model_str, torch_dtype="auto")
         model.share_memory()
-        model_size = sum(
-            p.numel() * p.element_size() for p in model.parameters()
-        )
+        model_size = sum(p.numel() * p.element_size() for p in model.parameters())
 
         # Determine which GPUs we can use
         devices = select_usable_devices(
             self.num_workers, min_memory=model_size if not self.fsdp else None
         )
-        self.num_workers = len(devices) # This may have been -1 before
+        self.num_workers = len(devices)  # This may have been -1 before
 
         fsdp_port, wrap_policy = None, None
         if self.fsdp:
@@ -86,19 +87,14 @@ class InferenceServer:
             if layer_cls is not None:
                 msg += f" with '{layer_cls.__name__}' wrapping policy"
                 wrap_policy = partial(
-                    transformer_auto_wrap_policy,
-                    transformer_layer_cls={layer_cls}
+                    transformer_auto_wrap_policy, transformer_layer_cls={layer_cls}
                 )
 
             print(msg)
 
         self._manager = mp.Manager()
-        self._result_queues = [
-            self._manager.Queue() for _ in range(self.num_workers)
-        ]
-        self._task_queues = [
-            self._manager.Queue() for _ in range(self.num_workers)
-        ]
+        self._result_queues = [self._manager.Queue() for _ in range(self.num_workers)]
+        self._task_queues = [self._manager.Queue() for _ in range(self.num_workers)]
         self._process_ctx = mp.spawn(
             _worker_wrapper,
             args=(
@@ -108,10 +104,10 @@ class InferenceServer:
                 self._result_queues,
                 self.cpu_offload,
                 fsdp_port,
-                wrap_policy
+                wrap_policy,
             ),
             join=False,
-            nprocs=self.num_workers
+            nprocs=self.num_workers,
         )
 
     def shutdown(self) -> bool:
@@ -123,7 +119,7 @@ class InferenceServer:
         for q in self._task_queues:
             try:
                 q.put_nowait(None)
-            except std_mp.queues.Empty: # type: ignore[attr-defined]
+            except std_mp.queues.Empty:  # type: ignore[attr-defined]
                 pass
 
         self._manager.shutdown()
@@ -141,7 +137,7 @@ class InferenceServer:
         """Maps the model's `forward` method over the given dataset, without
         running a closure on the outputs."""
         return self.map(lambda x: x, dataset, use_tqdm=use_tqdm)
-    
+
     def imap_forward(self, dataset: Dataset, use_tqdm: bool = True) -> Iterable:
         """Maps the model's `forward` method over the given dataset, without
         running a closure on the outputs."""
@@ -158,12 +154,11 @@ class InferenceServer:
         that the model expects."""
         # add id column to dataset if not present to keep track of order
         if "id" not in dataset.column_names:
-            dataset = dataset.add_column("id", list(range(len(dataset))))  # type: ignore
+            dataset = dataset.add_column("id", range(len(dataset)))  # type: ignore
         ids = dataset["id"]
         output_tuples = list(self.imap(closure, dataset, use_tqdm=use_tqdm))
         outputs = dict(output_tuples)
         return [outputs[id] for id in ids]
-
 
     def imap(
         self,
@@ -176,7 +171,7 @@ class InferenceServer:
         that the model expects. `dataset` is also required to have an `id` column,
         because the outputs are not guaranteed to be returned in the same order as
         the inputs.
-        
+
         yields: (id, outputs)"""
         if self._process_ctx is None:
             raise RuntimeError("Can't run inference on a server that isn't running")
@@ -214,8 +209,6 @@ class InferenceServer:
                 else:
                     seen_dummy = True
             yield out
-
-                    
 
 
 def get_transformer_layer_cls(model: torch.nn.Module) -> Type[torch.nn.Module] | None:
@@ -267,7 +260,7 @@ def round_robin(queues: list[mp.Queue]) -> Iterable[Any]:
 
         try:
             item = q.get(timeout=0.01)
-        except std_mp.queues.Empty: # type: ignore[attr-defined]
+        except std_mp.queues.Empty:  # type: ignore[attr-defined]
             pass
         else:
             if item == SENTINEL:
@@ -316,7 +309,7 @@ def _worker(
     else:
         model.to(device)  # type: ignore[union-attr]
         model_forward = model.forward
-    
+
     param_names = set(inspect.signature(model_forward).parameters.keys())
 
     # Breaks when x is the sentinel value indicating we should shut down
@@ -337,18 +330,20 @@ def _worker(
             # Only pass the arguments that the model expects
             record = {k: v for k, v in record.items() if k in param_names}
             assert "input_ids" in record, "Dataset must contain an 'input_ids' column"
-            inputs_cuda = pytree_map(lambda v: v.to(device).unsqueeze(0), record)
+
+            def maybe_unsqueeze(v):
+                return v.unsqueeze(0) if v.ndim == 1 else v
+
+            inputs_cuda = pytree_map(lambda v: maybe_unsqueeze(v.to(device)), record)
             # TODO: have model kwargs so we don't have to duplicate kwargs at each row
             outputs = model(**inputs_cuda)
 
             if callable(closure):
                 outputs = closure(outputs)
-            if outputs is not None:    
+            if outputs is not None:
                 # Move the outputs back to the CPU
                 outputs_cls = type(outputs)
-                outputs_dict = pytree_map(
-                    lambda x: x.cpu().share_memory_(), outputs
-                )
+                outputs_dict = pytree_map(lambda x: x.cpu().share_memory_(), outputs)
                 outputs = outputs_cls(**outputs_dict)
 
             # Send the outputs back to the main process
