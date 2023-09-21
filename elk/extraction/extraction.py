@@ -58,9 +58,6 @@ class Extract(Serializable):
     get_lm_preds: bool = True
     """Whether to extract the LM predictions."""
 
-    binarize: bool = False
-    """Whether to binarize the dataset labels for multi-class datasets."""
-
     int8: bool = False
     """Whether to perform inference in mixed int8 precision with `bitsandbytes`."""
 
@@ -148,14 +145,14 @@ class Extract(Serializable):
         ]
 
 
-@torch.inference_mode()
 def get_encodings(
     cfg: "Extract",
     split_type: Literal["train", "val"] = "train",
 ) -> Dataset:
     """Apply the prompt templates to the dataset and return the tokenized LM inputs.
-    Each dict contains the keys `input_ids`, `attention_mask`, `labels`,
-    `output_hidden_states`, `variant_id`, `row_id`, `text`, and `label`.
+    Each dict contains the keys `input_ids`, `output_hidden_states`, `variant_id`,
+    `row_id`, `text`, and `label`. If lm_preds is True, we also include `answer_ids`
+    and `num_suffix_tokens`.
     """
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -200,7 +197,6 @@ def get_encodings(
         for i, statement in enumerate(example["statements"]):
             if cfg.get_lm_preds:
                 suffix = example["suffixes"][i]
-                text = statement + suffix
                 answer_choices = example["answer_choices"][i]
                 assert len(answer_choices) == 2
                 answer_ids = []
@@ -213,39 +209,43 @@ def get_encodings(
                             "first token only."
                         )
                     answer_ids.append(a_id[0])
-                num_suffix_tokens = len(
-                    tokenizer.encode(suffix, add_special_tokens=False)
-                )
             else:
-                text = statement
+                suffix = ""
+
+            suffix_tokens = torch.tensor(
+                tokenizer.encode(suffix, add_special_tokens=False),
+                dtype=torch.long,
+            )
 
             encoding = tokenizer(
-                text,
+                statement,
                 # Keep [CLS] and [SEP] for BERT-style models
                 add_special_tokens=True,
                 return_tensors="pt",
             )
 
-            ids = assert_type(Tensor, encoding.input_ids)
+            # suffix comes right after the last statement token, before the answer
+            ids = torch.cat([encoding.input_ids, suffix_tokens])
 
             # If this input is too long, skip it
             if ids.shape[-1] > max_length:
                 any_too_long = True
                 break
 
-            inputs: dict[str, Tensor | None | bool] = dict(input_ids=ids.long())
-            inputs["output_hidden_states"] = True
+            inputs: dict[str, Tensor | None] = dict(input_ids=ids.long())
 
             out_record: dict[str, Any] = dict(
                 row_id=example["row_id"],
                 variant_id=example["template_names"][i],
                 label=example["label"],
-                text=text,
+                text=statement + suffix,
+                output_hidden_states=True,
                 **inputs,
             )
             if cfg.get_lm_preds:
                 out_record["answer_ids"] = answer_ids  # type: ignore
-                out_record["num_suffix_tokens"] = num_suffix_tokens  # type: ignore
+                # keep track of where to extract hiddens from
+                out_record["num_suffix_tokens"] = len(suffix_tokens)
             record_variants.append(out_record)
 
         if any_too_long:

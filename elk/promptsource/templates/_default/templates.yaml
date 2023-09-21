@@ -1,8 +1,8 @@
-dataset: azaria_mitchell
+dataset: None
 templates:
   7eab7254-bd71-4b1d-9f8a-0fc7110f8371: !Template
     answer_choices: False ||| True
-    id: 7eab7254-bd71-4b1d-9f8a-0fc7110f8371
+    id: 7eab7254-bd41-4b1d-9f8a-0fc7110f8371
     jinja: "{{ statement }}"
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -11,5 +11,5 @@ templates:
       metrics:
       - Accuracy
       original_task: true
-    name: 7eab7254-bd71-4b1d-9f8a-0fc7110f8371
+    name: _default
     reference: ''

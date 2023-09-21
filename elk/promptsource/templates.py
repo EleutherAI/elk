@@ -138,7 +138,7 @@ class Template(yaml.YAMLObject):
         else:
             return None
 
-    def apply(self, example, truncate=True, highlight_variables=False):
+    def apply(self, example, truncate=False, highlight_variables=False):
         """
         Creates a prompt by applying this template to an example
 
