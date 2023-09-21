@@ -68,7 +68,7 @@ class Classifier(torch.nn.Module):
         x: Tensor,
         y: Tensor,
         *,
-        l2_penalty: float = 0.0,
+        l2_penalty: float = 0.001,
         max_iter: int = 10_000,
     ) -> float:
         """Fits the model to the input data using L-BFGS with L2 regularization.

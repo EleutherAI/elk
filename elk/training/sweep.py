@@ -1,6 +1,5 @@
 from dataclasses import InitVar, dataclass, replace
 
-import numpy as np
 import torch
 from datasets import get_dataset_config_info
 from transformers import AutoConfig
@@ -9,7 +8,6 @@ from ..evaluation import Eval
 from ..extraction import Extract
 from ..files import memorably_named_dir, sweeps_dir
 from ..plotting.visualize import visualize_sweep
-from ..training.eigen_reporter import EigenFitterConfig
 from ..utils import colorize
 from ..utils.constants import BURNS_DATASETS
 from .train import Elicit
@@ -38,11 +36,6 @@ class Sweep:
     add_pooled: InitVar[bool] = False
     """Whether to add a dataset that pools all of the other datasets together."""
 
-    hparam_step: float = -1.0
-    """The step size for hyperparameter sweeps. Performs a 2D
-    sweep over a and b in (var_weight, inv_weight, neg_cov_weight) = (a, 1 - b, b)
-    If negative, no hyperparameter sweeps will be performed. Only valid for Eigen."""
-
     skip_transfer_eval: bool = False
     """Whether to perform transfer eval on every pair of datasets."""
 
@@ -64,13 +57,6 @@ class Sweep:
             raise ValueError("No datasets specified")
         if not self.models:
             raise ValueError("No models specified")
-        # can only use hparam_step if we're using an eigen net
-        if self.hparam_step > 0 and not isinstance(
-            self.run_template.net, EigenFitterConfig
-        ):
-            raise ValueError("Can only use hparam_step with EigenFitterConfig")
-        elif self.hparam_step > 1:
-            raise ValueError("hparam_step must be in [0, 1]")
 
         # Check for the magic dataset "burns" which is a shortcut for all of the
         # datasets used in Burns et al., except Story Cloze, which is not available
@@ -115,9 +101,6 @@ class Sweep:
             }
         )
 
-        step = self.hparam_step
-        weights = np.arange(0.0, 1.0 + step, step) if step > 0 else [None]
-
         for i, model in enumerate(self.models):
             print(colorize(f"===== {model} ({i + 1} of {M}) =====", "magenta"))
 
@@ -127,52 +110,42 @@ class Sweep:
                 # single sweep.
                 train_datasets = tuple(ds.strip() for ds in dataset_str.split("+"))
 
-                for var_weight in weights:
-                    for neg_cov_weight in weights:
-                        out_dir = sweep_dir / model / dataset_str
+                out_dir = sweep_dir / model / dataset_str
 
-                        data = replace(
-                            self.run_template.data, model=model, datasets=train_datasets
-                        )
-                        run = replace(self.run_template, data=data, out_dir=out_dir)
-                        if var_weight is not None and neg_cov_weight is not None:
-                            assert isinstance(run.net, EigenFitterConfig)
-                            run.net.var_weight = var_weight
-                            run.net.neg_cov_weight = neg_cov_weight
+                data = replace(
+                    self.run_template.data, model=model, datasets=train_datasets
+                )
+                run = replace(self.run_template, data=data, out_dir=out_dir)
 
-                            # Add hyperparameter values to output directory if needed
-                            assert run.out_dir is not None
-                            run.out_dir /= f"var_weight={var_weight:.2f}"
-                            run.out_dir /= f"neg_cov_weight={neg_cov_weight:.2f}"
+                # Add hyperparameter values to output directory if needed
+                assert run.out_dir is not None
 
-                        try:
-                            run.execute()
-                        except torch.linalg.LinAlgError as e:
-                            print(colorize(f"LinAlgError: {e}", "red"))
+                try:
+                    run.execute()
+                except torch.linalg.LinAlgError as e:
+                    print(colorize(f"LinAlgError: {e}", "red"))
+                    continue
+
+                if not self.skip_transfer_eval:
+                    if len(eval_datasets) > 1:
+                        print(colorize("== Transfer eval ==", "green"))
+
+                    # Now evaluate the reporter on the other datasets
+                    for eval_dataset in eval_datasets:
+                        # We already evaluated on this one during training
+                        if eval_dataset in train_datasets:
                             continue
 
-                        if not self.skip_transfer_eval:
-                            if len(eval_datasets) > 1:
-                                print(colorize("== Transfer eval ==", "green"))
-
-                            # Now evaluate the reporter on the other datasets
-                            for eval_dataset in eval_datasets:
-                                # We already evaluated on this one during training
-                                if eval_dataset in train_datasets:
-                                    continue
-
-                                assert run.out_dir is not None
-                                eval = Eval(
-                                    data=replace(
-                                        run.data, model=model, datasets=(eval_dataset,)
-                                    ),
-                                    source=run.out_dir,
-                                    out_dir=run.out_dir / "transfer" / eval_dataset,
-                                    num_gpus=run.num_gpus,
-                                    min_gpu_mem=run.min_gpu_mem,
-                                    skip_supervised=run.supervised == "none",
-                                )
-                                eval.execute(highlight_color="green")
+                        assert run.out_dir is not None
+                        eval = Eval(
+                            data=replace(
+                                run.data, model=model, datasets=(eval_dataset,)
+                            ),
+                            source=run.out_dir,
+                            out_dir=run.out_dir / "transfer" / eval_dataset,
+                            num_gpus=run.num_gpus,
+                        )
+                        eval.execute(highlight_color="green")
 
         if self.visualize:
             visualize_sweep(sweep_dir)

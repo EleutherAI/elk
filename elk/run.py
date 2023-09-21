@@ -32,6 +32,16 @@ from .utils import (
 
 
 @dataclass
+class LayerData:
+    hiddens: Tensor
+    labels: Tensor
+    lm_preds: Tensor | None
+    texts: list[list[str]]  # (n, v)
+    row_ids: list[int]  # (n,)
+    variant_ids: list[list[str]]  # (n, v)
+
+
+@dataclass
 class Run(ABC, Serializable):
     data: Extract
     out_dir: Path | None = None
@@ -45,6 +55,15 @@ class Run(ABC, Serializable):
 
     prompt_indices: tuple[int, ...] = ()
     """The indices of the prompt templates to use. If empty, all prompts are used."""
+
+    save_logprobs: bool = field(default=False, to_dict=False)
+    """ saves logprobs.pt containing
+        {<dsname>: {"row_ids": [n,], "variant_ids": [n, v],
+            "labels": [n,], "texts": [n, v],
+            "lm": {"none": [n, v], "full": [n,]},
+            "lr": {<layer>: {<inlp_iter>: {"none": [n, v], "full": [n,]}}}
+        }}
+    """
 
     concatenated_layer_offset: int = 0
     debug: bool = False
@@ -96,7 +115,7 @@ class Run(ABC, Serializable):
 
         devices = select_usable_devices(self.num_gpus)
         num_devices = len(devices)
-        func: Callable[[int], dict[str, pd.DataFrame]] = partial(
+        func: Callable[[int], tuple[dict[str, pd.DataFrame], dict]] = partial(
             self.apply_to_layer, devices=devices, world_size=num_devices
         )
         self.apply_to_layers(func=func, num_devices=num_devices)
@@ -104,7 +123,7 @@ class Run(ABC, Serializable):
     @abstractmethod
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], dict]:
         """Train or eval a reporter on a single layer."""
 
     def make_reproducible(self, seed: int):
@@ -123,7 +142,7 @@ class Run(ABC, Serializable):
 
     def prepare_data(
         self, device: str, layer: int, split_type: Literal["train", "val"]
-    ) -> dict[str, tuple[Tensor, Tensor]]:
+    ) -> dict[str, LayerData]:
         """Prepare data for the specified layer and split type."""
         out = {}
 
@@ -137,7 +156,14 @@ class Run(ABC, Serializable):
             if self.prompt_indices:
                 hiddens = hiddens[:, self.prompt_indices]
 
-            out[ds_name] = (hiddens, labels.to(hiddens.device))
+            out[ds_name] = LayerData(
+                hiddens=hiddens,
+                labels=labels,
+                lm_preds=None,  # TODO: implement
+                texts=split["texts"],
+                row_ids=split["row_id"],
+                variant_ids=split["variant_ids"],
+            )
 
         return out
 
@@ -150,7 +176,7 @@ class Run(ABC, Serializable):
 
     def apply_to_layers(
         self,
-        func: Callable[[int], dict[str, pd.DataFrame]],
+        func: Callable[[int], tuple[dict[str, pd.DataFrame], dict]],
         num_devices: int,
     ):
         """Apply a function to each layer of the datasets in parallel
@@ -173,11 +199,16 @@ class Run(ABC, Serializable):
         with ctx.Pool(num_devices) as pool:
             mapper = pool.imap_unordered if num_devices > 1 else map
             df_buffers = defaultdict(list)
+            logprobs_dicts = defaultdict(dict)
 
             try:
-                for df_dict in tqdm(mapper(func, layers), total=len(layers)):
+                for layer, (df_dict, logprobs_dict) in tqdm(
+                    zip(layers, mapper(func, layers)), total=len(layers)
+                ):
                     for k, v in df_dict.items():
                         df_buffers[k].append(v)
+                    for k, v in logprobs_dict.items():
+                        logprobs_dicts[k][layer] = logprobs_dict[k]
             finally:
                 # Make sure the CSVs are written even if we crash or get interrupted
                 for name, dfs in df_buffers.items():
@@ -185,3 +216,21 @@ class Run(ABC, Serializable):
                     df.round(4).to_csv(self.out_dir / f"{name}.csv", index=False)
                 if self.debug:
                     save_debug_log(self.datasets, self.out_dir)
+                if self.save_logprobs:
+                    save_dict = defaultdict(dict)
+                    for ds_name, logprobs_dict in logprobs_dicts.items():
+                        save_dict[ds_name]["texts"] = logprobs_dict[layers[0]]["texts"]
+                        save_dict[ds_name]["labels"] = logprobs_dict[layers[0]][
+                            "labels"
+                        ]
+                        save_dict[ds_name]["lm"] = logprobs_dict[layers[0]]["lm"]
+                        save_dict[ds_name]["reporter"] = dict()
+                        save_dict[ds_name]["lr"] = dict()
+                        for layer, logprobs_dict_by_mode in logprobs_dict.items():
+                            save_dict[ds_name]["reporter"][
+                                layer
+                            ] = logprobs_dict_by_mode["reporter"]
+                            save_dict[ds_name]["lr"][layer] = logprobs_dict_by_mode[
+                                "lr"
+                            ]
+                    torch.save(save_dict, self.out_dir / "logprobs.pt")

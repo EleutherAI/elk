@@ -7,7 +7,7 @@ import torch
 from simple_parsing.helpers import field
 
 from ..files import elk_reporter_dir
-from ..metrics import evaluate_preds
+from ..metrics import evaluate_preds, get_logprobs
 from ..run import Run
 from ..utils import Color
 
@@ -30,7 +30,7 @@ class Eval(Run):
     @torch.inference_mode()
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], dict]:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
@@ -43,19 +43,38 @@ class Eval(Run):
             if not isinstance(lr_models, list):  # backward compatibility
                 lr_models = [lr_models]
 
+        out_logprobs = defaultdict(dict)
         row_bufs = defaultdict(list)
-        for ds_name, (val_h, val_gt) in val_output.items():
+        for ds_name, val_data in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
+
+            if self.save_logprobs:
+                out_logprobs[ds_name] = dict(
+                    row_ids=val_data.row_ids,
+                    variant_ids=val_data.variant_ids,
+                    texts=val_data.texts,
+                    labels=val_data.labels,
+                    lm=dict(),
+                    lr=dict(),
+                )
             for mode in ("none", "full"):
+                # TODO save lm logprobs and add to buf
                 for i, model in enumerate(lr_models):
                     model.eval()
+                    val_credences = model(val_data.hiddens)
+                    if self.save_logprobs:
+                        out_logprobs[ds_name]["lr"][mode][i] = get_logprobs(
+                            val_credences, mode
+                        ).cpu()
                     row_bufs["lr_eval"].append(
                         {
                             "ensembling": mode,
                             "inlp_iter": i,
                             **meta,
-                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            **evaluate_preds(
+                                val_data.labels, val_credences, mode
+                            ).to_dict(),
                         }
                     )
 
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, out_logprobs

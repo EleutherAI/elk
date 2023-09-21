@@ -2,11 +2,12 @@ import torch
 from concept_erasure import LeaceFitter
 from einops import rearrange, repeat
 
+from ..run import LayerData
 from .classifier import Classifier
 
 
 def train_supervised(
-    data: dict[str, tuple], device: str, mode: str, erase_paraphrases: bool = False
+    data: dict[str, LayerData], device: str, mode: str, erase_paraphrases: bool = False
 ) -> list[Classifier]:
     assert not (
         erase_paraphrases and len(data) > 1
@@ -15,9 +16,9 @@ def train_supervised(
 
     leace = None
 
-    for train_h, labels in data.values():
-        (n, v, d) = train_h.shape
-        train_h = rearrange(train_h, "n v d -> (n v) d")
+    for train_data in data.values():
+        (n, v, d) = train_data.hiddens.shape
+        train_h = rearrange(train_data.hiddens, "n v d -> (n v) d")
 
         if erase_paraphrases:
             if leace is None:
@@ -33,7 +34,7 @@ def train_supervised(
             )  # (n * v, v)
             leace = leace.update(train_h, indicators)
 
-        labels = repeat(labels, "n -> (n v)", v=v)
+        labels = repeat(train_data.labels, "n -> (n v)", v=v)
 
         Xs.append(train_h)
         train_labels.append(labels)

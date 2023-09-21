@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass
 from typing import Literal
 
 import torch
+import torch.nn.functional as F
 from einops import repeat
 from torch import Tensor
 
@@ -39,6 +40,22 @@ class EvalResult:
         )
         auroc_dict = {f"{prefix}auroc_{k}": v for k, v in asdict(self.roc_auc).items()}
         return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
+
+
+def get_logprobs(
+    y_logits: Tensor, ensembling: Literal["none", "full"] = "none"
+) -> Tensor:
+    """
+    Get the class probabilities from a tensor of logits.
+    Args:
+        y_logits: Predicted log-odds of the positive class, tensor of shape (n, v).
+    Returns:
+        Tensor of logprobs: If ensemble is "none", a tensor of shape (n, v).
+            If ensemble is "full", a tensor of shape (n,).
+    """
+    if ensembling == "full":
+        y_logits = y_logits.mean(dim=1)
+    return F.logsigmoid(y_logits)
 
 
 def evaluate_preds(

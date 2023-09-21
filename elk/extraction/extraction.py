@@ -358,6 +358,7 @@ def extract(
             if len(buffer[row_id]) == num_variants:
                 # we have a complete example
                 ex = buffer[row_id]
+                ex = sorted(ex, key=lambda d: d["variant_id"])
                 assert all(d["label"] == ex[0]["label"] for d in ex)
                 assert len(set(d["variant_id"] for d in ex)) == num_variants
                 out_record = dict(

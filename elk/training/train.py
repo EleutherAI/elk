@@ -8,7 +8,7 @@ from typing import Literal
 import pandas as pd
 import torch
 
-from ..metrics import evaluate_preds
+from ..metrics import evaluate_preds, get_logprobs
 from ..run import Run
 from ..training.supervised import train_supervised
 from ..utils.typing import assert_type
@@ -41,7 +41,7 @@ class Elicit(Run):
         layer: int,
         devices: list[str],
         world_size: int,
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], dict]:
         """Train a single reporter on a single layer."""
 
         self.make_reproducible(seed=self.seed + layer)
@@ -50,9 +50,9 @@ class Elicit(Run):
         train_dict = self.prepare_data(device, layer, "train")
         val_dict = self.prepare_data(device, layer, "val")
 
-        (first_train_h, train_gt), *rest = train_dict.values()
-        (_, v, d) = first_train_h.shape
-        if not all(other_h.shape[-1] == d for other_h, _ in rest):
+        first_train_data, *rest = train_dict.values()
+        (_, v, d) = first_train_data.hiddens.shape
+        if not all(other_data.hiddens.shape[-1] == d for other_data in rest):
             raise ValueError("All datasets must have the same hidden state size")
 
         lr_dir = self.create_models_dir(assert_type(Path, self.out_dir))
@@ -68,20 +68,39 @@ class Elicit(Run):
         with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
             torch.save(lr_models, file)
 
+        out_logprobs = defaultdict(dict)
         row_bufs = defaultdict(list)
         for ds_name in val_dict:
-            val_h, val_gt = val_dict[ds_name]
-            train_h, train_gt = train_dict[ds_name]
+            val, train = val_dict[ds_name], train_dict[ds_name]
             meta = {"dataset": ds_name, "layer": layer}
+
+            if self.save_logprobs:
+                out_logprobs[ds_name] = dict(
+                    row_ids=val.row_ids,
+                    variant_ids=val.variant_ids,
+                    texts=val.texts,
+                    labels=val.labels,
+                    lm=dict(),
+                    lr=dict(),
+                )
 
             for mode in ("none", "full"):
                 for i, model in enumerate(lr_models):
+                    model.eval()
+                    val_credences = model(val.hiddens)
+                    train_credences = model(train.hiddens)
+
+                    if self.save_logprobs:
+                        out_logprobs[ds_name]["lr"][mode][i] = (
+                            get_logprobs(val_credences, mode).detach().cpu()
+                        )
+
                     row_bufs["lr_eval"].append(
                         {
                             **meta,
                             "ensembling": mode,
                             "inlp_iter": i,
-                            **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
+                            **evaluate_preds(val.labels, val_credences, mode).to_dict(),
                         }
                     )
 
@@ -90,8 +109,10 @@ class Elicit(Run):
                             **meta,
                             "ensembling": mode,
                             "inlp_iter": i,
-                            **evaluate_preds(train_gt, model(train_h), mode).to_dict(),
+                            **evaluate_preds(
+                                train.labels, train_credences, mode
+                            ).to_dict(),
                         }
                     )
 
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, out_logprobs
