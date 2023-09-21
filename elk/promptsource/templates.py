@@ -67,7 +67,9 @@ class Template(yaml.YAMLObject):
 
     yaml_tag = "!Template"
 
-    def __init__(self, name, jinja, reference, metadata=None, answer_choices=None):
+    def __init__(
+        self, name, jinja, reference, metadata=None, answer_choices=None, suffix=""
+    ):
         """
         Creates a prompt template.
 
@@ -88,13 +90,15 @@ class Template(yaml.YAMLObject):
                                be evaluated as ranked completions. If None, then
                                the template is open-ended. This list is accessible
                                from within Jinja as the variable `answer_choices`.
+        :param suffix: string to append to the end of the statement before the answer
         """
         self.id = str(uuid.uuid4())
         self.name = name
         self.jinja = jinja
         self.reference = reference
-        self.metadata = metadata if metadata is not None else Template.Metadata()
+        self.metadata = metadata or Template.Metadata()
         self.answer_choices = answer_choices
+        self.suffix = suffix
 
     def get_answer_choices_list(self, example):
         """
@@ -267,6 +271,9 @@ class DatasetTemplates:
 
             # Required field; contains all the templates keyed by ID
             self.templates = yaml_dict["templates"]
+            for template in self.templates.values():
+                if not hasattr(template, "suffix"):
+                    template.suffix = ""
             self.binarize = yaml_dict.get("binarize", False)
             self.label_column = yaml_dict.get("label_column")
 

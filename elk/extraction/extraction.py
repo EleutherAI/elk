@@ -55,6 +55,9 @@ class Extract(Serializable):
     data_dirs: tuple[str, ...] = ()
     """Directory to use for caching the hiddens. Defaults to `HF_DATASETS_CACHE`."""
 
+    get_lm_preds: bool = True
+    """Whether to extract the LM predictions."""
+
     binarize: bool = False
     """Whether to binarize the dataset labels for multi-class datasets."""
 
@@ -77,9 +80,9 @@ class Extract(Serializable):
     balance: bool = True
     """Whether to balance the number of examples per class."""
 
-    text_column: str | None = None
+    statement_column: str | None = None
     """Name of the column containing the model input strings when using a built-in
-    prompt template. If None, we use the "text" column."""
+    prompt template. If None, we use the "statement" column."""
 
     layers: tuple[int, ...] = ()
     """Indices of layers to extract hidden states from. We follow the HF convention, so
@@ -171,9 +174,10 @@ def get_encodings(
         num_shots=cfg.num_shots,
         split_type=split_type,
         template_path=cfg.template_path,
+        include_answers=cfg.get_lm_preds,
         balance=cfg.balance,
         seed=cfg.seed,
-        text_column=cfg.text_column,
+        statement_column=cfg.statement_column,
     )
 
     max_examples = cfg.max_examples[0 if split_type == "train" else 1]
@@ -182,7 +186,7 @@ def get_encodings(
 
     out_records = []
     for example in prompt_ds:
-        num_variants = len(example["prompts"])
+        num_variants = len(example["template_names"])
 
         # Check if we've yielded enough examples
         if len(out_records) >= max_examples * num_variants:
@@ -193,8 +197,27 @@ def get_encodings(
         record_variants = []
 
         # Iterate over variants
-        for i, record in enumerate(example["prompts"]):
-            text = record["text"]
+        for i, statement in enumerate(example["statements"]):
+            if cfg.get_lm_preds:
+                suffix = example["suffixes"][i]
+                text = statement + suffix
+                answer_choices = example["answer_choices"][i]
+                assert len(answer_choices) == 2
+                answer_ids = []
+                for choice in answer_choices:
+                    a_id = tokenizer.encode(choice, add_special_tokens=False)
+                    if len(a_id) > 1:
+                        print(
+                            f"WARNING: answer choice '{choice}' is more than one "
+                            "token, LM probabilities will be calculated using the "
+                            "first token only."
+                        )
+                    answer_ids.append(a_id[0])
+                num_suffix_tokens = len(
+                    tokenizer.encode(suffix, add_special_tokens=False)
+                )
+            else:
+                text = statement
 
             encoding = tokenizer(
                 text,
@@ -220,7 +243,9 @@ def get_encodings(
                 text=text,
                 **inputs,
             )
-
+            if cfg.get_lm_preds:
+                out_record["answer_ids"] = answer_ids  # type: ignore
+                out_record["num_suffix_tokens"] = num_suffix_tokens  # type: ignore
             record_variants.append(out_record)
 
         if any_too_long:
@@ -269,6 +294,11 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
             length=num_variants,
         ),
     }
+    if cfg.get_lm_preds:
+        other_cols["lm_log_odds"] = Sequence(
+            Value(dtype="float32"),
+            length=num_variants,
+        )
 
     return info, Features({**layer_cols, **other_cols})
 
@@ -320,7 +350,10 @@ def extract(
         encodings = get_encodings(cfg, split_type=split_type)
         num_variants = len(encodings.unique("variant_id"))
 
-        def select_hiddens(outputs: Any) -> dict:
+        def select_hiddens(
+            outputs: Any, **kwargs: Any
+        ) -> tuple[dict[str, Tensor], Tensor]:
+            tok_loc_offset = kwargs.get("num_suffix_tokens", 0)
             # Add one to the number of layers to account for the embedding layer
             layer_indices = cfg.layers or tuple(
                 range(model_config.num_hidden_layers + 1)
@@ -334,11 +367,11 @@ def extract(
             if cfg.token_loc == "first":
                 hiddens = [h[..., 0, :] for h in hiddens]
             elif cfg.token_loc == "last":
-                hiddens = [h[..., -1, :] for h in hiddens]
+                hiddens = [h[..., h.shape[-2] - tok_loc_offset - 1, :] for h in hiddens]
             elif cfg.token_loc == "penultimate":
-                hiddens = [h[..., -2, :] for h in hiddens]
+                hiddens = [h[..., h.shape[-2] - tok_loc_offset - 2, :] for h in hiddens]
             elif cfg.token_loc == "mean":
-                hiddens = [h.mean(dim=-2) for h in hiddens]
+                hiddens = [h[..., :-tok_loc_offset, :].mean(dim=-2) for h in hiddens]
             else:
                 raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
 
@@ -348,17 +381,28 @@ def extract(
                     hidden.flatten()
                 ).cpu()
 
-            return hidden_dict
+            if (answer_ids := kwargs.get("answer_ids")) is not None:
+                logits = outputs["logits"][0, -1, answer_ids]
+                logprobs = logits.log_softmax(dim=-1)
+                lm_log_odds = logprobs[1] - logprobs[0]
+            else:
+                lm_log_odds = torch.Tensor([torch.nan])
+
+            return hidden_dict, lm_log_odds
 
         if not server.running:
             server.start()
         encodings = encodings.add_column("id", range(len(encodings)))  # type: ignore
 
         buffer = defaultdict(list)  # row_id -> list of dicts
-        for idx, hidden_dict in server.imap(select_hiddens, encodings, use_tqdm=False):
+        for idx, (hidden_dict, lm_log_odds) in server.imap(
+            select_hiddens, encodings, use_tqdm=False
+        ):
             encoding = encodings[idx]
             row_id = encoding["row_id"]
-            buffer[row_id].append(dict(**encoding, **hidden_dict))
+            buffer[row_id].append(
+                dict(lm_log_odds=lm_log_odds, **encoding, **hidden_dict)
+            )
             if len(buffer[row_id]) == num_variants:
                 # we have a complete example
                 ex = buffer[row_id]
@@ -372,6 +416,10 @@ def extract(
                     texts=[d["text"] for d in ex],
                     **{k: torch.stack([d[k] for d in ex]) for k in hidden_dict},
                 )
+                if cfg.get_lm_preds:
+                    out_record["lm_log_odds"] = torch.stack(
+                        [d["lm_log_odds"] for d in ex]
+                    )
                 del buffer[row_id]
                 yield out_record
 

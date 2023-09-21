@@ -325,26 +325,27 @@ def _worker(
         assert dataset is not None
         for record in dataset:
             assert isinstance(record, dict)
-            assert "id" in record, "Dataset must contain an 'id' column"
-            id = record.pop("id").item()
-            # Only pass the arguments that the model expects
-            record = {k: v for k, v in record.items() if k in param_names}
+            id = record["id"].item()
             assert "input_ids" in record, "Dataset must contain an 'input_ids' column"
+            # Only pass the arguments that the model expects
+            input_record = {k: v for k, v in record.items() if k in param_names}
 
             def maybe_unsqueeze(v):
                 return v.unsqueeze(0) if v.ndim == 1 else v
 
-            inputs_cuda = pytree_map(lambda v: maybe_unsqueeze(v.to(device)), record)
+            inputs_cuda = pytree_map(
+                lambda v: maybe_unsqueeze(v.to(device)), input_record
+            )
             # TODO: have model kwargs so we don't have to duplicate kwargs at each row
             outputs = model(**inputs_cuda)
 
             if callable(closure):
-                outputs = closure(outputs)
+                outputs = closure(
+                    outputs, **record
+                )  # TODO: how to enforce that closure has the right signature?
             if outputs is not None:
                 # Move the outputs back to the CPU
-                outputs_cls = type(outputs)
-                outputs_dict = pytree_map(lambda x: x.cpu().share_memory_(), outputs)
-                outputs = outputs_cls(**outputs_dict)
+                outputs = pytree_map(lambda x: x.cpu().share_memory_(), outputs)
 
             # Send the outputs back to the main process
             out_queue.put((id, outputs))

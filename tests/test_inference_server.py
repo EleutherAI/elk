@@ -40,7 +40,7 @@ def test_inference_server():
             outs = server.map_forward(ds)
             assert len(outs) == len(gt_outs)
             for out, gt_out in zip(outs, gt_outs):
-                out_logits = out.logits
+                out_logits = out["logits"]
                 assert torch.allclose(out_logits, gt_out["logits"].cpu())
 
     test_config(fsdp=False, num_workers=-1)

@@ -1,9 +1,9 @@
 dataset: azaria_mitchell
 templates:
   7eab7254-bd71-4b1d-9f8a-0fc7110f8371: !Template
-    answer_choices: No ||| Yes
+    answer_choices: False ||| True
     id: 7eab7254-bd71-4b1d-9f8a-0fc7110f8371
-    jinja: "{{ text }}"
+    jinja: "{{ statement }}"
     metadata: !TemplateMetadata
       choices_in_prompt: true
       languages:

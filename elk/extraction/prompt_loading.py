@@ -20,8 +20,9 @@ def load_prompts(
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
     template_path: str | None = None,
+    include_answers: bool = False,
     balance: bool = True,
-    text_column: str | None = None,
+    statement_column: str | None = None,
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified dataset.
 
@@ -33,6 +34,7 @@ def load_prompts(
         seed: The seed to use for prompt randomization.
         split_type: Whether to use the train or val split of the dataset.
         template_path: Path to feed into `DatasetTemplates` for loading templates.
+        statement_column: Name of the column to use for the statement text.
 
     Returns:
         An iterable of prompt dictionaries.
@@ -49,16 +51,16 @@ def load_prompts(
 
     prompter, using_blank = get_prompter(ds_name, config_name, template_path)
     if using_blank:
-        print('Using blank template "{{ text }}".')
-        text_column = text_column or "text"
-        if text_column not in ds.column_names:
+        print('Using blank template "{{ statement }}".')
+        statement_column = statement_column or "statement"
+        if statement_column not in ds.column_names:
             raise ValueError(
-                f'Could not find text column "{text_column}".'
+                f'Could not find statement column "{statement_column}".'
                 f" Please include the column or specify a different one with the"
-                f" `text_column` argument."
+                f" `statement_column` argument."
             )
-        if text_column != "text":
-            ds = ds.rename_column(text_column, "text")
+        if statement_column != "statement":
+            ds = ds.rename_column(statement_column, "statement")
 
     # TODO: allow for optionally using contrast pair templates so people
     # don't have to rewrite them
@@ -110,7 +112,7 @@ def load_prompts(
             label_column=label_column,
             label_choices=label_choices,  # type: ignore[arg-type]
             prompter=prompter,
-            rng=rng,
+            include_answers=include_answers,
             fewshot_iter=fewshot_iter,
         )
 
@@ -120,11 +122,11 @@ def _convert_to_prompts(
     prompter: DatasetTemplates,
     label_column: str,
     label_choices: list[bool | int | str],
-    rng: Random,
+    include_answers: bool = False,
     fewshot_iter: Iterator[list[dict]] | None = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
-    prompts = []
+    statements = []
     templates = list(prompter.templates.values())
 
     # For sanity checking that prompts are unique
@@ -141,7 +143,7 @@ def _convert_to_prompts(
             fewshot_texts = list(map(template.apply, fewshot_examples))
             statement = "\n\n".join(fewshot_texts) + "\n\n" + statement
 
-        prompts.append(dict(text=statement))
+        statements.append(statement)
 
     # Sanity check: variants should be unique
     ((maybe_dup, dup_count),) = prompt_counter.most_common(1)
@@ -151,12 +153,20 @@ def _convert_to_prompts(
     # Our reporter training and evaluation code assumes that the labels are integers.
     # If they're not, we need to convert them with index(). label_choices is guaranteed
     # to be sorted (see above).
-    return dict(
+    out_dict = dict(
         row_id=example["row_id"],
         label=label_choices.index(label),
-        prompts=prompts,
+        statements=statements,
         template_names=[template.name for template in templates],
     )
+    if include_answers:
+        out_dict.update(
+            answer_choices=[
+                template.get_fixed_answer_choices_list() for template in templates
+            ],
+            suffixes=[template.suffix for template in templates],
+        )
+    return out_dict
 
 
 def get_prompter(
@@ -166,5 +176,5 @@ def get_prompter(
         try:
             return DatasetTemplates(ds_name, config_name), False
         except ValueError:
-            return DatasetTemplates("blank_text"), True
-    return DatasetTemplates(template_path), template_path == "blank_text"
+            return DatasetTemplates("_default"), True
+    return DatasetTemplates(template_path), template_path == "_default"
