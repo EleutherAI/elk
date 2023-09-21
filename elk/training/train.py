@@ -29,6 +29,9 @@ class Elicit(Run):
     """Whether to use LEACE to erase the paraphrase dimensions before training the
     classifier."""
 
+    max_inlp_iter: int | None = None
+    """Maximum number of iterations for Iterative Nullspace Projection (INLP)."""
+
     def create_models_dir(self, out_dir: Path):
         lr_dir = out_dir / "lr_models"
 
@@ -64,6 +67,7 @@ class Elicit(Run):
             erase_paraphrases=self.erase_paraphrases,
             device=device,
             mode=self.supervised,
+            max_inlp_iter=self.max_inlp_iter,
         )
         with open(lr_dir / f"layer_{layer}.pt", "wb") as file:
             torch.save(lr_models, file)

@@ -7,7 +7,11 @@ from .classifier import Classifier
 
 
 def train_supervised(
-    data: dict[str, LayerData], device: str, mode: str, erase_paraphrases: bool = False
+    data: dict[str, LayerData],
+    device: str,
+    mode: str,
+    erase_paraphrases: bool = False,
+    max_inlp_iter: int | None = None,
 ) -> list[Classifier]:
     assert not (
         erase_paraphrases and len(data) > 1
@@ -47,7 +51,9 @@ def train_supervised(
         lr_model.fit_cv(X, train_labels)
         return [lr_model]
     elif mode == "inlp":
-        return Classifier.inlp(X, train_labels, eraser=eraser).classifiers
+        return Classifier.inlp(
+            X, train_labels, eraser=eraser, max_iter=max_inlp_iter
+        ).classifiers
     elif mode == "single":
         lr_model = Classifier(X.shape[-1], device=device, eraser=eraser)
         lr_model.fit(X, train_labels)

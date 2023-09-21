@@ -74,6 +74,9 @@ class Extract(Serializable):
     """The number of prompt templates to use for each example. If -1, all available
     templates are used."""
 
+    balance: bool = True
+    """Whether to balance the number of examples per class."""
+
     text_column: str | None = None
     """Name of the column containing the model input strings when using a built-in
     prompt template. If None, we use the "text" column."""
@@ -168,6 +171,7 @@ def get_encodings(
         num_shots=cfg.num_shots,
         split_type=split_type,
         template_path=cfg.template_path,
+        balance=cfg.balance,
         seed=cfg.seed,
         text_column=cfg.text_column,
     )
