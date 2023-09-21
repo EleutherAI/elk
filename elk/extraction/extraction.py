@@ -418,7 +418,7 @@ def extract(
                 )
                 if cfg.get_lm_preds:
                     out_record["lm_log_odds"] = torch.stack(
-                        [d["lm_log_odds"] for d in ex]
+                        [d["lm_log_odds"] for d in ex]  # type: ignore
                     )
                 del buffer[row_id]
                 yield out_record
