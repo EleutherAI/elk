@@ -89,14 +89,30 @@ class Elicit(Run):
                 )
 
             for mode in ("none", "full"):
+                if val.lm_log_odds is not None:
+                    if self.save_logprobs:
+                        out_logprobs[ds_name]["lm"][mode] = (
+                            get_logprobs(val.lm_log_odds, mode).detach().cpu()
+                        )
+
+                    row_bufs["lm_eval"].append(
+                        {
+                            **meta,
+                            "ensembling": mode,
+                            **evaluate_preds(
+                                val.labels, val.lm_log_odds, mode
+                            ).to_dict(),
+                        }
+                    )
+
                 for i, model in enumerate(lr_models):
                     model.eval()
-                    val_credences = model(val.hiddens)
-                    train_credences = model(train.hiddens)
+                    val_log_odds = model(val.hiddens)
+                    train_log_odds = model(train.hiddens)
 
                     if self.save_logprobs:
                         out_logprobs[ds_name]["lr"][mode][i] = (
-                            get_logprobs(val_credences, mode).detach().cpu()
+                            get_logprobs(val_log_odds, mode).detach().cpu()
                         )
 
                     row_bufs["lr_eval"].append(
@@ -104,7 +120,7 @@ class Elicit(Run):
                             **meta,
                             "ensembling": mode,
                             "inlp_iter": i,
-                            **evaluate_preds(val.labels, val_credences, mode).to_dict(),
+                            **evaluate_preds(val.labels, val_log_odds, mode).to_dict(),
                         }
                     )
 
@@ -114,7 +130,7 @@ class Elicit(Run):
                             "ensembling": mode,
                             "inlp_iter": i,
                             **evaluate_preds(
-                                train.labels, train_credences, mode
+                                train.labels, train_log_odds, mode
                             ).to_dict(),
                         }
                     )

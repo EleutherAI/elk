@@ -35,7 +35,7 @@ from .utils import (
 class LayerData:
     hiddens: Tensor
     labels: Tensor
-    lm_preds: Tensor | None
+    lm_log_odds: Tensor | None
     texts: list[list[str]]  # (n, v)
     row_ids: list[int]  # (n,)
     variant_ids: list[list[str]]  # (n, v)
@@ -156,10 +156,16 @@ class Run(ABC, Serializable):
             if self.prompt_indices:
                 hiddens = hiddens[:, self.prompt_indices]
 
+            if "lm_log_odds" in split.column_names:
+                with split.formatted_as("torch", device=device):
+                    lm_preds = assert_type(Tensor, split["lm_log_odds"])
+            else:
+                lm_preds = None
+
             out[ds_name] = LayerData(
                 hiddens=hiddens,
                 labels=labels,
-                lm_preds=None,  # TODO: implement
+                lm_log_odds=lm_preds,
                 texts=split["texts"],
                 row_ids=split["row_id"],
                 variant_ids=split["variant_ids"],

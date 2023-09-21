@@ -58,13 +58,27 @@ class Eval(Run):
                     lr=dict(),
                 )
             for mode in ("none", "full"):
-                # TODO save lm logprobs and add to buf
+                if val_data.lm_log_odds is not None:
+                    if self.save_logprobs:
+                        out_logprobs[ds_name]["lm"][mode] = get_logprobs(
+                            val_data.lm_log_odds, mode
+                        ).cpu()
+                    row_bufs["lm_eval"].append(
+                        {
+                            "ensembling": mode,
+                            **meta,
+                            **evaluate_preds(
+                                val_data.labels, val_data.lm_log_odds, mode
+                            ).to_dict(),
+                        }
+                    )
+
                 for i, model in enumerate(lr_models):
                     model.eval()
-                    val_credences = model(val_data.hiddens)
+                    val_log_odds = model(val_data.hiddens)
                     if self.save_logprobs:
                         out_logprobs[ds_name]["lr"][mode][i] = get_logprobs(
-                            val_credences, mode
+                            val_log_odds, mode
                         ).cpu()
                     row_bufs["lr_eval"].append(
                         {
@@ -72,7 +86,7 @@ class Eval(Run):
                             "inlp_iter": i,
                             **meta,
                             **evaluate_preds(
-                                val_data.labels, val_credences, mode
+                                val_data.labels, val_log_odds, mode
                             ).to_dict(),
                         }
                     )
