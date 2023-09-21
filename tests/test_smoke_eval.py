@@ -18,7 +18,6 @@ def setup_elicit(
     tmp_path: Path,
     dataset_name="imdb",
     model_path="sshleifer/tiny-gpt2",
-    min_mem=10 * 1024**2,
 ) -> Elicit:
     """Setup elicit config for testing, execute elicit, and save output to tmp_path.
     Returns the elicit run configuration.
@@ -31,7 +30,6 @@ def setup_elicit(
             # run on all layers, tiny-gpt only has 2 layers
         ),
         num_gpus=2,
-        min_gpu_mem=min_mem,
         out_dir=tmp_path,
     )
     elicit.execute()
@@ -84,13 +82,6 @@ def eval_assert_files_created(elicit: Elicit, transfer_datasets: tuple[str, ...]
 
 
 """TESTS"""
-
-
-def test_smoke_tfr_eval_run_tiny_gpt2_ccs(tmp_path: Path):
-    elicit = setup_elicit(tmp_path)
-    transfer_datasets = ("christykoh/imdb_pt",)
-    eval_run(elicit, transfer_datasets=transfer_datasets)
-    eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)
 
 
 def test_smoke_eval_run_tiny_gpt2(tmp_path: Path):

@@ -133,12 +133,12 @@ class InferenceServer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
 
-    def map_forward(self, dataset: Dataset, use_tqdm: bool = True) -> list:
+    def map_forward(self, dataset: Dataset, use_tqdm: bool = False) -> list:
         """Maps the model's `forward` method over the given dataset, without
         running a closure on the outputs."""
         return self.map(lambda x: x, dataset, use_tqdm=use_tqdm)
 
-    def imap_forward(self, dataset: Dataset, use_tqdm: bool = True) -> Iterable:
+    def imap_forward(self, dataset: Dataset, use_tqdm: bool = False) -> Iterable:
         """Maps the model's `forward` method over the given dataset, without
         running a closure on the outputs."""
         yield from self.imap(lambda x: x, dataset)
@@ -147,7 +147,7 @@ class InferenceServer:
         self,
         closure: Callable[[ModelOutput], Any],
         dataset: Dataset,
-        use_tqdm: bool = True,
+        use_tqdm: bool = False,
     ) -> list:
         """Run inference on the given inputs, running a closure on the outputs.
         Dataset must contain an `input_ids` column, and optionally other arguments
@@ -164,7 +164,7 @@ class InferenceServer:
         self,
         closure: Callable[[ModelOutput], Any] | None,
         dataset: Dataset,
-        use_tqdm: bool = True,
+        use_tqdm: bool = False,
     ) -> Iterable:
         """Run inference on the given inputs, running a closure on the outputs.
         Dataset must contain an `input_ids` column, and optionally other arguments
@@ -177,8 +177,8 @@ class InferenceServer:
             raise RuntimeError("Can't run inference on a server that isn't running")
 
         assert "id" in dataset.column_names, "Dataset must contain an 'id' column"
-        if self.fsdp and len(dataset) % self.num_workers != 0:
-            # FSDP requires that the dataset's length is a multiple of the world size
+        if len(dataset) % self.num_workers != 0:
+            # server requires that the dataset's length is a multiple of the world size
             assert self.num_workers != -1
 
             # duplicate some rows
@@ -189,7 +189,7 @@ class InferenceServer:
             for _ in range(num_needed):
                 dataset = dataset.add_item(dummy)  # type: ignore
         else:
-            dummy_id = None
+            dummy_id = -1
 
         # We need PyTorch tensors
         dataset = dataset.with_format("torch")

@@ -7,25 +7,18 @@ from typing import Literal
 
 import pandas as pd
 import torch
-from simple_parsing import subgroups
 
 from ..metrics import evaluate_preds
 from ..run import Run
 from ..training.supervised import train_supervised
 from ..utils.typing import assert_type
-from .ccs_reporter import CcsConfig
-from .common import FitterConfig
-from .eigen_reporter import EigenFitterConfig
 
 
 @dataclass
 class Elicit(Run):
     """Full specification of a reporter training run."""
 
-    net: FitterConfig = subgroups(
-        {"ccs": CcsConfig, "eigen": EigenFitterConfig}, default="eigen"  # type: ignore
-    )
-    """Config for building the reporter network."""
+    seed: int = 42
 
     supervised: Literal["single", "inlp", "cv"] = "single"
     """Whether to train a supervised classifier, and if so, whether to use
@@ -51,7 +44,7 @@ class Elicit(Run):
     ) -> dict[str, pd.DataFrame]:
         """Train a single reporter on a single layer."""
 
-        self.make_reproducible(seed=self.net.seed + layer)
+        self.make_reproducible(seed=self.seed + layer)
         device = self.get_device(devices, world_size)
 
         train_dict = self.prepare_data(device, layer, "train")

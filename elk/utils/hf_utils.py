@@ -1,13 +1,5 @@
-import os
-
 import torch
 import transformers
-from accelerate import (
-    infer_auto_device_map,
-    init_empty_weights,
-    load_checkpoint_and_dispatch,
-)
-from huggingface_hub import snapshot_download
 from transformers import (
     AutoConfig,
     AutoModel,
@@ -17,7 +9,6 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
-from ..utils.typing import assert_type
 from .data_utils import prevent_name_conflicts
 
 # Ordered by preference
@@ -35,12 +26,12 @@ IGNORE_PATTERNS = ["*.bin", "*.bin.index.json"]  # only use the safetensors
 
 def instantiate_model(
     model_str: str,
-    devices: tuple[str | torch.device, ...] = ("cpu",),
+    device: str | torch.device = "cpu",
     **kwargs,
 ) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class."""
 
-    devices = tuple(torch.device(d) for d in devices)
+    device = torch.device(device)
 
     with prevent_name_conflicts():
         model_cfg = AutoConfig.from_pretrained(model_str)
@@ -56,13 +47,11 @@ def instantiate_model(
             # we can't guarantee that there won't be overflow if we downcast to fp16.
             if fp32_weights:
                 raise ValueError("Cannot load in 8-bit if weights are fp32")
-            if len(devices) != 1:
-                raise NotImplementedError("8-bit only supports single-device inference")
 
             dtype = torch.float16
 
         # CPUs generally don't support anything other than fp32.
-        elif any(d.type == "cpu" for d in devices):
+        elif device.type == "cpu":
             dtype = torch.float32
 
         # If the model is fp32 but bf16 is available, convert to bf16.
@@ -71,8 +60,6 @@ def instantiate_model(
         elif fp32_weights and torch.cuda.is_bf16_supported():
             dtype = torch.bfloat16
             print("Weights seem to be fp32, but bf16 is available. Loading in bf16.")
-        elif len(devices) != 1:
-            dtype = model_cfg.torch_dtype
         else:
             dtype = "auto"
 
@@ -89,36 +76,9 @@ def instantiate_model(
                 if model_cls is not AutoModel:
                     break
 
-        if len(devices) == 1:
-            kwargs["device_map"] = {"": devices[0]}
-            kwargs["torch_dtype"] = dtype
-            return AutoModel.from_pretrained(model_str, **kwargs)
-
-        # If we're here, we're doing multi-device inference using `accelerate`.
-        mname = model_str.replace("/", "_")
-        weights_dir = os.path.join(os.environ.get("HF_DATASETS_CACHE", "~"), mname)
-        if not os.path.exists(weights_dir):
-            os.makedirs(weights_dir)
-
-        checkpoint_location = snapshot_download(
-            model_str, local_dir=weights_dir, ignore_patterns=IGNORE_PATTERNS
-        )
-        with init_empty_weights():
-            model = model_cls.from_pretrained(checkpoint_location)
-        device_map = infer_auto_device_map(
-            model,
-            max_memory=get_max_memory(devices),
-            no_split_module_classes=NO_SPLIT_MODULE_CLASSES,
-        )
-
-        model = load_checkpoint_and_dispatch(
-            model,
-            checkpoint_location,
-            device_map=device_map,
-            offload_folder=weights_dir,
-            dtype=dtype,
-        )
-        return assert_type(PreTrainedModel, model)
+        kwargs["device_map"] = {"": device}
+        kwargs["torch_dtype"] = dtype
+        return model_cls.from_pretrained(model_str, **kwargs)
 
 
 def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:

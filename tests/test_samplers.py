@@ -14,7 +14,7 @@ def test_output_batches_are_balanced():
         IterableDataset,
         load_dataset("super_glue", "boolq", split="train", streaming=True),
     )
-    label_col = infer_label_column(dataset.features)
+    label_col = infer_label_column(dataset.features)  # type: ignore
 
     # Start with an even number of shots; make sure they're exactly balanced
     sampler = FewShotSampler(dataset, 6, rng=Random(42))
@@ -40,7 +40,7 @@ def test_output_is_roughly_balanced():
         load_dataset("super_glue", "boolq", split="train", streaming=True),
     )
 
-    col = infer_label_column(dataset.features)
+    col = infer_label_column(dataset.features)  # type: ignore
     reservoir = BalancedSampler(dataset, {0, 1})
 
     # Count the number of samples for each label
