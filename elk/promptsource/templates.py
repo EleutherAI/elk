@@ -4,10 +4,10 @@ import uuid
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar
 
 import yaml
 from jinja2 import BaseLoader, Environment, meta
+from simple_parsing import Serializable, field
 
 # Truncation of jinja template variables
 # 1710 = 300 words x 4.7 avg characters per word + 300 spaces
@@ -60,47 +60,40 @@ env.filters["reorder"] = reorder
 env.filters["to_letter"] = to_letter
 
 
-class Template(yaml.YAMLObject):
+@dataclass
+class Template(Serializable):
     """
-    A prompt template.
+    Creates a prompt template.
+
+    A prompt template is expressed in Jinja. It is rendered using an example
+    from the corresponding Hugging Face datasets library (a dictionary). The
+    separator ||| should appear once to divide the template into prompt and
+    output. Generally, the prompt should provide information on the desired
+    behavior, e.g., text passage and instructions, and the output should be
+    a desired response.
+
+    :param name: unique name (per dataset) for template
+    :param jinja: template expressed in Jinja
+    :param reference: string describing author or paper reference for template
+    :param metadata: a Metadata object with template annotations
+    :param answer_choices: Jinja expression for answer choices. Should produce
+                            a ||| delimited string of choices that enumerates
+                            the possible completions for templates that should
+                            be evaluated as ranked completions. If None, then
+                            the template is open-ended. This list is accessible
+                            from within Jinja as the variable `answer_choices`.
+    :param suffix: string to append to the end of the statement before the answer
     """
 
-    yaml_tag = "!Template"
+    name: str
+    jinja: str
+    reference: str | None = None
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    metadata: "Metadata" = field(default_factory=lambda: Template.Metadata())
+    answer_choices: str | None = None
+    suffix: str = ""
 
-    def __init__(
-        self, name, jinja, reference, metadata=None, answer_choices=None, suffix=""
-    ):
-        """
-        Creates a prompt template.
-
-        A prompt template is expressed in Jinja. It is rendered using an example
-        from the corresponding Hugging Face datasets library (a dictionary). The
-        separator ||| should appear once to divide the template into prompt and
-        output. Generally, the prompt should provide information on the desired
-        behavior, e.g., text passage and instructions, and the output should be
-        a desired response.
-
-        :param name: unique name (per dataset) for template
-        :param jinja: template expressed in Jinja
-        :param reference: string describing author or paper reference for template
-        :param metadata: a Metadata object with template annotations
-        :param answer_choices: Jinja expression for answer choices. Should produce
-                               a ||| delimited string of choices that enumerates
-                               the possible completions for templates that should
-                               be evaluated as ranked completions. If None, then
-                               the template is open-ended. This list is accessible
-                               from within Jinja as the variable `answer_choices`.
-        :param suffix: string to append to the end of the statement before the answer
-        """
-        self.id = str(uuid.uuid4())
-        self.name = name
-        self.jinja = jinja
-        self.reference = reference
-        self.metadata = metadata or Template.Metadata()
-        self.answer_choices = answer_choices
-        self.suffix = suffix
-
-    def get_answer_choices_list(self, example):
+    def get_answer_choices_list(self, example: dict):
         """
         Returns a list of answer choices for a given example
 
@@ -180,7 +173,6 @@ class Template(yaml.YAMLObject):
         # separator in the original example
         statement_text, *_ = rendered_example.split("|||")
         return Template._strip_spaces(self._unescape_pipe(statement_text))
-                
 
     @staticmethod
     def _strip_spaces(string):
@@ -229,10 +221,8 @@ class Template(yaml.YAMLObject):
         return string.replace(cls.pipe_protector, "|||")
 
     @dataclass
-    class Metadata(yaml.YAMLObject):
+    class Metadata(Serializable):
         """Metadata for a prompt template."""
-
-        yaml_tag: ClassVar[str] = "!TemplateMetadata"
 
         original_task: bool | None = None
         """If True, this prompt asks a model to perform the original task designed for
