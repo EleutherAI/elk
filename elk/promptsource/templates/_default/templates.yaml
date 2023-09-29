@@ -12,4 +12,4 @@ templates:
       - Accuracy
       original_task: true
     name: _default
-    reference: ''
+    suffix: "\n\n\nQ: Is the above statement \"True\" or \"False\"?\n\nA:"

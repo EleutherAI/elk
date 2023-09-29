@@ -18,10 +18,6 @@ _DECODER_ONLY_SUFFIXES = [
 ]
 # Includes encoder-decoder models
 _AUTOREGRESSIVE_SUFFIXES = ["ConditionalGeneration"] + _DECODER_ONLY_SUFFIXES
-# These modules shouldn't be split across devices because they have residual connections
-# TODO: expand this list, preferably without hard-coding it
-NO_SPLIT_MODULE_CLASSES = ["LlamaDecoderLayer"]
-IGNORE_PATTERNS = ["*.bin", "*.bin.index.json"]  # only use the safetensors
 
 
 def instantiate_model(
@@ -30,8 +26,8 @@ def instantiate_model(
     **kwargs,
 ) -> PreTrainedModel:
     """Instantiate a model string with the appropriate `Auto` class."""
-
     device = torch.device(device)
+    kwargs["device_map"] = {"": device}
 
     with prevent_name_conflicts():
         model_cfg = AutoConfig.from_pretrained(model_str)
@@ -48,37 +44,34 @@ def instantiate_model(
             if fp32_weights:
                 raise ValueError("Cannot load in 8-bit if weights are fp32")
 
-            dtype = torch.float16
+            kwargs["torch_dtype"] = torch.float16
 
         # CPUs generally don't support anything other than fp32.
         elif device.type == "cpu":
-            dtype = torch.float32
+            kwargs["torch_dtype"] = torch.float32
 
         # If the model is fp32 but bf16 is available, convert to bf16.
         # Usually models with fp32 weights were actually trained in bf16, and
         # converting them doesn't hurt performance.
         elif fp32_weights and torch.cuda.is_bf16_supported():
-            dtype = torch.bfloat16
+            kwargs["torch_dtype"] = torch.bfloat16
             print("Weights seem to be fp32, but bf16 is available. Loading in bf16.")
         else:
-            dtype = "auto"
+            kwargs["torch_dtype"] = "auto"
 
-        model_cls = AutoModel
         archs = model_cfg.architectures
-        if isinstance(archs, list):
-            for suffix in _AUTOREGRESSIVE_SUFFIXES:
-                # Check if any of the architectures in the config end with the suffix.
-                # If so, return the corresponding model class.
-                for arch_str in archs:
-                    if arch_str.endswith(suffix):
-                        model_cls = getattr(transformers, arch_str)
-                        break
-                if model_cls is not AutoModel:
-                    break
+        if not isinstance(archs, list):
+            return AutoModel.from_pretrained(model_str, **kwargs)
 
-        kwargs["device_map"] = {"": device}
-        kwargs["torch_dtype"] = dtype
-        return model_cls.from_pretrained(model_str, **kwargs)
+        for suffix in _AUTOREGRESSIVE_SUFFIXES:
+            # Check if any of the architectures in the config end with the suffix.
+            # If so, return the corresponding model class.
+            for arch_str in archs:
+                if arch_str.endswith(suffix):
+                    model_cls = getattr(transformers, arch_str)
+                    return model_cls.from_pretrained(model_str, **kwargs)
+
+        return AutoModel.from_pretrained(model_str, **kwargs)
 
 
 def instantiate_tokenizer(model_str: str, **kwargs) -> PreTrainedTokenizerBase:
@@ -101,11 +94,3 @@ def is_autoregressive(model_cfg: PretrainedConfig, include_enc_dec: bool) -> boo
 
     suffixes = _AUTOREGRESSIVE_SUFFIXES if include_enc_dec else _DECODER_ONLY_SUFFIXES
     return any(arch_str.endswith(suffix) for arch_str in archs for suffix in suffixes)
-
-
-def get_max_memory(devices: tuple[torch.device, ...]) -> dict[int | str, int | str]:
-    """Get the maximum memory available on a tuple of devices."""
-    # Make sure CUDA is initialized on each GPU to have the right memory info.
-    for d in devices:
-        _ = torch.tensor([0], device=d)
-    return {d.index: torch.cuda.mem_get_info(d.index)[0] for d in devices}

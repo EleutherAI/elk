@@ -1,4 +1,4 @@
-from dataclasses import InitVar, dataclass, replace
+from dataclasses import InitVar, dataclass, field, replace
 
 import torch
 from datasets import get_dataset_config_info
@@ -45,12 +45,7 @@ class Sweep:
     name: str | None = None
 
     # A bit of a hack to add all the command line arguments from Elicit
-    run_template: Elicit = Elicit(
-        data=Extract(
-            model="<placeholder>",
-            datasets=("<placeholder>",),
-        )
-    )
+    run_template: Elicit = field(default_factory=Elicit.default)
 
     def __post_init__(self, add_pooled: bool):
         if not self.datasets:
@@ -120,12 +115,8 @@ class Sweep:
                 # Add hyperparameter values to output directory if needed
                 assert run.out_dir is not None
 
-                try:
-                    run.execute()
-                except torch.linalg.LinAlgError as e:
-                    print(colorize(f"LinAlgError: {e}", "red"))
-                    continue
-
+                run.execute()
+ 
                 if not self.skip_transfer_eval:
                     if len(eval_datasets) > 1:
                         print(colorize("== Transfer eval ==", "green"))

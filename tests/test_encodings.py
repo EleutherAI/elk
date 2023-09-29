@@ -1,7 +1,7 @@
 from datasets import load_dataset
 from transformers import AutoTokenizer
 
-from elk.extraction import Extract, get_encodings
+from elk.extraction import Extract, tokenize_dataset
 
 
 def test_get_encodings():
@@ -20,7 +20,7 @@ def test_get_encodings():
         seed=seed,
     )
     split_type = "train"
-    encodings = get_encodings(cfg, split_type)
+    encodings = tokenize_dataset(cfg, split_type)
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, truncation_side="left")
     ds = load_dataset(dataset_name, split=split_type)

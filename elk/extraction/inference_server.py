@@ -24,12 +24,10 @@ from transformers.modeling_outputs import ModelOutput
 from elk.utils import instantiate_model, pytree_map, select_usable_devices
 
 
-@dataclass
+@dataclass(frozen=True)
 class _Sentinel:
     """Sentinel value used to indicate that a worker is done."""
-
-    pass
-
+    
 
 SENTINEL = _Sentinel()
 
@@ -133,20 +131,21 @@ class InferenceServer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
 
-    def map_forward(self, dataset: Dataset, use_tqdm: bool = False) -> list:
+    def map_forward(self, dataset: Dataset, model_kwargs: dict[str, Any] | None = None, use_tqdm: bool = False) -> list:
         """Maps the model's `forward` method over the given dataset, without
         running a closure on the outputs."""
-        return self.map(lambda x: x, dataset, use_tqdm=use_tqdm)
+        return self.map(lambda x: x, dataset, model_kwargs=model_kwargs, use_tqdm=use_tqdm)
 
-    def imap_forward(self, dataset: Dataset, use_tqdm: bool = False) -> Iterable:
+    def imap_forward(self, dataset: Dataset, model_kwargs: dict[str, Any] | None = None, use_tqdm: bool = False) -> Iterable:
         """Maps the model's `forward` method over the given dataset, without
         running a closure on the outputs."""
-        yield from self.imap(lambda x: x, dataset)
+        yield from self.imap(lambda x: x, dataset, model_kwargs=model_kwargs, use_tqdm=use_tqdm)
 
     def map(
         self,
         closure: Callable[[ModelOutput], Any],
         dataset: Dataset,
+        model_kwargs: dict[str, Any] | None = None,
         use_tqdm: bool = False,
     ) -> list:
         """Run inference on the given inputs, running a closure on the outputs.
@@ -156,7 +155,7 @@ class InferenceServer:
         if "id" not in dataset.column_names:
             dataset = dataset.add_column("id", range(len(dataset)))  # type: ignore
         ids = dataset["id"]
-        output_tuples = list(self.imap(closure, dataset, use_tqdm=use_tqdm))
+        output_tuples = list(self.imap(closure, dataset, model_kwargs, use_tqdm))
         outputs = dict(output_tuples)
         return [outputs[id] for id in ids]
 
@@ -164,6 +163,7 @@ class InferenceServer:
         self,
         closure: Callable[[ModelOutput], Any] | None,
         dataset: Dataset,
+        model_kwargs: dict[str, Any] | None = None,
         use_tqdm: bool = False,
     ) -> Iterable:
         """Run inference on the given inputs, running a closure on the outputs.
@@ -196,9 +196,10 @@ class InferenceServer:
 
         # Pickle the closure and send it to the workers
         closure_pkl = dill.dumps(closure)
+        model_kwargs_pkl = dill.dumps(model_kwargs or {})
         shards = [dataset.shard(self.num_workers, i) for i in range(self.num_workers)]
         for q, shard in zip(self._task_queues, shards):
-            q.put((closure_pkl, shard))
+            q.put((closure_pkl, model_kwargs_pkl, shard))
 
         generator = round_robin(self._result_queues)  # type: ignore[arg-type]
         seen_dummy = False
@@ -300,7 +301,7 @@ def _worker(
         wrapped = FSDP(
             model,
             auto_wrap_policy=wrap_policy,
-            cpu_offload=CPUOffload(offload_params=False),
+            cpu_offload=CPUOffload(offload_params=cpu_offload),
             device_id=torch.device(device),
             forward_prefetch=True,
         )
@@ -318,9 +319,10 @@ def _worker(
 
     while msg := in_queue.get():
         # Someone called map() giving us a new closure and dataset to use
-        assert isinstance(msg, tuple) and len(msg) == 2
-        closure_pkl, dataset = msg
+        assert isinstance(msg, tuple) and len(msg) == 3
+        closure_pkl, model_kwargs_pkl, dataset = msg
         closure = dill.loads(closure_pkl)
+        model_kwargs = dill.loads(model_kwargs_pkl)
 
         assert dataset is not None
         for record in dataset:
@@ -337,12 +339,12 @@ def _worker(
                 lambda v: maybe_unsqueeze(v.to(device)), input_record
             )
             # TODO: have model kwargs so we don't have to duplicate kwargs at each row
-            outputs = model(**inputs_cuda)
+            outputs = model(**inputs_cuda, **model_kwargs)
 
             if callable(closure):
                 outputs = closure(
                     outputs, **record
-                )  # TODO: how to enforce that closure has the right signature?
+                )
             if outputs is not None:
                 # Move the outputs back to the CPU
                 outputs = pytree_map(lambda x: x.cpu().share_memory_(), outputs)

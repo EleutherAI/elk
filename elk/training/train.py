@@ -8,6 +8,7 @@ from typing import Literal
 import pandas as pd
 import torch
 
+from ..extraction import Extract
 from ..metrics import evaluate_preds, get_logprobs
 from ..run import Run
 from ..training.supervised import train_supervised
@@ -32,6 +33,15 @@ class Elicit(Run):
     max_inlp_iter: int | None = None
     """Maximum number of iterations for Iterative Nullspace Projection (INLP)."""
 
+    @staticmethod
+    def default():
+        return Elicit(
+            data=Extract(
+                model="<placeholder>",
+                datasets=("<placeholder>",),
+            )
+        )
+    
     def create_models_dir(self, out_dir: Path):
         lr_dir = out_dir / "lr_models"
 

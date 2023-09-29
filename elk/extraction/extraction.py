@@ -23,6 +23,8 @@ from simple_parsing import Serializable, field
 from torch import Tensor
 from transformers import AutoConfig
 
+from ..utils.hf_utils import is_autoregressive
+
 from ..utils import (
     Color,
     assert_type,
@@ -145,12 +147,12 @@ class Extract(Serializable):
         ]
 
 
-def get_encodings(
+def tokenize_dataset(
     cfg: "Extract",
     split_type: Literal["train", "val"] = "train",
 ) -> Dataset:
     """Apply the prompt templates to the dataset and return the tokenized LM inputs.
-    Each dict contains the keys `input_ids`, `output_hidden_states`, `variant_id`,
+    Each dict contains the keys `input_ids`, `variant_id`,
     `row_id`, `text`, and `label`. If lm_preds is True, we also include `answer_ids`
     and `num_suffix_tokens`.
     """
@@ -159,11 +161,8 @@ def get_encodings(
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
-    # welcome message on every rank
     tokenizer = instantiate_tokenizer(cfg.model, truncation_side="left")
 
-    AutoConfig.from_pretrained(cfg.model)
     # TODO: support using the encoder only of an encoder-decoder model
 
     prompt_ds = load_prompts(
@@ -225,22 +224,19 @@ def get_encodings(
             )
 
             # suffix comes right after the last statement token, before the answer
-            ids = torch.cat([encoding.input_ids, suffix_tokens])
+            ids = torch.cat([encoding.input_ids, suffix_tokens.unsqueeze(0)], dim=-1)
 
             # If this input is too long, skip it
             if ids.shape[-1] > max_length:
                 any_too_long = True
                 break
 
-            inputs: dict[str, Tensor | None] = dict(input_ids=ids.long())
-
             out_record: dict[str, Any] = dict(
                 row_id=example["row_id"],
                 variant_id=example["template_names"][i],
                 label=example["label"],
                 text=statement + suffix,
-                output_hidden_states=True,
-                **inputs,
+                input_ids=ids.long()
             )
             if cfg.get_lm_preds:
                 out_record["answer_ids"] = answer_ids  # type: ignore
@@ -250,6 +246,10 @@ def get_encodings(
 
         if any_too_long:
             continue
+        
+        # print an example text to stdout
+        if len(out_records) == 0:
+            print(f"Example text: {record_variants[0]['text']}")
         out_records.extend(record_variants)
 
     # transpose the list of dicts into a dict of lists
@@ -316,6 +316,10 @@ def extract(
     info, features = hidden_features(cfg)
 
     model_config = AutoConfig.from_pretrained(cfg.model)
+    if not is_autoregressive(model_config, include_enc_dec=True) and cfg.get_lm_preds:
+        raise ValueError(
+            "Can only extract LM predictions from autoregressive models."
+        )
     limits = cfg.max_examples
     splits = assert_type(SplitDict, info.splits)
 
@@ -338,57 +342,56 @@ def extract(
         else:
             print(f"{pretty_name} using '{split_name}' for validation")
 
-    server = InferenceServer(
-        model_str=cfg.model, num_workers=num_gpus, cpu_offload=True, fsdp=cfg.fsdp
-    )
+
+    def select_hiddens(
+        outputs: Any, **kwargs: Any
+    ) -> tuple[dict[str, Tensor], Tensor]:
+        tok_loc_offset = kwargs.get("num_suffix_tokens", 0)
+        # Add one to the number of layers to account for the embedding layer
+        layer_indices = cfg.layers or tuple(
+            range(model_config.num_hidden_layers + 1)
+        )
+
+        hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+        # Throw out layers we don't care about
+        hiddens = [hiddens[i] for i in layer_indices]
+
+        # Current shape of each element: (batch_size, seq_len, hidden_size)
+        if cfg.token_loc == "first":
+            hiddens = [h[..., 0, :] for h in hiddens]
+        elif cfg.token_loc == "last":
+            hiddens = [h[..., h.shape[-2] - tok_loc_offset - 1, :] for h in hiddens]
+        elif cfg.token_loc == "penultimate":
+            hiddens = [h[..., h.shape[-2] - tok_loc_offset - 2, :] for h in hiddens]
+        elif cfg.token_loc == "mean":
+            hiddens = [h[..., :-tok_loc_offset, :].mean(dim=-2) for h in hiddens]
+        else:
+            raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+
+        hidden_dict = dict()
+        for layer_idx, hidden in zip(layer_indices, hiddens):
+            hidden_dict[f"hidden_{layer_idx}"] = float_to_int16(
+                hidden.flatten()
+            ).cpu()
+
+        if (answer_ids := kwargs.get("answer_ids")) is not None:
+            # log_odds = log(p(yes)/(p(no)) = log(p(yes)) - log(p(no))
+            logits = outputs["logits"][0, -1, answer_ids]
+            logprobs = logits.log_softmax(dim=-1)
+            lm_log_odds = logprobs[1] - logprobs[0]
+        else:
+            lm_log_odds = torch.Tensor([torch.nan])
+
+        return hidden_dict, lm_log_odds
+
 
     def extract_hiddens(
         cfg: Extract,
         split_type: Literal["train", "val"],
         server: InferenceServer,
     ) -> Iterable[dict]:
-        encodings = get_encodings(cfg, split_type=split_type)
+        encodings = tokenize_dataset(cfg, split_type=split_type)
         num_variants = len(encodings.unique("variant_id"))
-
-        def select_hiddens(
-            outputs: Any, **kwargs: Any
-        ) -> tuple[dict[str, Tensor], Tensor]:
-            tok_loc_offset = kwargs.get("num_suffix_tokens", 0)
-            # Add one to the number of layers to account for the embedding layer
-            layer_indices = cfg.layers or tuple(
-                range(model_config.num_hidden_layers + 1)
-            )
-
-            hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-            # Throw out layers we don't care about
-            hiddens = [hiddens[i] for i in layer_indices]
-
-            # Current shape of each element: (batch_size, seq_len, hidden_size)
-            if cfg.token_loc == "first":
-                hiddens = [h[..., 0, :] for h in hiddens]
-            elif cfg.token_loc == "last":
-                hiddens = [h[..., h.shape[-2] - tok_loc_offset - 1, :] for h in hiddens]
-            elif cfg.token_loc == "penultimate":
-                hiddens = [h[..., h.shape[-2] - tok_loc_offset - 2, :] for h in hiddens]
-            elif cfg.token_loc == "mean":
-                hiddens = [h[..., :-tok_loc_offset, :].mean(dim=-2) for h in hiddens]
-            else:
-                raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
-
-            hidden_dict = dict()
-            for layer_idx, hidden in zip(layer_indices, hiddens):
-                hidden_dict[f"hidden_{layer_idx}"] = float_to_int16(
-                    hidden.flatten()
-                ).cpu()
-
-            if (answer_ids := kwargs.get("answer_ids")) is not None:
-                logits = outputs["logits"][0, -1, answer_ids]
-                logprobs = logits.log_softmax(dim=-1)
-                lm_log_odds = logprobs[1] - logprobs[0]
-            else:
-                lm_log_odds = torch.Tensor([torch.nan])
-
-            return hidden_dict, lm_log_odds
 
         if not server.running:
             server.start()
@@ -396,7 +399,7 @@ def extract(
 
         buffer = defaultdict(list)  # row_id -> list of dicts
         for idx, (hidden_dict, lm_log_odds) in server.imap(
-            select_hiddens, encodings, use_tqdm=False
+            select_hiddens, encodings, use_tqdm=False, model_kwargs=dict(output_hidden_states=True)
         ):
             encoding = encodings[idx]
             row_id = encoding["row_id"]
@@ -409,7 +412,7 @@ def extract(
                 ex = sorted(ex, key=lambda d: d["variant_id"])
                 assert all(d["label"] == ex[0]["label"] for d in ex)
                 assert len(set(d["variant_id"] for d in ex)) == num_variants
-                out_record = dict(
+                out_record: dict[str, Any] = dict(
                     variant_ids=[d["variant_id"] for d in ex],
                     label=ex[0]["label"],
                     row_id=ex[0]["row_id"],
@@ -426,6 +429,11 @@ def extract(
     # hf wraps everything in a list here, so we unpack them here
     def _extraction_worker(**kwargs):
         yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
+
+     # TODO: support int8
+    server = InferenceServer(
+        model_str=cfg.model, num_workers=num_gpus, cpu_offload=True, fsdp=cfg.fsdp
+    )
 
     builders = {
         split_name: _GeneratorBuilder(

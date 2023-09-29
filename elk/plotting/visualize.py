@@ -219,7 +219,7 @@ class ModelVisualization:
         def get_train_dirs(model_path):
             # toplevel is either repo/dataset or dataset
             for toplevel in model_path.iterdir():
-                if (toplevel / "eval.csv").exists():
+                if (toplevel / "cfg.yaml").exists():
                     yield toplevel
                 else:
                     for train_dir in toplevel.iterdir():
@@ -272,7 +272,7 @@ class ModelVisualization:
 
     @staticmethod
     def _read_eval_csv(path, eval_dataset, train_dataset):
-        file = path / "eval.csv"
+        file = path / "lr_eval.csv"
         eval_df = pd.read_csv(file)
         eval_df["eval_dataset"] = eval_dataset
         eval_df["train_dataset"] = train_dataset
