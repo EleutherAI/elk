@@ -27,7 +27,7 @@ from elk.utils import instantiate_model, pytree_map, select_usable_devices
 @dataclass(frozen=True)
 class _Sentinel:
     """Sentinel value used to indicate that a worker is done."""
-    
+
 
 SENTINEL = _Sentinel()
 
@@ -131,15 +131,29 @@ class InferenceServer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
 
-    def map_forward(self, dataset: Dataset, model_kwargs: dict[str, Any] | None = None, use_tqdm: bool = False) -> list:
+    def map_forward(
+        self,
+        dataset: Dataset,
+        model_kwargs: dict[str, Any] | None = None,
+        use_tqdm: bool = False,
+    ) -> list:
         """Maps the model's `forward` method over the given dataset, without
         running a closure on the outputs."""
-        return self.map(lambda x: x, dataset, model_kwargs=model_kwargs, use_tqdm=use_tqdm)
+        return self.map(
+            lambda x: x, dataset, model_kwargs=model_kwargs, use_tqdm=use_tqdm
+        )
 
-    def imap_forward(self, dataset: Dataset, model_kwargs: dict[str, Any] | None = None, use_tqdm: bool = False) -> Iterable:
+    def imap_forward(
+        self,
+        dataset: Dataset,
+        model_kwargs: dict[str, Any] | None = None,
+        use_tqdm: bool = False,
+    ) -> Iterable:
         """Maps the model's `forward` method over the given dataset, without
         running a closure on the outputs."""
-        yield from self.imap(lambda x: x, dataset, model_kwargs=model_kwargs, use_tqdm=use_tqdm)
+        yield from self.imap(
+            lambda x: x, dataset, model_kwargs=model_kwargs, use_tqdm=use_tqdm
+        )
 
     def map(
         self,
@@ -342,9 +356,7 @@ def _worker(
             outputs = model(**inputs_cuda, **model_kwargs)
 
             if callable(closure):
-                outputs = closure(
-                    outputs, **record
-                )
+                outputs = closure(outputs, **record)
             if outputs is not None:
                 # Move the outputs back to the CPU
                 outputs = pytree_map(lambda x: x.cpu().share_memory_(), outputs)
