@@ -27,17 +27,19 @@ def test_get_encodings():
     ds = ds.add_column("row_id", range(len(ds)))  # type: ignore
     ds = ds.shuffle(seed=seed).select(range(10))  # type: ignore
 
+    suffix = '\n\n\nQ: Is the above statement "True" or "False"?\n\nA:'
+    suffix_tokens = tokenizer.encode(suffix, add_special_tokens=False)
+
     def map_fn(ex: dict) -> dict:
         out_record = {
             "row_id": ex["row_id"],
             "label": ex["label"],
             "variant_id": "_default",
-            "text": ex["text"],
-            "num_suffix_tokens": 0,
-            "output_hidden_states": True,  # TODO: we might remove this
+            "text": ex["text"] + suffix,
+            "num_suffix_tokens": len(suffix_tokens),
         }
-        input_ids = [tokenizer(ex["text"], add_special_tokens=True)["input_ids"]]
-        out_record["input_ids"] = input_ids
+        input_ids = tokenizer(ex["text"], add_special_tokens=True)["input_ids"]
+        out_record["input_ids"] = [input_ids + suffix_tokens]  # type: ignore
         answer_ids = [
             tokenizer.encode(s, add_special_tokens=False)[0] for s in ["False", "True"]
         ]
