@@ -68,7 +68,7 @@ class Run(ABC, Serializable):
     concatenated_layer_offset: int = 0
     debug: bool = False
     num_gpus: int = -1
-    out_dir: Path | None = None
+    min_gpu_mem: int = 0
     disable_cache: bool = field(default=False, to_dict=False)
 
     def execute(
@@ -113,7 +113,7 @@ class Run(ABC, Serializable):
                 meta_f,
             )
 
-        devices = select_usable_devices(self.num_gpus)
+        devices = select_usable_devices(self.num_gpus, min_memory=self.min_gpu_mem)
         num_devices = len(devices)
         func: Callable[[int], tuple[dict[str, pd.DataFrame], dict]] = partial(
             self.apply_to_layer, devices=devices, world_size=num_devices
@@ -225,18 +225,17 @@ class Run(ABC, Serializable):
                 if self.save_logprobs:
                     save_dict = defaultdict(dict)
                     for ds_name, logprobs_dict in logprobs_dicts.items():
+                        save_dict[ds_name]["row_ids"] = logprobs_dict[layers[0]][
+                            "row_ids"
+                        ]
                         save_dict[ds_name]["texts"] = logprobs_dict[layers[0]]["texts"]
                         save_dict[ds_name]["labels"] = logprobs_dict[layers[0]][
                             "labels"
                         ]
                         save_dict[ds_name]["lm"] = logprobs_dict[layers[0]]["lm"]
-                        save_dict[ds_name]["reporter"] = dict()
                         save_dict[ds_name]["lr"] = dict()
                         for layer, logprobs_dict_by_mode in logprobs_dict.items():
-                            save_dict[ds_name]["reporter"][
-                                layer
-                            ] = logprobs_dict_by_mode["reporter"]
                             save_dict[ds_name]["lr"][layer] = logprobs_dict_by_mode[
                                 "lr"
                             ]
-                    torch.save(save_dict, self.out_dir / "logprobs.pt")
+                    torch.save(dict(save_dict), self.out_dir / "logprobs.pt")

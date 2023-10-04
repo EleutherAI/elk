@@ -24,7 +24,7 @@ def train_supervised(
         (n, v, d) = train_data.hiddens.shape
         train_h = rearrange(train_data.hiddens, "n v d -> (n v) d")
 
-        if erase_paraphrases:
+        if erase_paraphrases and v > 1:
             if leace is None:
                 leace = LeaceFitter(
                     d,

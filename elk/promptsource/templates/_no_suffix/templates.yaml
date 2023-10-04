@@ -1,8 +1,8 @@
 dataset: None
 templates:
-  7eab7254-bd71-4b1d-9f8a-0fc7110f8371: !Template
+  8eab7252-bd71-4b2d-9f8a-0fc7260f8371: !Template
     answer_choices: False ||| True
-    id: 7eab7254-bd71-4b1d-9f8a-0fc7110f8371
+    id: 8eab7252-bd71-4b2d-9f8a-0fc7260f8371
     jinja: "{{ statement }}"
     metadata: !TemplateMetadata
       choices_in_prompt: true
@@ -11,5 +11,5 @@ templates:
       metrics:
       - Accuracy
       original_task: true
-    name: _default
-    suffix: "\n\n\nQ: Is the above statement \"True\" or \"False\"?\n\nA:"
+    name: _no_suffix
+    suffix: ""

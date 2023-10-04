@@ -73,6 +73,9 @@ class Eval(Run):
                         }
                     )
 
+                if self.save_logprobs:
+                    out_logprobs[ds_name]["lr"][mode] = dict()
+
                 for i, model in enumerate(lr_models):
                     model.eval()
                     val_log_odds = model(val_data.hiddens)

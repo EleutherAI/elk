@@ -26,7 +26,7 @@ class Elicit(Run):
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
 
-    erase_paraphrases: bool = True
+    erase_paraphrases: bool = False
     """Whether to use LEACE to erase the paraphrase dimensions before training the
     classifier."""
 
@@ -41,7 +41,7 @@ class Elicit(Run):
                 datasets=("<placeholder>",),
             )
         )
-    
+
     def create_models_dir(self, out_dir: Path):
         lr_dir = out_dir / "lr_models"
 
@@ -114,6 +114,9 @@ class Elicit(Run):
                             ).to_dict(),
                         }
                     )
+
+                if self.save_logprobs:
+                    out_logprobs[ds_name]["lr"][mode] = dict()
 
                 for i, model in enumerate(lr_models):
                     model.eval()
