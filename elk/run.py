@@ -37,7 +37,7 @@ class LayerData:
     labels: Tensor
     lm_log_odds: Tensor | None
     texts: list[list[str]]  # (n, v)
-    row_ids: list[int]  # (n,)
+    row_ids: Tensor  # (n,)
     variant_ids: list[list[str]]  # (n, v)
 
 
@@ -167,7 +167,7 @@ class Run(ABC, Serializable):
                 labels=labels,
                 lm_log_odds=lm_preds,
                 texts=split["texts"],
-                row_ids=split["row_id"],
+                row_ids=assert_type(Tensor, split["row_id"]),
                 variant_ids=split["variant_ids"],
             )
 
@@ -208,9 +208,12 @@ class Run(ABC, Serializable):
             logprobs_dicts = defaultdict(dict)
 
             try:
-                for layer, (df_dict, logprobs_dict) in tqdm(
-                    zip(layers, mapper(func, layers)), total=len(layers)
+                for df_dict, logprobs_dict in tqdm(
+                    mapper(func, layers), total=len(layers)
                 ):
+                    # get arbitrary value
+                    df_ = next(iter(df_dict.values()))
+                    layer = df_["layer"].iloc[0]
                     for k, v in df_dict.items():
                         df_buffers[k].append(v)
                     for k, v in logprobs_dict.items():

@@ -90,10 +90,10 @@ class Elicit(Run):
 
             if self.save_logprobs:
                 out_logprobs[ds_name] = dict(
-                    row_ids=val.row_ids,
+                    row_ids=val.row_ids.cpu(),
                     variant_ids=val.variant_ids,
                     texts=val.texts,
-                    labels=val.labels,
+                    labels=val.labels.cpu(),
                     lm=dict(),
                     lr=dict(),
                 )

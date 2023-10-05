@@ -50,10 +50,10 @@ class Eval(Run):
 
             if self.save_logprobs:
                 out_logprobs[ds_name] = dict(
-                    row_ids=val_data.row_ids,
+                    row_ids=val_data.row_ids.cpu(),
                     variant_ids=val_data.variant_ids,
                     texts=val_data.texts,
-                    labels=val_data.labels,
+                    labels=val_data.labels.cpu(),
                     lm=dict(),
                     lr=dict(),
                 )
