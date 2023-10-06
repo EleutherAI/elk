@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from elk import Extract
 from elk.evaluation import Eval
@@ -29,8 +30,9 @@ def setup_elicit(
             max_examples=(10, 10),
             # run on all layers, tiny-gpt only has 2 layers
         ),
-        num_gpus=2,
+        num_gpus=1,
         out_dir=tmp_path,
+        min_gpu_mem=5_000_000,
     )
     elicit.execute()
     return elicit
@@ -84,6 +86,7 @@ def eval_assert_files_created(elicit: Elicit, transfer_datasets: tuple[str, ...]
 """TESTS"""
 
 
+@pytest.mark.gpu
 def test_smoke_eval_run_tiny_gpt2(tmp_path: Path):
     elicit = setup_elicit(tmp_path)
     transfer_datasets = ("christykoh/imdb_pt",)

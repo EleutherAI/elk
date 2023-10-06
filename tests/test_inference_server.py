@@ -6,6 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from elk.extraction.inference_server import InferenceServer
 
 
+@pytest.mark.gpu
 @pytest.mark.filterwarnings("ignore:Unable to find a decoding function")
 def test_inference_server():
     model_name = "EleutherAI/pythia-70m"
@@ -18,7 +19,7 @@ def test_inference_server():
         remove_columns=["text"],
     )
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda"
     model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
     with ds.formatted_as("torch"):
 
