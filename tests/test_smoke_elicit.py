@@ -16,7 +16,6 @@ def test_smoke_elicit_run_tiny_gpt2(tmp_path: Path):
             model=model_path,
             datasets=(dataset_name,),
             max_examples=(10, 10),
-            # run on all layers, tiny-gpt only has 2 layers
         ),
         num_gpus=2,
         out_dir=tmp_path,

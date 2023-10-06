@@ -1,7 +1,10 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
+import torch
+from sklearn.metrics import roc_auc_score
 
 from elk import Extract
 from elk.evaluation import Eval
@@ -28,7 +31,6 @@ def setup_elicit(
             model=model_path,
             datasets=(dataset_name,),
             max_examples=(10, 10),
-            # run on all layers, tiny-gpt only has 2 layers
         ),
         num_gpus=1,
         out_dir=tmp_path,
@@ -61,12 +63,12 @@ def eval_run(elicit: Elicit, transfer_datasets: tuple[str, ...] = ()) -> float:
         # update datasets to a different dataset
         extract.datasets = transfer_datasets
 
-    eval = Eval(data=extract, source=tmp_path)
+    eval = Eval(data=extract, source=tmp_path, save_logprobs=True)
     eval.execute()
     return start_time_sec
 
 
-def eval_assert_files_created(elicit: Elicit, transfer_datasets: tuple[str, ...] = ()):
+def eval_assert_files_good(elicit: Elicit, transfer_datasets: tuple[str, ...] = ()):
     tmp_path = elicit.out_dir
     assert tmp_path is not None
 
@@ -78,9 +80,34 @@ def eval_assert_files_created(elicit: Elicit, transfer_datasets: tuple[str, ...]
     # get the "dataset" column
     dataset_col = df["dataset"]
 
+    logprobs_dict = torch.load(eval_dir / "logprobs.pt")
+
     for tfr_dataset in transfer_datasets:
         # assert that the dataset column contains the transfer dataset
         assert tfr_dataset in dataset_col.values
+
+        assert tfr_dataset in logprobs_dict
+
+        # make sure that auroc computed from logprobs matches the auroc in lr_eval.csv
+        logprobs = logprobs_dict[tfr_dataset]
+        for layer in df["layer"].unique():
+            mode = "full"
+            current_df = df[
+                (df["dataset"] == tfr_dataset)
+                & (df["layer"] == layer)
+                & (df["ensembling"] == mode)
+                & (df["inlp_iter"] == 0)
+            ]
+            assert len(current_df) == 1
+            eval_auroc = current_df["auroc_estimate"].iloc[0]
+
+            # get the logprobs for the current layer and mode
+            lr_logprobs = logprobs["lr"][layer][mode][0]
+            labels = logprobs["labels"]
+
+            auroc = roc_auc_score(labels, lr_logprobs)
+
+            np.testing.assert_almost_equal(auroc, eval_auroc)
 
 
 """TESTS"""
@@ -91,4 +118,4 @@ def test_smoke_eval_run_tiny_gpt2(tmp_path: Path):
     elicit = setup_elicit(tmp_path)
     transfer_datasets = ("christykoh/imdb_pt",)
     eval_run(elicit, transfer_datasets=transfer_datasets)
-    eval_assert_files_created(elicit, transfer_datasets=transfer_datasets)
+    eval_assert_files_good(elicit, transfer_datasets=transfer_datasets)

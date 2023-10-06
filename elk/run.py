@@ -61,7 +61,12 @@ class Run(ABC, Serializable):
         {<dsname>: {"row_ids": [n,], "variant_ids": [n, v],
             "labels": [n,], "texts": [n, v],
             "lm": {"none": [n, v], "full": [n,]},
-            "lr": {<layer>: {<inlp_iter>: {"none": [n, v], "full": [n,]}}}
+            "lr": {<layer>: {
+                    "none": {<inlp_iter>: [n, v], ...},
+                    "full": {<inlp_iter>: [n,], ...}
+                  },
+                ...
+            }
         }}
     """
 
