@@ -179,8 +179,9 @@ class Template(yaml.YAMLObject):
         # Splits on the separator, and then replaces back any occurrences of the
         # separator in the original example
         statement_text, *_ = rendered_example.split("|||")
-        return Template._strip_spaces(self._unescape_pipe(statement_text))
-                
+        return (
+            Template._strip_spaces(self._unescape_pipe(statement_text)) + " "
+        )  # THIS IS A HACK
 
     @staticmethod
     def _strip_spaces(string):
