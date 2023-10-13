@@ -30,6 +30,8 @@ class EvalResult:
     roc_auc: RocAucResult
     """Area under the ROC curve. For multi-class classification, each class is treated
     as a one-vs-rest binary classification problem."""
+    cal_thresh: float | None
+    """The threshold used to compute the calibrated accuracy."""
 
     def to_dict(self, prefix: str = "") -> dict[str, float]:
         """Convert the result to a dictionary."""
@@ -45,13 +47,19 @@ class EvalResult:
             else {}
         )
         auroc_dict = {f"{prefix}auroc_{k}": v for k, v in asdict(self.roc_auc).items()}
-        return {**auroc_dict, **cal_acc_dict, **acc_dict, **cal_dict}
+        return {
+            **auroc_dict,
+            **cal_acc_dict,
+            **acc_dict,
+            **cal_dict,
+            f"{prefix}cal_thresh": self.cal_thresh,
+        }
 
 
 def calc_auroc(
     y_logits: Tensor,
     y_true: Tensor,
-    prompt_ensembling: PromptEnsembling,
+    ensembling: PromptEnsembling,
     num_classes: int,
 ) -> RocAucResult:
     """
@@ -66,21 +74,20 @@ def calc_auroc(
     Returns:
         RocAucResult: A dictionary containing the AUROC and confidence interval.
     """
-    if prompt_ensembling == PromptEnsembling.NONE:
+    if ensembling == PromptEnsembling.NONE:
         auroc = roc_auc_ci(
             to_one_hot(y_true, num_classes).long().flatten(1), y_logits.flatten(1)
         )
-    elif prompt_ensembling in (PromptEnsembling.PARTIAL, PromptEnsembling.FULL):
+    elif ensembling in (PromptEnsembling.PARTIAL, PromptEnsembling.FULL):
         # Pool together the negative and positive class logits
         if num_classes == 2:
             auroc = roc_auc_ci(y_true, y_logits[..., 1] - y_logits[..., 0])
         else:
             auroc = roc_auc_ci(to_one_hot(y_true, num_classes).long(), y_logits)
     else:
-        raise ValueError(f"Unknown mode: {prompt_ensembling}")
+        raise ValueError(f"Unknown mode: {ensembling}")
 
     return auroc
-
 
 def calc_calibrated_accuracies(y_true, pos_probs) -> AccuracyResult:
     """
@@ -99,7 +106,6 @@ def calc_calibrated_accuracies(y_true, pos_probs) -> AccuracyResult:
     cal_acc = accuracy_ci(y_true, cal_preds)
     return cal_acc
 
-
 def calc_calibrated_errors(y_true, pos_probs) -> CalibrationEstimate:
     """
     Calculate the expected calibration error.
@@ -115,7 +121,6 @@ def calc_calibrated_errors(y_true, pos_probs) -> CalibrationEstimate:
     cal = CalibrationError().update(y_true.flatten(), pos_probs.flatten())
     cal_err = cal.compute()
     return cal_err
-
 
 def calc_accuracies(y_logits, y_true) -> AccuracyResult:
     """

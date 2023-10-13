@@ -11,6 +11,7 @@ from einops import rearrange, repeat
 from simple_parsing import subgroups
 from simple_parsing.helpers.serialization import save
 
+from ..extraction import Extract
 from ..metrics import evaluate_preds, to_one_hot
 from ..metrics.eval import LayerOutput
 from ..run import LayerApplied, Run
@@ -35,6 +36,15 @@ class Elicit(Run):
     """Whether to train a supervised classifier, and if so, whether to use
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
+
+    @staticmethod
+    def default():
+        return Elicit(
+            data=Extract(
+                model="<placeholder>",
+                datasets=("<placeholder>",),
+            )
+        )
 
     def create_models_dir(self, out_dir: Path):
         lr_dir = None
@@ -84,12 +94,8 @@ class Elicit(Run):
 
             reporter = CcsReporter(self.net, d, device=device, num_variants=v)
             train_loss = reporter.fit(first_train_h)
-
-            (_, v, k, _) = first_train_h.shape
-            reporter.platt_scale(
-                to_one_hot(repeat(train_gt, "n -> (n v)", v=v), k).flatten(),
-                rearrange(first_train_h, "n v k d -> (n v k) d"),
-            )
+            labels = repeat(to_one_hot(train_gt, k), "n k -> n v k", v=v)
+            reporter.platt_scale(labels, first_train_h)
 
         elif isinstance(self.net, EigenFitterConfig):
             fitter = EigenFitter(

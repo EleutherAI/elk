@@ -1,4 +1,4 @@
-from dataclasses import InitVar, dataclass, replace
+from dataclasses import InitVar, dataclass, field, replace
 
 import numpy as np
 import torch
@@ -6,7 +6,6 @@ from datasets import get_dataset_config_info
 from transformers import AutoConfig
 
 from ..evaluation import Eval
-from ..extraction import Extract
 from ..files import memorably_named_dir, sweeps_dir
 from ..plotting.visualize import visualize_sweep
 from ..training.eigen_reporter import EigenFitterConfig
@@ -22,7 +21,8 @@ def assert_models_exist(model_names):
 
 def assert_datasets_exist(dataset_names):
     for dataset_name in dataset_names:
-        get_dataset_config_info(dataset_name)
+        ds_name, _, config_name = dataset_name.partition(":")
+        get_dataset_config_info(ds_name, config_name=config_name)
 
 
 @dataclass
@@ -52,12 +52,7 @@ class Sweep:
     name: str | None = None
 
     # A bit of a hack to add all the command line arguments from Elicit
-    run_template: Elicit = Elicit(
-        data=Extract(
-            model="<placeholder>",
-            datasets=("<placeholder>",),
-        )
-    )
+    run_template: Elicit = field(default_factory=Elicit.default)
 
     def __post_init__(self, add_pooled: bool):
         if not self.datasets:
