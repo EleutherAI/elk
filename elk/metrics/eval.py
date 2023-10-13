@@ -33,7 +33,7 @@ class EvalResult:
     cal_thresh: float | None
     """The threshold used to compute the calibrated accuracy."""
 
-    def to_dict(self, prefix: str = "") -> dict[str, float]:
+    def to_dict(self, prefix: str = "") -> dict[str, float | None]:
         """Convert the result to a dictionary."""
         acc_dict = {f"{prefix}acc_{k}": v for k, v in asdict(self.accuracy).items()}
         cal_acc_dict = (
@@ -89,6 +89,7 @@ def calc_auroc(
 
     return auroc
 
+
 def calc_calibrated_accuracies(y_true, pos_probs) -> AccuracyResult:
     """
     Calculate the calibrated accuracies
@@ -101,10 +102,11 @@ def calc_calibrated_accuracies(y_true, pos_probs) -> AccuracyResult:
         AccuracyResult: A dictionary containing the accuracy and confidence interval.
     """
 
-    cal_thresh = pos_probs.float().quantile(y_true.float().mean())
+    cal_thresh = pos_probs.float().quantile(y_true.float().mean()).item()
     cal_preds = pos_probs.gt(cal_thresh).to(torch.int)
-    cal_acc = accuracy_ci(y_true, cal_preds)
+    cal_acc = accuracy_ci(y_true, cal_preds, cal_thresh)
     return cal_acc
+
 
 def calc_calibrated_errors(y_true, pos_probs) -> CalibrationEstimate:
     """
@@ -121,6 +123,7 @@ def calc_calibrated_errors(y_true, pos_probs) -> CalibrationEstimate:
     cal = CalibrationError().update(y_true.flatten(), pos_probs.flatten())
     cal_err = cal.compute()
     return cal_err
+
 
 def calc_accuracies(y_logits, y_true) -> AccuracyResult:
     """
@@ -193,10 +196,11 @@ def calc_eval_results(
     acc = calc_accuracies(y_logits=y_logits, y_true=y_true)
 
     pos_probs = torch.sigmoid(y_logits[..., 1] - y_logits[..., 0])
-    cal_acc = (
+    cal_acc, cal_thresh = (
         calc_calibrated_accuracies(y_true=y_true, pos_probs=pos_probs)
         if num_classes == 2
-        else None
+        else None,
+        None,
     )
     cal_err = (
         calc_calibrated_errors(y_true=y_true, pos_probs=pos_probs)
@@ -207,11 +211,11 @@ def calc_eval_results(
     auroc = calc_auroc(
         y_logits=y_logits,
         y_true=y_true,
-        prompt_ensembling=prompt_ensembling,
+        ensembling=prompt_ensembling,
         num_classes=num_classes,
     )
 
-    return EvalResult(acc, cal_acc, cal_err, auroc)
+    return EvalResult(acc, cal_acc, cal_err, auroc, cal_thresh)
 
 
 def to_one_hot(labels: Tensor, n_classes: int) -> Tensor:
