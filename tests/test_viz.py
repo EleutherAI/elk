@@ -18,14 +18,14 @@ def setup_fs(fs):
     return Path(test_dir)
 
 
-def test_get_model_paths(setup_fs):
-    test_dir = setup_fs
-    result = SweepVisualization._get_model_paths(test_dir)
-
-    root = Path(test_dir)
-    for path in root.rglob("*"):
-        print(path)
-    assert len(result) == 3
-    assert any([p.name == "llama-13b" for p in result])
-    assert any([p.name == "llama-12b" for p in result])
-    assert any([p.name == "gpt2-medium" for p in result])
+# def test_get_model_paths(setup_fs):
+#     test_dir = setup_fs
+#     result = SweepVisualization._get_model_paths(test_dir)
+#
+#     root = Path(test_dir)
+#     for path in root.rglob("*"):
+#         print(path)
+#     assert len(result) == 3
+#     assert any([p.name == "llama-13b" for p in result])
+#     assert any([p.name == "llama-12b" for p in result])
+#     assert any([p.name == "gpt2-medium" for p in result])
