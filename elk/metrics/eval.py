@@ -204,12 +204,10 @@ def calc_eval_results(
         else y_logits[..., 1] - y_logits[..., 0]
     )
     pos_probs = torch.sigmoid(pooled_logits)
-    cal_acc, cal_thresh = (
-        calc_calibrated_accuracies(y_true=y_true, pos_probs=pos_probs)
-        if num_classes == 2
-        else None,
-        None,
-    )
+    if num_classes == 2:
+        cal_acc, cal_thresh = calc_calibrated_accuracies(y_true=y_true, pos_probs=pos_probs)
+    else:
+        cal_acc, cal_thresh = None, None
     cal_err = (
         calc_calibrated_errors(y_true=y_true, pos_probs=pos_probs)
         if num_classes == 2
