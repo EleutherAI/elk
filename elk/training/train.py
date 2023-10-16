@@ -10,6 +10,7 @@ from einops import rearrange, repeat
 from simple_parsing import subgroups
 
 from ..evaluation import Eval
+from ..extraction import Extract
 from ..metrics import evaluate_preds, to_one_hot
 from ..metrics.eval import LayerOutput
 from ..run import LayerApplied, PreparedData, Run
@@ -123,6 +124,15 @@ class Elicit(Run):
     """Whether to train a supervised classifier, and if so, whether to use
     cross-validation. Defaults to "single", which means to train a single classifier
     on the training data. "cv" means to use cross-validation."""
+
+    @staticmethod
+    def default():
+        return Elicit(
+            data=Extract(
+                model="<placeholder>",
+                datasets=("<placeholder>",),
+            )
+        )
 
     def make_eval(self, model, eval_dataset):
         assert self.out_dir is not None

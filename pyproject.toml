@@ -27,7 +27,7 @@ dependencies = [
     # We upstreamed bugfixes for Literal types in 0.1.1
     "simple-parsing>=0.1.1",
     # Version 1.11 introduced Fully Sharded Data Parallel, which we plan to use soon
-    "torch>=1.11.0",
+    "torch==2.0",
     # Doesn't really matter but versions < 4.0 are very very old (pre-2016)
     "tqdm>=4.0.0",
     # 4.0 introduced the breaking change of using return_dict=True by default
@@ -37,7 +37,7 @@ dependencies = [
     # For visualization of results
     "plotly==5.14.1",
     "kaleido==0.2.1",
-    "rich==13.3.5"
+    "rich"
 
 ]
 version = "0.1.1"
