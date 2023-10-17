@@ -1,11 +1,9 @@
 from dataclasses import InitVar, dataclass, field, replace
 
-import torch
 from datasets import get_dataset_config_info
 from transformers import AutoConfig
 
 from ..evaluation import Eval
-from ..extraction import Extract
 from ..files import memorably_named_dir, sweeps_dir
 from ..plotting.visualize import visualize_sweep
 from ..utils import colorize
@@ -116,7 +114,7 @@ class Sweep:
                 assert run.out_dir is not None
 
                 run.execute()
- 
+
                 if not self.skip_transfer_eval:
                     if len(eval_datasets) > 1:
                         print(colorize("== Transfer eval ==", "green"))

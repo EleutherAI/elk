@@ -180,7 +180,6 @@ class Template(yaml.YAMLObject):
         # separator in the original example
         statement_text, *_ = rendered_example.split("|||")
         return Template._strip_spaces(self._unescape_pipe(statement_text))
-                
 
     @staticmethod
     def _strip_spaces(string):
