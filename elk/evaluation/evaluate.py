@@ -7,7 +7,7 @@ import torch
 from simple_parsing.helpers import field
 
 from ..files import elk_reporter_dir
-from ..metrics import evaluate_preds
+from ..metrics import evaluate_preds, get_logprobs
 from ..run import Run
 from ..utils import Color
 
@@ -17,7 +17,6 @@ class Eval(Run):
     """Full specification of a reporter evaluation run."""
 
     source: Path = field(positional=True)
-    skip_supervised: bool = False
 
     def __post_init__(self):
         # Set our output directory before super().execute() does
@@ -31,55 +30,68 @@ class Eval(Run):
     @torch.inference_mode()
     def apply_to_layer(
         self, layer: int, devices: list[str], world_size: int
-    ) -> dict[str, pd.DataFrame]:
+    ) -> tuple[dict[str, pd.DataFrame], dict]:
         """Evaluate a single reporter on a single layer."""
         device = self.get_device(devices, world_size)
         val_output = self.prepare_data(device, layer, "val")
 
         experiment_dir = elk_reporter_dir() / self.source
 
-        reporter_path = experiment_dir / "reporters" / f"layer_{layer}.pt"
-        reporter = torch.load(reporter_path, map_location=device)
+        lr_dir = experiment_dir / "lr_models"
+        with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
+            lr_models = torch.load(f, map_location=device)
+            if not isinstance(lr_models, list):  # backward compatibility
+                lr_models = [lr_models]
 
+        out_logprobs = defaultdict(dict)
         row_bufs = defaultdict(list)
-        for ds_name, (val_h, val_gt, val_lm_preds) in val_output.items():
+        for ds_name, val_data in val_output.items():
             meta = {"dataset": ds_name, "layer": layer}
 
-            val_credences = reporter(val_h)
-            for mode in ("none", "partial", "full"):
-                row_bufs["eval"].append(
-                    {
-                        **meta,
-                        "ensembling": mode,
-                        **evaluate_preds(val_gt, val_credences, mode).to_dict(),
-                    }
+            if self.save_logprobs:
+                out_logprobs[ds_name] = dict(
+                    row_ids=val_data.row_ids.cpu(),
+                    variant_ids=val_data.variant_ids,
+                    texts=val_data.texts,
+                    labels=val_data.labels.cpu(),
+                    lm=dict(),
+                    lr=dict(),
                 )
-
-                if val_lm_preds is not None:
+            for mode in ("none", "full"):
+                if val_data.lm_log_odds is not None:
+                    if self.save_logprobs:
+                        out_logprobs[ds_name]["lm"][mode] = get_logprobs(
+                            val_data.lm_log_odds, mode
+                        ).cpu()
                     row_bufs["lm_eval"].append(
                         {
-                            **meta,
                             "ensembling": mode,
-                            **evaluate_preds(val_gt, val_lm_preds, mode).to_dict(),
+                            **meta,
+                            **evaluate_preds(
+                                val_data.labels, val_data.lm_log_odds, mode
+                            ).to_dict(),
                         }
                     )
 
-                lr_dir = experiment_dir / "lr_models"
-                if not self.skip_supervised and lr_dir.exists():
-                    with open(lr_dir / f"layer_{layer}.pt", "rb") as f:
-                        lr_models = torch.load(f, map_location=device)
-                        if not isinstance(lr_models, list):  # backward compatibility
-                            lr_models = [lr_models]
+                if self.save_logprobs:
+                    out_logprobs[ds_name]["lr"][mode] = dict()
 
-                    for i, model in enumerate(lr_models):
-                        model.eval()
-                        row_bufs["lr_eval"].append(
-                            {
-                                "ensembling": mode,
-                                "inlp_iter": i,
-                                **meta,
-                                **evaluate_preds(val_gt, model(val_h), mode).to_dict(),
-                            }
-                        )
+                for i, model in enumerate(lr_models):
+                    model.eval()
+                    val_log_odds = model(val_data.hiddens)
+                    if self.save_logprobs:
+                        out_logprobs[ds_name]["lr"][mode][i] = get_logprobs(
+                            val_log_odds, mode
+                        ).cpu()
+                    row_bufs["lr_eval"].append(
+                        {
+                            "ensembling": mode,
+                            "inlp_iter": i,
+                            **meta,
+                            **evaluate_preds(
+                                val_data.labels, val_log_odds, mode
+                            ).to_dict(),
+                        }
+                    )
 
-        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}
+        return {k: pd.DataFrame(v) for k, v in row_bufs.items()}, out_logprobs

@@ -31,26 +31,24 @@ def save_debug_log(datasets: list[DatasetDictWithName], out_dir: Path) -> None:
         else:
             train_split, val_split = select_train_val_splits(ds)
 
-        text_questions = ds[val_split][0]["text_questions"]
+        if len(ds[val_split]) == 0:
+            logging.warning(f"Val split '{val_split}' is empty!")
+            continue
+
+        texts = ds[val_split][0]["texts"]
         template_ids = ds[val_split][0]["variant_ids"]
-        label = ds[val_split][0]["label"]
+        ds[val_split][0]["label"]
 
         # log the train size and val size
         if train_split is not None:
             logging.info(f"Train size: {len(ds[train_split])}")
         logging.info(f"Val size: {len(ds[val_split])}")
 
-        templates_text = f"{len(text_questions)} templates used:\n"
+        templates_text = f"{len(texts)} templates used:\n"
         trailing_whitespace = False
-        for (text0, text1), id in zip(text_questions, template_ids):
-            templates_text += (
-                f'***---TEMPLATE "{id}"---***\n'
-                f"{'false' if label else 'true'}:\n"
-                f'"""{text0}"""\n'
-                f"{'true' if label else 'false'}:\n"
-                f'"""{text1}"""\n\n\n'
-            )
-            if text0[-1].isspace() or text1[-1].isspace():
+        for text, id in zip(texts, template_ids):
+            templates_text += f'***---TEMPLATE "{id}"---***\n' f'"""{text}"""\n'
+            if text[-1].isspace():
                 trailing_whitespace = True
         if trailing_whitespace:
             logging.warning(

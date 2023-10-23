@@ -19,7 +19,9 @@ from .typing import assert_type
 # this assumption, but we never do that.
 @cache
 def select_usable_devices(
-    num_gpus: int = -1, *, min_memory: int | None = None
+    num_gpus: int = -1,
+    *,
+    min_memory: int | None = None,
 ) -> list[str]:
     """Select a set of devices that have at least `min_memory` bytes of free memory.
     Blocks until at least `num_gpus` devices are available.

@@ -21,7 +21,8 @@ Our code is based on [PyTorch](http://pytorch.org)
 and [Huggingface Transformers](https://huggingface.co/docs/transformers/index). We test the code on Python 3.10 and
 3.11.
 
-First install the package with `pip install -e .` in the root directory, or `pip install eleuther-elk` to install from PyPi. Use `pip install -e .[dev]` if you'd like to contribute to the project (see **Development** section below). This should install all the necessary dependencies.
+First install the package with `pip install -e .` in the root directory, or `pip install -e .[dev]` if you'd like to
+contribute to the project (see **Development** section below). This should install all the necessary dependencies.
 
 To fit reporters for the HuggingFace model `model` and dataset `dataset`, just run:
 

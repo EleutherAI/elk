@@ -1,16 +1,14 @@
 """Functions for extracting the hidden states of a model."""
-import logging
 import os
-from contextlib import nullcontext, redirect_stdout
+from collections import defaultdict
 from dataclasses import InitVar, dataclass, replace
 from itertools import zip_longest
 from typing import Any, Iterable, Literal
-from warnings import filterwarnings
 
 import torch
 from datasets import (
     Array2D,
-    Array3D,
+    Dataset,
     DatasetDict,
     DatasetInfo,
     DownloadMode,
@@ -23,30 +21,26 @@ from datasets import (
 )
 from simple_parsing import Serializable, field
 from torch import Tensor
-from transformers import AutoConfig, PreTrainedModel
+from transformers import AutoConfig
 
-from ..promptsource import DatasetTemplates
 from ..utils import (
     Color,
     assert_type,
     colorize,
     float_to_int16,
-    infer_label_column,
-    infer_num_classes,
-    instantiate_model,
     instantiate_tokenizer,
-    is_autoregressive,
     prevent_name_conflicts,
     select_split,
     select_train_val_splits,
-    select_usable_devices,
 )
+from ..utils.hf_utils import is_autoregressive
 from .dataset_name import (
     DatasetDictWithName,
     parse_dataset_string,
 )
 from .generator import _GeneratorBuilder
-from .prompt_loading import load_prompts
+from .inference_server import InferenceServer
+from .prompt_loading import get_prompter, load_prompts
 
 
 @dataclass
@@ -62,11 +56,14 @@ class Extract(Serializable):
     data_dirs: tuple[str, ...] = ()
     """Directory to use for caching the hiddens. Defaults to `HF_DATASETS_CACHE`."""
 
-    binarize: bool = False
-    """Whether to binarize the dataset labels for multi-class datasets."""
+    get_lm_preds: bool = True
+    """Whether to extract the LM predictions."""
 
     int8: bool = False
     """Whether to perform inference in mixed int8 precision with `bitsandbytes`."""
+
+    fsdp: bool = False
+    """Whether to use FullyShardedDataParallel for inference."""
 
     max_examples: tuple[int, int] = (1000, 1000)
     """Maximum number of examples to use from each split of the dataset."""
@@ -78,12 +75,19 @@ class Extract(Serializable):
     """The number of prompt templates to use for each example. If -1, all available
     templates are used."""
 
+    balance: bool = True
+    """Whether to balance the number of examples per class."""
+
+    statement_column: str | None = None
+    """Name of the column containing the model input strings when using a built-in
+    prompt template. If None, we use the "statement" column."""
+
     layers: tuple[int, ...] = ()
-    """Indices of layers to extract hidden states from. We ignore the embedding,
-    have only the output of the transformer layers."""
+    """Indices of layers to extract hidden states from. We follow the HF convention, so
+    0 is the embedding, and 1 is the output of the first transformer layer."""
 
     layer_stride: InitVar[int] = 1
-    """Shortcut for `tuple(range(1, num_layers, stride))`."""
+    """Shortcut for `layers = (0,) + tuple(range(1, num_layers + 1, stride))`."""
 
     seed: int = 42
     """Seed to use for prompt randomization. Defaults to 42."""
@@ -91,12 +95,8 @@ class Extract(Serializable):
     template_path: str | None = None
     """Path to pass into `DatasetTemplates`. By default we use the dataset name."""
 
-    token_loc: Literal["first", "last", "mean"] = "last"
+    token_loc: Literal["first", "last", "penultimate", "mean"] = "last"
     """The location of the token to extract hidden states from."""
-
-    use_encoder_states: bool = False
-    """Whether to extract hidden states from the encoder instead of the decoder in the
-    case of encoder-decoder models."""
 
     def __post_init__(self, layer_stride: int):
         if self.num_variants != -1:
@@ -134,8 +134,9 @@ class Extract(Serializable):
             config = assert_type(
                 PretrainedConfig, AutoConfig.from_pretrained(self.model)
             )
-            layer_range = range(1, config.num_hidden_layers, layer_stride)
-            self.layers = tuple(layer_range)
+            # Note that we always include 0 which is the embedding layer
+            layer_range = range(1, config.num_hidden_layers + 1, layer_stride)
+            self.layers = (0,) + tuple(layer_range)
 
     def explode(self) -> list["Extract"]:
         """Explode this config into a list of configs, one for each layer."""
@@ -145,199 +146,114 @@ class Extract(Serializable):
         ]
 
 
-@torch.inference_mode()
-def extract_hiddens(
+def tokenize_dataset(
     cfg: "Extract",
-    *,
-    device: str | torch.device = "cpu",
     split_type: Literal["train", "val"] = "train",
-    rank: int = 0,
-    world_size: int = 1,
-) -> Iterable[dict]:
-    """Run inference on a model with a set of prompts, yielding the hidden states."""
+) -> Dataset:
+    """Apply the prompt templates to the dataset and return the tokenized LM inputs.
+    Each dict contains the keys `input_ids`, `variant_id`,
+    `row_id`, `text`, and `label`. If lm_preds is True, we also include `answer_ids`
+    and `num_suffix_tokens`.
+    """
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-    # Silence datasets logging messages from all but the first process
-    if rank != 0:
-        filterwarnings("ignore")
-        logging.disable(logging.CRITICAL)
 
     ds_names = cfg.datasets
     assert len(ds_names) == 1, "Can only extract hiddens from one dataset at a time."
 
-    # We use contextlib.redirect_stdout to prevent `bitsandbytes` from printing its
-    # welcome message on every rank
-    with redirect_stdout(None) if rank != 0 else nullcontext():
-        model = instantiate_model(cfg.model, device=device, load_in_8bit=cfg.int8)
-        tokenizer = instantiate_tokenizer(
-            cfg.model, truncation_side="left", verbose=rank == 0
-        )
+    tokenizer = instantiate_tokenizer(cfg.model, truncation_side="left")
 
-    is_enc_dec = model.config.is_encoder_decoder
-    if is_enc_dec and cfg.use_encoder_states:
-        assert hasattr(model, "get_encoder") and callable(model.get_encoder)
-        model = assert_type(PreTrainedModel, model.get_encoder())
-        is_enc_dec = False
-
-    has_lm_preds = is_autoregressive(model.config, not cfg.use_encoder_states)
-    if has_lm_preds and rank == 0:
-        print("Model has language model head, will store predictions.")
+    # TODO: support using the encoder only of an encoder-decoder model
 
     prompt_ds = load_prompts(
         ds_names[0],
-        binarize=cfg.binarize,
         num_shots=cfg.num_shots,
         split_type=split_type,
         template_path=cfg.template_path,
-        rank=rank,
-        world_size=world_size,
+        include_answers=cfg.get_lm_preds,
+        balance=cfg.balance,
         seed=cfg.seed,
+        statement_column=cfg.statement_column,
     )
 
-    layer_indices = cfg.layers or tuple(range(1, model.config.num_hidden_layers))
+    max_examples = cfg.max_examples[0 if split_type == "train" else 1]
 
-    global_max_examples = cfg.max_examples[0 if split_type == "train" else 1]
-
-    # break `max_examples` among the processes roughly equally
-    max_examples = global_max_examples // world_size
     max_length = assert_type(int, tokenizer.model_max_length)
 
-    # Keep track of the number of examples we've yielded so far. We can't do something
-    # clean like `islice` the dataset, because we skip examples that are too long, and
-    # we can't predict how many of those there will be.
-    num_yielded = 0
-
-    # the last process gets the remainder (which is usually small)
-    if rank == world_size - 1:
-        max_examples += global_max_examples % world_size
-
+    out_records = []
     for example in prompt_ds:
+        num_variants = len(example["template_names"])
+
         # Check if we've yielded enough examples
-        if num_yielded >= max_examples:
+        if len(out_records) >= max_examples * num_variants:
             break
 
-        num_variants = len(example["prompts"])
-        num_choices = len(example["prompts"][0])
-
-        hidden_dict = {
-            f"hidden_{layer_idx}": torch.empty(
-                num_variants,
-                num_choices,
-                model.config.hidden_size,
-                device=device,
-                dtype=torch.int16,
-            )
-            for layer_idx in layer_indices
-        }
-        lm_logits = torch.empty(
-            num_variants,
-            num_choices,
-            device=device,
-            dtype=torch.float32,
-        )
-        text_questions = []
+        # Throw out all variants if any of them are too long
+        any_too_long = False
+        record_variants = []
 
         # Iterate over variants
-        for i, record in enumerate(example["prompts"]):
-            variant_questions = []
+        for i, statement in enumerate(example["statements"]):
+            if cfg.get_lm_preds:
+                suffix = example["suffixes"][i]
+                answer_choices = example["answer_choices"][i]
+                assert len(answer_choices) == 2
+                answer_ids = []
+                for choice in answer_choices:
+                    a_id = tokenizer.encode(choice, add_special_tokens=False)
+                    if len(a_id) > 1:
+                        print(
+                            f"WARNING: answer choice '{choice}' is more than one "
+                            "token, LM probabilities will be calculated using the "
+                            "first token only."
+                        )
+                    answer_ids.append(a_id[0])
+            else:
+                suffix = ""
 
-            # Iterate over answers
-            for j, choice in enumerate(record):
-                text = choice["question"]
+            suffix_tokens = torch.tensor(
+                tokenizer.encode(suffix, add_special_tokens=False),
+                dtype=torch.long,
+            )
 
-                # Only feed question, not the answer, to the encoder for enc-dec models
-                target = choice["answer"] if is_enc_dec else None
-                encoding = tokenizer(
-                    text,
-                    # Keep [CLS] and [SEP] for BERT-style models
-                    add_special_tokens=True,
-                    return_tensors="pt",
-                    text_target=target,  # type: ignore[arg-type]
-                ).to(device)
+            encoding = tokenizer(
+                statement,
+                # Keep [CLS] and [SEP] for BERT-style models
+                add_special_tokens=True,
+                return_tensors="pt",
+            )
 
-                ids = assert_type(Tensor, encoding.input_ids)
-                if is_enc_dec:
-                    answer = labels = assert_type(Tensor, encoding.labels)
-                else:
-                    encoding2 = tokenizer(
-                        choice["answer"],
-                        # Don't include [CLS] and [SEP] in the answer
-                        add_special_tokens=False,
-                        return_tensors="pt",
-                    ).to(device)
+            # suffix comes right after the last statement token, before the answer
+            ids = torch.cat([encoding.input_ids, suffix_tokens.unsqueeze(0)], dim=-1)
 
-                    answer = assert_type(Tensor, encoding2.input_ids)
-                    labels = (
-                        # -100 is the mask token
-                        torch.cat([torch.full_like(ids, -100), answer], dim=-1)
-                        if has_lm_preds
-                        else None
-                    )
-                    ids = torch.cat([ids, answer], -1)
-
-                # If this input is too long, skip it
-                if ids.shape[-1] > max_length:
-                    break
-                else:
-                    # Record the EXACT question we fed to the model
-                    variant_questions.append(text)
-
-                inputs: dict[str, Tensor | None] = dict(input_ids=ids.long())
-                if is_enc_dec or has_lm_preds:
-                    inputs["labels"] = labels
-                outputs = model(**inputs, output_hidden_states=True)
-
-                # Compute the log probability of the answer tokens if available
-                if has_lm_preds:
-                    lm_logits[i, j] = -assert_type(Tensor, outputs.loss)
-
-                hiddens = (
-                    outputs.get("decoder_hidden_states") or outputs["hidden_states"]
-                )
-                # Throw out layers we don't care about
-                hiddens = [hiddens[i] for i in layer_indices]
-
-                # Current shape of each element: (batch_size, seq_len, hidden_size)
-                if cfg.token_loc == "first":
-                    hiddens = [h[..., 0, :] for h in hiddens]
-                elif cfg.token_loc == "last":
-                    hiddens = [h[..., -1, :] for h in hiddens]
-                elif cfg.token_loc == "mean":
-                    hiddens = [h.mean(dim=-2) for h in hiddens]
-                else:
-                    raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
-
-                for layer_idx, hidden in zip(layer_indices, hiddens):
-                    hidden_dict[f"hidden_{layer_idx}"][i, j] = float_to_int16(hidden)
-
-            # We skipped a pseudolabel because it was too long; break out of this whole
-            # example and move on to the next one
-            if len(variant_questions) != num_choices:
+            # If this input is too long, skip it
+            if ids.shape[-1] > max_length:
+                any_too_long = True
                 break
 
-            # Usual case: we have the expected number of pseudolabels
-            text_questions.append(variant_questions)
+            out_record: dict[str, Any] = dict(
+                row_id=example["row_id"],
+                variant_id=example["template_names"][i],
+                label=example["label"],
+                text=statement + suffix,
+                input_ids=ids.long(),
+            )
+            if cfg.get_lm_preds:
+                out_record["answer_ids"] = answer_ids  # type: ignore
+                # keep track of where to extract hiddens from
+                out_record["num_suffix_tokens"] = len(suffix_tokens)
+            record_variants.append(out_record)
 
-        # We skipped a variant because it was too long; move on to the next example
-        if len(text_questions) != num_variants:
+        if any_too_long:
             continue
 
-        out_record: dict[str, Any] = dict(
-            label=example["label"],
-            variant_ids=example["template_names"],
-            text_questions=text_questions,
-            **hidden_dict,
-        )
-        if has_lm_preds:
-            out_record["model_logits"] = lm_logits.log_softmax(dim=-1)
+        # print an example text to stdout
+        if len(out_records) == 0:
+            print(f"Example text: {record_variants[0]['text']}")
+        out_records.extend(record_variants)
 
-        num_yielded += 1
-        yield out_record
-
-
-# Dataset.from_generator wraps all the arguments in lists, so we unpack them here
-def _extraction_worker(**kwargs):
-    yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
+    # transpose the list of dicts into a dict of lists
+    out_records = {k: [d[k] for d in out_records] for k in out_records[0]}
+    return Dataset.from_dict(out_records)
 
 
 def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
@@ -348,51 +264,39 @@ def hidden_features(cfg: Extract) -> tuple[DatasetInfo, Features]:
     ds_name, config_name = parse_dataset_string(dataset_config_str=cfg.datasets[0])
     info = get_dataset_config_info(ds_name, config_name or None)
 
-    if not cfg.template_path:
-        prompter = DatasetTemplates(ds_name, config_name)
-    else:
-        prompter = DatasetTemplates(cfg.template_path)
+    assert_type(Features, info.features)
 
-    ds_features = assert_type(Features, info.features)
-    label_col = prompter.label_column or infer_label_column(ds_features)
-    num_classes = (
-        2
-        if cfg.binarize or prompter.binarize
-        else infer_num_classes(ds_features[label_col])
-    )
+    prompter, _ = get_prompter(ds_name, config_name, cfg.template_path)
 
-    num_dropped = prompter.drop_non_mc_templates()
+    # num_dropped = prompter.drop_non_mc_templates()
     num_variants = len(prompter.templates)
-    if num_dropped:
-        print(f"Dropping {num_dropped} non-multiple choice templates")
+    # if num_dropped:
+    # print(f"Dropping {num_dropped} non-multiple choice templates")
 
-    layer_indices = cfg.layers or tuple(range(1, model_cfg.num_hidden_layers))
     layer_cols = {
-        f"hidden_{layer}": Array3D(
+        f"hidden_{layer}": Array2D(
             dtype="int16",
-            shape=(num_variants, num_classes, model_cfg.hidden_size),
+            shape=(num_variants, model_cfg.hidden_size),
         )
-        for layer in layer_indices
+        # Add 1 to include the embedding layer
+        for layer in cfg.layers or range(model_cfg.num_hidden_layers + 1)
     }
     other_cols = {
+        "row_id": Value(dtype="int64"),
         "variant_ids": Sequence(
             Value(dtype="string"),
             length=num_variants,
         ),
         "label": Value(dtype="int64"),
-        "text_questions": Sequence(
-            Sequence(
-                Value(dtype="string"),
-            ),
+        "texts": Sequence(
+            Value(dtype="string"),
             length=num_variants,
         ),
     }
-
-    # Only add model_logits if the model is an autoregressive model
-    if is_autoregressive(model_cfg, not cfg.use_encoder_states):
-        other_cols["model_logits"] = Array2D(
-            shape=(num_variants, num_classes),
-            dtype="float32",
+    if cfg.get_lm_preds:
+        other_cols["lm_log_odds"] = Sequence(
+            Value(dtype="float32"),
+            length=num_variants,
         )
 
     return info, Features({**layer_cols, **other_cols})
@@ -404,13 +308,15 @@ def extract(
     disable_cache: bool = False,
     highlight_color: Color = "cyan",
     num_gpus: int = -1,
-    min_gpu_mem: int | None = None,
     split_type: Literal["train", "val", None] = None,
 ) -> DatasetDictWithName:
     """Extract hidden states from a model and return a `DatasetDict` containing them."""
+
     info, features = hidden_features(cfg)
 
-    devices = select_usable_devices(num_gpus, min_memory=min_gpu_mem)
+    model_config = AutoConfig.from_pretrained(cfg.model)
+    if not is_autoregressive(model_config, include_enc_dec=True) and cfg.get_lm_preds:
+        raise ValueError("Can only extract LM predictions from autoregressive models.")
     limits = cfg.max_examples
     splits = assert_type(SplitDict, info.splits)
 
@@ -433,6 +339,94 @@ def extract(
         else:
             print(f"{pretty_name} using '{split_name}' for validation")
 
+    def select_hiddens(outputs: Any, **kwargs: Any) -> tuple[dict[str, Tensor], Tensor]:
+        tok_loc_offset = kwargs.get("num_suffix_tokens", 0)
+        # Add one to the number of layers to account for the embedding layer
+        layer_indices = cfg.layers or tuple(range(model_config.num_hidden_layers + 1))
+
+        hiddens = outputs.get("decoder_hidden_states") or outputs["hidden_states"]
+        # Throw out layers we don't care about
+        hiddens = [hiddens[i] for i in layer_indices]
+
+        # Current shape of each element: (batch_size, seq_len, hidden_size)
+        if cfg.token_loc == "first":
+            hiddens = [h[..., 0, :] for h in hiddens]
+        elif cfg.token_loc == "last":
+            hiddens = [h[..., h.shape[-2] - tok_loc_offset - 1, :] for h in hiddens]
+        elif cfg.token_loc == "penultimate":
+            hiddens = [h[..., h.shape[-2] - tok_loc_offset - 2, :] for h in hiddens]
+        elif cfg.token_loc == "mean":
+            hiddens = [h[..., :-tok_loc_offset, :].mean(dim=-2) for h in hiddens]
+        else:
+            raise ValueError(f"Invalid token_loc: {cfg.token_loc}")
+
+        hidden_dict = dict()
+        for layer_idx, hidden in zip(layer_indices, hiddens):
+            hidden_dict[f"hidden_{layer_idx}"] = float_to_int16(hidden.flatten()).cpu()
+
+        if (answer_ids := kwargs.get("answer_ids")) is not None:
+            # log_odds = log(p(yes)/(p(no)) = log(p(yes)) - log(p(no))
+            logits = outputs["logits"][0, -1, answer_ids]
+            logprobs = logits.log_softmax(dim=-1)
+            lm_log_odds = logprobs[1] - logprobs[0]
+        else:
+            lm_log_odds = torch.Tensor([torch.nan])
+
+        return hidden_dict, lm_log_odds
+
+    def extract_hiddens(
+        cfg: Extract,
+        split_type: Literal["train", "val"],
+        server: InferenceServer,
+    ) -> Iterable[dict]:
+        encodings = tokenize_dataset(cfg, split_type=split_type)
+        num_variants = len(encodings.unique("variant_id"))
+
+        if not server.running:
+            server.start()
+        encodings = encodings.add_column("id", range(len(encodings)))  # type: ignore
+
+        buffer = defaultdict(list)  # row_id -> list of dicts
+        for idx, (hidden_dict, lm_log_odds) in server.imap(
+            select_hiddens,
+            encodings,
+            use_tqdm=False,
+            model_kwargs=dict(output_hidden_states=True),
+        ):
+            encoding = encodings[idx]
+            row_id = encoding["row_id"]
+            buffer[row_id].append(
+                dict(lm_log_odds=lm_log_odds, **encoding, **hidden_dict)
+            )
+            if len(buffer[row_id]) == num_variants:
+                # we have a complete example
+                ex = buffer[row_id]
+                ex = sorted(ex, key=lambda d: d["variant_id"])
+                assert all(d["label"] == ex[0]["label"] for d in ex)
+                assert len(set(d["variant_id"] for d in ex)) == num_variants
+                out_record: dict[str, Any] = dict(
+                    variant_ids=[d["variant_id"] for d in ex],
+                    label=ex[0]["label"],
+                    row_id=ex[0]["row_id"],
+                    texts=[d["text"] for d in ex],
+                    **{k: torch.stack([d[k] for d in ex]) for k in hidden_dict},
+                )
+                if cfg.get_lm_preds:
+                    out_record["lm_log_odds"] = torch.stack(
+                        [d["lm_log_odds"] for d in ex]  # type: ignore
+                    )
+                del buffer[row_id]
+                yield out_record
+
+    # hf wraps everything in a list here, so we unpack them here
+    def _extraction_worker(**kwargs):
+        yield from extract_hiddens(**{k: v[0] for k, v in kwargs.items()})
+
+    # TODO: support int8
+    server = InferenceServer(
+        model_str=cfg.model, num_workers=num_gpus, cpu_offload=True, fsdp=cfg.fsdp
+    )
+
     builders = {
         split_name: _GeneratorBuilder(
             cache_dir=None,
@@ -445,28 +439,27 @@ def extract(
                 dataset_name=v.dataset_name,
             ),
             gen_kwargs=dict(
-                cfg=[cfg] * len(devices),
-                device=devices,
-                rank=list(range(len(devices))),
-                split_type=[ty] * len(devices),
-                world_size=[len(devices)] * len(devices),
+                cfg=[cfg],
+                split_type=[ty],
+                server=[server],
             ),
         )
         for limit, (split_name, v), ty in zip(limits, splits.items(), split_types)
     }
-    import multiprocess as mp
-
-    mp.set_start_method("spawn", force=True)  # type: ignore[attr-defined]
 
     ds = dict()
     for split, builder in builders.items():
         builder.download_and_prepare(
             download_mode=DownloadMode.FORCE_REDOWNLOAD if disable_cache else None,
-            num_proc=len(devices),
+            num_proc=None,
         )
-        ds[split] = builder.as_dataset(split=split)
+        ds[split] = builder.as_dataset(split=split)  # type: ignore[assignment]
+
+    if server.running:
+        server.shutdown()
 
     dataset_dict = DatasetDict(ds)
+
     return DatasetDictWithName(
         name=cfg.datasets[0],
         dataset=dataset_dict,

@@ -1,11 +1,9 @@
-from .extraction import Extract, extract_hiddens
-from .training import EigenFitter, EigenFitterConfig
-from .truncated_eigh import truncated_eigh
+from .evaluation import Eval
+from .extraction import Extract
+from .training.train import Elicit
 
 __all__ = [
-    "EigenFitter",
-    "EigenFitterConfig",
-    "extract_hiddens",
     "Extract",
-    "truncated_eigh",
+    "Elicit",
+    "Eval",
 ]

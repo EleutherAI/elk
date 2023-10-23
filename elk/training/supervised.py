@@ -1,34 +1,61 @@
 import torch
+from concept_erasure import LeaceFitter
 from einops import rearrange, repeat
 
-from ..metrics import to_one_hot
+from ..run import LayerData
 from .classifier import Classifier
 
 
 def train_supervised(
-    data: dict[str, tuple], device: str, mode: str
+    data: dict[str, LayerData],
+    device: str,
+    mode: str,
+    erase_paraphrases: bool = False,
+    max_inlp_iter: int | None = None,
 ) -> list[Classifier]:
+    assert not (
+        erase_paraphrases and len(data) > 1
+    ), "Erasing paraphrases is only supported for single dataset."
     Xs, train_labels = [], []
 
-    for train_h, labels, _ in data.values():
-        (_, v, k, _) = train_h.shape
-        train_h = rearrange(train_h, "n v k d -> (n v k) d")
+    leace = None
 
-        labels = repeat(labels, "n -> (n v)", v=v)
-        labels = to_one_hot(labels, k).flatten()
+    for train_data in data.values():
+        (n, v, d) = train_data.hiddens.shape
+        train_h = rearrange(train_data.hiddens, "n v d -> (n v) d")
+
+        if erase_paraphrases and v > 1:
+            if leace is None:
+                leace = LeaceFitter(
+                    d,
+                    v,
+                    device=device,
+                    dtype=train_h.dtype,
+                )
+            # indicators = [0, 1, ..., v-1, 0, 1, ..., v-1, ...] to one-hot
+            indicators = torch.eye(v, device=device, dtype=train_h.dtype).repeat(
+                n, 1
+            )  # (n * v, v)
+            leace = leace.update(train_h, indicators)
+
+        labels = repeat(train_data.labels, "n -> (n v)", v=v)
 
         Xs.append(train_h)
         train_labels.append(labels)
 
     X, train_labels = torch.cat(Xs), torch.cat(train_labels)
+    eraser = leace.eraser if leace is not None else None
+
     if mode == "cv":
-        lr_model = Classifier(X.shape[-1], device=device)
+        lr_model = Classifier(X.shape[-1], device=device, eraser=eraser)
         lr_model.fit_cv(X, train_labels)
         return [lr_model]
     elif mode == "inlp":
-        return Classifier.inlp(X, train_labels).classifiers
+        return Classifier.inlp(
+            X, train_labels, eraser=eraser, max_iter=max_inlp_iter
+        ).classifiers
     elif mode == "single":
-        lr_model = Classifier(X.shape[-1], device=device)
+        lr_model = Classifier(X.shape[-1], device=device, eraser=eraser)
         lr_model.fit(X, train_labels)
         return [lr_model]
     else:

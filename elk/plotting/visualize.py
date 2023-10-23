@@ -20,7 +20,7 @@ class SweepByDsMultiplot:
         self,
         sweep: "SweepVisualization",
         with_transfer=False,
-        ensembles=["full", "partial", "none"],
+        ensembles=["full", "none"],
         write=False,
     ) -> go.Figure:
         """Render the multiplot visualization.
@@ -216,26 +216,26 @@ class ModelVisualization:
         model_name = model_path.name
         is_transfer = False
 
-        def get_eval_dirs(model_path):
+        def get_train_dirs(model_path):
             # toplevel is either repo/dataset or dataset
             for toplevel in model_path.iterdir():
-                if (toplevel / "eval.csv").exists():
+                if (toplevel / "cfg.yaml").exists():
                     yield toplevel
                 else:
-                    for eval_dir in toplevel.iterdir():
-                        yield eval_dir
+                    for train_dir in toplevel.iterdir():
+                        yield train_dir
 
-        for train_dir in get_eval_dirs(model_path):
+        for train_dir in get_train_dirs(model_path):
             eval_df = cls._read_eval_csv(train_dir, train_dir.name, train_dir.name)
             df = pd.concat([df, eval_df], ignore_index=True)
             transfer_dir = train_dir / "transfer"
             if transfer_dir.exists():
                 is_transfer = True
-                for tfr_ds_dir in get_eval_dirs(transfer_dir):
-                    tfr_df = cls._read_eval_csv(
-                        tfr_ds_dir, tfr_ds_dir.name, train_dir.name
+                for eval_ds_dir in transfer_dir.iterdir():
+                    eval_df = cls._read_eval_csv(
+                        eval_ds_dir, eval_ds_dir.name, train_dir.name
                     )
-                    df = pd.concat([df, tfr_df], ignore_index=True)
+                    df = pd.concat([df, eval_df], ignore_index=True)
 
         df["model_name"] = model_name
         return cls(df, model_name, is_transfer)
@@ -272,7 +272,7 @@ class ModelVisualization:
 
     @staticmethod
     def _read_eval_csv(path, eval_dataset, train_dataset):
-        file = path / "eval.csv"
+        file = path / "lr_eval.csv"
         eval_df = pd.read_csv(file)
         eval_df["eval_dataset"] = eval_dataset
         eval_df["train_dataset"] = train_dataset
@@ -382,7 +382,7 @@ class SweepVisualization:
         Returns:
             The generated score table as a pandas DataFrame.
         """
-        df = self.df[self.df["ensembling"] == "partial"]
+        df = self.df[self.df["ensembling"] == "full"]
 
         # For each model, we use the layer whose mean AUROC is the highest
         best_layers, model_dfs = [], []

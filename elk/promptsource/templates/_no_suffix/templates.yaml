@@ -1,0 +1,15 @@
+dataset: None
+templates:
+  8eab7252-bd71-4b2d-9f8a-0fc7260f8371: !Template
+    answer_choices: False ||| True
+    id: 8eab7252-bd71-4b2d-9f8a-0fc7260f8371
+    jinja: "{{ statement }}"
+    metadata: !TemplateMetadata
+      choices_in_prompt: true
+      languages:
+      - en
+      metrics:
+      - Accuracy
+      original_task: true
+    name: _no_suffix
+    suffix: ""

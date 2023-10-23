@@ -16,13 +16,13 @@ from .balanced_sampler import BalancedSampler, FewShotSampler
 def load_prompts(
     ds_string: str,
     *,
-    binarize: bool = False,
     num_shots: int = 0,
     seed: int = 42,
     split_type: Literal["train", "val"] = "train",
     template_path: str | None = None,
-    rank: int = 0,
-    world_size: int = 1,
+    include_answers: bool = False,
+    balance: bool = True,
+    statement_column: str | None = None,
 ) -> Iterator[dict]:
     """Load a dataset full of prompts generated from the specified dataset.
 
@@ -34,8 +34,7 @@ def load_prompts(
         seed: The seed to use for prompt randomization.
         split_type: Whether to use the train or val split of the dataset.
         template_path: Path to feed into `DatasetTemplates` for loading templates.
-        rank: The rank of the current process. Defaults to 0.
-        world_size: The number of processes. Defaults to 1.
+        statement_column: Name of the column to use for the statement text.
 
     Returns:
         An iterable of prompt dictionaries.
@@ -45,23 +44,31 @@ def load_prompts(
     ds_dict = assert_type(dict, load_dataset(ds_name, config_name or None))
     split_name = select_split(ds_dict, split_type)
 
-    ds = assert_type(Dataset, ds_dict[split_name].shuffle(seed=seed))
-    if world_size > 1:
-        ds = ds.shard(world_size, rank)
+    ds = assert_type(Dataset, ds_dict[split_name])
+    if "row_id" not in ds.column_names:
+        ds = ds.add_column("row_id", range(len(ds)))  # type: ignore
+    ds = ds.shuffle(seed=seed)
 
-    if template_path is None:
-        prompter = DatasetTemplates(ds_name, config_name)
-    else:
-        prompter = DatasetTemplates(template_path)
+    prompter, using_blank = get_prompter(ds_name, config_name, template_path)
+    if using_blank:
+        print('Using blank template "{{ statement }}".')
+        statement_column = statement_column or "statement"
+        if statement_column not in ds.column_names:
+            raise ValueError(
+                f'Could not find statement column "{statement_column}".'
+                f" Please include the column or specify a different one with the"
+                f" `statement_column` argument."
+            )
+        if statement_column != "statement":
+            ds = ds.rename_column(statement_column, "statement")
 
-    # If the prompt template says to binarize, we should
-    binarize = binarize or prompter.binarize
-    prompter.drop_non_mc_templates()
+    # TODO: allow for optionally using contrast pair templates so people
+    # don't have to rewrite them
 
     num_templates = len(prompter.templates)
     assert num_templates > 0
-    if rank == 0:
-        print(f"Extracting {num_templates} variants of each prompt")
+
+    print(f"Extracting {num_templates} variants of each prompt")
 
     label_column = prompter.label_column or infer_label_column(ds.features)
 
@@ -74,8 +81,7 @@ def load_prompts(
         # Which classes are actually present in this split of the dataset?
         # This is shockingly fast since it uses an optimized Apache Arrow primitive.
         label_choices = sorted(ds.unique(label_column))
-        if rank == 0:
-            print(f"Using the following pseudo-labels: {label_choices}")
+        print(f"Using the following pseudo-labels: {label_choices}")
 
     rng = Random(seed)
     if num_shots > 0:
@@ -89,25 +95,24 @@ def load_prompts(
     else:
         fewshot_iter = None
 
-    if label_column in ds.features:
+    if label_column in ds.features and balance:
         ds = BalancedSampler(
             ds.to_iterable_dataset(),
             set(label_choices),
             label_col=label_column,
         )
     else:
-        if rank == 0:
+        if balance:
             print("No label column found, not balancing")
         ds = ds.to_iterable_dataset()
 
     for example in ds:
         yield _convert_to_prompts(
             example,
-            binarize=binarize,
             label_column=label_column,
             label_choices=label_choices,  # type: ignore[arg-type]
             prompter=prompter,
-            rng=rng,
+            include_answers=include_answers,
             fewshot_iter=fewshot_iter,
         )
 
@@ -115,63 +120,30 @@ def load_prompts(
 def _convert_to_prompts(
     example: dict[str, Any],
     prompter: DatasetTemplates,
-    binarize: bool,
     label_column: str,
     label_choices: list[bool | int | str],
-    rng: Random,
+    include_answers: bool = False,
     fewshot_iter: Iterator[list[dict]] | None = None,
 ) -> dict[str, Any]:
     """Prompt-generating function to pass to `IterableDataset.map`."""
-    prompts = []
+    statements = []
     templates = list(prompter.templates.values())
-
-    def qa_cat(q: str, a: str) -> str:
-        # if the jinja template already adds whitespace, don't add more
-        sep = "" if not q or q[-1].isspace() or not a or a[0].isspace() else " "
-        return f"{q}{sep}{a}" if a and not a.isspace() else q
 
     # For sanity checking that prompts are unique
     prompt_counter = Counter()
     label = example[label_column]
 
-    if binarize:
-        # Replace the full list of possibilities with a randomly sampled false label
-        # and the correct label, as done in the DLK paper. Note that this does add some
-        # "supervision" by stacking the deck in favor of the correct answer.
-        label_choices = [
-            rng.choice([c for c in label_choices if c != label]),
-            label,
-        ]
-        rng.shuffle(label_choices)
-
     for template in templates:
-        choices = []
+        statement = template.apply(example)
+        prompt_counter[statement] += 1
 
-        for pseudo_label in label_choices:
-            fake_example = example.copy()
-            fake_example[label_column] = pseudo_label
+        if fewshot_iter is not None:
+            # Infinite iterator so we don't need to worry about StopIteration
+            fewshot_examples = next(fewshot_iter)
+            fewshot_texts = list(map(template.apply, fewshot_examples))
+            statement = "\n\n".join(fewshot_texts) + "\n\n" + statement
 
-            q, a = template.apply(fake_example)
-            prompt_counter[(q, a)] += 1
-
-            if fewshot_iter is not None:
-                # Infinite iterator so we don't need to worry about StopIteration
-                fewshot_examples = next(fewshot_iter)
-                fewshot_texts = [
-                    qa_cat(q, a) for q, a in map(template.apply, fewshot_examples)
-                ]
-                q = "\n\n".join(fewshot_texts) + "\n\n" + q
-
-            choices.append(
-                dict(
-                    # Strip whitespace from the answer to make it easier to
-                    # compare with the model's output
-                    answer=a.strip(),
-                    question=q,
-                )
-            )
-
-        prompts.append(choices)
+        statements.append(statement)
 
     # Sanity check: variants should be unique
     ((maybe_dup, dup_count),) = prompt_counter.most_common(1)
@@ -181,8 +153,28 @@ def _convert_to_prompts(
     # Our reporter training and evaluation code assumes that the labels are integers.
     # If they're not, we need to convert them with index(). label_choices is guaranteed
     # to be sorted (see above).
-    return dict(
+    out_dict = dict(
+        row_id=example["row_id"],
         label=label_choices.index(label),
-        prompts=prompts,
+        statements=statements,
         template_names=[template.name for template in templates],
     )
+    if include_answers:
+        out_dict.update(
+            answer_choices=[
+                template.get_fixed_answer_choices_list() for template in templates
+            ],
+            suffixes=[template.suffix for template in templates],
+        )
+    return out_dict
+
+
+def get_prompter(
+    ds_name: str, config_name: str | None, template_path: str | None = None
+) -> tuple[DatasetTemplates, bool]:
+    if template_path is None:
+        try:
+            return DatasetTemplates(ds_name, config_name), False
+        except ValueError:
+            return DatasetTemplates("_default"), True
+    return DatasetTemplates(template_path), template_path == "_default"

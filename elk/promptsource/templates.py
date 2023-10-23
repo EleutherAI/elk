@@ -67,7 +67,9 @@ class Template(yaml.YAMLObject):
 
     yaml_tag = "!Template"
 
-    def __init__(self, name, jinja, reference, metadata=None, answer_choices=None):
+    def __init__(
+        self, name, jinja, reference, metadata=None, answer_choices=None, suffix=""
+    ):
         """
         Creates a prompt template.
 
@@ -88,13 +90,15 @@ class Template(yaml.YAMLObject):
                                be evaluated as ranked completions. If None, then
                                the template is open-ended. This list is accessible
                                from within Jinja as the variable `answer_choices`.
+        :param suffix: string to append to the end of the statement before the answer
         """
         self.id = str(uuid.uuid4())
         self.name = name
         self.jinja = jinja
         self.reference = reference
-        self.metadata = metadata if metadata is not None else Template.Metadata()
+        self.metadata = metadata or Template.Metadata()
         self.answer_choices = answer_choices
+        self.suffix = suffix
 
     def get_answer_choices_list(self, example):
         """
@@ -134,7 +138,7 @@ class Template(yaml.YAMLObject):
         else:
             return None
 
-    def apply(self, example, truncate=True, highlight_variables=False):
+    def apply(self, example, truncate=False, highlight_variables=False):
         """
         Creates a prompt by applying this template to an example
 
@@ -156,23 +160,26 @@ class Template(yaml.YAMLObject):
             jinja = jinja.replace("}}", " | highlight }}")
 
         rtemplate = env.from_string(jinja)
+
         protected_example = self._escape_pipe(example)
 
         # Adds in answer_choices variable
         if "answer_choices" in protected_example:
             raise ValueError("Example contains the restricted key 'answer_choices'.")
 
-        protected_example["answer_choices"] = self.get_answer_choices_list(example)
+        try:
+            protected_example["answer_choices"] = self.get_answer_choices_list(example)
+        except AttributeError:
+            # there's no answer_choices field
+            pass
 
         # Renders the Jinja template
         rendered_example = rtemplate.render(**protected_example)
 
         # Splits on the separator, and then replaces back any occurrences of the
         # separator in the original example
-        return [
-            Template._strip_spaces(self._unescape_pipe(part))
-            for part in rendered_example.split("|||")
-        ]
+        statement_text, *_ = rendered_example.split("|||")
+        return Template._strip_spaces(self._unescape_pipe(statement_text))
 
     @staticmethod
     def _strip_spaces(string):
@@ -260,6 +267,9 @@ class DatasetTemplates:
 
             # Required field; contains all the templates keyed by ID
             self.templates = yaml_dict["templates"]
+            for template in self.templates.values():
+                if not hasattr(template, "suffix"):
+                    template.suffix = ""
             self.binarize = yaml_dict.get("binarize", False)
             self.label_column = yaml_dict.get("label_column")
 
