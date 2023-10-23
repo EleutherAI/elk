@@ -11,6 +11,7 @@ def train_supervised(
     device: str,
     mode: str,
     erase_paraphrases: bool = False,
+    lasso: bool = False,
     max_inlp_iter: int | None = None,
 ) -> list[Classifier]:
     assert not (
@@ -48,7 +49,7 @@ def train_supervised(
 
     if mode == "cv":
         lr_model = Classifier(X.shape[-1], device=device, eraser=eraser)
-        lr_model.fit_cv(X, train_labels)
+        lr_model.fit_cv(X, train_labels, lasso=lasso)
         return [lr_model]
     elif mode == "inlp":
         return Classifier.inlp(

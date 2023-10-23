@@ -21,6 +21,9 @@ class Elicit(Run):
 
     seed: int = 42
 
+    lasso: bool = False
+    """Whether to use L1 regularization."""
+
     supervised: Literal["single", "inlp", "cv"] = "single"
     """Whether to train a supervised classifier, and if so, whether to use
     cross-validation. Defaults to "single", which means to train a single classifier
@@ -76,6 +79,7 @@ class Elicit(Run):
             train_dict,
             erase_paraphrases=self.erase_paraphrases,
             device=device,
+            lasso=self.lasso,
             mode=self.supervised,
             max_inlp_iter=self.max_inlp_iter,
         )

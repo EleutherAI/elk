@@ -68,7 +68,8 @@ class Classifier(torch.nn.Module):
         x: Tensor,
         y: Tensor,
         *,
-        l2_penalty: float = 0.001,
+        alpha: float = 0.001,
+        lasso: bool = False,
         max_iter: int = 10_000,
     ) -> float:
         """Fits the model to the input data using L-BFGS with L2 regularization.
@@ -78,12 +79,22 @@ class Classifier(torch.nn.Module):
                 the input dimension.
             y: Target tensor of shape (N,) for binary classification or (N, C) for
                 multiclass classification, where C is the number of classes.
-            l2_penalty: L2 regularization strength.
+            alpha: L2 regularization strength.
             max_iter: Maximum number of iterations for the L-BFGS optimizer.
 
         Returns:
             Final value of the loss function after optimization.
         """
+        # Use cuML backend for LASSO
+        if lasso:
+            from cuml import Lasso
+
+            model = Lasso(alpha=alpha)
+            model.fit(x.cpu().numpy(), y.cpu().numpy())
+            self.linear.weight.data = torch.from_numpy(model.coef_.T)
+            self.linear.bias.data = torch.from_numpy(model.intercept_)
+            return float(model.loss_)
+
         optimizer = torch.optim.LBFGS(
             self.parameters(),
             line_search_fn="strong_wolfe",
@@ -104,8 +115,8 @@ class Classifier(torch.nn.Module):
             # Calculate the loss function
             logits = self(x).squeeze(-1)
             loss = loss_fn(logits, y)
-            if l2_penalty:
-                reg_loss = loss + l2_penalty * self.linear.weight.square().sum()
+            if alpha:
+                reg_loss = loss + alpha * self.linear.weight.square().sum()
             else:
                 reg_loss = loss
 
@@ -122,6 +133,7 @@ class Classifier(torch.nn.Module):
         y: Tensor,
         *,
         k: int = 5,
+        lasso: bool = False,
         max_iter: int = 10_000,
         num_penalties: int = 10,
         seed: int = 42,
@@ -155,7 +167,7 @@ class Classifier(torch.nn.Module):
         indices = torch.randperm(num_samples, device=x.device, generator=rng)
 
         # Try a range of L2 penalties, including 0
-        l2_penalties = [0.0] + torch.logspace(-4, 4, num_penalties).tolist()
+        penalties = [0.0] + torch.logspace(-4, 4, num_penalties).tolist()
 
         num_classes = self.linear.out_features
         loss_fn = bce_with_logits if num_classes == 1 else cross_entropy
@@ -173,8 +185,10 @@ class Classifier(torch.nn.Module):
             val_x, val_y = x[val_indices], y[val_indices]
 
             # Regularization path with warm-starting
-            for j, l2_penalty in enumerate(l2_penalties):
-                self.fit(train_x, train_y, l2_penalty=l2_penalty, max_iter=max_iter)
+            for j, penalty in enumerate(penalties):
+                self.fit(
+                    train_x, train_y, alpha=penalty, lasso=lasso, max_iter=max_iter
+                )
 
                 logits = self(val_x).squeeze(-1)
                 loss = loss_fn(logits, val_y)
@@ -184,9 +198,9 @@ class Classifier(torch.nn.Module):
         best_idx = mean_losses.argmin()
 
         # Refit with the best penalty
-        best_penalty = l2_penalties[best_idx]
-        self.fit(x, y, l2_penalty=best_penalty, max_iter=max_iter)
-        return RegularizationPath(l2_penalties, mean_losses.tolist())
+        best_penalty = penalties[best_idx]
+        self.fit(x, y, alpha=best_penalty, lasso=lasso, max_iter=max_iter)
+        return RegularizationPath(penalties, mean_losses.tolist())
 
     @classmethod
     def inlp(

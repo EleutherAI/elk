@@ -24,7 +24,7 @@ def test_classifier_roughly_same_sklearn():
     classifier.fit(
         torch.from_numpy(features),
         torch.from_numpy(truths),
-        l2_penalty=0.0,
+        alpha=0.0,
     )
     # check that the weights are roughly the same
     sklearn_coef = torch.from_numpy(model.coef_)
