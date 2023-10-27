@@ -48,7 +48,7 @@ def load_prompts(
     if "row_id" not in ds.column_names:
         ds = ds.add_column("row_id", range(len(ds)))  # type: ignore
     else:
-        print("Found row_id column, using it as the prompt ID")
+        print("Found `row_id` column, using it as the example id")
     ds = ds.shuffle(seed=seed)
 
     prompter, using_blank = get_prompter(ds_name, config_name, template_path)
