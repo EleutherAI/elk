@@ -199,12 +199,21 @@ def tokenize_dataset(
                 assert len(answer_choices) == 2
                 answer_ids = []
                 for choice in answer_choices:
-                    a_id = tokenizer.encode(choice, add_special_tokens=False)
+                    a_id = tokenizer.encode(" " + choice, add_special_tokens=False)
+
+                    # the Llama tokenizer splits off leading spaces
+                    if tokenizer.decode(a_id[0]).strip() == "":
+                        a_id_without_space = tokenizer.encode(
+                            choice, add_special_tokens=False
+                        )
+                        assert a_id_without_space == a_id[1:]
+                        a_id = a_id_without_space
+
                     if len(a_id) > 1:
                         print(
                             f"WARNING: answer choice '{choice}' is more than one "
                             "token, LM probabilities will be calculated using the "
-                            "first token only."
+                            f"first token only ({tokenizer.decode(a_id[0])})"
                         )
                     answer_ids.append(a_id[0])
             else:
