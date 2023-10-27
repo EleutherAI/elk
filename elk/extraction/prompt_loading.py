@@ -47,6 +47,8 @@ def load_prompts(
     ds = assert_type(Dataset, ds_dict[split_name])
     if "row_id" not in ds.column_names:
         ds = ds.add_column("row_id", range(len(ds)))  # type: ignore
+    else:
+        print("Found row_id column, using it as the prompt ID")
     ds = ds.shuffle(seed=seed)
 
     prompter, using_blank = get_prompter(ds_name, config_name, template_path)
@@ -135,7 +137,10 @@ def _convert_to_prompts(
 
     for template in templates:
         statement = template.apply(example)
-        prompt_counter[statement] += 1
+
+        choices = template.get_fixed_answer_choices_list()
+        choices = tuple(choices) if choices is not None else None
+        prompt_counter[(statement, choices)] += 1
 
         if fewshot_iter is not None:
             # Infinite iterator so we don't need to worry about StopIteration

@@ -41,7 +41,8 @@ def test_get_encodings():
         input_ids = tokenizer(ex["text"], add_special_tokens=True)["input_ids"]
         out_record["input_ids"] = [input_ids + suffix_tokens]  # type: ignore
         answer_ids = [
-            tokenizer.encode(s, add_special_tokens=False)[0] for s in ["False", "True"]
+            tokenizer.encode(s, add_special_tokens=False)[0]
+            for s in [" False", " True"]
         ]
         out_record["answer_ids"] = answer_ids
         return out_record
