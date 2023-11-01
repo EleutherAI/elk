@@ -183,7 +183,7 @@ def tokenize_dataset(
     for example in prompt_ds:
         num_variants = len(example["template_names"])
 
-        # Check if we've yielded enough examples
+        # Check if we've appended enough examples
         if len(out_records) >= max_examples * num_variants:
             break
 
@@ -258,7 +258,15 @@ def tokenize_dataset(
         # print an example text to stdout
         if len(out_records) == 0:
             print(f"Example text: {record_variants[0]['text']}")
+            neg_id, pos_id = record_variants[0]["answer_ids"]
+            print(f'\tneg choice token: "{tokenizer.decode(neg_id)}"')
+            print(f'\tpos choice token: "{tokenizer.decode(pos_id)}"')
         out_records.extend(record_variants)
+    else:
+        print(
+            f"WARNING: reached end of dataset {ds_names[0]} before collecting "
+            f"{max_examples} examples (only got {len(out_records)})."
+        )
 
     # transpose the list of dicts into a dict of lists
     out_records = {k: [d[k] for d in out_records] for k in out_records[0]}

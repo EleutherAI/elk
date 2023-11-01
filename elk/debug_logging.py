@@ -11,12 +11,16 @@ def save_debug_log(datasets: list[DatasetDictWithName], out_dir: Path) -> None:
     training issues.
     """
 
+    print(f"Saving debug log to {out_dir}/debug.log")
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s %(levelname)s:\n%(message)s",
         filename=out_dir / "debug.log",
         filemode="w",
     )
+
+    if len(datasets) == 0:
+        logging.warning("No datasets found!")
 
     for ds_name, ds in datasets:
         logging.info(

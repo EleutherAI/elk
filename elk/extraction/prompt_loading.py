@@ -98,6 +98,7 @@ def load_prompts(
         fewshot_iter = None
 
     if label_column in ds.features and balance:
+        print(f"Balancing dataset by {label_column}")
         ds = BalancedSampler(
             ds.to_iterable_dataset(),
             set(label_choices),
