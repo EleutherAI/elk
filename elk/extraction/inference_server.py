@@ -352,7 +352,6 @@ def _worker(
             inputs_cuda = pytree_map(
                 lambda v: maybe_unsqueeze(v.to(device)), input_record
             )
-            # TODO: have model kwargs so we don't have to duplicate kwargs at each row
             outputs = model(**inputs_cuda, **model_kwargs)
 
             if callable(closure):

@@ -154,16 +154,22 @@ class Run(ABC, Serializable):
         for ds_name, ds in self.datasets:
             key = select_split(ds, split_type)
 
-            split = ds[key].with_format("torch", device=device, dtype=torch.int16)
-            labels = assert_type(Tensor, split["label"])
+            hidden_cols = [
+                col for col in ds[key].column_names if col.startswith("hidden_")
+            ]
+            split = ds[key].with_format(
+                "torch", device=device, dtype=torch.int16, columns=hidden_cols
+            )
             # hiddens shape: (num_examples, num_variants, hidden_d)
             hiddens = int16_to_float32(assert_type(Tensor, split[f"hidden_{layer}"]))
             if self.prompt_indices:
                 hiddens = hiddens[:, self.prompt_indices]
 
+            # convert the remaining columns to torch
+            split = split.with_format("torch", device=device)
+            labels = assert_type(Tensor, split["label"])
             if "lm_log_odds" in split.column_names:
-                with split.formatted_as("torch", device=device):
-                    lm_preds = assert_type(Tensor, split["lm_log_odds"])
+                lm_preds = assert_type(Tensor, split["lm_log_odds"])
             else:
                 lm_preds = None
 
