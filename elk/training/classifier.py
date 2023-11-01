@@ -89,11 +89,15 @@ class Classifier(torch.nn.Module):
         if lasso:
             from cuml import Lasso
 
-            model = Lasso(alpha=alpha)
-            model.fit(x.cpu().numpy(), y.cpu().numpy())
-            self.linear.weight.data = torch.from_numpy(model.coef_.T)
-            self.linear.bias.data = torch.from_numpy(model.intercept_)
-            return float(model.loss_)
+            model = Lasso(alpha=alpha, selection="random")
+            model.fit(x, y)
+
+            W = torch.as_tensor(model.coef_).unsqueeze(0).to(x.device)
+            b = torch.as_tensor(model.intercept_).to(x.device)
+
+            self.linear.weight.data = W
+            self.linear.bias.data = b
+            return 0.0
 
         optimizer = torch.optim.LBFGS(
             self.parameters(),

@@ -57,7 +57,7 @@ def train_supervised(
         ).classifiers
     elif mode == "single":
         lr_model = Classifier(X.shape[-1], device=device, eraser=eraser)
-        lr_model.fit(X, train_labels)
+        lr_model.fit(X, train_labels, lasso=lasso)
         return [lr_model]
     else:
         raise ValueError(f"Unknown mode: {mode}")
