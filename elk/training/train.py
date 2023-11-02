@@ -21,7 +21,7 @@ class Elicit(Run):
 
     seed: int = 42
 
-    lasso: bool = False
+    l1_ratio: float = 0.0
     """Whether to use L1 regularization."""
 
     supervised: Literal["single", "inlp", "cv"] = "single"
@@ -79,7 +79,7 @@ class Elicit(Run):
             train_dict,
             erase_paraphrases=self.erase_paraphrases,
             device=device,
-            lasso=self.lasso,
+            l1_ratio=self.l1_ratio,
             mode=self.supervised,
             max_inlp_iter=self.max_inlp_iter,
         )

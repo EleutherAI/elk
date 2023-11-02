@@ -11,7 +11,7 @@ def train_supervised(
     device: str,
     mode: str,
     erase_paraphrases: bool = False,
-    lasso: bool = False,
+    l1_ratio: float = 0.0,
     max_inlp_iter: int | None = None,
 ) -> list[Classifier]:
     assert not (
@@ -49,15 +49,15 @@ def train_supervised(
 
     if mode == "cv":
         lr_model = Classifier(X.shape[-1], device=device, eraser=eraser)
-        lr_model.fit_cv(X, train_labels, lasso=lasso)
+        lr_model.fit_cv(X, train_labels, l1_ratio=l1_ratio)
         return [lr_model]
     elif mode == "inlp":
         return Classifier.inlp(
-            X, train_labels, eraser=eraser, max_iter=max_inlp_iter
+            X, train_labels, eraser=eraser, max_iter=max_inlp_iter, l1_ratio=l1_ratio
         ).classifiers
     elif mode == "single":
         lr_model = Classifier(X.shape[-1], device=device, eraser=eraser)
-        lr_model.fit(X, train_labels, lasso=lasso)
+        lr_model.fit(X, train_labels, l1_ratio=l1_ratio)
         return [lr_model]
     else:
         raise ValueError(f"Unknown mode: {mode}")

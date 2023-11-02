@@ -69,7 +69,7 @@ class Classifier(torch.nn.Module):
         y: Tensor,
         *,
         alpha: float = 0.001,
-        lasso: bool = False,
+        l1_ratio: float = 0,
         max_iter: int = 10_000,
     ) -> float:
         """Fits the model to the input data using L-BFGS with L2 regularization.
@@ -86,10 +86,12 @@ class Classifier(torch.nn.Module):
             Final value of the loss function after optimization.
         """
         # Use cuML backend for LASSO
-        if lasso:
-            from cuml import Lasso
+        if l1_ratio > 0:
+            from cuml import LogisticRegression
 
-            model = Lasso(alpha=alpha, selection="random")
+            model = LogisticRegression(
+                C=1 / alpha, penalty="elasticnet", l1_ratio=l1_ratio
+            )
             model.fit(x, y)
 
             W = torch.as_tensor(model.coef_).unsqueeze(0).to(x.device)
@@ -137,7 +139,7 @@ class Classifier(torch.nn.Module):
         y: Tensor,
         *,
         k: int = 5,
-        lasso: bool = False,
+        l1_ratio: float = 0.0,
         max_iter: int = 10_000,
         num_penalties: int = 10,
         seed: int = 42,
@@ -191,7 +193,11 @@ class Classifier(torch.nn.Module):
             # Regularization path with warm-starting
             for j, penalty in enumerate(penalties):
                 self.fit(
-                    train_x, train_y, alpha=penalty, lasso=lasso, max_iter=max_iter
+                    train_x,
+                    train_y,
+                    alpha=penalty,
+                    l1_ratio=l1_ratio,
+                    max_iter=max_iter,
                 )
 
                 logits = self(val_x).squeeze(-1)
@@ -203,7 +209,7 @@ class Classifier(torch.nn.Module):
 
         # Refit with the best penalty
         best_penalty = penalties[best_idx]
-        self.fit(x, y, alpha=best_penalty, lasso=lasso, max_iter=max_iter)
+        self.fit(x, y, alpha=best_penalty, l1_ratio=l1_ratio, max_iter=max_iter)
         return RegularizationPath(penalties, mean_losses.tolist())
 
     @classmethod
@@ -212,6 +218,7 @@ class Classifier(torch.nn.Module):
         x: Tensor,
         y: Tensor,
         eraser: LeaceEraser | None = None,
+        l1_ratio: float = 0.0,
         max_iter: int | None = None,
         tol: float = 0.01,
     ) -> InlpResult:
