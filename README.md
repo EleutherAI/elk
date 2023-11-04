@@ -58,11 +58,11 @@ together. You can also add a `--visualize` flag to visualize the results of the 
 elk sweep --models gpt2-{medium,large,xl} --datasets imdb amazon_polarity --add_pooled
 ```
 
-If you just do `elk plot`, it will plot the results from the most recent sweep.
-If you want to plot a specific sweep, you can do so with:
+If you just do `elk plot`, it will plot the results of AUROC from the most recent sweep.
+If you want to plot a specific sweep, with a specific metric type, you can do so with:
 
 ```bash
-elk plot {sweep_name}
+elk plot {sweep_name} --metric acc_estimate
 ```
 
 ## Caching

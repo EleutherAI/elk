@@ -22,6 +22,9 @@ class Plot:
     overwrite: bool = False
     """Whether to overwrite existing plots."""
 
+    metric_type: str = "auroc_estimate"
+    """Name of metric to plot"""
+
     def execute(self):
         root_dir = sweeps_dir()
 
@@ -47,4 +50,4 @@ class Plot:
                 if self.overwrite:
                     shutil.rmtree(sweep_path / "viz")
 
-                visualize_sweep(sweep_path)
+                visualize_sweep(sweep_path, self.metric_type)

@@ -40,6 +40,9 @@ class Sweep:
     visualize: bool = False
     """Whether to generate visualizations of the results of the sweep."""
 
+    metric_type: str = "auroc_estimate"
+    """Name of metric to plot"""
+
     name: str | None = None
 
     # A bit of a hack to add all the command line arguments from Elicit
@@ -137,4 +140,4 @@ class Sweep:
                         eval.execute(highlight_color="green")
 
         if self.visualize:
-            visualize_sweep(sweep_dir)
+            visualize_sweep(sweep_dir, self.metric_type)
