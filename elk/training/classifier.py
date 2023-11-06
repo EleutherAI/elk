@@ -85,18 +85,17 @@ class Classifier(torch.nn.Module):
         Returns:
             Final value of the loss function after optimization.
         """
-        # Use cuML backend for LASSO
         if l1_ratio > 0:
             from cuml import LogisticRegression
 
             model = LogisticRegression(
-                C=1 / alpha, penalty="elasticnet", l1_ratio=l1_ratio
+                C=1 / alpha, penalty="elasticnet", l1_ratio=l1_ratio, max_iter=1_000,
             )
             model.fit(x, y)
 
-            W = torch.as_tensor(model.coef_).unsqueeze(0).to(x.device)
+            W = torch.as_tensor(model.coef_).to(x.device)
             b = torch.as_tensor(model.intercept_).to(x.device)
-
+            
             self.linear.weight.data = W
             self.linear.bias.data = b
             return 0.0
@@ -219,6 +218,7 @@ class Classifier(torch.nn.Module):
         y: Tensor,
         eraser: LeaceEraser | None = None,
         l1_ratio: float = 0.0,
+        alpha: float = 0.001,
         max_iter: int | None = None,
         tol: float = 0.01,
     ) -> InlpResult:
@@ -255,7 +255,7 @@ class Classifier(torch.nn.Module):
         result = InlpResult()
         for _ in range(max_iter):
             clf = cls(d, eraser=eraser, device=x.device, dtype=x.dtype)
-            loss = clf.fit(x, y)
+            loss = clf.fit(x, y, alpha=alpha, l1_ratio=l1_ratio)
             result.classifiers.append(clf)
             result.losses.append(loss)
 

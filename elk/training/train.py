@@ -24,6 +24,9 @@ class Elicit(Run):
     l1_ratio: float = 0.0
     """Whether to use L1 regularization."""
 
+    alpha: float = 0.001
+    """Whether to use L1 regularization."""
+
     supervised: Literal["single", "inlp", "cv"] = "single"
     """Whether to train a supervised classifier, and if so, whether to use
     cross-validation. Defaults to "single", which means to train a single classifier
@@ -80,6 +83,7 @@ class Elicit(Run):
             erase_paraphrases=self.erase_paraphrases,
             device=device,
             l1_ratio=self.l1_ratio,
+            alpha=self.alpha,
             mode=self.supervised,
             max_inlp_iter=self.max_inlp_iter,
         )
