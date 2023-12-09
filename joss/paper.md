@@ -2,7 +2,7 @@
 title: 'elk: A Python package to elicit latent knowledge from LLMs'
 tags:
   - python
-  - machine leaarning
+  - machine learning
   - interpretability
   - ai alignment
   - honest AI
@@ -41,7 +41,7 @@ authors:
 affiliations:
  - name: EleutherAI
    index: 1
- - name: NotodAI Research
+ - name: Cadenza Labs
    index: 2
  - name: FZI Research Center for Information Technology
    index: 3
