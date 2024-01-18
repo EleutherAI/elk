@@ -17,11 +17,9 @@ EVAL_EXPECTED_FILES = [
 ]
 
 
-# TODO make into a pytest.fixture?
+@pytest.fixture
 def setup_elicit(
-    tmp_path: Path,
-    dataset_name="imdb",
-    model_path="sshleifer/tiny-gpt2",
+    tmp_path: Path, dataset_name="imdb", model_path="sshleifer/tiny-gpt2"
 ) -> Elicit:
     """Setup elicit config for testing, execute elicit, and save output to tmp_path.
     Returns the elicit run configuration.
@@ -114,7 +112,7 @@ def eval_assert_files_good(elicit: Elicit, transfer_datasets: tuple[str, ...] = 
 
 
 @pytest.mark.gpu
-def test_smoke_eval_run_tiny_gpt2(tmp_path: Path):
+def test_smoke_eval_run_tiny_gpt2(tmp_path: Path, setup_elicit):
     elicit = setup_elicit(tmp_path)
     transfer_datasets = ("christykoh/imdb_pt",)
     eval_run(elicit, transfer_datasets=transfer_datasets)
