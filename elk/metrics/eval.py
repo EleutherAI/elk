@@ -73,7 +73,7 @@ def evaluate_preds(
     Returns:
         dict: A dictionary containing the accuracy, AUROC, and ECE.
     """
-    (n, v) = y_logits.shape
+    n, v = y_logits.shape
     assert y_true.shape == (n,)
 
     if ensembling == "full":
