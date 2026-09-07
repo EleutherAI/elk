@@ -21,7 +21,7 @@ def train_supervised(
     leace = None
 
     for train_data in data.values():
-        (n, v, d) = train_data.hiddens.shape
+        n, v, d = train_data.hiddens.shape
         train_h = rearrange(train_data.hiddens, "n v d -> (n v) d")
 
         if erase_paraphrases and v > 1:
