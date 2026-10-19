@@ -64,7 +64,7 @@ class Elicit(Run):
         val_dict = self.prepare_data(device, layer, "val")
 
         first_train_data, *rest = train_dict.values()
-        (_, v, d) = first_train_data.hiddens.shape
+        _, v, d = first_train_data.hiddens.shape
         if not all(other_data.hiddens.shape[-1] == d for other_data in rest):
             raise ValueError("All datasets must have the same hidden state size")
 
